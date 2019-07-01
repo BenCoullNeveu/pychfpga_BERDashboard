@@ -45,6 +45,7 @@ except ImportError:
 
 
 # Local imports
+from pychfpga import calculate_gains
 from pychfpga import __version__, get_git_version
 from pychfpga import FPGAArray
 from ps import PowerSupplyAsyncRESTClient
@@ -183,6 +184,8 @@ class ChimeMaster(object):
 
         self.log.info("program %s" % self.PROGRAM)
         self.log.info("version %s" % self.GIT_VERSION)
+
+        self.gain_calc_metrics = Metrics()
 
     def set_config(self, config):
         self.config = NameSpace(config)
@@ -432,82 +435,148 @@ class ChimeMaster(object):
 
     @coroutine
     def compute_gains(self,
-            gain_folder='.',
-            enable=True,
-            slots=None,
-            noise_injection=None,
-            targets=[],
-            number_of_averages=100,
-            n_iterations=20,
-            ch=3):
+                     targets=None,
+                     capture_rate = 23,
+                     gain_folder=None,
+                     save_gains=False,
+                     enable=True,
+                     noise_injection=None,
+                     number_of_fft_averages=100,
+                     number_of_gain_update_iterations=20):
         """
 
         Parameters:
 
-            targets (list of tuples): list of tuples describing the boards whose gains needs to be recomputed.
+            targets: list of tuples (or dict) describing the (crate, board,
+                channel) (or {crate:c, board:b, channel:ch}) whose gains needs
+                to be recomputed. Missing elements, `None` or `"*"` is treated
+                as a wildcard.
 
+            capture_rate (int): Sets how fast the data is to be temporarily
+                transmitted and captured for the selected channel. This sets
+                the number of frames between captures, which is a power of 2
+                set by `Nframes=2**(capture_rate+1)`. Independently of this,
+                the rate cannot be slower than the promary capture rate set at
+                FPGA initialization.
 
-        Example: [(0,1), ['1,'*'], ['*'], {crate='*', slot='*'} ]
+            gain_folder (str): folder in which gains are to be saved. If
+                `None`, the folder defined in the configurtion is used..
+
+            enable (bool): if False, nothing is done.
+
+            noise_injection: noise injection parameters to be set for these
+                gains computations. If it evaluates to False, noise injection
+                parameters are not set. Note that multiple channels might be
+                affected by this, not just the sleected channels.
+
+            number_of_fft_averages (int): Number of FFT frames that will be
+                captured and averaged before returning the averages spectrum
+                that will be used to perform a gain update iteration. Defaults
+                to 100. This parameter and the capture rate affects the speed
+                at which the gain computations will occur
+
+            number_of_gain_update_iterations: Number of incremental gain
+                updates that will be performed before the final gain solution.
+
+        Examples:
+
+            chan_id = [(0,1), (1,3,4)] or [{crate:0, slot:1}, {crate:1, slot:3, channel:4}] # Select all channels of board in crate 0 slot 1, and channel 4 of crate 1 slot 3.
+            chan_id = None # Selects all boards and channels in the array
+            chan_id = [(4,'*', 5)] or [(4, None, 5)] or [{crate:4, channel:5}, {crate:4, slot:'*', channel:5}  # select channel 5 of all boards in crate 4
+
         """
 
         # Make sure gain calculation is enabled
         if not enable:
             return
 
-        self.log.info('%r: Starting compute_gains()' % (self))
+        # Get a {iceboard:[list_of_channels]} dict of selected channels
+        ib_chans = self.fpgas.get_iceboards(targets, lane_type='chan').items()
 
-        if slots is not None:
-            raise AttributeError('Unsupported slots parameter. Use targets instead.')
+        if not ib_chans:
+            raise RuntimeError('No target board was found for the specified patterns')
+
+        self.log.info('%r: Starting compute_gains() on the following channels: %s' % (self, ', '.join(str(ib.get_id()) + str(ch) for ib,ch in ib_chans)))
+
+        # Set the source and data capture rate for target channels
+
+        for (ib, channels) in ib_chans:
+            ib.set_data_capture(channels=channels, sub_period=capture_rate, source='scaler')
 
         if noise_injection is not None:
             raise AttributeError('Noise injection settings are not yet supported for gain computations')
 
-        conf = self.config.raw_acq.common_config
-        capture_rate = conf.compute_gains_capture_rate
-        tmux_factor = conf.tmux_factor
+        # find the channel ID and stream ID associated with each raw_acq server
+        server_channel_ids = {} # will be returned with the new gains so set_gains can apply gains to the proper board
+        server_stream_ids = {} # will be used by raw_acq to select the proper channels
+        all_channel_ids = []
+        all_stream_ids = []
+        for server_name, ibs in self.raw_acq_ibs.items():
+            server_channel_ids[server_name] = []
+            server_stream_ids[server_name] = []
+            for (ib, channels) in ib_chans:
+                if ib in ibs:
+                    cids = ib.get_channel_ids(channels)
+                    sids = ib.get_stream_ids(channels)
+                    server_channel_ids[server_name].extend(cids)
+                    server_stream_ids[server_name].extend(sids)
+                    all_channel_ids.extend(cids)
+                    all_stream_ids.extend(sids)
+        sid_index_map = {sid:i for i,sid in enumerate(all_stream_ids)}
 
-        yield self.start_fpga_raw_data_transmission(capture_rate, capture_source='scaler', tmux_factor=tmux_factor)
 
-        ibs = []
-        for target in targets:
-            ibs.append(self.get_iceboards(target))
-
-        self.log.info('%r: Compute_gains target iceboards are: %s' % (self, ','.join(str(ib) for ib in ibs)))
-
-        for server_name, server in self.raw_acq.items():
-            channel_ids = []
-            stream_ids = []
-
-            # build a list of channel_id and stream_id for the selected boards covered by this receiver
-            for ib in ibs:
-                for port_entry in self.raw_acq_ibs[server_name]:
-                    if ib in port_entry.iceboards:
-                        stream_id_map = ib.get_stream_id_map()
-                        channel_ids.append(stream_id_map.keys())
-                        stream_ids.append(stream_id_map.values())
-                    else:
-                        print('%r is not in %r' % (ib, self.raw_acq_ibs[server_name]))
-            self.log.info('%r: Server %s chan IDa & stream IDa are: %s' % (self, server_name,  ','.join(str(s) for s in zip(channel_ids, stream_ids))))
+        @coroutine
+        def iterate_gains(server, channel_ids, stream_ids):
+            # Greate a gain calculator engine
+            gc = calculate_gains.GainCalc(channel_ids=channel_ids, n_iterations=number_of_gain_update_iterations)
+            # Set all the initial gains on bank 0
             bank = 0
-            g = calculate_gains.GainCalc(channel_ids=channel_ids, n_iterations=n_iterations)
-            g.rms = np.empty((g.n_rms_iterations, 1024))
-            g.gain = np.empty((g.n_rms_iterations, 1024))
-            # Set all gains to their initial values
-            self.fpgas.set_gains(gains=g.get_gains(), bank=bank, when='now')
-            i = 0
-            while not g.is_done():
+            self.fpgas.set_gains(gains=gc.get_gains(), bank=bank, when='now')
+            # start the integration of FFT data for specified channels
+            for i in range(number_of_gain_update_iterations):
                 print('**** Gain iteration %i' % i)
-                ix, rms = server.get_fft_rms(stream_ids=stream_ids, target_gain_bank=bank, number_of_frames=number_of_averages)
-                g.rms[i, :] = rms[ch]
-                g.gain[i, :] = g.glin[ch] * 2.**g.glog[ch]
-                i += 1
-                new_gains = g.update_gains(ix, rms)
-                # bank ^= 1 # switch bank
+                yield server.start_fft_rms(
+                    stream_ids=stream_ids,
+                    target_gain_bank=bank,
+                    number_of_frames=number_of_fft_averages)
+
+                while True:
+                    sids, rms = yield server.get_fft_rms()
+                    if sids:
+                        break
+                    yield sleep(.3)
+                ix = np.array([sid_index_map[sid] for sid in sids])
+                print('Got FFT RMS values for Channel ID: Stream ID%s' %
+                    ', '.join('%s:%i' % (channel_ids[j], stream_ids[j]) for j in ix))
+                new_gains = gc.update_gains(ix, np.array(rms))
+                # print('new gains=', new_gains)
+                # gg=new_gains.values()[0]
+                # print('gg=', gg)
+                bank ^= 1 # switch bank
+                # self.fpgas.ib[0].set_gains(gain=(gg[0][1],gg[1]), bank=bank, when='now')
                 self.fpgas.set_gains(gains=new_gains, bank=bank, when='now')
-            # Compute and set the final filtered gains
-            filtered_gains, mask = g.get_filtered_gains()
+                for j in ix:
+                    self.gain_calc_metrics.add('fpga_gain_calc_rms',
+                        channel_id=str(channel_ids[j]),
+                        stream_id=stream_ids[j],
+                        value=np.mean(np.array(rms)[j, 1:]))
+                    self.gain_calc_metrics.add('fpga_gain_calc_iteration',
+                        value=i)
+            filtered_gains, mask = gc.get_filtered_gains()
             self.fpgas.set_gains(gains=filtered_gains, bank=0, when='now')
-            self.fpgas.save_gains(gains=filtered_gains, gain_folder=gain_folder)
+
+        # Perform the gain iterations in parallel on all raw acq servers
+        yield [iterate_gains(raw_acq_server, server_channel_ids[raw_acq_server_name], server_stream_ids[raw_acq_server_name])
+               for raw_acq_server_name, raw_acq_server in self.raw_acq.items()]
+
+        # Return the data capture of the selected channels to the adc source and baseline capture rate
+        for (ib, channels) in ib_chans:
+            ib.set_data_capture(channels=channels, sub_period=23, source='adc')
+
+        if save_gains:
+            self.fpgas.save_gains(gains=self.fpgas.get_gains(), gain_folder=gain_folder or self.gain_folder)
+
+        # self.log.info('%r: Server %s chan IDa & stream IDa are: %s' % (self, server_name,  ','.join(str(s) for s in zip(channel_ids, stream_ids))))
 
 
     @coroutine
@@ -556,7 +625,7 @@ class ChimeMaster(object):
         if capture_duration is not None:
             self.log.info('%r: Starting HDF5 data capture for %f seconds (0 = infinite)' % (self, capture_duration))
 
-            yield [node.start_hdf5(
+            yield [server.start_hdf5(
                 base_dir=capture_folder,
                 base_filename=capture_filename,
                 capture_duration=capture_duration,
@@ -588,13 +657,13 @@ class ChimeMaster(object):
         except KeyError:
             msg = "Missing config value 'comet_broker/enabled'."
             self.log.error('%r: %s' % (self, msg))
-            coroutine_return(msg)
+            raise RuntimeError(msg)
         if enable_comet:
             if comet is None:
                 msg = "Failure importing comet for configuration tracking.  Please install the " \
                       "comet package or set 'comet_broker/enabled' to False in config."
                 self.log.error('%r: %s' % (self, msg))
-                coroutine_return(msg)
+                raise RuntimeError(msg)
             try:
                 comet_host = config['comet_broker']['host']
                 comet_port = config['comet_broker']['port']
@@ -602,7 +671,7 @@ class ChimeMaster(object):
                 msg = "Failure registering initial config with comet broker: 'comet_broker/{}' " \
                       "not defined in config.".format(exc[0])
                 self.log.error('%r: %s' % (self, msg))
-                coroutine_return(msg)
+                raise RuntimeError(msg)
             comet_manager = comet.Manager(comet_host, comet_port)
             try:
                 comet_manager.register_start(self.startup_time, self.GIT_VERSION)
@@ -610,7 +679,7 @@ class ChimeMaster(object):
             except comet.CometError as exc:
                 msg = 'Comet failed registering fpga_master start and initial config: {}'.format(exc)
                 self.log.error('%r: %s' % (self, msg))
-                coroutine_return(msg)
+                raise RuntimeError(msg)
         else:
             self.log.warning("Config registration DISABLED. This is only OK for testing.")
 
@@ -659,7 +728,7 @@ class ChimeMaster(object):
         #lo=logging.getLogger('pychfpga.fpga_array')
         #print('before setup: logger name=%s, level=%s, handlers=%s, disabled=%r' %(lo.name, lo.level, lo.handlers, lo.disabled))
         self.logging_handlers = log.setup_logging(
-        conf.logging.dict_config,
+            conf.logging.dict_config,
             conf.logging.log_levels,
             base_package_name=conf.logging.base_package_name,
             actual_package_name=__name__.rpartition('.')[0], # full package path up to ch_acq (note: __package__ exists but is not consistently defined)
@@ -980,9 +1049,10 @@ class ChimeMaster(object):
         IOLoop.current().start()
 
     @coroutine
-    def load_digital_gains(self, gain_folder='/home/chime/ch_acq/gains/new_gains'):
+    def load_digital_gains(self, gain_folder=None):
         if self.fpgas:
             # Read Gains
+            gain_folder = gain_folder or self.gain_folder
             self.log.info('Reading digital gains from folder %s.' %gain_folder)
             gains = yield self.fpgas.load_gains.async(gain_folder=gain_folder)
 
@@ -1226,6 +1296,35 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
         coroutine_return(message='Resetted %i boards' % len(actual_board_ids), board_ids=actual_board_ids)
 
+    @coroutine
+    @endpoint('compute-gains')
+    def compute_gains(self, handler, **params):
+        """ REST endpoint to reset the GPU links on specified boards
+
+        Parameters:
+
+            chan_ids (list of tuple/dict): List of tuples describing the
+                (crate, slot, channels) for which gains shall be recomputed.
+                Missing tuple elements, "*" and None are considered to be a
+                wildcard.
+
+        Returns:
+
+            List of board IDs that were actually reset.
+
+        Example::
+
+            curl  -H "Content-Type: application/json" -X POST http://localhost:54321/compute-gains -d '{"chan_ids": [[0, 0, "*"]]}'
+        """
+        if not (self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas):
+            self.log.warning("%r: FPGA array is not ready to accept command" % (self))
+            coroutine_return(message="FPGA not ready", board_ids=[])
+
+        results = yield self.chime_master.compute_gains(**params)
+
+        coroutine_return(message='Gains updated', results=results)
+
+
     # @coroutine
     # @endpoint('kotekan-start')
     # def kotekan_start(self, handler, **config):
@@ -1406,7 +1505,6 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
                 yield sleep(3)
         except Exception as e:
             self.log.error('%r: auto_restart_raw_acq raised the following exception: %r' % (self, e))
-            yield sleep(3)
 
 
     @coroutine
@@ -1454,6 +1552,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             # print('************ Getting ARM Metrics!')
             try:
                 if self.chime_master and self.chime_master.fpgas:
+                    self.metrics.add(self.chime_master.gain_calc_metrics.pop()) # add whatever gain calc metrics we have
                     yield self.chime_master.fpgas.get_arm_metrics.async(self.metrics)
                     self.log.info('%r: Successfully got ARM metrics' % self)
             except Exception as e:
@@ -1533,7 +1632,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('load-digital-gains')
-    def load_digital_gains(self, handler, gain_folder='/home/chime/ch_acq/gains/new_gains'):
+    def load_digital_gains(self, handler, gain_folder=''):
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
             future = self.chime_master.load_digital_gains(gain_folder=gain_folder, delta_t_seconds=delta_t_seconds)
             IOLoop.current().add_future(future, lambda : self.log.info('Digital gains loaded.'))
@@ -1801,7 +1900,7 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
         #coroutine_return(result)
 
     @coroutine
-    def load_digital_gains(self, gain_folder):
+    def load_digital_gains(self, gain_folder=''):
         """
         load digital gains
         """
