@@ -640,6 +640,24 @@ class chFPGA_controller(IceBoardExtHandler):
         """ Return a list of available channel numbers """
         return self.ANT.keys()
 
+
+    def get_channelizers(self, channels=None):
+        """ Return a list of channelizer objects for the specified or all channel numbers
+
+        Parameters:
+
+            channels (list of int): channels for which we want channelizers objects. `None` returns all channelizers.
+
+        Returns:
+
+            list of channelizer objects.
+
+        """
+        if channels is None:
+            return self.ANT.values()
+        else:
+            return [self.ANT[ch] for ch in channels]
+
     @async
     def get_config(self, basic=False):
         """
