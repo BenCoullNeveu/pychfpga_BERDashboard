@@ -41,10 +41,11 @@ from pychfpga import get_git_version
 class HDF5Writer(object):
     """ Object representing a HDF5 file containing raw data
     """
-    def __init__(self, base_dir='.', elements_per_file=2048*64, crate_and_slot_from_port=False):
+    def __init__(self, base_dir='.', elements_per_file=2048*64, crate_and_slot_from_port=False, chunk_size=1024):
         self.log = log.get_logger(self)
         self.N_SAMP = 2048
         self.base_dir = base_dir
+        self.chunk_size = chunk_size
         #self.N_CHANNELS = 1
         self.crate_and_slot_from_port = crate_and_slot_from_port
         # self.filename = filestring
@@ -78,34 +79,34 @@ class HDF5Writer(object):
         # timestamp
         self.compound_dtype = np.dtype([('fpga_count', np.uint64), ('ctime', np.float64)])
         self.timestampDataset = self.f.create_dataset('timestamp',
-            (1, 1), dtype=self.compound_dtype, maxshape=(None, 1), chunks=(1024*1024, 1))
+            (1, 1), dtype=self.compound_dtype, maxshape=(None, 1), chunks=(self.chunk_size, 1))
         self.timestampDataset.attrs['axis'] = ['snapshot']
 
         # slot number
         self.slotDataset = self.f.create_dataset('slot', (1, 1),
-            dtype=np.uint8, maxshape=(None, 1), chunks=(1024*1024, 1))
+            dtype=np.uint8, maxshape=(None, 1), chunks=(self.chunk_size, 1))
         self.slotDataset.attrs['axis'] = ['snapshot']
 
         # crate number
         self.crateDataset = self.f.create_dataset('crate', (1, 1),
-            dtype=np.uint32, maxshape=(None, 1), chunks=(1024*1024, 1))
+            dtype=np.uint32, maxshape=(None, 1), chunks=(self.chunk_size, 1))
         self.crateDataset.attrs['axis'] = ['snapshot']
 
         # channel number
         self.chanDataset = self.f.create_dataset('adc_input', (1, 1),
-            dtype=np.uint8, maxshape=(None, 1), chunks=(1024*1024, 1))
+            dtype=np.uint8, maxshape=(None, 1), chunks=(self.chunk_size, 1))
         self.chanDataset.attrs['axis'] = ['snapshot']
 
         # ADC data
         self.timestreamDataset = self.f.create_dataset('timestream',
             (1, self.N_SAMP), dtype=np.int8,
-            maxshape=(None, self.N_SAMP), chunks=(1024*1024, self.N_SAMP))
+            maxshape=(None, self.N_SAMP), chunks=(self.chunk_size, self.N_SAMP))
         self.timestreamDataset.attrs['axis'] = ['snapshot', 'timestream']
 
         self.index_map = self.f.create_group("index_map")
 
         self.snapshot_index_map = self.index_map.create_dataset('snapshot',
-            (1,), dtype=np.uint32, maxshape=(None,), chunks=(1024*1024, ))
+            (1,), dtype=np.uint32, maxshape=(None,), chunks=(self.chunk_size, ))
 
         self.timestream_index_map = self.index_map.create_dataset("timestream",
             (2048,), dtype=np.uint16)
@@ -214,6 +215,8 @@ class RawAcqReceiver(object):
         self.started = False
         self.stream_ids = []
         self.sockets = [] # Empty indicates that the receiver is not started
+        self.hdf5_base_dir = None
+        self.hdf5_file = None
 
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, self.name)
