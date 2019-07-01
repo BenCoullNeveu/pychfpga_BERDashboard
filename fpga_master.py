@@ -263,7 +263,11 @@ class ChimeMaster(object):
 
         Requires the FPGAs to be initialized.
 
-        Creates the self.raw_acq_ibs dictionary which lists the iceboards objects associated with each RawAcq server.
+        Creates
+
+             self.raw_acq_ports (dict):  List of port entries {port, iceboards)  associated with each RawAcq server.
+             self.raw_acq_ibs (dict): lists the iceboards objects associated with each RawAcq server.
+
         """
         self.log.info('%r: starting raw_acq servers' % self)
 
@@ -289,23 +293,26 @@ class ChimeMaster(object):
         # Create a list of IceBoard objects that correspond to each port entry of
         # each server. Check that an iceboard is not allocated twice while
         # doing that.
+        self.raw_acq_ports = {}  # list of ports associated with each receiver
+        self.raw_acq_ibs = {}  # iceboard objects associated with each receiver
+        self.raw_acq_stream_ids = {} # stream ID that each receiver should expect. This is used by raw_acq to pre-allocate the buffers and create the mapping tables.
         all_ibs = set()  # keeps track of Iceboard objects used so far so we can detect multiple assignments
-        self.raw_acq_ibs = {}  # iceboard objects assocoated with each receiver
-        recv_stream_ids = {} # stream ID that each receiver should expect. This is used by raw_acq to pre-allocate the buffers and create the mapping tables.
         for server_name, server_conf in (conf.servers or {}).items():
+            self.raw_acq_ports[server_name] = []  # [{'port':port_name, 'iceboards':[ib1, ib2, ]}, ...]
             self.raw_acq_ibs[server_name] = []  # [{'port':port_name, 'iceboards':[ib1, ib2, ]}, ...]
             self.raw_acq_stream_ids[server_name] = []  # [int0, int1, ...]
             for port_config in server_conf.receiver_ports:
                 # Get a set of iceboard objects specified in sources for this port
-                ibs = self.get_iceboards(port_config['sources'])
+                ibs = self.fpgas.get_iceboards(port_config['sources'])
                 # Make sure no iceboard was already assigned
                 if not set(ibs).isdisjoint(all_ibs):
                     raise RuntimeError('Some FPGA board(s) are assigned to multiple RawAcq ports. Check your config.')
                 all_ibs.update(ibs)
+                self.raw_acq_ibs[server_name].extend(ibs)
                 # Store the entry
-                self.raw_acq_ibs[server_name].append(NameSpace(port=port_config['port'], iceboards=ibs))
+                self.raw_acq_ports[server_name].append(NameSpace(port=port_config['port'], iceboards=ibs))
                 for ib in ibs:
-                    recv_stream_ids[server_name].extend(ib.get_stream_id_map().values())
+                    self.raw_acq_stream_ids[server_name].extend(ib.get_stream_ids())
 
         # Start each RawAcq server with a port for each assigned iceboard. For each port, we provide
         # the address of the (only) source FPGA board. The server will ping this address back to
@@ -326,7 +333,7 @@ class ChimeMaster(object):
         # [{port_number: [source1, source2 ...]} dictionary
         recv_ports = {}  # list of ports and associated sources to open on each server
         recv_names = {}  # name of the receiver assigned to each server
-        for server_name, port_configs in self.raw_acq_ibs.items():  # for each raw_acq server
+        for server_name, port_configs in self.raw_acq_ports.items():  # for each raw_acq server
             # Name of the receiver object, which can hande multiple ports.
             recv_names[server_name] = '%sRecv' % server_name
             recv_ports[server_name] = []
@@ -344,13 +351,13 @@ class ChimeMaster(object):
                     recv_ports[server_name].append(dict(port=port_id, sources=src_addresses))
 
         # Start the receivers concurrently
-        start_results = yield {server_name: self.raw_acq[server_name].start(
+        start_results = yield {server_name: raw_acq_server.start(
                 name=recv_names[server_name],
                 ports=recv_ports[server_name],
-                stream_ids=recv_stream_ids[server_name],
+                stream_ids=self.raw_acq_stream_ids[server_name],
                 comet_broker=conf.common_config.comet_broker.as_dict(),
                 jump_thresholds=conf.common_config.jump_thresholds)
-            for server_name in self.raw_acq_ibs.keys()}
+            for server_name, raw_acq_server in self.raw_acq.items()}
 
         # Configure the FPGA transmit addresses based on what the receiver returned
         for server_name, start_result in start_results.items(): # for each RawAcq server
@@ -358,15 +365,14 @@ class ChimeMaster(object):
             #    [ ((src_ip, src_port), (if_ip, port, mac)) ...].
             # We convert this to a dict {(src_ip, src_port):(if_ip, port, mac),...} for easy lookup
             targets = {tuple(src_addr): target_addr for src_addr,target_addr in start_result['target_addr']}
-            for port_entry in self.raw_acq_ibs[server_name]:
-                for ib in port_entry.iceboards:
+            for ib in self.raw_acq_ibs[server_name]:
                     ip_addr, port, eth_addr = targets[(ib.hostname, 80)]
-                    self.log.info('%r: Setting data transmission address to %s:%i (%s)' % (self, ip_addr, port, eth_addr))
+                    self.log.info('%r: Setting data transmission address if board %s to %s:%i (%s)' % (self, ib.get_id(), ip_addr, port, eth_addr))
                     ib.set_data_target_address(ip_addr, port, eth_addr)
         self.log.info('%r: RawAcq server setup successfully' % self)
 
     @coroutine
-    def start_fpga_raw_data_transmission(self, capture_rate=None, capture_source=None, tmux_factor=None):
+    def start_fpga_raw_data_transmission(self, capture_rate=None, capture_source=None, tmux_factor=None, sync=False):
         """ Configure the FPGAs to transmit raw data.
 
         Parameters:
@@ -387,21 +393,42 @@ class ChimeMaster(object):
         tmux_factor = tmux_factor or conf.tmux_factor
         capture_period = 1.0 / float(capture_rate)
 
-        for server_name, port_entries in self.raw_acq_ibs.items():
-            for port_entry in port_entries:
-                # Compute a transmission delay for each board to prevent them from sending their data all at the same time
-                for ib in port_entry.iceboards:
-                    (crate, slot) = ib.get_id(default_crate=0, default_slot=0)
-                    send_delay = int(tmux_factor * (16 * crate + slot))
+        for server_name, ibs in self.raw_acq_ibs.items():
+            # Compute a transmission delay for each board to prevent them from sending their data all at the same time
+            for ib in ibs:
+                (crate, slot) = ib.get_id(default_crate=0, default_slot=0)
+                # send_delay = int(tmux_factor * (16 * crate + slot))
+                send_delay = int(tmux_factor * (slot))
 
-                    self.log.info('%r: Starting data capture on %r with period=%f, source=%s, send_delay=%d' %
-                                 (self, ib, capture_period, capture_source, send_delay))
+                self.log.info('%r: Starting data capture on %r with period=%f, source=%s, send_delay=%d' %
+                             (self, ib, capture_period, capture_source, send_delay))
 
-                    ib.start_data_capture(period=capture_period, source=capture_source, send_delay=send_delay)
+                ib.start_data_capture(period=capture_period, source=capture_source, send_delay=send_delay)
 
-        # Must issue sync command after starting raw data capture,
+        # If not done explicitely later, we must issue sync command after starting raw data capture,
         # otherwise raw frames will not be synced across boards.
-        self.fpgas.sync()
+        if sync:
+            self.fpgas.sync()
+
+
+    @coroutine
+    def set_fpga_data_capture(self, chan_ids=None, capture_rate=23, source='adc'):
+        """
+        Sets the data source and capture rate for the specified channels. This
+        can be called at any time after array initializationand does not
+        require sync.
+
+
+        chan_id: channels to be configured. Is processed through ca.get_iceboards()
+
+
+        """
+
+        ibs, channels = self.fpgas.get_iceboars(chan_ids).items()
+
+        for ib in ibs:
+            for chan in channels:
+                ib.set_data_capture(sub_period=capture_rate, source=source)
 
     @coroutine
     def compute_gains(self,
@@ -715,78 +742,54 @@ class ChimeMaster(object):
         yield ca.set_adc_delays.async(**conf.fpga.adc_delay_params)
 
         # Reset the correlator. Not sure if this is necesssary?
-        ca.ib.set_corr_reset(1)
-        time.sleep(0.1)
-        ca.ib.set_corr_reset(0)
+        # ca.ib.set_corr_reset(1)
+        # time.sleep(0.1)
+        # ca.ib.set_corr_reset(0)
 
         # Set-up channelizers to process data normally
-        self.log.info("Setting-up channelizers")
-        yield ca.set_channelizers.async(**conf.fpga.channelizer_params)
+        if 0:
+            self.log.info("Setting-up channelizers")
+            yield ca.set_channelizers.async(**conf.fpga.channelizer_params)
 
 
-        # Set-up raw_acq servers to receive data from the boards specified in the config
+        # Set-up raw_acq servers to receive data from the boards specified in
+        # the config. This will set-up the FPGA data transmission ports.
         self.log.info("Starting up raw_acq server(s)")
         yield self.start_raw_acq_servers()
 
 
+        # Setup noise injection for normal operation
+        if 0:
+            self.setup_noise_injection(conf.fpga.noise_injection)
+
+        # Start raw_data capture
+        self.log.info("Starting baseline raw data data capture")
+        yield self.start_fpga_raw_data_transmission(sync=False)
+
+        self.log.info("Synchronizing the array...")
+        self.log.info("%%%%%%%%%%%%%%%%%%%%%%%%%%%%% This is the last SYNC %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
+        ca.sync()  # synchronize all the boards in the array
+        self.log.info("%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Last SYNC is done %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
+
+
+        #######
+        # Fom now on, we do not have to sync the array anymore
+        #######
+
         # Compute gains if requested
-        gain_folder = os.path.expanduser(conf.fpga.gain_folder)
-        yield self.compute_gains(gain_folder=gain_folder, **conf.fpga.compute_gains)
+        self.gain_folder = os.path.expanduser(conf.fpga.gain_folder)
+        yield self.compute_gains(**conf.fpga.compute_gains)
 
 
         # Set-up initial gains in gain bank #0
-        if conf.fpga.load_initial_gains:
+        if 0 and conf.fpga.load_initial_gains:
             self.log.info("Loading initial SCALER gains in bank #0")
-            # ca.set_synchronized_gain_switching_mode(enable=0)  # Disable synchronized gain switching
-            # ca.set_next_gain_bank(bank=0)  # immediately select bank zero to load initial gains
-            gains = yield ca.load_gains.async(gain_folder=gain_folder) # load gains from gain files
-            ca.set_gains.async(gains, bank=0, when='now') # Upload to bank 0 and immediately activate gain bank
-        # for bankset in ca.ib.get_current_gain_bank():
-        #     log.info('Using gain banks %s' % (', '.join([str(i) for i in bankset])))
+            gains = yield ca.load_gains.async(gain_folder=self.gain_folder) # load gains from gain files
+            yield ca.set_gains.async(gains, bank=0, when='now') # Upload to bank 0 and immediately activate gain bank
 
-        # if conf.enable_gain_switching:
-        #     # set frame number to switch gains at.
-        #     ca.set_gain_switch_frame_number(frame=0) # XXX:???
-        #     # set to only change when at configured frame number
-        #     ca.set_synchronized_gain_switching_mode(enable=1)
-        #     # set to use bank 1 next, change in loop below.
-        #     # have to do this after config to wait for frame number
-
-
-        # Is the logging below useful? We just set them...
-
-        # for bankset in ca.ib.get_current_gain_bank():
-        #     log.info('Using gain banks %s' % (', '.join([str(i) for i in bankset])))
-
-        # for enabled_sync in ca.ib.get_synchronized_gain_switching():
-        #     log.info('Gain sync status is %s' % (', '.join([str(i) for i in enabled_sync])))
-
-        # for frames_set in ca.ib.get_gain_switch_frame_number():
-        #     log.info('Gain sync frame is %s' % (', '.join([str(i) for i in frames_set])))
-
-        # log.info("Sending local sync to each board")
-        # ca.ib.sync()
-
-        # Setup raw data capture
-        #yield self.start_raw_acq_servers()
-
-        # Setup noise injection for normal operation
-        self.setup_noise_injection(conf.fpga.noise_injection)
-
-
-        # Initialize data shufling and transmission to the GPU
-        # log.info("Setting FPGA operational mode")
-        # ca.set_operational_mode(conf.fpga.operational_mode, frames_per_packet=fpga_array_params.group_frames)
-
-        self.log.info("Synchronizing the array...")
-        ca.sync()  # synchronize all the boards in the array
-
-        # log.info("Unmasking the ADC data")
-        # ca.ib.set_adc_mask(0xFF) # restore normal ADC data, necessary anymore?
 
         self.log.info("Waiting for 2 seconds")
         yield sleep(2)
-
         self.log.info("finished initializing FPGAs")
 
         # Read the FPGA setting back from the FPGA
@@ -794,23 +797,18 @@ class ChimeMaster(object):
         self.fpga_conf = yield self.fpgas.get_fpga_config.async(basic=True)
 
 
-
-        # Start raw_data capture
-        if conf.raw_acq.common_config.hdf5_capture_rate and conf.raw_acq.common_config.hdf5_capture_duration is not None:
-            self.log.info("Starting HDF5 data capture")
-            yield self.start_hdf5_capture()
-        else:
-            self.log.info("Starting idle data capture")
-            yield self.start_fpga_raw_data_transmission()
+        # Start storage of raw_data received by the raw_acq server in HDF5 files
+        self.log.info("Starting HDF5 data capture")
+        yield self.start_hdf5_capture()
 
         # Clear errors accumulated during start and initialization
+        self.log.info("Resetting FPGA statistics counters")
         self.reset_fpga_stats()
         self.reset_crossbar_stats()
         self.reset_bp_shuffle_stats()
 
 
         self.log.info("Finished ch_master.start()")
-
         self.start_time = start_time
         self.state = 'on'
         coroutine_return({})
