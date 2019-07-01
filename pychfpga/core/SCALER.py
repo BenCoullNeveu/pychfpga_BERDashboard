@@ -107,12 +107,30 @@ class SCALER_base(Module_base):
         """
         Sets the scaler's complex gain table for the specified bank.
 
-        If ``bank`` is None or is -1, the currently inactive bank is used.
-        The method does not set the active bank.
+
+        Parameters:
+
+            gain_list: gains to set.
+
+                if `gain_list` is a 1024-element list or ndarray, the numeric
+                gains therein are applied to each bin.
+
+                if `gains_list is a scalar int, fload or complex numbers, all
+                bins are set to that scalar value.
+
+                if `gain_list` is `None`, no gains are set.
+
+            bank (int): The bank in which the gains are to be written. If
+                ``bank`` is None or is -1, the currently inactive bank is
+                used. The method does not set the active bank.
         """
+
+        if gain_list is None:
+            return
+
         total_bins = self.fpga.NUMBER_OF_FREQUENCY_BINS
-        if isinstance(gain_list, (int, float, complex)):
-            gains = np.array([complex(gain_list)]*total_bins)
+        if np.isscalar(gain_list):
+            gains = np.ones(total_bins, dtype=complex) * gain_list
         else:
             gains = np.array(gain_list)
 
