@@ -275,7 +275,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # if the FPGA handler instance was not created, check if one exists
         # create it
         if self.is_core_open():
-            self.logger.warning(
+            self.logger.debug(
                 '%r: Attempting to open core while it is already opened. '
                 'Ignoring.' % (self))
             return
