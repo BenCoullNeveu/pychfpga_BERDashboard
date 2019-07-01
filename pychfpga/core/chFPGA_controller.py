@@ -3532,7 +3532,7 @@ class chFPGA_controller(IceBoardExtHandler):
     def get_string_id(self):
         """
         Return a string that uniquely represents the board. It is composed of the model and serial
-        number, or, if the serial numbe ris unknown, the hostname of the board.
+        number or the board, or, if those are unknown, the hostname of the board.
 
         Parameters:
             None
@@ -3550,11 +3550,13 @@ class chFPGA_controller(IceBoardExtHandler):
         return "chFPGA%s" % (self.get_id(),) # watch out, get_id() returns a tuple...
 
     def get_id(self, lane=None, default_crate=None, default_slot=None):
-        """ Returns a (crate, slot) tuple representing a unique IceBoard ID, using numeric values whenever possible.
+        """ Returns a (crate, slot) tuple representing a unique IceBoard ID,
+        using numeric values whenever possible. A `lane` field can be
+        optionally appended.
 
         Parameters:
 
-            lane (int): caller-provided lane number to be appended to the returned tuple.
+            lane (int): caller-provided lane number to be appended to the returned tuple. Used to create channel or lane ID tuples.
 
             default_crate: Default values to return in the crate field if there is
                 no crate or no crate_number. If None, either the crate number or crate string id is used.
@@ -3613,6 +3615,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
     def get_crate_id(self, slot=None):
         """ Return the crate ID tuple optionally appended by the specified slot number.slot
+
         Parameters:
 
             slot (int): slot number to append to the tuple. Should be zero-based.slot
@@ -3625,17 +3628,49 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         return self.crate.get_id(slot=slot)
 
-    def get_channel_ids(self):
-        """ return a list of channel IDs for this board.
+    def get_channel_ids(self, channels=None):
+        """ return a list of channel IDs ((crate,slot,chan) tuples) for the specified or all channnels.
+
+        Parameters:
+
+            channels (list of int): chennels for which the channel id is  desired. If None, the channelID for all channels is returned.
 
         Returns:
             list of (crate, slot, channel) tuples
         """
 
-        return [self.get_id(ch) for ch in self.ANT.keys()]
+        if channels is None:
+            channels = self.get_channels()
+        return [self.get_id(ch) for ch in channels]
+
+    def get_stream_ids(self, channels=None):
+        """ Return the stream_ids (integers) of specified or all channels.
+
+        Parameters:
+
+            channels (list of int): chennels for which the stream id is  desired. If None, stream ID for all channels is returned.
+
+        Returns:
+            list of int containing the stream IDs
+        """
+
+        if channels is None:
+            channels = self.get_channels()
+        return [self.ANT[ch].PROBER.get_stream_id() for ch in channels]
+
+
+    def get_stream_id(self, channel):
+        """ Return the stream_id of a specified channel.
+
+        Returns:
+            int: the stream IDs
+        """
+
+        return self.ANT[channel].PROBER.get_stream_id()
+
 
     def get_stream_id_map(self):
-        """ Return the stream_ids if every channel of the board, indexed by channel_id.
+        """ Return the stream_ids of every channel of the board, indexed by channel_id.
 
         Returns:
             dict if the format {channel_id:stream_id}, where channel_id is a (crate, slot, channel) tuple.
