@@ -10,6 +10,8 @@ PROBER.py module
 """
 
 import logging
+import numpy as np
+
 
 from Module import Module_base, BitField
 
@@ -48,6 +50,8 @@ class PROBER_base(Module_base):
     _DATA_FIFO_OVERFLOW = BitField(STATUS, 0x00, 1, doc="State of the header_FIFO_OVERFLOW signal (for debugging)")
 
     TRIG_CTR = BitField(STATUS, 0x01, 0, width=8, doc="Number of frames")
+
+    DATA_BUFFER_CAPACITY = 3 # Number of full frames that can fit in the FIFOs.
 
     def __init__(self, fpga_instance, base_address, instance_number):
         # self.ant = ant_instance
@@ -120,8 +124,21 @@ class PROBER_base(Module_base):
         if burst_period < frames_per_burst:
             burst_period = frames_per_burst
         if burst_period >= 2**24:
-            raise SystemError('Burst period of %i frames is too long. Maximum value is %.3f s' % (burst_period, 2**24 - 1))
-        self.BURST_LENGTH = frames_per_burst - 1
+            raise RuntimeError('Capture period of %i frames is too long. Maximum value is %.3f s' % (burst_period, 2**24 - 1))
+
+        delay_increment = 65536/125e6 # 0x10000 / 125 MHz
+        delay_in_seconds = delay_increment * send_delay # Data transmission of new frames is held off by this amount
+        period_in_seconds = self.fpga.FRAME_PERIOD * burst_period
+        min_period = int(delay_in_seconds / self.fpga.FRAME_PERIOD/frames_per_burst)
+        min_period_in_seconds = min_period * self.fpga.FRAME_PERIOD
+        buffered_packets = frames_per_burst * np.ceil(delay_in_seconds / period_in_seconds)
+        if buffered_packets > self.DATA_BUFFER_CAPACITY:
+            raise RuntimeError('Capture send delay of %.3f s in combination with the capture period of %.3f s '
+                'will cause up to %i packets to be buffered, wich exceed the capture buffer capability of %i frames. '
+                'Minimum period for the current send delay is %i frames (%.3f ms)' %
+                (delay_in_seconds, period_in_seconds, buffered_packets, self.DATA_BUFFER_CAPACITY, min_period, min_period_in_seconds * 1000))
+
+        self.BURST_LENGTH = frames_per_burst - 1 # BURST_LENGTH actually specifies the number of additional frames in the firmware
         self.set_burst_period(burst_period, burst_period)
         # self.BURST_NUMBER = number_of_bursts
         self.OFFSET = offset

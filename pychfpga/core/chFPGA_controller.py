@@ -881,24 +881,37 @@ class chFPGA_controller(IceBoardExtHandler):
 
     # set_data_path = set_channelizer # for legacy compatibility
 
-    def set_data_source(self, source=None,  channels=None):
+    def set_data_source(self, source=None,  channels=None, **kwargs):
         """
-            Sets the data source on specified channels (or default channels if the channels are not specified).
+        Selects the data that is being fed into the channelizer. If a wafeform
+        name (and corresponding arguments) is provided, the function generator
+        is automatically selected and the waveform is set-up.
+
+        This function resets the channelizers, even if only the function is
+        changed. user `setfuncgen_function()` if the function generator is
+        already active and you want to change only the waveform
         """
-        data_sources = self.ANT[0].FUNCGEN.DATA_SOURCE_NAMES
-        if (source is None) or (source.lower() not in data_sources):
-            raise ValueError("Invalid data source name '%s'. Valid data sources are %s:" % (source, ', '.join(data_sources.keys())))
+        data_sources = self.ANT[0].FUNCGEN.DATA_SOURCE_NAMES.keys()
+        function_names = self.ANT[0].FUNCGEN.FUNCTION_NAMES.keys()
+
+        source = source.lower()
 
         if channels is None:
             channels = self.default_channels
 
-
-        self.set_ant_reset(1) # Reset is needed to resyncronize the system with the new data
-        for ch in channels:
-            ant = self.ANT[ch]
-            ant.FUNCGEN.set_data_source(source.lower())
-        self.set_ant_reset(0) # Reset is needed to resyncronize the system with the new data
-        #self.sync() # SYNCs the ADC, and resets (again) the antenna processor to align the data with the ADC
+        if source in data_sources:
+            self.set_ant_reset(1) # Reset is needed to resyncronize the system with the new data
+            for ant in self.get_channelizers(channels):
+                ant.FUNCGEN.set_data_source(source)
+            self.set_ant_reset(0) # Reset is needed to resyncronize the system with the new data
+        elif source in function_names:
+            self.set_ant_reset(1) # Reset is needed to resyncronize the system with the new data
+            for ant in self.get_channelizers(channels):
+                ant.FUNCGEN.set_data_source('funcgen')
+                ant.FUNCGEN.set_function(source, **kwargs)
+            self.set_ant_reset(0) # Reset is needed to resyncronize the system with the new data
+        else:
+            raise ValueError("Invalid data source or function name '%s'. Valid data sources are %s:" % (source, ', '.join(data_sources + function_names)))
 
 
     def get_data_source(self):
@@ -1207,33 +1220,83 @@ class chFPGA_controller(IceBoardExtHandler):
         # print burst_period_in_frames*self.FRAME_PERIOD*1000
         # print ('continuously when TRIG=1' if not number_of_bursts else ('for a total of %i bursts' % number_of_bursts) )
         if verbose:
-            self._logger.info("%r: Configuring channelizer %s to transmit %i-frame burst every %i frames (i.e .every %.3f ms) %s." % (
-               self,
-               channels.__repr__(),
-               frames_per_burst,
-               burst_period_in_frames,
-               burst_period_in_frames*self.FRAME_PERIOD*1000,
-               ('continuously when TRIG=1' if not number_of_bursts else ('for a total of %i bursts' % number_of_bursts))))
-            frames_per_second = len(channels) * frames_per_burst * 1.0 / self.FRAME_PERIOD / burst_period_in_frames
-            bits_per_second = frames_per_second * 8 * self.FRAME_LENGTH
-            self._logger.debug('%r: Data rates are: %f kFrames/s, %f Mbits/s' % (self, frames_per_second / 1e3, bits_per_second / 1e6))
+            self._logger.info(
+                "%r: Configuring channelizer %r to capture " % (self, channels) +
+                '%i frame every %i frames (i.e .every %.3f ms) ' % (
+                   frames_per_burst,
+                   burst_period_in_frames,
+                   burst_period_in_frames * self.FRAME_PERIOD * 1000) +
+                'with first frame offset of %i frames (%.3f ms) ' % (
+                    offset,
+                    offset * self.FRAME_PERIOD * 1000) +
+                'and a send delay factor of %i (%.3f ms).' % (
+                    send_delay,
+                    send_delay * 65536 / 125e6 * 1000))
+
+            frames_per_second = frames_per_burst * 1.0 / self.FRAME_PERIOD / burst_period_in_frames
+            packet_size_in_bits = (self.FRAME_LENGTH + 10 + 42) * 8  # 10 header bytes, 42 Ethernet/IP/UDP overhead
+            self._logger.info('%r: Data rates are:\n' % (self) +
+                '    1 board, 1 channel: %.3f Mbits/s\n' % (frames_per_second * packet_size_in_bits / 1e6) +
+                '    1 board, %i channels: %.3f Mbit/s\n' % (len(channels), len(channels) * frames_per_second * packet_size_in_bits / 1e6) +
+                '    1 crate: %.3f Mbits/s' % (16 * 16 * frames_per_second * packet_size_in_bits / 1e6)
+                )
 
         self.set_trig(0) # disable data transmission if continuous mode is currentlly selected
 #        self.set_ant_reset(1) # resets all
 #        if clear_buffer:
 #            self.flush_frame_buffer()
 
-        for ant in self.ANT.values():
-            ant.PROBER.set_data_source(source)
+        # Stop data capture on *ALL* channels
+        for ant in self.get_channelizers():
             ant.PROBER.RESET = 1
-            # ant.PROBER.PROBE_ID = 0xA0 + ant.ant_number
-            ant.PROBER.config_capture(frames_per_burst=frames_per_burst, burst_period=burst_period_in_frames, number_of_bursts=number_of_bursts, offset=offset, send_delay=send_delay)
-            if ant.ant_number in channels:
-                self._logger.debug('%r: Enabling Capture for Antenna %i' % (self, ant.ant_number))
-                ant.PROBER.RESET = 0
 
-        self.set_trig(1)  # enables data transmission if continuous mode is selected
+        for ant in self.get_channelizers(channels):
+            ant.PROBER.set_data_source(source)
+            ant.PROBER.config_capture(
+                frames_per_burst=frames_per_burst,
+                burst_period=burst_period_in_frames,
+                number_of_bursts=number_of_bursts,
+                offset=offset,
+                send_delay=send_delay)
+            ch = ant.ant_number
+            self._logger.debug('%r: %s raw data capture on channel %i' % (self, ('Disabling', 'Enabling')[ch in channels], ch))
+            ant.PROBER.RESET = 0
+
+        self.set_trig(1)  # **no nonger supported by firmware *** enables data transmission if continuous mode is selected
 #       self.set_ant_reset(0) # disable reset all
+
+    def set_data_capture(self, channels=None, sub_period=23, source='adc'):
+        """ Set the dynamic data capture parameters that can be changed on the
+        fly without re-syncing the board.
+
+        Parameters:
+
+            channels (list of int): channels to configure
+
+            sub_period (int): Sets how fast the data is to be temporarily
+                transmitted and captured for the selected channel.
+
+                 A capture is always done at the beginning of each primary
+                period, with subsequent captures spaced by 2**(sub_period+1)
+                frames. This can be used to speed up captures, but the rate
+                rate cannot be slower than the promary capture rate.
+
+                The spacing between the last capture of a primary period and
+                the first one of the following one might differ from other
+                intervals if the primary period is not an exact multiple of
+                the sub period.
+
+            source (str): Data source to use.
+        """
+
+        if channels is None:
+            channels = self.get_channels()
+
+        self.logger.info('%r: Setting dynamic capture parameters to sub_period=%i and source=%s for channels=%s' % (self, sub_period, source, channels))
+        for ant in self.get_channelizers(channels):
+            ant.PROBER.set_data_source(source)
+            ant.PROBER.SUB_PERIOD = sub_period
+
 
     def set_fft_bypass(self, bypass_mode, channels=None):
         """
