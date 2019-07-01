@@ -192,65 +192,65 @@ class ChimeMaster(object):
     #####################################
     # Operates the power supplies via the power supply server(s)
 
-    @coroutine
-    def create_power_supply_clients(self):
-        """ create clients object that operate on the power supply server
-        """
-        ps_config = self.config.power_supplies
+    # @coroutine
+    # def create_power_supply_clients(self):
+    #     """ create clients object that operate on the power supply server
+    #     """
+    #     ps_config = self.config.power_supplies
 
-        # First create the client to the servers, and start the server if it is not already started
-        self.power_supply_servers = {}
-        server_nodes = ps_config.servers or {}
-        for server_name, server_params in server_nodes.items():
-            ps = PowerSupplyAsyncRESTClient(hostname=server_params.hostname, port=server_params.port) # we pass the whole server config to the client in case it needs th create and/or start the server
-            yield ps.start(server_params)
-            self.power_supply_servers[server_name] = ps
+    #     # First create the client to the servers, and start the server if it is not already started
+    #     self.power_supply_servers = {}
+    #     server_nodes = ps_config.servers or {}
+    #     for server_name, server_params in server_nodes.items():
+    #         ps = PowerSupplyAsyncRESTClient(hostname=server_params.hostname, port=server_params.port) # we pass the whole server config to the client in case it needs th create and/or start the server
+    #         yield ps.start(server_params)
+    #         self.power_supply_servers[server_name] = ps
 
-        # figure out which servers controls the power supply units we want to use in this experiment
-        units = ps_config.power_on.units or []  # units used by fpga_master
-        ps_names = set(units)
-        self.power_supply_units = {}
-        for server_name, server in self.power_supply_servers.items():
-            server_ps_names = set((yield server.list_names()))
-            common_ps_names = ps_names & server_ps_names # set intersection
-            if common_ps_names:
-               self.power_supply_units[server] = list(common_ps_names)
-               ps_names -= common_ps_names
-        if ps_names:
-            raise RuntimeError('%r: Could not find a power supply server to handle the following supplies: %s' % (self, ps_names))
+    #     # figure out which servers controls the power supply units we want to use in this experiment
+    #     units = ps_config.power_on.units or []  # units used by fpga_master
+    #     ps_names = set(units)
+    #     self.power_supply_units = {}
+    #     for server_name, server in self.power_supply_servers.items():
+    #         server_ps_names = set((yield server.list_names()))
+    #         common_ps_names = ps_names & server_ps_names # set intersection
+    #         if common_ps_names:
+    #            self.power_supply_units[server] = list(common_ps_names)
+    #            ps_names -= common_ps_names
+    #     if ps_names:
+    #         raise RuntimeError('%r: Could not find a power supply server to handle the following supplies: %s' % (self, ps_names))
 
-    @coroutine
-    def power_on(self):
-        """ Turn on the power supplies listed in the `power_supplies.power_on.units` config field.
+    # @coroutine
+    # def power_on(self):
+    #     """ Turn on the power supplies listed in the `power_supplies.power_on.units` config field.
 
-        If the power supply is already ON, no action is taken. If not, it is turned on, and we wait
-        for the power on delay specified in `power_supplies.power_on.delay`.
-        """
+    #     If the power supply is already ON, no action is taken. If not, it is turned on, and we wait
+    #     for the power on delay specified in `power_supplies.power_on.delay`.
+    #     """
 
-        yield [ps.power_on(*ps_names) for ps, ps_names in self.power_supply_units.items()]
+    #     yield [ps.power_on(*ps_names) for ps, ps_names in self.power_supply_units.items()]
 
-    @coroutine
-    def power_off(self):
-        """ Turn off the power supplies listed in the `power_supplies.power_on.units` config field.
-        """
-        yield [ps.power_off(*ps_names) for ps, ps_names in self.power_supply_units.items()]
+    # @coroutine
+    # def power_off(self):
+    #     """ Turn off the power supplies listed in the `power_supplies.power_on.units` config field.
+    #     """
+    #     yield [ps.power_off(*ps_names) for ps, ps_names in self.power_supply_units.items()]
 
-    @coroutine
-    def is_power_supply_ready(self):
-        """ Check is all power supplies listed in the `power_supplies.power_on.units` config field are ready.
-        """
-        # Get the is_ready dict for each power supply server as [ {ps_name: state,...}, {ps_name: state, ...}]
-        is_ready = yield [ps.is_ready() for ps, ps_names in self.power_supply_units.items()]
-        # Check if the flag for each supply associated with each server is True
-        coroutine_return(all(is_ready[i][ps_name]
-                             for i, ps_names in enumerate(self.power_supply_units.values())
-                             for ps_name in ps_names))
+    # @coroutine
+    # def is_power_supply_ready(self):
+    #     """ Check is all power supplies listed in the `power_supplies.power_on.units` config field are ready.
+    #     """
+    #     # Get the is_ready dict for each power supply server as [ {ps_name: state,...}, {ps_name: state, ...}]
+    #     is_ready = yield [ps.is_ready() for ps, ps_names in self.power_supply_units.items()]
+    #     # Check if the flag for each supply associated with each server is True
+    #     coroutine_return(all(is_ready[i][ps_name]
+    #                          for i, ps_names in enumerate(self.power_supply_units.values())
+    #                          for ps_name in ps_names))
 
-    @coroutine
-    def wait_for_power_supply(self):
-        while not (yield self.is_power_supply_ready()):
-            self.log.warn('Waiting for power supplies')
-            yield sleep(5)
+    # @coroutine
+    # def wait_for_power_supply(self):
+    #     while not (yield self.is_power_supply_ready()):
+    #         self.log.warn('Waiting for power supplies')
+    #         yield sleep(5)
 
 
     #####################################
@@ -662,14 +662,14 @@ class ChimeMaster(object):
             h.write('Run folder: %s\n' % self.run_folder)
 
         # Create objects to communicates to the remote processes needed to run the array
-        yield self.create_power_supply_clients()
+        # yield self.create_power_supply_clients()
         # yield self.create_chrx_clients()  # CHRX nodes receive data processed by the GPU nodes
         # yield self.create_kotekan_clients()  # Kotekan processes run on the GPU nodes; they receive the data from the FPGAs over dedicated point-to-point FPGA-GPU 10G Ethernet links, perform the correlation on the data, and forward the processed data to the CHRX nodes
         # yield self.start_kotekan_servers()
 
         # power on the array
-        yield self.power_on()
-        yield self.wait_for_power_supply()
+        # yield self.power_on()
+        # yield self.wait_for_power_supply()
 
 
         ########################
