@@ -531,7 +531,7 @@ class ChimeMaster(object):
             gc = calculate_gains.GainCalc(channel_ids=channel_ids, n_iterations=number_of_gain_update_iterations)
             # Set all the initial gains on bank 0
             bank = 0
-            self.fpgas.set_gains(gains=gc.get_gains(), bank=bank, when='now')
+            yield self.fpgas.set_gains.async(gains=gc.get_gains(), bank=bank, when='now')
             # start the integration of FFT data for specified channels
             for i in range(number_of_gain_update_iterations):
                 print('**** Gain iteration %i' % i)
@@ -554,16 +554,16 @@ class ChimeMaster(object):
                 # print('gg=', gg)
                 bank ^= 1 # switch bank
                 # self.fpgas.ib[0].set_gains(gain=(gg[0][1],gg[1]), bank=bank, when='now')
-                self.fpgas.set_gains(gains=new_gains, bank=bank, when='now')
-                for j in ix:
+                yield self.fpgas.set_gains.async(gains=new_gains, bank=bank, when='now')
+                for k, j in enumerate(ix):
                     self.gain_calc_metrics.add('fpga_gain_calc_rms',
                         channel_id=str(channel_ids[j]),
                         stream_id=stream_ids[j],
-                        value=np.mean(np.array(rms)[j, 1:]))
+                        value=np.mean(np.array(rms)[k, 1:]))
                     self.gain_calc_metrics.add('fpga_gain_calc_iteration',
                         value=i)
             filtered_gains, mask = gc.get_filtered_gains()
-            self.fpgas.set_gains(gains=filtered_gains, bank=0, when='now')
+            yield self.fpgas.set_gains.async(gains=filtered_gains, bank=0, when='now')
 
         # Perform the gain iterations in parallel on all raw acq servers
         yield [iterate_gains(raw_acq_server, server_channel_ids[raw_acq_server_name], server_stream_ids[raw_acq_server_name])
