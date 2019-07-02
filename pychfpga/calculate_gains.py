@@ -134,8 +134,8 @@ class GainCalc(object):
         filtered_masked_glin= self.filter_gains(self.glin[ix_done])
 
 
-        gains = {tuple(self.channel_ids[i]): (filtered_masked_glin[i].astype(np.int16), self.glog[i].astype(np.int8)) for i in ix}
-        mask = filtered_masked_glin.mask[ix_done]
+        gains = {tuple(self.channel_ids[j]): (filtered_masked_glin[i].astype(np.int16), self.glog[j].astype(np.int8)) for i, j in enumerate(ix_done)}
+        mask = filtered_masked_glin.mask
         return gains, mask
 
     def update_gains(self, stream_ids, rms):
@@ -181,7 +181,7 @@ class GainCalc(object):
         # return self.temp_gains[ix]
         # print 'CG: Gain Iteration', self.iteration_number[ix]
         # print 'CG: RMS is ', np.median(rms[ix, 1:], axis=-1)
-        print 'CG: Actual/target RMS ratio is ', np.median(rms[ix, 1:] / self.target_rms, axis=-1)
+        print 'CG: Actual/target RMS ratio is ', np.median(rms[:, 1:] / self.target_rms, axis=-1)
         # Compute new gain base don the ratio of the acrual rms vs target rms
         # We want to slowly ease into that gain to avoid being affected too much by transients, so just take 20% of thhat target and 80% of the old gain
         # self.temp_gains[ix][...] = (20.0 * target_gains + 80.0 * self.temp_gains[ix]) / 100.0
@@ -190,7 +190,7 @@ class GainCalc(object):
         a = 0.2
         gmax = 4.0
         # self.temp_gains[ix] *= (1-a) + a*(np.clip(self.target_rms / rms[ix], 1/gmax/a, gmax/a))  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
-        self.temp_gains[ix] *= np.clip((1-a) + a*self.target_rms / rms[ix], 1 / gmax, gmax)  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
+        self.temp_gains[ix] *= np.clip((1-a) + a*self.target_rms / rms, 1/gmax, gmax)  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
         # print 'CG: new_gain is ', self.temp_gains[ix]
 
         # Convert linear gain into (glin, glog) values

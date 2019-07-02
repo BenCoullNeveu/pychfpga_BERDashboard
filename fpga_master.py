@@ -531,9 +531,7 @@ class ChimeMaster(object):
             gc = calculate_gains.GainCalc(channel_ids=channel_ids, stream_ids=stream_ids, n_iterations=number_of_gain_update_iterations)
             # Set all the initial gains on bank 0
             bank = 0
-            self.fpgas.set_gains(gains=gc.get_gains(), bank=bank, when='now')
-
-
+            yield self.fpgas.set_gains.async(gains=gc.get_gains(), bank=bank, when='now')
             # start the integration of FFT data for specified channels
             # We will iterate until all channels have a solution, or until we have reached an iteration limit
             i = 0
@@ -553,12 +551,12 @@ class ChimeMaster(object):
                     ', '.join('%s:%i' % (channel_ids[j], stream_ids[j]) for j in ix))
                 new_gains = gc.update_gains(sids, np.array(rms))
                 bank ^= 1 # switch bank
-                self.fpgas.set_gains(gains=new_gains, bank=bank, when='now')
+                yield self.fpgas.set_gains.async(gains=new_gains, bank=bank, when='now')
 
                 # generate some metrics
                 for j, sid in enumerate(sids):
                     bix = sid_index_map[sid] # get buffer index for incoming sid
-                    cid = channel_ids[j]
+                    cid = channel_ids[bix]
                     self.gain_calc_metrics.add('fpga_gain_calc_rms',
                         stream_id=sid, channel_id=cid,
                         value=np.mean(np.array(rms)[j, 1:]))
@@ -566,12 +564,12 @@ class ChimeMaster(object):
                         value=i)
                     self.gain_calc_metrics.add('fpga_gain_calc_channel_iteration',
                         stream_id=sid, channel_id=cid,
-                        value=gc.iteration_number[j])
+                        value=gc.iteration_number[bix])
                 if gc.is_done() or (i > 2* number_of_gain_update_iterations):
                     break
 
             filtered_gains, mask = gc.get_filtered_gains()
-            self.fpgas.set_gains(gains=filtered_gains, bank=0, when='now')
+            yield self.fpgas.set_gains.async(gains=filtered_gains, bank=0, when='now')
 
         self.log.info('%r: Finished computing gains. %f of the gains calculations completed successfully' % (self, gc.percent_done()))
 

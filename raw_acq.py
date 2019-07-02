@@ -1202,7 +1202,7 @@ class RawAcqReceiver(object):
 
         # t1 = time.time()
         # self.log.info('%r: get_fft_rms: done vector= %s' % (self, self.fft_rms_done))
-        if all_done and not all(self.fft_rms_done[self.fft_rms_started]):
+        if all_done and not any(self.fft_rms_done[self.fft_rms_started]):
             coroutine_return((np.array([], dtype=np.int16),np.array([])))
             # while not all(self.fft_rms_done):
             #     # print(self.fft_rms_done[ix])
@@ -1479,9 +1479,6 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     def get_packets(self, handler):
         self.log.info('%.32r: received get_packets command' % self)
         ts, ports, data = yield self.receiver.get_data()
-        print(ts)
-        print(ports)
-        print(data)
         coroutine_return(ts=ts.tolist(), ports=ports, data=data.tolist())
 
 
