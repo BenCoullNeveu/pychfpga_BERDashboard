@@ -37,7 +37,7 @@ class GainCalc(object):
     DONE = 'done'
     NBINS = 1024
 
-    def __init__(self, channel_ids,  n_iterations=18, target_rms= 1.5 * np.sqrt(2)):
+    def __init__(self, channel_ids, stream_ids,  n_iterations=18, target_rms= 1.5 * np.sqrt(2)):
         """ Computes the frequency-dependent digital gains of the specified
             channels to bring the signals within the target RMS values across
             the band.
@@ -50,13 +50,24 @@ class GainCalc(object):
                 for which we wish to compute gains. These will be used as a
                 key of the resulting gain result map, which is meant to be
                 passed to set_gains().
+
+            stream_ids (list): list of stream_ids of the channels
+                for which we will to compute gains. Will be used by
+                update_gains() to identify which gain entries to update in the
+                buffer.
+
+
         """
 
         self.channel_ids = channel_ids
+        self.stream_ids = stream_ids
+
+        # Compute a map that allow us to convert a stream id into an index in the buffer
+        self.stream_id_map = {sid:i for i,sid in enumerate(self.stream_ids)}
         # self.stream_id_to_index_map = {sid:index for index, sid in enumerate(self.channel_ids)}
         self.nchan = len(self.channel_ids)
         # self.n_rms_samples = n_frames
-        self.n_rms_iterations = n_iterations
+        self.n_target_iterations = n_iterations
         # Set initial default gains of (glin, glog) = (1, 22)
         # We will start converging towards the final value from there
         self.default_glog = 22
@@ -127,7 +138,7 @@ class GainCalc(object):
         mask = filtered_masked_glin.mask[ix_done]
         return gains, mask
 
-    def update_gains(self, ix, rms):
+    def update_gains(self, stream_ids, rms):
         """ Process incoming data, and return gains that need to be applied to the pipleine as the algorithm converges.
 
 
@@ -154,8 +165,12 @@ class GainCalc(object):
 
         # get the buffer index of the provided ids
         t1 = time.time()
+
+        # find the buffer index of the channels with the specified stream IDs
+        ix = np.array([self.stream_id_map[sid] for sid in stream_ids if sid in self.stream_id_map])
+
         # remove channels that are already completed
-        # ix = ix[self.done[ix] == False]
+        ix = ix[self.done[ix]]
 
 
         # Scale the current gain to the value that would get us the target RMS
@@ -175,7 +190,7 @@ class GainCalc(object):
         a = 0.2
         gmax = 4.0
         # self.temp_gains[ix] *= (1-a) + a*(np.clip(self.target_rms / rms[ix], 1/gmax/a, gmax/a))  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
-        self.temp_gains[ix] *= np.clip((1-a) + a*self.target_rms / rms[ix], 1/gmax, gmax)  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
+        self.temp_gains[ix] *= np.clip((1-a) + a*self.target_rms / rms[ix], 1 / gmax, gmax)  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
         # print 'CG: new_gain is ', self.temp_gains[ix]
 
         # Convert linear gain into (glin, glog) values
@@ -188,7 +203,7 @@ class GainCalc(object):
         # #####################################
         # Identifies which channels reached the target RMS, and return the corresponding gains
         # Here, we just stop when we reached a fixed iteration number
-        ix_done = ix[self.iteration_number[ix] == self.n_rms_iterations]
+        ix_done = ix[self.iteration_number[ix] == self.n_target_iterations]
         self.done[ix_done] = True
         # print 'Done indices:', ix_done
         # print self.iteration_number[ix]
@@ -201,6 +216,15 @@ class GainCalc(object):
     def is_done(self):
         return all(self.done)
 
+    def percent_done(self):
+        """ Returns the number of channels that have reached the target number of gain calculation iterations.
+
+        Returns:
+
+            float from 0 to 100.
+
+        """
+        return float(sum(self.done)) / self.done.size * 100.0
 
     def calc_gains(self, g, target_glin=2**13):
         """ Convert an array of linear gain into a (glin, glog) gain format.

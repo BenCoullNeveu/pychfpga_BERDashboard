@@ -528,12 +528,16 @@ class ChimeMaster(object):
         @coroutine
         def iterate_gains(server, channel_ids, stream_ids):
             # Greate a gain calculator engine
-            gc = calculate_gains.GainCalc(channel_ids=channel_ids, n_iterations=number_of_gain_update_iterations)
+            gc = calculate_gains.GainCalc(channel_ids=channel_ids, stream_ids=stream_ids, n_iterations=number_of_gain_update_iterations)
             # Set all the initial gains on bank 0
             bank = 0
             self.fpgas.set_gains(gains=gc.get_gains(), bank=bank, when='now')
+
+
             # start the integration of FFT data for specified channels
-            for i in range(number_of_gain_update_iterations):
+            # We will iterate until all channels have a solution, or until we have reached an iteration limit
+            i = 0
+            while True:
                 print('**** Gain iteration %i' % i)
                 yield server.start_fft_rms(
                     stream_ids=stream_ids,
@@ -545,25 +549,31 @@ class ChimeMaster(object):
                     if sids:
                         break
                     yield sleep(.3)
-                ix = np.array([sid_index_map[sid] for sid in sids])
                 print('Got FFT RMS values for Channel ID: Stream ID%s' %
                     ', '.join('%s:%i' % (channel_ids[j], stream_ids[j]) for j in ix))
-                new_gains = gc.update_gains(ix, np.array(rms))
-                # print('new gains=', new_gains)
-                # gg=new_gains.values()[0]
-                # print('gg=', gg)
+                new_gains = gc.update_gains(sids, np.array(rms))
                 bank ^= 1 # switch bank
-                # self.fpgas.ib[0].set_gains(gain=(gg[0][1],gg[1]), bank=bank, when='now')
                 self.fpgas.set_gains(gains=new_gains, bank=bank, when='now')
-                for j in ix:
+
+                # generate some metrics
+                for j, sid in enumerate(sids):
+                    bix = sid_index_map[sid] # get buffer index for incoming sid
+                    cid = channel_ids[j]
                     self.gain_calc_metrics.add('fpga_gain_calc_rms',
-                        channel_id=str(channel_ids[j]),
-                        stream_id=stream_ids[j],
+                        stream_id=sid, channel_id=cid,
                         value=np.mean(np.array(rms)[j, 1:]))
                     self.gain_calc_metrics.add('fpga_gain_calc_iteration',
                         value=i)
+                    self.gain_calc_metrics.add('fpga_gain_calc_channel_iteration',
+                        stream_id=sid, channel_id=cid,
+                        value=gc.iteration_number[j])
+                if gc.is_done() or (i > 2* number_of_gain_update_iterations):
+                    break
+
             filtered_gains, mask = gc.get_filtered_gains()
             self.fpgas.set_gains(gains=filtered_gains, bank=0, when='now')
+
+        self.log.info('%r: Finished computing gains. %f of the gains calculations completed successfully' % (self, gc.percent_done()))
 
         # Perform the gain iterations in parallel on all raw acq servers
         yield [iterate_gains(raw_acq_server, server_channel_ids[raw_acq_server_name], server_stream_ids[raw_acq_server_name])
@@ -574,7 +584,9 @@ class ChimeMaster(object):
             ib.set_data_capture(channels=channels, sub_period=23, source='adc')
 
         if save_gains:
-            self.fpgas.save_gains(gains=self.fpgas.get_gains(), gain_folder=gain_folder or self.gain_folder)
+            gains = self.fpga.get_gains(bank=0, use_cache=True)
+            gain_timestamps = self.fpga.get_gain_timestamps(bank=bank)
+            self.fpgas.save_gains(gains=gains, gain_folder=gain_folder or self.gain_folder)
 
         # self.log.info('%r: Server %s chan IDa & stream IDa are: %s' % (self, server_name,  ','.join(str(s) for s in zip(channel_ids, stream_ids))))
 
