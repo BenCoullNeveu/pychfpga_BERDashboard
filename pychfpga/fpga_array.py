@@ -1915,6 +1915,66 @@ class FPGAArray(object):
 
 
     @async
+    def get_gains(self, bank=0, use_cache=True):
+        """ Return the digital gains programmed in the specified bank for all channels of all boards of the array.
+
+        Parameters:
+
+            `bank`: gain bank from which the gains are read.
+
+            `use_cache`: True to allow the software-cached value to be used (much faster the reading back from the FPGAs)
+
+        Returns:
+
+            Digital gains, in a channel-indexed dict, in the format::
+
+                {chan_id: (glin, glog), ...}
+
+                where:
+                     ``chan_id`` is a (crate, slot, channel) tuple that uniquely identifies a channel
+                     ``crate``= int or str or None
+                     ``slot``= int or str
+                     ``glin` = array of 1024 (int16 + 1j* int16) linear gain components
+                     ``glog`` = post-scaler factor (applies additional gain of 2**glog to all bins)
+
+        """
+        gains = {}
+        for ib in self.ib:
+            for ch, ch_gains in ib.get_gains(bank=bank, use_cache=use_cache):
+                gains[ib.get_id(ch)] = ch_gains
+            yield async_moment
+        async_return(gains)
+
+
+    @async
+    def get_gain_timestamps(self, bank=0):
+        """
+        Returns the timestamp at which the gains for each channel of thewas set.
+
+        Parameters:
+
+            bank (int): gain bank from which to get the gains timestamp.
+
+        Returns:
+
+            Timestamp of thd digital gains, in a channel-indexed dict, in the format::
+
+                {chan_id: timestamp, ...}
+
+                where:
+                     ``chan_id`` is a (crate, slot, channel) tuple that uniquely identifies a channel
+                     ``crate``= int or str or None
+                     ``slot``= int or str
+                     ``timestamp` = is a time.time() value. None if the gain was not set.
+        """
+        timestamps = {}
+        for ib in self.ib:
+            for ch, timestamp in ib.get_gain_timestamps(bank=bank):
+                timestamps[ib.get_id(ch)] = timestamp
+            yield async_moment
+        async_return(timestamps)
+
+    @async
     def set_gains(self, gains, bank=-1,  when='now'):
         """ Set the gains on the boards in the array.
 
@@ -1927,8 +1987,8 @@ class FPGAArray(object):
                      ``channel_id`` is a (crate, slot, channel) tuple that uniquely identifies a channel
                      ``crate``= int or str or None
                      ``slot``= int or str
-                     ``glin` = array of 1024 int16 linear gain components
-                     ``glog`` = post-scaler factor (applies additional gain of 2**glog)
+                     ``glin` = array of 1024 (int16 + 1j* int16) linear gain components
+                     ``glog`` = post-scaler factor (applies additional gain of 2**glog to all bins)
 
             `bank`: gain bank in which the gains are written. If `bank`=-1 or is None, gains are
                     written in the inactive bank (which can be activated later using set_gain_bank()).
@@ -1955,6 +2015,8 @@ class FPGAArray(object):
 
         if when is not None:
             self.switch_gains(bank=bank, when=when)
+
+
 
     def group_gains_per_board_id(self, channel_based_gains):
         """ Convert a channel_id based gain table into a board_id-based gain table.

@@ -2238,7 +2238,7 @@ class chFPGA_controller(IceBoardExtHandler):
         """ Return the gain bank that will be used on the next automatic bank switch."""
         return [ant.SCALER.READ_COEFF_BANK ^ 1 for ant in self.ANT.values()]
 
-    def get_gains(self, bank=0):
+    def get_gains(self, bank=0, use_cache=True):
         """
         Returns the log2 SCALER gain and the linear gain table used for each channelizer.
 
@@ -2248,15 +2248,32 @@ class chFPGA_controller(IceBoardExtHandler):
 
         Returns:
 
-            list of (log_gain, linear_gain_table) for each channelizer. ``linear_gain_table`` is an
-            array of 2014 complex values.
+            list of gains for each channelizer, in the format::
+                 [[channel_number, [linear_gain_table, log gain]], ...]
+
+                 ``linear_gain_table`` is an array of 1024 complex values.
+                 ``log gain`` is an integer.
         """
         gain_list = []
-        for ant in self.ANT.values():
-            glog = ant.SCALER.SHIFT_LEFT
-            glin = ant.SCALER.get_gain_table(bank=bank)
-            gain_list.append([ant.ant_number, [glin,glog]])
+        for ch in self.get_channelizers():
+            glog = ch.SCALER.SHIFT_LEFT
+            glin = ch.SCALER.get_gain_table(bank=bank, use_cache=True)
+            gain_list.append([ch.ant_number, [glin, glog]])
         return gain_list
+
+   def get_gain_timestamps(self, bank=0):
+        """
+        Returns the timestamp at which the gains for each channel was set.
+
+        Parameters:
+
+            bank (int): gain bank from which to get the gains timestamp.
+
+        Returns:
+
+            list of time.time() timestamp, one for each channel. None if the gains was not set.
+        """
+        return [ch.get_gains_timestamp(bank=bank) for ch in self.get_channelizers()]
 
     def switch_gains(self, bank=None, when='now'):
         """

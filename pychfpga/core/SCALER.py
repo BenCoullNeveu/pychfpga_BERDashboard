@@ -9,9 +9,12 @@ SCALER.py module
  History:
         2012-07-13 JFC: Created
 """
-#import time
+# Python Standard library packages
 import struct
+import time
 import numpy as np
+
+# Local packages
 from Module import Module_base, BitField
 
 class SCALER_base(Module_base):
@@ -53,13 +56,14 @@ class SCALER_base(Module_base):
     ROUNDING_MODE_ROUND            = 0b01
     ROUNDING_MODE_CONVERGENT_ROUND = 0b10
 
-    cached_gain_table = {}
-
 
     # Define Status registers
 
     def __init__(self, fpga_instance, base_address, instance_number):
-         super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
+        super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
+
+        self.cached_gain_table = {}
+        self.cached_gain_timestamp = {}
 
     def reset(self):
         """ Resets the SCALER module """
@@ -142,6 +146,8 @@ class SCALER_base(Module_base):
             raise ValueError('Either a scalar gain or a 1024 element gain vector must be provided')
 
         self.cached_gain_table[bank] = gains
+        self.cached_gain_timestamp[bank] = time.time()
+
         gain_string = np.reshape(np.vstack((gains.imag, gains.real)).T, 2 * total_bins).astype('<i2').tostring()
 
         # if timestamp is None:
@@ -172,20 +178,43 @@ class SCALER_base(Module_base):
     def get_gain_table(self, bank=0, use_cache=False):
         """
         Gets the scaler's complex gain table for the specified bank.  Converts to numpy complex array.
+
+        Parameters:
+
+            bank (int): bank number for which the gain is requested
+
+        Returns:
+
+            Gain table, as a list of 1024 complex values, where the real and imaginary parts are 16 bit integers.
         """
-        if use_cache and self.cached_gain_table:
+        if use_cache and bank in self.cached_gain_table:
             return self.cached_gain_table[bank]
 
         page_table = np.zeros(512, np.int8)
-        gain_table = []#np.zeros(self.fpga.NUMBER_OF_FREQUENCY_BINS, np.complex)
+        gain_table = [] #np.zeros(self.fpga.NUMBER_OF_FREQUENCY_BINS, np.complex)
         for page in range(8): # there are 8 pages of coefficients per bank
             self.WRITE_COEFF_BANK = 8*bank + page # Sets which page/bank being read? Not sure if will work...
             page_table = self.read_ram(0, length=512)
             for ix in range(128): # there are 128 coefficients per page ( 4 byte per coefficient = 512 bytes total per page)
-                bin = page*128 + ix
-                g_imag, g_real = struct.unpack('<hh', page_table[4*ix:4*ix+4])
-                gain_table.append(g_real +1j*g_imag) #[bin] = g_real +1j*g_imag
+                g_imag, g_real = struct.unpack('<hh', page_table[4*ix: 4*ix + 4])
+                gain_table.append(g_real + 1j*g_imag) #[bin] = g_real +1j*g_imag
         return gain_table
+
+    def get_gains_timestamp(self, bank=0):
+        """
+        Gets the scaler's gain timestamp, which is the last time the gains were written to the FPGA.
+
+        Parameters:
+
+            bank (int): bank number for which the timestamp is requested
+
+        Returns:
+
+            a time.time() timestamp. None if the gain was never set.
+
+        """
+        return self.cached_gain_timestamp.get(bank, None)
+
 
     def status(self):
         """ Displays the status of the scaler module"""
