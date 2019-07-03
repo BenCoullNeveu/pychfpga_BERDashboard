@@ -86,13 +86,14 @@ class DigitalGainArchive(Hdf5Archive):
                                (ax, self))
 
         # Set parameters that specify output file format
-        self.output_dir = output_dir
+        self.output_dir = output_dir or '.'
         self.output_suffix = output_suffix
 
         # Search for previous files
         if search:
-            candidate_files = sorted(glob.glob(os.path.join(self.output_dir,
-                              '*' + instrument_name + '_' + self.output_suffix, '*.h5')))
+            search_pathname = os.path.join(self.output_dir,
+                              '*' + instrument_name + '_' + self.output_suffix, '*.h5')
+            candidate_files = sorted(glob.glob(search_pathname))
 
             # Only use files with the same axes
             output_files = []
@@ -115,7 +116,7 @@ class DigitalGainArchive(Hdf5Archive):
             output_files = None
 
         # Set the file attributes
-        attrs = {'instrument_name': instrument,
+        attrs = {'instrument_name': instrument_name,
                  'version': __version__,
                  'archive_version': __archive_version__,
                  'notes': notes}

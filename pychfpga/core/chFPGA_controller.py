@@ -2285,9 +2285,9 @@ class chFPGA_controller(IceBoardExtHandler):
 
         Returns:
 
-            list of time.time() timestamp, one for each channel. None if the gains was not set.
+            list of (chhannel_number, timestamp), one for each channel. Elements are None if the gains was not set for that channel.
         """
-        return [ch.get_gains_timestamp(bank=bank) for ch in self.get_channelizers()]
+        return [(ch.ant_number, ch.SCALER.get_gains_timestamp(bank=bank)) for ch in self.get_channelizers()]
 
     def switch_gains(self, bank=None, when='now'):
         """

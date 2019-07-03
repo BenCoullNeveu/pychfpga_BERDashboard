@@ -51,7 +51,7 @@ from pychfpga import __version__, get_git_version
 from pychfpga import FPGAArray
 from ps import PowerSupplyAsyncRESTClient
 from raw_acq import RawAcqAsyncRESTClient
-from digital_gain import DigitalGainArchive
+from pychfpga.digital_gain import DigitalGainArchive
 
 
 def convert_types(val):
@@ -499,7 +499,7 @@ class ChimeMaster(object):
         if not ib_chans:
             raise RuntimeError('No target board was found for the specified patterns')
 
-        self.log.info('%r: Starting compute_gains() on the following channels: %s' % (self, ', '.join(str(ib.get_id()) + str(ch) for ib,ch in ib_chans)))
+        self.log.info('%r: *** Gain calculator : Starting compute_gains() on the following channels: %s' % (self, ', '.join(str(ib.get_id()) + str(ch) for ib,ch in ib_chans)))
 
         # Set the source and data capture rate for target channels
 
@@ -539,7 +539,7 @@ class ChimeMaster(object):
             # We will iterate until all channels have a solution, or until we have reached an iteration limit
             iteration = 0
             while True:
-                print('**** Gain iteration %i' % iteration)
+                self.log.info('%r: *** Gain calculator : Acquiring data block %i' % (self, iteration))
                 yield server.start_fft_rms(
                     stream_ids=stream_ids,
                     target_gain_bank=bank,
@@ -549,9 +549,10 @@ class ChimeMaster(object):
                     sids, rms = yield server.get_fft_rms()
                     if sids:
                         break
-                    yield sleep(.3)
-                print('Got FFT RMS values for Channel ID: Stream ID%s' %
-                    ', '.join('%s:%i' % (channel_ids[sid_index_map[sid]], sid) for sid in sids if sid in sid_index_map))
+                    self.log.info('%r: *** Gain calculator : waiting for averaged FFT data from raw acq' % (self))
+                    yield sleep(1)
+                self.log.info('%r: *** Gain calculator : Got FFT RMS values for Channel ID: Stream ID%s' % (self,
+                    ', '.join('%s:%i' % (channel_ids[sid_index_map[sid]], sid) for sid in sids if sid in sid_index_map)))
                 new_gains = gc.update_gains(np.array(sids), np.array(rms))
                 bank ^= 1 # switch bank
                 yield self.fpgas.set_gains.async(gains=new_gains, bank=bank, when='now')
@@ -580,7 +581,7 @@ class ChimeMaster(object):
             filtered_gains, mask = gc.get_filtered_gains()
             yield self.fpgas.set_gains.async(gains=filtered_gains, bank=0, when='now')
 
-            self.log.info('%r: Finished computing gains. %f %% of the gains calculations completed successfully' % (self, len(filtered_gains)))
+            self.log.info('%r: *** Gain calculator : Finished computing gains. %f %% of the gains calculations completed successfully' % (self, len(filtered_gains)))
 
         # Perform the gain iterations in parallel on all raw acq servers
         yield [iterate_gains(raw_acq_server, server_channel_ids[raw_acq_server_name], server_stream_ids[raw_acq_server_name])
@@ -591,14 +592,15 @@ class ChimeMaster(object):
             ib.set_data_capture(channels=channels, sub_period=23, source='adc')
 
         if save_gains:
-            gains = self.fpga.get_gains(bank=0, use_cache=True)
+            gains = self.fpgas.get_gains(bank=0, use_cache=True)
             gains = {self._chan_id_to_serial_number(key): val for key, val in gains.items()}
 
-            gain_timestamps = self.fpga.get_gain_timestamps(bank=bank)
+            gain_timestamps = self.fpgas.get_gain_timestamps(bank=0)
             gain_timestamps = {self._chan_id_to_serial_number(key): val for key, val in gain_timestamps.items()}
 
             self.gain_hdf5.set_gain(gains, compute_time=gain_timestamps)
             self.gain_hdf5.write(smp=time.time(), run_name=self.run_name)
+            self.log.info('%r: *** Gain calculator : New gains have been saved' % (self,))
 
         # self.log.info('%r: Server %s chan IDa & stream IDa are: %s' % (self, server_name,  ','.join(str(s) for s in zip(channel_ids, stream_ids))))
 
@@ -840,9 +842,8 @@ class ChimeMaster(object):
         # ca.ib.set_corr_reset(0)
 
         # Set-up channelizers to process data normally
-        if 0:
-            self.log.info("Setting-up channelizers")
-            yield ca.set_channelizers.async(**conf.fpga.channelizer_params)
+        self.log.info("Setting-up channelizers")
+        yield ca.set_channelizers.async(**conf.fpga.channelizer_params)
 
 
         # Set-up raw_acq servers to receive data from the boards specified in
@@ -852,8 +853,7 @@ class ChimeMaster(object):
 
 
         # Setup noise injection for normal operation
-        if 0:
-            self.setup_noise_injection(conf.fpga.noise_injection)
+        self.setup_noise_injection(conf.fpga.noise_injection)
 
         # Start raw_data capture
         self.log.info("Starting baseline raw data data capture")
@@ -876,7 +876,7 @@ class ChimeMaster(object):
         yield self.compute_gains(**conf.fpga.compute_gains)
 
         # Set-up initial gains in gain bank #0
-        if 0 and conf.fpga.load_initial_gains and self.gain_hdf5:
+        if conf.fpga.load_initial_gains and self.gain_hdf5:
             self.log.info("Loading initial SCALER gains in bank #0")
             gains, gain_timestamps = self.gain_hdf5.read_gain()
             gains = {self._serial_number_to_chan_id(key): val for key, val in gains.items()}
@@ -1121,26 +1121,31 @@ class ChimeMaster(object):
     def initialize_gain_hdf5(self):
 
         # Create frequency axis
-        freq = self.SAMPLING_FREQ - np.fft.fftfreq(self.SAMPLES_PER_FRAME, 1.0 / self.SAMPLING_FREQUENCY)
-        freq = 1e-6 * freq[0:self.SAMPLES_PER_FRAME//2]
+        freq = self.SAMPLING_FREQUENCY - np.fft.fftfreq(self.SAMPLES_PER_FRAME, 1.0 / self.SAMPLING_FREQUENCY)
+        freq = 1e-6 * freq[0:self.SAMPLES_PER_FRAME // 2]
         freq = np.array(zip(freq, [np.median(np.abs(np.diff(freq)))] * freq.size),
                         dtype=[('centre', '<f8'), ('width', '<f8')])
 
-        # Create input axis
-        inputs = np.array([(chan_id, input_sn) for reorder, chan_id, input_sn in self.config.input_reorder],
-                          dtype=[('chan_id', 'u2'), ('correlator_input', 'S32')])
-
+        if self.config.input_reorder:
+            # Create input axis
+            inputs = np.array([(chan_id, input_sn) for reorder, chan_id, input_sn in self.config.input_reorder],
+                              dtype=[('chan_id', 'u2'), ('correlator_input', 'S32')])
+        else:
+            inputs = np.array([(stream_id, self._chan_id_to_serial_number(chan_id)) for  chan_id, stream_id in self.fpgas.get_stream_id_map().items()],
+                              dtype=[('chan_id', 'u2'), ('correlator_input', 'S32')])
         # Initialize writer
-        self.gain_hdf5 = digital_gain.DigitalGainArchive(freq=freq, input=inputs,
-                                                         **self.config.fpga.digital_gain_writer)
+        self.gain_hdf5 = DigitalGainArchive(
+            freq=freq, input=inputs,
+            git_version_tag=self.GIT_VERSION,
+            **self.config.fpga.digital_gain_writer_params)
 
     def _chan_id_to_serial_number(self, chan_id):
 
         crate, slot, chan = chan_id
         args_sn = {'corr_sn': self.config.corr_sn,
-                   'crate': crate,
-                   'slot': slot,
-                   'slot_zero_based': slot - 1,
+                   'crate': crate if not isinstance(crate, basestring) else 0,
+                   'slot': slot + 1 if not isinstance(slot, basestring) else 1,
+                   'slot_zero_based': slot if not isinstance(crate, basestring) else 0,
                    'chan': chan,
                    'input': self.config.input_number_map[chan]}
 
@@ -1153,8 +1158,7 @@ class ChimeMaster(object):
         slot = int(mo.group(2))
         inp = int(mo.group(3))
         chan = self.config.input_number_map.index(inp)
-
-        return self.config.input_sn % args_sn
+        return (crate, slot, chan)
 
 
 
