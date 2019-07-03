@@ -1122,7 +1122,7 @@ class ChimeMaster(object):
 
         # Create frequency axis
         freq = self.SAMPLING_FREQUENCY - np.fft.fftfreq(self.SAMPLES_PER_FRAME, 1.0 / self.SAMPLING_FREQUENCY)
-        freq = 1e-6 * freq[0:self.SAMPLES_PER_FRAME // 2]
+        freq = 1e-6 * freq[0:self.SAMPLES_PER_FRAME//2]
         freq = np.array(zip(freq, [np.median(np.abs(np.diff(freq)))] * freq.size),
                         dtype=[('centre', '<f8'), ('width', '<f8')])
 
@@ -1134,10 +1134,9 @@ class ChimeMaster(object):
             inputs = np.array([(stream_id, self._chan_id_to_serial_number(chan_id)) for  chan_id, stream_id in self.fpgas.get_stream_id_map().items()],
                               dtype=[('chan_id', 'u2'), ('correlator_input', 'S32')])
         # Initialize writer
-        self.gain_hdf5 = DigitalGainArchive(
-            freq=freq, input=inputs,
-            git_version_tag=self.GIT_VERSION,
-            **self.config.fpga.digital_gain_writer_params)
+                                                         instrument_name=self.config.corr_name,
+                                                         **self.config.fpga.gain_hdf5)
+        self.gain_hdf5 = digital_gain.DigitalGainArchive(freq=freq, input=inputs,
 
     def _chan_id_to_serial_number(self, chan_id):
 
