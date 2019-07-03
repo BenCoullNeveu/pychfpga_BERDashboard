@@ -1975,7 +1975,7 @@ class FPGAArray(object):
         async_return(timestamps)
 
     @async
-    def set_gains(self, gains, bank=-1,  when='now'):
+    def set_gains(self, gains, bank=-1,  when='now', gain_timestamps=None):
         """ Set the gains on the boards in the array.
 
         Parameters:
@@ -2001,16 +2001,25 @@ class FPGAArray(object):
                     If `when` is an integer, the gains will be activated starting on
                     the target timestamp specified by `when`.
 
+            `gain_timestamps`: dictionary of unix timestamps with same key format as `gains`
+                               or single unix timestamp that is applied to all channels.
+
+                               If not provided, then defaults to current time.
 
         """
         # make sure we have a board-id-based gain table
         gains = self.group_gains_per_board_id(gains)
 
+        # format the timestamps dictionary identically to gains
+        if isinstance(gain_timestamps, dict):
+            gain_timestamps = self.group_gains_per_board_id(gain_timestamps)
+
         # set the gains for each board
         for board_id, g in gains.items():
+            gain_timestamp = gain_timestamps[board_id] if isinstance(gain_timestamps, dict) else gain_timestamps
             ib = self.get_iceboard_from_id(board_id)
             self.logger.info('%r: Setting digital gains for (crate,slot)=%r (%s)' % (self, board_id, ib.get_formatted_id()))
-            ib.set_gains(gain=g, bank=bank, when=None)
+            ib.set_gains(gain=g, bank=bank, when=None, gain_timestamp=gain_timestamp)
             yield async_moment
 
         if when is not None:

@@ -12,6 +12,7 @@ from __future__ import absolute_import, division, print_function
 import collections
 import numpy
 import os
+import re
 import traceback
 import sys
 import time
@@ -50,6 +51,7 @@ from pychfpga import __version__, get_git_version
 from pychfpga import FPGAArray
 from ps import PowerSupplyAsyncRESTClient
 from raw_acq import RawAcqAsyncRESTClient
+from digital_gain import DigitalGainArchive
 
 
 def convert_types(val):
@@ -186,6 +188,7 @@ class ChimeMaster(object):
         self.log.info("version %s" % self.GIT_VERSION)
 
         self.gain_calc_metrics = Metrics()
+        self.gain_hdf5 = None
 
     def set_config(self, config):
         self.config = NameSpace(config)
@@ -589,8 +592,13 @@ class ChimeMaster(object):
 
         if save_gains:
             gains = self.fpga.get_gains(bank=0, use_cache=True)
+            gains = {self._chan_id_to_serial_number(key): val for key, val in gains.items()}
+
             gain_timestamps = self.fpga.get_gain_timestamps(bank=bank)
-            self.fpgas.save_gains(gains=gains, gain_folder=gain_folder or self.gain_folder)
+            gain_timestamps = {self._chan_id_to_serial_number(key): val for key, val in gain_timestamps.items()}
+
+            self.gain_hdf5.set_gain(gains, compute_time=gain_timestamps)
+            self.gain_hdf5.write(smp=time.time(), run_name=self.run_name)
 
         # self.log.info('%r: Server %s chan IDa & stream IDa are: %s' % (self, server_name,  ','.join(str(s) for s in zip(channel_ids, stream_ids))))
 
@@ -861,17 +869,21 @@ class ChimeMaster(object):
         # Fom now on, we do not have to sync the array anymore
         #######
 
+        # Initialize the digital gain hdf5 writer
+        self.initialize_gain_hdf5()
+
         # Compute gains if requested
-        self.gain_folder = os.path.expanduser(conf.fpga.gain_folder)
         yield self.compute_gains(**conf.fpga.compute_gains)
 
-
         # Set-up initial gains in gain bank #0
-        if 0 and conf.fpga.load_initial_gains:
+        if 0 and conf.fpga.load_initial_gains and self.gain_hdf5:
             self.log.info("Loading initial SCALER gains in bank #0")
-            gains = yield ca.load_gains.async(gain_folder=self.gain_folder) # load gains from gain files
-            yield ca.set_gains.async(gains, bank=0, when='now') # Upload to bank 0 and immediately activate gain bank
+            gains, gain_timestamps = self.gain_hdf5.read_gain()
+            gains = {self._serial_number_to_chan_id(key): val for key, val in gains.items()}
+            gain_timestamps = {self._serial_number_to_chan_id(key): val for key, val in gain_timestamps.items()}
 
+            # Upload to bank 0 and immediately activate gain bank
+            yield ca.set_gains.async(gains, bank=0, when='now', gain_timestamps=gain_timestamps)
 
         self.log.info("Waiting for 2 seconds")
         yield sleep(2)
@@ -1028,14 +1040,7 @@ class ChimeMaster(object):
 
             # Create the input serial number using the format
             # specified in the config file
-            crate, slot, chan = corr_loc
-            args_sn = {'corr_sn': self.config.corr_sn,
-                       'crate': crate,
-                       'slot': slot,
-                       'slot_zero_based': slot - 1,
-                       'chan': chan,
-                       'input': self.config.input_number_map[chan]}
-            input_sn = self.config.input_sn % args_sn
+            input_sn = self._chan_id_to_serial_number(corr_loc)
 
             # Undo scaling and offset encoding.  Converts the buffer
             # from uint8 to float ranging from -8 to 7.
@@ -1112,6 +1117,45 @@ class ChimeMaster(object):
             #coroutine_return(None) # Probably don't need this
         else:
             self.log.info('FPGA array not yet initialized. Cannot load digital gains.')
+
+    def initialize_gain_hdf5(self):
+
+        # Create frequency axis
+        freq = self.SAMPLING_FREQ - np.fft.fftfreq(self.SAMPLES_PER_FRAME, 1.0 / self.SAMPLING_FREQUENCY)
+        freq = 1e-6 * freq[0:self.SAMPLES_PER_FRAME//2]
+        freq = np.array(zip(freq, [np.median(np.abs(np.diff(freq)))] * freq.size),
+                        dtype=[('centre', '<f8'), ('width', '<f8')])
+
+        # Create input axis
+        inputs = np.array([(chan_id, input_sn) for reorder, chan_id, input_sn in self.config.input_reorder],
+                          dtype=[('chan_id', 'u2'), ('correlator_input', 'S32')])
+
+        # Initialize writer
+        self.gain_hdf5 = digital_gain.DigitalGainArchive(freq=freq, input=inputs,
+                                                         **self.config.fpga.digital_gain_writer)
+
+    def _chan_id_to_serial_number(self, chan_id):
+
+        crate, slot, chan = chan_id
+        args_sn = {'corr_sn': self.config.corr_sn,
+                   'crate': crate,
+                   'slot': slot,
+                   'slot_zero_based': slot - 1,
+                   'chan': chan,
+                   'input': self.config.input_number_map[chan]}
+
+        return self.config.input_sn % args_sn
+
+    def _serial_number_to_chan_id(self, sn):
+
+        mo = re.match('%s(\d{2})(\d{2})(\d{2})' % self.config.corr_sn, sn)
+        crate = int(mo.group(1))
+        slot = int(mo.group(2))
+        inp = int(mo.group(3))
+        chan = self.config.input_number_map.index(inp)
+
+        return self.config.input_sn % args_sn
+
 
 
 class DummyChimeMaster(ChimeMaster):
