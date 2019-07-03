@@ -2090,7 +2090,8 @@ class chFPGA_controller(IceBoardExtHandler):
             self.logger.warn("Gain file '%s' could not be saved for (crate,slot)=%r " % (gain_filename, self.get_id()))
 
 
-    def set_gains(self, gain=None, postscaler=None, channels=None, use_fixed_gain=False, bank=0, when=None):
+    def set_gains(self, gain=None, postscaler=None, channels=None, use_fixed_gain=False, bank=0, when=None,
+                  gain_timestamp=None):
         """
         Sets the digital gain used by the SCALER module to scale the (18+18)
         bits output of the FFT to the (4+4) final channelizer output format.
@@ -2126,6 +2127,8 @@ class chFPGA_controller(IceBoardExtHandler):
                 gains are written immediately on the target bank and the bank is made active on the
                 next frame. If `when` is an  *int*, the gains are written immediately to the bank  bank,
                 but than bank will become active only on frame numer (timestamp) specified by when.
+
+            gain_timestamp: unix timestamp when the gains were calculated.  If not provided, defaults to current time.
 
         The actual gain between the scaler input and output for bin 'b' is:
            4-bit mode: out/in = :math:`Glin(b) * 2**(Glog-31)`
@@ -2193,9 +2196,17 @@ class chFPGA_controller(IceBoardExtHandler):
         else:  # if anything else including None, a scalar, a gain tuple etc.
             gain = [ (channels, gain) ]
 
+        # Convert the gain timestamp to list
+        if isinstance(gain_timestamp, list):
+            pass
+        elif isinstance(gain_timestamp, dict):
+            gain_timestamp = [gain_timestamp[ch] for ch, g in gain]
+        else:
+            gain_timestamp = [gain_timestamp] * len(gain)
+
         configured_channels = set()
 
-        for (channel_list, gain_value) in gain:
+        for (channel_list, gain_value), timestamp_value in zip(gain, gain_timestamp):
             # Make sure channel_list is a list (in case we provide a single channel number)
             if isinstance(channel_list, int):
                 channel_list = [channel_list]
@@ -2230,7 +2241,7 @@ class chFPGA_controller(IceBoardExtHandler):
                     self.ANT[ch].SCALER.set_fixed_gain(Glin)
                 else:
                     self.ANT[ch].SCALER.USE_GAIN_TABLE = 1
-                    self.ANT[ch].SCALER.set_gain_table(Glin, bank=bank)
+                    self.ANT[ch].SCALER.set_gain_table(Glin, bank=bank, gain_timestamp=timestamp_value)
                 configured_channels.add(ch)
         self._logger.debug('%r: Setting scaler gains for Antenna %s' % (self, ', '.join([str(i) for i in configured_channels])))
 

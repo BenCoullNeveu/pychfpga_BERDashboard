@@ -882,7 +882,8 @@ class ChimeMaster(object):
             gains = {self._serial_number_to_chan_id(key): val for key, val in gains.items()}
             gain_timestamps = {self._serial_number_to_chan_id(key): val for key, val in gain_timestamps.items()}
 
-            yield ca.set_gains.async(gains, bank=0, when='now') #, gain_timestamps=gain_timestamps # Upload to bank 0 and immediately activate gain bank
+            # Upload to bank 0 and immediately activate gain bank
+            yield ca.set_gains.async(gains, bank=0, when='now', gain_timestamps=gain_timestamps)
 
         self.log.info("Waiting for 2 seconds")
         yield sleep(2)
