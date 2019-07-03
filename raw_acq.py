@@ -44,7 +44,6 @@ class HDF5Writer(object):
     def __init__(self, base_dir='.', elements_per_file=2048*64, crate_and_slot_from_port=False, chunk_size=1024):
         self.log = log.get_logger(self)
         self.N_SAMP = 2048 # data bytes per frame
-        self.RAW_PACKET_LENGTH = 10 + self.NSAMP  # header length + data length
         self.base_dir = base_dir
         self.chunk_size = chunk_size
         #self.N_CHANNELS = 1
@@ -202,6 +201,7 @@ class RawAcqReceiver(object):
     def __init__(self):
         self.log = log.get_logger(self)
         self.ports = None
+        self.port_number = [] # actual port number associated with each socket
         self.name = None
         self.datawriter = None
         self.receivers = []
@@ -343,6 +343,7 @@ class RawAcqReceiver(object):
         # Define numpy data types that will be used to efficiently parse the data
 
         self.DATA_SIZE = 2048 # number of bytes of data
+        self.RAW_PACKET_LENGTH = 10 + self.DATA_SIZE  # header length + data length
 
         self.header_dtype = np.dtype(dict(
             names=['probe_id', 'stream_id', 'source_crate', 'slot_chan', 'flags', 'ts'],
@@ -415,7 +416,7 @@ class RawAcqReceiver(object):
 
         # ADC Metrics
 
-        self.metrics_refresh_time = 0.5
+        self.metrics_refresh_time = 1
         self.metrics_last_time = np.zeros(self.NCHAN, dtype=np.float64)
         self.metrics_raw_data = np.zeros((self.BUF_SIZE, self.DATA_SIZE), dtype=np.int8) # need to store repeated channels
         self.metrics_updated = np.zeros(self.NCHAN, dtype=np.int8)
@@ -434,12 +435,12 @@ class RawAcqReceiver(object):
 
 
         # ADC HDF5 file writer parameters
-        self.hdf5_refresh_time = 0.0
+        self.hdf5_refresh_time = 30
         self.hdf5_last_time = np.zeros(self.NCHAN, dtype=np.float64)
         self.hdf5_block_writes = 0
 
         # ADC averaged RMS processing
-        self.adc_rms_refresh_count = 6000 # Number of frames to average
+        self.adc_rms_refresh_count = 60 # Number of frames to average
         self.adc_rms = np.zeros(self.NCHAN, dtype=np.float32) # final averaged values
         self.adc_rms_buffer = np.zeros(self.NCHAN, dtype=np.float32) # used to accumulate square values
         self.adc_rms_mean_buffer = np.zeros(self.NCHAN, dtype=np.int32) # used to accumulate square values
@@ -730,24 +731,28 @@ class RawAcqReceiver(object):
         (adc_buf_ix, ) = np.where(self.buf_probe_id[:self.n] == 0xA0)
         if adc_buf_ix.size:
             self.processed_packets += adc_buf_ix.size
-            np.buf_packet_length_ok[:self.n] = self.buf_packet_length[:self.n] == self.RAW_PACKET_LENGTH
-            self.metrics_adc_packet_length_error += np.sum(np.length_ok[:self.n]==False)
-            adc_buf_ix = adc_buf_ix[self.length_ok[:self.n]]
-            self.processed_adc_packets += adc_buf_ix.size
-            self.process_adc_packets(adc_buf_ix)
+            self.buf_packet_length_ok[adc_buf_ix] = self.buf_packet_length[adc_buf_ix] == self.RAW_PACKET_LENGTH
+            self.metrics_adc_packet_length_error += np.sum(self.buf_packet_length_ok[adc_buf_ix]==False)
+            adc_buf_ix = adc_buf_ix[self.buf_packet_length_ok[adc_buf_ix]]
+            if adc_buf_ix.size:
+                self.processed_adc_packets += adc_buf_ix.size
+                self.process_adc_packets(adc_buf_ix)
 
         t1 = time.time()
 
 
         #### Process raw FFT data packets (raw capture source 1) ###
-        (fft_buf_ix, ) = np.where(self.buf_probe_id[:self.n] == 0xA1  and self.buf_packet_length[:self.n] == self.RAW_PACKET_LENGTH)
+        (fft_buf_ix, ) = np.where(self.buf_probe_id[:self.n] == 0xA1)
         if fft_buf_ix.size:
             self.processed_packets += fft_buf_ix.size
-            np.buf_packet_length_ok[:self.n] = self.buf_packet_length[:self.n] == self.RAW_PACKET_LENGTH
-            self.metrics_fft_packet_length_error += np.sum(np.length_ok[:self.n]==False)
-            fft_buf_ix = fft_buf_ix[self.length_ok[:self.n]]
-            self.processed_fft_packets += fft_buf_ix.size
-            self.process_fft_packets(fft_buf_ix)
+            self.buf_packet_length_ok[fft_buf_ix] = self.buf_packet_length[fft_buf_ix] == self.RAW_PACKET_LENGTH
+            self.metrics_fft_packet_length_error += np.sum(self.buf_packet_length_ok[fft_buf_ix]==False)
+            # print(self.buf_packet_length[fft_buf_ix] == self.RAW_PACKET_LENGTH)
+            # print(self.buf_packet_length[fft_buf_ix])
+            fft_buf_ix = fft_buf_ix[self.buf_packet_length_ok[fft_buf_ix]]
+            if fft_buf_ix.size:
+                self.processed_fft_packets += fft_buf_ix.size
+                self.process_fft_packets(fft_buf_ix)
 
         t2 = time.time()
 
@@ -791,6 +796,7 @@ class RawAcqReceiver(object):
 
         # Find the channel index of each incoming packets by looking up their STREAM ID.
         buf_ix = np.array([bix for bix in buf_ix if self.buf_stream_id[bix] in self.sid_map]) # remove buffer entries that do not have a valid stream ID
+        # print('buf_ix=', buf_ix, 'ty[e=',buf_ix.dtype)
         ix = np.array([self.sid_map[sid] for sid in self.buf_stream_id[buf_ix].tolist()]) # iterating over a list of int is much faster than over an array of int32
 
 
@@ -1306,6 +1312,7 @@ class RawAcqReceiver(object):
                                 metrics.add('raw_acq_udp_dropped_packets', value=dropped_packets)
                         except ValueError:
                             self.log.warning('%r: Bad value while reading system UDP statistics. Problematic line is %s' % (self, cols))
+                        time.sleep(0) # relinquish some time to the thread? Not sure if it helps.
             except IOError:
                 self.log.warning('%r: Could not read system UDP statistics' % self)
 
@@ -1361,6 +1368,7 @@ class RawAcqReceiver(object):
                 #     metrics.add('raw_acq_ramp_bit_errors', value=count, crate=crate, slot=slot, chan=chan, bit=bit)
                 # for i, count in enumerate(self.metrics_jumps[ix]):
                 #     metrics.add('raw_acq_jumps', value= count, crate=crate, slot=slot, chan=chan, threshold=self.threshold[i])
+                time.sleep(0) # relinquish some time to the thread? Not sure if it helps.
                 yield moment
             self.metrics_updated[cix] = False
 
@@ -1370,6 +1378,7 @@ class RawAcqReceiver(object):
                 crate, slot, chan = self.unpack_stream_id(self.stream_id[ix])
                 metrics.add('raw_acq_fft_rms', value=np.sqrt(np.mean(self.fft_rms_current[ix, 1:])), crate=crate, slot=slot, chan=chan)
                 metrics.add('raw_acq_fft_packet_length_error', value=self.metrics_fft_packet_length_error[ix], crate=crate, slot=slot, chan=chan)
+                time.sleep(0) # relinquish some time to the thread? Not sure if it helps.
                 yield moment
             self.fft_metrics_updated[cix] = False
 
@@ -1377,6 +1386,7 @@ class RawAcqReceiver(object):
             for ix in range(self.NCHAN):
                 crate, slot, chan = self.unpack_stream_id(self.stream_id[ix])
                 metrics.add('raw_acq_adc_averaged_rms', value=self.adc_rms[ix], crate=crate, slot=slot, chan=chan)
+                time.sleep(0) # relinquish some time to the thread? Not sure if it helps.
                 yield moment
 
             metrics.add('raw_acq_run_time', value=0 if self.start_time is None else time.time() - self.start_time)
@@ -1393,8 +1403,8 @@ class RawAcqReceiver(object):
             self.ping_error_count = {}
 
             # Port numbers
-            for i, port in self.ports:
-                metrics.add('raw_acq_port_number', value=port, index=i)
+            for i, port in enumerate(self.port_number):
+                metrics.add('raw_acq_port_number', value=port, index=i, name=self.ports[i])
 
         coroutine_return(metrics)
 
@@ -1554,8 +1564,8 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
         handler.set_header('Content-Type', 'text/plain')
         handler.set_header('Content-Encoding', 'gzip')
         handler.write(metrics.get_gzip())
-        te = time.time()
-        self.log.info('%.32r: Returning raw_acq %i metrics. The request took %.3f seconds (%.3fs to format metrics, %.3fs to encode them)' % (self, len(metrics), t3 - t0, t1 - t2, t3 - t2))
+        t2 = time.time()
+        self.log.info('%.32r: Returning raw_acq %i metrics. The request took %.3f seconds (%.3fs to format metrics, %.3fs to encode them)' % (self, len(metrics), t2 - t0, t1 - t0, t2 - t1))
 
 
 ################################################
