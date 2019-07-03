@@ -1214,7 +1214,7 @@ class RawAcqReceiver(object):
         sid = self.stream_ids[ix]
         rms = self.fft_rms[ix]
         self.fft_rms_started[ix] = False
-        self.log.info('%r: get_fft_rms returned FFT RMS vectors from %i channels with stream IDs %s' % (self, ix.size, sid))
+        self.log.info('%r: get_fft_rms returned FFT RMS vectors from %i channels' % (self, ix.size))
         coroutine_return ((sid, rms))
 
     def is_running(self):
@@ -1391,8 +1391,8 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
         self.receiver = RawAcqReceiver()
         super(RawAcqAsyncRESTServer, self).__init__(address=address, port=port,  heartbeat_string='Rs')
         # self.add_periodic_callback(self.receiver.print_stats, 3000)
-        self.add_periodic_callback(self.receiver.ping_sources, 3000) # ping the raw_acq data sources periodically to ensure the switches tables always know how to route the packets to here
-        self.add_periodic_callback(self.receiver.check_ioloop_response_time, 300)
+        self.add_periodic_callback(self.receiver.ping_sources, 20000) # ping the raw_acq data sources periodically to ensure the switches tables always know how to route the packets to here
+        self.add_periodic_callback(self.receiver.check_ioloop_response_time, 3000)
         self.startup_time = datetime.datetime.utcnow()
         self.GIT_VERSION = get_git_version()
 
@@ -1512,7 +1512,7 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     @endpoint('get-rms')
     def get_rms(self, handler):
         if self.receiver.is_running():
-            print(self.receiver.chan_ids, self.receiver.adc_rms.tolist())
+            #print(self.receiver.chan_ids, self.receiver.adc_rms.tolist())
             coroutine_return(rms=zip(self.receiver.chan_ids, self.receiver.adc_rms.tolist()))
         else:
             coroutine_return(rms=[])
