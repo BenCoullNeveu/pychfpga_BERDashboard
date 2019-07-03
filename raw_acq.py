@@ -43,7 +43,8 @@ class HDF5Writer(object):
     """
     def __init__(self, base_dir='.', elements_per_file=2048*64, crate_and_slot_from_port=False, chunk_size=1024):
         self.log = log.get_logger(self)
-        self.N_SAMP = 2048
+        self.N_SAMP = 2048 # data bytes per frame
+        self.RAW_PACKET_LENGTH = 10 + self.NSAMP  # header length + data length
         self.base_dir = base_dir
         self.chunk_size = chunk_size
         #self.N_CHANNELS = 1
@@ -377,6 +378,9 @@ class RawAcqReceiver(object):
         self.buf_bank = np.empty(self.BUF_SIZE, dtype=np.uint8)
 
 
+        self.buf_packet_length = np.empty(self.BUF_SIZE, dtype=np.uint16)
+        self.buf_packet_length_ok = np.empty(self.BUF_SIZE, dtype=bool)
+
         # Compute the map that associates a stream id with a channel index
         self.sid_map = {sid:ix for ix, sid in enumerate(stream_ids)}
         # Channel index associated with each buffer entry. sid_map is used to update this array each time a block of packets is processed.
@@ -421,6 +425,8 @@ class RawAcqReceiver(object):
         self.metrics_mean = np.zeros(self.NCHAN, dtype=np.float32)
         self.metrics_jumps = np.zeros(self.NCHAN, dtype=np.float32)
         self.metrics_maxdiff = np.zeros(self.NCHAN, dtype=np.float32)
+        self.metrics_adc_packet_length_error = np.zeros(self.NCHAN, dtype=np.int32)
+        self.metrics_fft_packet_length_error = np.zeros(self.NCHAN, dtype=np.int32)
 
         self.expected_ramp = np.arange(-128, self.DATA_SIZE - 128, dtype=np.int8) # Fixed. Used to test ramp errors
         self.metrics_ramp_error_count = np.zeros(self.NCHAN, dtype=np.float32)
@@ -670,7 +676,7 @@ class RawAcqReceiver(object):
 
     def process_packets(self, reset_stats=True, timeout=0.1, stop_condition=None):
 
-    	self.log.info("%r: Starting packet processing" % self)
+        self.log.info("%r: Starting packet processing" % self)
         self.old_timestamp = None
         self.n_ant_rec = 0
         self.n = 0
@@ -685,7 +691,7 @@ class RawAcqReceiver(object):
                 if sockets:
                     for sock in sockets:
                         t0 = time.time()
-                        size = sock.recv_into(self.buf[self.n])
+                        self.buf_packet_length[self.n] = sock.recv_into(self.buf[self.n])
                         self.n += 1
                         self.packet_readout_time = max(time.time() - t0, self.packet_readout_time)
                         if self.n == self.BUF_SIZE:
@@ -724,6 +730,9 @@ class RawAcqReceiver(object):
         (adc_buf_ix, ) = np.where(self.buf_probe_id[:self.n] == 0xA0)
         if adc_buf_ix.size:
             self.processed_packets += adc_buf_ix.size
+            np.buf_packet_length_ok[:self.n] = self.buf_packet_length[:self.n] == self.RAW_PACKET_LENGTH
+            self.metrics_adc_packet_length_error += np.sum(np.length_ok[:self.n]==False)
+            adc_buf_ix = adc_buf_ix[self.length_ok[:self.n]]
             self.processed_adc_packets += adc_buf_ix.size
             self.process_adc_packets(adc_buf_ix)
 
@@ -731,9 +740,12 @@ class RawAcqReceiver(object):
 
 
         #### Process raw FFT data packets (raw capture source 1) ###
-        (fft_buf_ix, ) = np.where(self.buf_probe_id[:self.n] == 0xA1)
+        (fft_buf_ix, ) = np.where(self.buf_probe_id[:self.n] == 0xA1  and self.buf_packet_length[:self.n] == self.RAW_PACKET_LENGTH)
         if fft_buf_ix.size:
             self.processed_packets += fft_buf_ix.size
+            np.buf_packet_length_ok[:self.n] = self.buf_packet_length[:self.n] == self.RAW_PACKET_LENGTH
+            self.metrics_fft_packet_length_error += np.sum(np.length_ok[:self.n]==False)
+            fft_buf_ix = fft_buf_ix[self.length_ok[:self.n]]
             self.processed_fft_packets += fft_buf_ix.size
             self.process_fft_packets(fft_buf_ix)
 
@@ -1248,6 +1260,8 @@ class RawAcqReceiver(object):
         metrics.add('raw_acq_node_cpu_system', value=cpu.system)
         metrics.add('raw_acq_node_cpu_idle', value=cpu.idle)
 
+        yield moment
+
         # Disk usage on the hdf5 file destination volume
         if hasattr(os, 'statvfs') and self.hdf5_base_dir:
             s = os.statvfs(self.hdf5_base_dir)
@@ -1256,6 +1270,7 @@ class RawAcqReceiver(object):
             metrics.add('raw_acq_disk_free', value=s.f_bfree * s.f_bsize)
             metrics.add('raw_acq_disk_percent_used', value=float(s.f_blocks - s.f_bfree)/s.f_blocks)
             metrics.add('raw_acq_disk_percent_free', value=float(s.f_bfree)/s.f_blocks)
+            yield moment
 
         metrics.add('raw_acq_run_time', value= 0 if self.start_time is None else time.time() - self.start_time )
         metrics.add('raw_acq_hdf5_run_time', value= 0 if self.hdf5_start_time is None else time.time() - self.hdf5_start_time )
@@ -1275,6 +1290,8 @@ class RawAcqReceiver(object):
             metrics.add('raw_acq_hdf5_n_elements_max', value=self.hdf5_file.elements_per_file)
             metrics.add('raw_acq_hdf5_number_of_files', value=self.hdf5_file.file_number)
 
+        yield moment
+
         if self.started:
 
             try:
@@ -1291,6 +1308,8 @@ class RawAcqReceiver(object):
                             self.log.warning('%r: Bad value while reading system UDP statistics. Problematic line is %s' % (self, cols))
             except IOError:
                 self.log.warning('%r: Could not read system UDP statistics' % self)
+
+            yield moment
 
             # Socket-specific stats
             # for i, port in enumerate(self.ports):
@@ -1323,7 +1342,7 @@ class RawAcqReceiver(object):
             self.adc_hdf5_processing_time = 0
             self.adc_rms_processing_time = 0
 
-
+            yield moment
 
             cix, = np.where(self.metrics_updated)  # boolean ndarray
 
@@ -1337,10 +1356,12 @@ class RawAcqReceiver(object):
                 metrics.add('raw_acq_mean', value=self.metrics_mean[ix], crate=crate, slot=slot, chan=chan)
                 metrics.add('raw_acq_max_diff', value=self.metrics_maxdiff[ix], crate=crate, slot=slot, chan=chan)
                 metrics.add('raw_acq_ramp_errors', value=self.metrics_ramp_error_count[ix], crate=crate, slot=slot, chan=chan)
+                metrics.add('raw_acq_adc_packet_length_error', value=self.metrics_adc_packet_length_error[ix], crate=crate, slot=slot, chan=chan)
                 # for bit, count in enumerate(self.metrics_ramp_bit_error_count[ix]):
                 #     metrics.add('raw_acq_ramp_bit_errors', value=count, crate=crate, slot=slot, chan=chan, bit=bit)
                 # for i, count in enumerate(self.metrics_jumps[ix]):
                 #     metrics.add('raw_acq_jumps', value= count, crate=crate, slot=slot, chan=chan, threshold=self.threshold[i])
+                yield moment
             self.metrics_updated[cix] = False
 
 
@@ -1348,13 +1369,15 @@ class RawAcqReceiver(object):
             for ix in cix:
                 crate, slot, chan = self.unpack_stream_id(self.stream_id[ix])
                 metrics.add('raw_acq_fft_rms', value=np.sqrt(np.mean(self.fft_rms_current[ix, 1:])), crate=crate, slot=slot, chan=chan)
+                metrics.add('raw_acq_fft_packet_length_error', value=self.metrics_fft_packet_length_error[ix], crate=crate, slot=slot, chan=chan)
+                yield moment
             self.fft_metrics_updated[cix] = False
 
 
             for ix in range(self.NCHAN):
                 crate, slot, chan = self.unpack_stream_id(self.stream_id[ix])
                 metrics.add('raw_acq_adc_averaged_rms', value=self.adc_rms[ix], crate=crate, slot=slot, chan=chan)
-
+                yield moment
 
             metrics.add('raw_acq_run_time', value=0 if self.start_time is None else time.time() - self.start_time)
 
@@ -1368,6 +1391,10 @@ class RawAcqReceiver(object):
             for (src_ip, src_port), count in self.ping_error_count.items():
                 metrics.add('raw_acq_ping_errors', value=count, src_ip=src_ip, src_port=src_port)
             self.ping_error_count = {}
+
+            # Port numbers
+            for i, port in self.ports:
+                metrics.add('raw_acq_port_number', value=port, index=i)
 
         coroutine_return(metrics)
 
@@ -1523,10 +1550,12 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
         t0 = time.time()
         self.log.info('%.32r: Received monitoring metrics request' % self)
         metrics = yield self.receiver.get_metrics()
+        t1 = time.time()
         handler.set_header('Content-Type', 'text/plain')
         handler.set_header('Content-Encoding', 'gzip')
         handler.write(metrics.get_gzip())
-        self.log.info('%.32r: Returning raw_acq %i metrics. The request took %.3f seconds' % (self, len(metrics), time.time()-t0))
+        te = time.time()
+        self.log.info('%.32r: Returning raw_acq %i metrics. The request took %.3f seconds (%.3fs to format metrics, %.3fs to encode them)' % (self, len(metrics), t3 - t0, t1 - t2, t3 - t2))
 
 
 ################################################

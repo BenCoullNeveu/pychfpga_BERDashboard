@@ -187,6 +187,7 @@ class GainCalc(object):
         # return self.temp_gains[ix]
         # print 'CG: Gain Iteration', self.iteration_number[ix]
         # print 'CG: RMS is ', np.median(rms[ix, 1:], axis=-1)
+        print 'CG: Received RMS data from %i channels. Processing %i of those.' % (rms.size, bix.size)
         print 'CG: Actual/target RMS ratio is ', np.median(rms[ix, 1:] / self.target_rms, axis=-1)
         # Compute new gain base don the ratio of the acrual rms vs target rms
         # We want to slowly ease into that gain to avoid being affected too much by transients, so just take 20% of thhat target and 80% of the old gain
@@ -195,8 +196,8 @@ class GainCalc(object):
         # self.temp_gains[ix][...] = 0.2 * target_gains + 0.8 * self.temp_gains[ix]
         a = 0.2
         gmax = 4.0
-        print('temp gains.shape=', self.temp_gains.shape)
-        print('rms.shape=', rms.shape)
+        print('temp gains.shape=', self.temp_gains[bix].shape)
+        print('rms.shape=', rms[ix].shape)
         # self.temp_gains[ix] *= (1-a) + a*(np.clip(self.target_rms / rms[ix], 1/gmax/a, gmax/a))  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
         self.temp_gains[bix] *= np.clip((1-a) + a*self.target_rms / rms[ix], 1/gmax, gmax)  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
         # print 'CG: new_gain is ', self.temp_gains[ix]
