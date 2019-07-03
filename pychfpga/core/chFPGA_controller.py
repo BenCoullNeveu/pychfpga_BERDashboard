@@ -1255,6 +1255,9 @@ class chFPGA_controller(IceBoardExtHandler):
 #        if clear_buffer:
 #            self.flush_frame_buffer()
 
+        # Do not limit the transfer rate
+        self.GPIO.HOST_FRAME_READ_RATE = 5
+
         # Stop data capture on *ALL* channels
         for ant in self.get_channelizers():
             ant.PROBER.RESET = 1
@@ -2261,7 +2264,7 @@ class chFPGA_controller(IceBoardExtHandler):
             gain_list.append([ch.ant_number, [glin, glog]])
         return gain_list
 
-   def get_gain_timestamps(self, bank=0):
+    def get_gain_timestamps(self, bank=0):
         """
         Returns the timestamp at which the gains for each channel was set.
 

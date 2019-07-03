@@ -534,9 +534,9 @@ class ChimeMaster(object):
             yield self.fpgas.set_gains.async(gains=gc.get_gains(), bank=bank, when='now')
             # start the integration of FFT data for specified channels
             # We will iterate until all channels have a solution, or until we have reached an iteration limit
-            i = 0
+            iteration = 0
             while True:
-                print('**** Gain iteration %i' % i)
+                print('**** Gain iteration %i' % iteration)
                 yield server.start_fft_rms(
                     stream_ids=stream_ids,
                     target_gain_bank=bank,
@@ -548,30 +548,36 @@ class ChimeMaster(object):
                         break
                     yield sleep(.3)
                 print('Got FFT RMS values for Channel ID: Stream ID%s' %
-                    ', '.join('%s:%i' % (channel_ids[j], stream_ids[j]) for j in ix))
-                new_gains = gc.update_gains(sids, np.array(rms))
+                    ', '.join('%s:%i' % (channel_ids[sid_index_map[sid]], sid) for sid in sids if sid in sid_index_map))
+                new_gains = gc.update_gains(np.array(sids), np.array(rms))
                 bank ^= 1 # switch bank
                 yield self.fpgas.set_gains.async(gains=new_gains, bank=bank, when='now')
 
                 # generate some metrics
                 for j, sid in enumerate(sids):
-                    bix = sid_index_map[sid] # get buffer index for incoming sid
+                    if sid not in sid_index_map:
+                        continue
+                    bix = sid_index_map[sid]
                     cid = channel_ids[bix]
                     self.gain_calc_metrics.add('fpga_gain_calc_rms',
                         stream_id=sid, channel_id=cid,
                         value=np.mean(np.array(rms)[j, 1:]))
                     self.gain_calc_metrics.add('fpga_gain_calc_iteration',
-                        value=i)
+                        value=iteration)
                     self.gain_calc_metrics.add('fpga_gain_calc_channel_iteration',
                         stream_id=sid, channel_id=cid,
                         value=gc.iteration_number[bix])
-                if gc.is_done() or (i > 2* number_of_gain_update_iterations):
+                    self.gain_calc_metrics.add('fpga_gain_calc_percent_complete',
+                        stream_id=sid, channel_id=cid,
+                        value=gc.percent_done())
+                if gc.is_done() or (iteration > 2 * number_of_gain_update_iterations):
                     break
+                iteration += 1
 
             filtered_gains, mask = gc.get_filtered_gains()
             yield self.fpgas.set_gains.async(gains=filtered_gains, bank=0, when='now')
 
-        self.log.info('%r: Finished computing gains. %f of the gains calculations completed successfully' % (self, gc.percent_done()))
+            self.log.info('%r: Finished computing gains. %f %% of the gains calculations completed successfully' % (self, len(filtered_gains)))
 
         # Perform the gain iterations in parallel on all raw acq servers
         yield [iterate_gains(raw_acq_server, server_channel_ids[raw_acq_server_name], server_stream_ids[raw_acq_server_name])
@@ -1330,9 +1336,9 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             self.log.warning("%r: FPGA array is not ready to accept command" % (self))
             coroutine_return(message="FPGA not ready", board_ids=[])
 
-        results = yield self.chime_master.compute_gains(**params)
+        future = self.chime_master.compute_gains(**params)
 
-        coroutine_return(message='Gains updated', results=results)
+        coroutine_return(message='Gains update in progress')
 
 
     # @coroutine

@@ -166,22 +166,28 @@ class GainCalc(object):
         # get the buffer index of the provided ids
         t1 = time.time()
 
+
+        # Find the input index of valid stream_ids
+        ix = np.array([i for i, sid in enumerate(stream_ids) if sid in self.stream_id_map])
+
         # find the buffer index of the channels with the specified stream IDs
-        ix = np.array([self.stream_id_map[sid] for sid in stream_ids if sid in self.stream_id_map])
+        bix = np.array([self.stream_id_map[sid] for sid in stream_ids[ix]])
 
         # remove channels that are already completed
-        ix = ix[self.done[ix]]
+        ix_done = self.done[bix]==False
 
+        ix = ix[ix_done]
+        bix = bix[ix_done]
 
         # Scale the current gain to the value that would get us the target RMS
         # new_gain = ideal_rms / (data / current_gain)
 
         # Compute current linear gain from glin/glog
-        self.temp_gains[ix] = self.glin[ix] * (2.**self.glog[ix, None])  # 2 has to be a float, otherwise it returns the ** result as int8
+        self.temp_gains[bix] = self.glin[bix] * (2.**self.glog[bix, None])  # 2 has to be a float, otherwise it returns the ** result as int8
         # return self.temp_gains[ix]
         # print 'CG: Gain Iteration', self.iteration_number[ix]
         # print 'CG: RMS is ', np.median(rms[ix, 1:], axis=-1)
-        print 'CG: Actual/target RMS ratio is ', np.median(rms[:, 1:] / self.target_rms, axis=-1)
+        print 'CG: Actual/target RMS ratio is ', np.median(rms[ix, 1:] / self.target_rms, axis=-1)
         # Compute new gain base don the ratio of the acrual rms vs target rms
         # We want to slowly ease into that gain to avoid being affected too much by transients, so just take 20% of thhat target and 80% of the old gain
         # self.temp_gains[ix][...] = (20.0 * target_gains + 80.0 * self.temp_gains[ix]) / 100.0
@@ -189,13 +195,15 @@ class GainCalc(object):
         # self.temp_gains[ix][...] = 0.2 * target_gains + 0.8 * self.temp_gains[ix]
         a = 0.2
         gmax = 4.0
+        print('temp gains.shape=', self.temp_gains.shape)
+        print('rms.shape=', rms.shape)
         # self.temp_gains[ix] *= (1-a) + a*(np.clip(self.target_rms / rms[ix], 1/gmax/a, gmax/a))  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
-        self.temp_gains[ix] *= np.clip((1-a) + a*self.target_rms / rms, 1/gmax, gmax)  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
+        self.temp_gains[bix] *= np.clip((1-a) + a*self.target_rms / rms[ix], 1/gmax, gmax)  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
         # print 'CG: new_gain is ', self.temp_gains[ix]
 
         # Convert linear gain into (glin, glog) values
-        self.glin[ix], self.glog[ix] = self.calc_gains(self.temp_gains[ix])  # glin.shape=(16,1024), glog.shape=(16)
-        self.iteration_number[ix] += 1
+        self.glin[bix], self.glog[bix] = self.calc_gains(self.temp_gains[bix])  # glin.shape=(16,1024), glog.shape=(16)
+        self.iteration_number[bix] += 1
 
 
         # #####################################
@@ -203,15 +211,15 @@ class GainCalc(object):
         # #####################################
         # Identifies which channels reached the target RMS, and return the corresponding gains
         # Here, we just stop when we reached a fixed iteration number
-        ix_done = ix[self.iteration_number[ix] == self.n_target_iterations]
-        self.done[ix_done] = True
+        bix_done = bix[self.iteration_number[bix] == self.n_target_iterations]
+        self.done[bix_done] = True
         # print 'Done indices:', ix_done
         # print self.iteration_number[ix]
         # print 'Gain is glin=%i, glog=%i, g=%f' % (self.glin[ix[0]][0], self.glog[ix[0]], self.glin[ix[0]][0] * 2**self.glog[ix[0]])
         t2 = time.time()
-        print 'Gain updating time: %.3f ms for %i channels' % (((t2 - t1) * 1000, ix.size))
+        print 'Gain updating time: %.3f ms for %i channels' % (((t2 - t1) * 1000, bix.size))
 
-        return self.get_gains(ix)
+        return self.get_gains(bix)
 
     def is_done(self):
         return all(self.done)
