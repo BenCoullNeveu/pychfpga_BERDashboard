@@ -876,7 +876,7 @@ class ChimeMaster(object):
         yield self.compute_gains(**conf.fpga.compute_gains)
 
         # Set-up initial gains in gain bank #0
-        if 0 and conf.fpga.load_initial_gains and self.gain_hdf5:
+        if conf.fpga.load_initial_gains and self.gain_hdf5:
             self.log.info("Loading initial SCALER gains in bank #0")
             gains, gain_timestamps = self.gain_hdf5.read_gain()
             gains = {self._serial_number_to_chan_id(key): val for key, val in gains.items()}
@@ -1121,7 +1121,7 @@ class ChimeMaster(object):
     def initialize_gain_hdf5(self):
 
         # Create frequency axis
-        freq = self.SAMPLING_FREQ - np.fft.fftfreq(self.SAMPLES_PER_FRAME, 1.0 / self.SAMPLING_FREQUENCY)
+        freq = self.SAMPLING_FREQUENCY - np.fft.fftfreq(self.SAMPLES_PER_FRAME, 1.0 / self.SAMPLING_FREQUENCY)
         freq = 1e-6 * freq[0:self.SAMPLES_PER_FRAME//2]
         freq = np.array(zip(freq, [np.median(np.abs(np.diff(freq)))] * freq.size),
                         dtype=[('centre', '<f8'), ('width', '<f8')])
@@ -1132,7 +1132,8 @@ class ChimeMaster(object):
 
         # Initialize writer
         self.gain_hdf5 = digital_gain.DigitalGainArchive(freq=freq, input=inputs,
-                                                         **self.config.fpga.digital_gain_writer)
+                                                         instrument_name=self.config.corr_name,
+                                                         **self.config.fpga.gain_hdf5)
 
     def _chan_id_to_serial_number(self, chan_id):
 
