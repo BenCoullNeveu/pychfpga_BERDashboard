@@ -170,14 +170,14 @@ class chFPGA_controller(IceBoardExtHandler):
     }
 
     def __init__(self,
-        parent_getter=None,
-        hostname=None,
-        serial=None,
-        part_number=None,
-        crate=None,
-        slot=None,
-        mezzanine={},
-        tuber_objname='IceBoard'):
+                 parent_getter=None,
+                 hostname=None,
+                 serial=None,
+                 part_number=None,
+                 crate=None,
+                 slot=None,
+                 mezzanine={},
+                 tuber_objname='IceBoard'):
         """
         Creates an empty IceBoard/chFPGA handler object, but do not interact with the board yet.
 
@@ -215,7 +215,10 @@ class chFPGA_controller(IceBoardExtHandler):
             crate=crate,
             slot=slot,
             mezzanine=mezzanine,
-            tuber_objname=tuber_objname)
+            tuber_objname=tuber_objname,
+            local_port_number=None # 0: always select randomly,  `None`:use crate/slot if available else randomly
+
+            )
 
         # Initialize basic instance attributes, but don;t do anything that involve talking to the IceBoard.
 
@@ -1064,7 +1067,26 @@ class chFPGA_controller(IceBoardExtHandler):
 
 
     def set_ant_reset(self, state):
+        """ Sets the state of the reset line of ALL channelizer.
+
+        Parameters:
+
+            state (bool): A true value will put the channelizers in reset, and data will stop flowing from them.
+
+        Note:
+            A channelizer reset is automatically done during a SYNC.
+
+        """
+
         self.GPIO.ANT_RESET = state
+
+    def get_ant_reset(self):
+        """ Get the status of the channelizer reset line.
+
+        Return:
+            (bool): state of the reset line.
+        """
+        return self.GPIO.ANT_RESET
 
     def set_corr_reset(self, state):
         self.GPIO.CORR_RESET = state
@@ -1250,10 +1272,13 @@ class chFPGA_controller(IceBoardExtHandler):
                 '    1 crate: %.3f Mbits/s' % (16 * 16 * frames_per_second * packet_size_in_bits / 1e6)
                 )
 
+
+        # stop data from going into the PROBER and MASTER to minimize the risk
+        # of malformed packets and unstable communications
+        reset_state = self.get_ant_reset()
+
         self.set_trig(0) # disable data transmission if continuous mode is currentlly selected
-#        self.set_ant_reset(1) # resets all
-#        if clear_buffer:
-#            self.flush_frame_buffer()
+        self.set_ant_reset(1) # no nonger supported by firmware
 
         # Do not limit the transfer rate
         self.GPIO.HOST_FRAME_READ_RATE = 5
@@ -1275,7 +1300,7 @@ class chFPGA_controller(IceBoardExtHandler):
             ant.PROBER.RESET = 0
 
         self.set_trig(1)  # **no nonger supported by firmware *** enables data transmission if continuous mode is selected
-#       self.set_ant_reset(0) # disable reset all
+        self.set_ant_reset(reset_state)
 
     def set_data_capture(self, channels=None, sub_period=23, source='adc'):
         """ Set the dynamic data capture parameters that can be changed on the
