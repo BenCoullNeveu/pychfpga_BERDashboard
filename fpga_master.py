@@ -440,7 +440,6 @@ class ChimeMaster(object):
     def compute_gains(self,
                      targets=None,
                      capture_rate = 23,
-                     gain_folder=None,
                      save_gains=False,
                      enable=True,
                      noise_injection=None,
@@ -461,9 +460,6 @@ class ChimeMaster(object):
                 set by `Nframes=2**(capture_rate+1)`. Independently of this,
                 the rate cannot be slower than the promary capture rate set at
                 FPGA initialization.
-
-            gain_folder (str): folder in which gains are to be saved. If
-                `None`, the folder defined in the configurtion is used..
 
             enable (bool): if False, nothing is done.
 
@@ -1126,17 +1122,20 @@ class ChimeMaster(object):
         freq = np.array(zip(freq, [np.median(np.abs(np.diff(freq)))] * freq.size),
                         dtype=[('centre', '<f8'), ('width', '<f8')])
 
+        # Create input axis
         if self.config.input_reorder:
-            # Create input axis
             inputs = np.array([(chan_id, input_sn) for reorder, chan_id, input_sn in self.config.input_reorder],
                               dtype=[('chan_id', 'u2'), ('correlator_input', 'S32')])
         else:
-            inputs = np.array([(stream_id, self._chan_id_to_serial_number(chan_id)) for  chan_id, stream_id in self.fpgas.get_stream_id_map().items()],
+            inputs = np.array([(stream_id, self._chan_id_to_serial_number(chan_id))
+                               for chan_id, stream_id in sorted(self.fpgas.get_stream_id_map().items(), key=lambda x:x[1])],
                               dtype=[('chan_id', 'u2'), ('correlator_input', 'S32')])
+
         # Initialize writer
-                                                         instrument_name=self.config.corr_name,
-                                                         **self.config.fpga.gain_hdf5)
-        self.gain_hdf5 = digital_gain.DigitalGainArchive(freq=freq, input=inputs,
+        self.gain_hdf5 = DigitalGainArchive(freq=freq, input=inputs,
+                                            instrument_name=self.config.corr_name,
+                                            attrs={'git_version_tag': self.GIT_VERSION},
+                                            **self.config.fpga.gain_hdf5)
 
     def _chan_id_to_serial_number(self, chan_id):
 
@@ -1157,6 +1156,7 @@ class ChimeMaster(object):
         slot = int(mo.group(2))
         inp = int(mo.group(3))
         chan = self.config.input_number_map.index(inp)
+
         return (crate, slot, chan)
 
 
@@ -1366,18 +1366,14 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
         Parameters:
 
-            chan_ids (list of tuple/dict): List of tuples describing the
+            targets (list of tuple/dict): List of tuples describing the
                 (crate, slot, channels) for which gains shall be recomputed.
                 Missing tuple elements, "*" and None are considered to be a
                 wildcard.
 
-        Returns:
-
-            List of board IDs that were actually reset.
-
         Example::
 
-            curl  -H "Content-Type: application/json" -X POST http://localhost:54321/compute-gains -d '{"chan_ids": [[0, 0, "*"]]}'
+            curl  -H "Content-Type: application/json" -X POST http://localhost:54321/compute-gains -d '{"targets": [[0, 0, "*"]]}'
         """
         if not (self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas):
             self.log.warning("%r: FPGA array is not ready to accept command" % (self))
