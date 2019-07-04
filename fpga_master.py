@@ -1143,7 +1143,7 @@ class ChimeMaster(object):
         args_sn = {'corr_sn': self.config.corr_sn,
                    'crate': crate if not isinstance(crate, basestring) else 0,
                    'slot': slot + 1 if not isinstance(slot, basestring) else 1,
-                   'slot_zero_based': slot if not isinstance(crate, basestring) else 0,
+                   'slot_zero_based': slot if not isinstance(slot, basestring) else 0,
                    'chan': chan,
                    'input': self.config.input_number_map[chan]}
 

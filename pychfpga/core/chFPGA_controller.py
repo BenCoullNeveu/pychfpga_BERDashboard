@@ -2285,7 +2285,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
         Returns:
 
-            list of (chhannel_number, timestamp), one for each channel. Elements are None if the gains was not set for that channel.
+            list of (channel_number, timestamp), one for each channel. Elements are None if the gains was not set for that channel.
         """
         return [(ch.ant_number, ch.SCALER.get_gains_timestamp(bank=bank)) for ch in self.get_channelizers()]
 
