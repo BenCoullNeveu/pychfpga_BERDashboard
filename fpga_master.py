@@ -449,7 +449,6 @@ class ChimeMaster(object):
                      number_of_fft_averages=100,
                      number_of_gain_update_iterations=20):
         """
-
         Parameters:
 
             targets: list of tuples (or dict) describing the (crate, board,
@@ -603,6 +602,33 @@ class ChimeMaster(object):
 
         # self.log.info('%r: Server %s chan IDa & stream IDa are: %s' % (self, server_name,  ','.join(str(s) for s in zip(channel_ids, stream_ids))))
 
+    @coroutine
+    def serial_compute_gains(self, **params):
+        """
+        Wrapper for `compute_gains` that computes the gains for the target channels in serial.
+
+        Parameters:
+
+            targets: list of tuples (or dict) describing the (crate, board,
+                channel) (or {crate:c, board:b, channel:ch}) whose gains needs
+                to be recomputed. Missing elements, `None` or `"*"` are treated
+                as a wildcard.  List will be iterated over and the channels matching
+                each element of the list will have their gains computed in parallel.
+                If not provided, then will default to  a list of the crates.
+
+            ** accepts all other parameters for `compute_gains` **
+
+        """
+
+        targets = params.pop('targets', None)
+        # If no targets were provided then we default to computing gains for one crate at a time
+        if targets is None:
+            targets = [[icecrate.crate_number, "*", "*"] for icecrate in self.fpgas.ic]
+
+        # Loop over targets
+        for group in targets:
+            self.log.info("%r: Computing gains for target: %s" % (self, group))
+            yield self.compute_gains(targets=[group], **params)
 
     @coroutine
     def start_hdf5_capture(self, capture_folder=None, capture_filename=None, capture_rate=None,
@@ -1365,7 +1391,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('compute-gains')
     def compute_gains(self, handler, **params):
-        """ REST endpoint to reset the GPU links on specified boards
+        """ REST endpoint to compute gains for desired channels.
 
         Parameters:
 
@@ -1374,18 +1400,55 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
                 Missing tuple elements, "*" and None are considered to be a
                 wildcard.
 
+            ** accepts all other parameters for `ChimeMaster.compute_gains` **
+
         Example::
 
             curl  -H "Content-Type: application/json" -X POST http://localhost:54321/compute-gains -d '{"targets": [[0, 0, "*"]]}'
         """
         if not (self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas):
             self.log.warning("%r: FPGA array is not ready to accept command" % (self))
-            coroutine_return(message="FPGA not ready", board_ids=[])
+            coroutine_return(message="FPGA not ready")
 
         future = self.chime_master.compute_gains(**params)
 
         coroutine_return(message='Gains update in progress')
 
+    @coroutine
+    @endpoint('serial-compute-gains')
+    def serial_compute_gains(self, handler, **params):
+        """ REST endpoint to compute gains for desired channels in serial.
+
+        Parameters:
+
+            targets: list of tuples (or dict) describing the (crate, board,
+                channel) (or {crate:c, board:b, channel:ch}) whose gains needs
+                to be recomputed. Missing elements, `None` or `"*"` are treated
+                as a wildcard.  List will be iterated over and the channels matching
+                each element of the list will have their gains computed in parallel.
+                If not provided, then will default to  a list of the crates.
+
+            ** accepts all other parameters for `ChimeMaster.compute_gains` **
+
+        Example::
+
+            # Compute gains for crate 0 and then crate 1
+            curl  -H "Content-Type: application/json" -X POST http://localhost:54321/serial-compute-gains -d '{"targets": [[0, "*", "*"], [1, "*", "*]]}'
+        """
+        if not (self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas):
+            self.log.warning("%r: FPGA array is not ready to accept command" % (self))
+            coroutine_return(message="FPGA not ready")
+
+        # Set any `compute_gain` keyword arguments not provided in the endpoint call
+        # to the value in the config file
+        for key, val in self.chime_master.config.fpga.compute_gains.items():
+            if (key not in params) and (key != 'targets'):
+                params[key] = val
+
+        # Compute gains
+        future = self.chime_master.serial_compute_gains(**params)
+
+        coroutine_return(message='Serial gain update in progress')
 
     # @coroutine
     # @endpoint('kotekan-start')
