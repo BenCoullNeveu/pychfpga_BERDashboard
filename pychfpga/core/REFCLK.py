@@ -105,7 +105,7 @@ class REFCLK_base(Module_base):
         self.pulse_bit('REMOTE_SYNC')
         self.wait_for_bit('SYNC_DONE')
 
-    def local_sync(self, delay=None):
+    def local_sync(self, delay=None, max_trials=3):
         """
         Locally generates a SYNC pulse on the current board's ADCs and reset the data acquisition logic.
         This is the same as receiving a SYNC signal encoded on the 10 MHz reference clock.
@@ -115,9 +115,18 @@ class REFCLK_base(Module_base):
         """
         self.set_sync_delays(delay)
         # self.pulse_bit('LOCAL_SYNC') # Force the REFCLK state machine to initiate a SYNC event
-        self.LOCAL_SYNC = 1
-        self.LOCAL_SYNC = 0
-        self.wait_for_bit('SYNC_DONE') # Wait until the SYNC process is completed
+
+        trial = 0
+        while True:
+            self.LOCAL_SYNC = 1
+            self.LOCAL_SYNC = 0
+            if self.wait_for_bit('SYNC_DONE', no_error=True): # Wait until the SYNC process is completed
+                return
+            trial += 1
+            if trial >= max_trials:
+                raise RuntimeError('Local SYNC failed after %i trials' % trial)
+            else:
+                self.logger.warning('%r: Local SYNC failed on trial %i/%i. Retrying...' % (self, trial, max_trials))
 
     def set_sync_delays(self, delay):
         """
