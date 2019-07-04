@@ -224,7 +224,8 @@ class RawAcqReceiver(object):
 
 
     @coroutine
-    def start(self, name='RawAcq', ports=[], jump_thresholds=[], stream_ids=[], start_thread=True):
+    def start(self, name='RawAcq', ports=[], jump_thresholds=[], stream_ids=[], start_thread=True,
+              metrics_refresh_time=1, hdf5_refresh_time=30, adc_rms_refresh_count=60):
         """ Start a raw data receiver for each specified port.
 
         For each port we monitor, create a data queue and start a
@@ -279,6 +280,11 @@ class RawAcqReceiver(object):
 
             jump_thresholds (list of int): Theshold values
 
+            metrics_refresh_time (float): cadence in seconds at which metrics are updated
+
+            hdf5_refresh_time (float): cadence in seconds at which raw data is written to the hdf5 file
+
+            adc_rms_refresh_count (float): number of frames to average for the rms cache
 
         Returns:
             A dict with the following keys:
@@ -416,7 +422,7 @@ class RawAcqReceiver(object):
 
         # ADC Metrics
 
-        self.metrics_refresh_time = 1
+        self.metrics_refresh_time = metrics_refresh_time
         self.metrics_last_time = np.zeros(self.NCHAN, dtype=np.float64)
         self.metrics_raw_data = np.zeros((self.BUF_SIZE, self.DATA_SIZE), dtype=np.int8) # need to store repeated channels
         self.metrics_updated = np.zeros(self.NCHAN, dtype=np.int8)
@@ -435,12 +441,12 @@ class RawAcqReceiver(object):
 
 
         # ADC HDF5 file writer parameters
-        self.hdf5_refresh_time = 30
+        self.hdf5_refresh_time = hdf5_refresh_time
         self.hdf5_last_time = np.zeros(self.NCHAN, dtype=np.float64)
         self.hdf5_block_writes = 0
 
         # ADC averaged RMS processing
-        self.adc_rms_refresh_count = 60 # Number of frames to average
+        self.adc_rms_refresh_count = adc_rms_refresh_count # Number of frames to average
         self.adc_rms = np.zeros(self.NCHAN, dtype=np.float32) # final averaged values
         self.adc_rms_buffer = np.zeros(self.NCHAN, dtype=np.float32) # used to accumulate square values
         self.adc_rms_mean_buffer = np.zeros(self.NCHAN, dtype=np.int32) # used to accumulate square values

@@ -362,7 +362,10 @@ class ChimeMaster(object):
                 ports=recv_ports[server_name],
                 stream_ids=self.raw_acq_stream_ids[server_name],
                 comet_broker=conf.common_config.comet_broker.as_dict(),
-                jump_thresholds=conf.common_config.jump_thresholds)
+                jump_thresholds=conf.common_config.jump_thresholds,
+                metrics_refresh_time=conf.common_config.metrics_refresh_time,
+                hdf5_refresh_time=conf.common_config.hdf5_refresh_time,
+                adc_rms_refresh_count=conf.common_config.adc_rms_refresh_count)
             for server_name, raw_acq_server in self.raw_acq.items()}
 
         # Configure the FPGA transmit addresses based on what the receiver returned
