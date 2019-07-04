@@ -972,7 +972,6 @@ class RawAcqReceiver(object):
             self.adc_rms[cix] = np.sqrt(self.adc_rms_buffer[cix] / self.adc_rms_frame_count[cix])
             self.adc_rms_frame_count[cix] = 0
             self.adc_rms_buffer[cix] = 0
-            print ('adc rms completed channels ', cix)
 
         #########################################
         # Update averaged RMS values

@@ -1716,9 +1716,9 @@ class FPGAArray(object):
                 raise RuntimeError('%r: Invalid Board serial number %s. Valid serial numbers are %s' %
                     (self, board, ','.join("'%s'" % ib.serial for ib in self.ib)))
         elif isinstance(board, (tuple, list)) and len(board) == 2:
-            matches = [ib for ib in self.ib if board == ib.get_id()]
+            matches = [ib for ib in self.ib if tuple(board) == ib.get_id()]
             if not matches:
-                raise RuntimeError('board ID %r did not match any board in the array' % board)
+                raise RuntimeError('board ID %r did not match any board in the array: %s' % (board, [ib.get_id() for ib in self.ib]))
             elif len(matches) > 1:
                 raise RuntimeError('board ID %r Matched multiple boards: %s' % ','.join(ib.get_string_id() for ib in matches))
             else:
