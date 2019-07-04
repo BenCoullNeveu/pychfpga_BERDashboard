@@ -146,6 +146,7 @@ class FPGAArray(object):
                  open=None,
                  if_ip=None,
                  udp_retries=3,
+                 fpga_ip_addr_fn='(a,b,3,d)',
 
                  # sampling_frequency=800e6,
                  # reference_frequency=10e6,
@@ -325,6 +326,7 @@ class FPGAArray(object):
              prog=prog,
              open=open,
              if_ip=if_ip,
+             fpga_ip_addr_fn=fpga_ip_addr_fn,
              sync_method=sync_method,
              sync_source=sync_source,
              sync_master=sync_master,
@@ -367,6 +369,13 @@ class FPGAArray(object):
     def run(self):
        yield self._init()
 
+
+    # Map the string to the function that computes the FPGA IP address from the ARM IP address
+    FPGA_IP_ADDR_FN_TABLE = {
+        '(a,b,3,d)': lambda a,b,c,d:(a, b, 3, d),
+        '(a,b,c+1,d)': lambda a,b,c,d:(a, b, c + 1, d),
+        }
+
     @async
     def init(self,
 
@@ -383,7 +392,7 @@ class FPGAArray(object):
              prog=None,
              open=None,
              if_ip=None,
-
+             fpga_ip_addr_fn='(a,b,3,d)',
 
              sync_method=None,
              sync_source=None,
@@ -490,6 +499,9 @@ class FPGAArray(object):
         self.logger.info('%r: ------------------------' % self)
 
         __main__._host_interface_ip_addr = if_ip
+
+        self.fpga_ip_addr_fn = self.FPGA_IP_ADDR_FN_TABLE[fpga_ip_addr_fn];
+
 
         # Fix up a few parameters for convenience
 
@@ -877,6 +889,8 @@ class FPGAArray(object):
             if if_ip:
                 self.ib.interface_ip_addr = if_ip
 
+            # Tell the boards how to compute their FPGA IP address
+            ib.fpga_ip_addr_fn = self.fpga_ip_addr_fn
 
             ########################
             # Initialize core FPGA firmware (establish FPGA UDP communications)
