@@ -902,12 +902,14 @@ class ChimeMaster(object):
 
         # Set-up initial gains in gain bank #0
         if conf.fpga.load_initial_gains and self.gain_hdf5:
-            self.log.info("Loading initial SCALER gains in bank #0")
-            gains, gain_timestamps = self.gain_hdf5.read_gain()
+            update_id = self.gain_hdf5.last_update
+            self.log.info("%r:  Reader scaler gains from archive (update_id = %s)" % (self, update_id))
+            gains, gain_timestamps = self.gain_hdf5.read_gain(update_id=update_id)
             gains = {self._serial_number_to_chan_id(key): val for key, val in gains.items()}
             gain_timestamps = {self._serial_number_to_chan_id(key): val for key, val in gain_timestamps.items()}
 
             # Upload to bank 0 and immediately activate gain bank
+            self.log.info("Loading scaler gains in bank #0")
             yield ca.set_gains.async(gains, bank=0, when='now', gain_timestamps=gain_timestamps)
 
         self.log.info("Waiting for 2 seconds")

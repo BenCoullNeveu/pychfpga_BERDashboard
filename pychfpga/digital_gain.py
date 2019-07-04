@@ -241,14 +241,14 @@ class DigitalGainArchive(Hdf5Archive):
             self.buffer['gain_exp'][chan_id] = gexp
             self.buffer['compute_time'][chan_id] = gain_timestamp
 
-    def read_gain(self, idd=None):
+    def read_gain(self, update_id=None):
         """Read gains from the archive of files.
 
         Parameters
         ----------
-        idd : str or float
+        update_id : str or float
             This can be either a unique update_id or a unix timestamp.  If unix timestamp
-            then the most recent update occuring after that timestamp will be returned.
+            then the most recent update occuring before that timestamp will be returned.
             Defaults to the last update_id.
 
         Returns
@@ -259,12 +259,12 @@ class DigitalGainArchive(Hdf5Archive):
             Dictionary of format {'input_serial_number': gain_timestamp, ...}
         """
 
-        if idd is None:
-            idd = self.last_update
+        if update_id is None:
+            update_id = self.last_update
 
-        gain_coeff = self.read(idd, 'gain_coeff')
-        gain_exp = self.read(idd, 'gain_exp')
-        gain_timestamp = self.read(idd, 'compute_time')
+        gain_coeff = self.read(update_id, 'gain_coeff')
+        gain_exp = self.read(update_id, 'gain_exp')
+        gain_timestamp = self.read(update_id, 'compute_time')
 
         gain, compute_time = {}, {}
         for ii, inp in enumerate(self.axes['input']['correlator_input']):
