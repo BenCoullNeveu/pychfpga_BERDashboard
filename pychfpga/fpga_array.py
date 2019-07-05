@@ -1564,7 +1564,7 @@ class FPGAArray(object):
         else:
             raise ValueError("Unknown syncing method '%s'" % method)
 
-    def sync(self, delay=2-0.006556800, check=True, align_to_seconds=True):
+    def sync(self, delay=2-0.006556800, check=True, align_to_seconds=True, max_trials=3):
         """ Generate a SYNC event across the whole array based on the syncing method set by ``set_sync_method()``.
 
         Parameters:
@@ -1584,77 +1584,84 @@ class FPGAArray(object):
         align_to_seconds (bool): if True, the trigger time **before** the
             ``delay`` is applied is rounded to the closest integer second.
         """
+        trial = 0
+        while True:
+            try:
+                if check:
+                    sync_ctr_before = self.ib.REFCLK.SYNC_CTR
 
-        if check:
-            sync_ctr_before = self.ib.REFCLK.SYNC_CTR
+                self.sync_timestamps = []
+                self.sync_timestamp = None
 
-        self.sync_timestamps = []
-        self.sync_timestamp = None
+                if self.sync_method == 'centralized_soft_trigger':
+                    self.sync_master.remote_sync()
+                elif self.sync_method == 'centralized_time_trigger':
+                    dt = self.sync_master.get_irigb_time()
+                    print 'Triggering SYNC at ', dt.isoformat()
+                    self.sync_master.set_irigb_trigger_time(dt, delay=delay)
+                    t0 = time.time()
+                    while self.sync_master.is_irigb_before_trigger_time():
+                        if time.time() - t0 > delay+1:
+                            raise RuntimeError('Timout while waiting for the IRIG-B-based SYNC to complete')
+                elif self.sync_method == 'distributed_time':
+                    # Estimate how much time it takes to set the trigger time
+                    dt = self.ib[0].get_irigb_time()
+                    t0 = time.time()
+                    self.ib.set_irigb_trigger_time(dt, delay=300) # set the trigger far enough in time it should not happen before we reprogram another delay
+                    setting_time = (time.time() - t0)
+                    self.logger.info('%r: It takes %f seconds to set the trigger time across the array' % (self, setting_time))
+                    setting_time = round(2*setting_time) + delay
+                    # Now set the trigger time using that delay
+                    dt = self.ib[0].get_irigb_time()
+                    if align_to_seconds:
+                        self.logger.info('%r: Rounding trigger time to the second' % self)
+                        dt = dt.replace(microsecond=0)
+                    self.logger.info('%r: Triggering SYNC %f seconds after %s' % (self, setting_time,  dt.isoformat()))
+                    self.print_flush()
+                    t0 = time.time()
+                    self.sync_start_time = sync_time = self.ib.set_irigb_trigger_time(dt, delay=setting_time)
+                    self.logger.info('%r: It took %f seconds to set the final trigger time' % (self, time.time() - t0))
+                    t0 = time.time()
+                    while any(self.ib.is_irigb_before_trigger_time()):
+                        if time.time() - t0 > setting_time + 1:
+                            raise RuntimeError('Timout while waiting for the IRIG-B-based SYNC to complete')
+                elif self.sync_method == 'local_soft_trigger':
+                    self.ib.sync()
+                else:
+                    raise ValueError("Unknown syncing method '%s'" % self.sync_method)
 
-        if self.sync_method == 'centralized_soft_trigger':
-            self.sync_master.remote_sync()
-        elif self.sync_method == 'centralized_time_trigger':
-            dt = self.sync_master.get_irigb_time()
-            print 'Triggering SYNC at ', dt.isoformat()
-            self.sync_master.set_irigb_trigger_time(dt, delay=delay)
-            t0 = time.time()
-            while self.sync_master.is_irigb_before_trigger_time():
-                if time.time() - t0 > delay+1:
-                    raise RuntimeError('Timout while waiting for the IRIG-B-based SYNC to complete')
-        elif self.sync_method == 'distributed_time':
-            # Estimate how much time it takes to set the trigger time
-            dt = self.ib[0].get_irigb_time()
-            t0 = time.time()
-            self.ib.set_irigb_trigger_time(dt, delay=300) # set the trigger far enough in time it should not happen before we reprogram another delay
-            setting_time = (time.time() - t0)
-            self.logger.info('%r: It takes %f seconds to set the trigger time across the array' % (self, setting_time))
-            setting_time = round(2*setting_time) + delay
-            # Now set the trigger time using that delay
-            dt = self.ib[0].get_irigb_time()
-            if align_to_seconds:
-                self.logger.info('%r: Rounding trigger time to the second' % self)
-                dt = dt.replace(microsecond=0)
-            self.logger.info('%r: Triggering SYNC %f seconds after %s' % (self, setting_time,  dt.isoformat()))
-            self.print_flush()
-            t0 = time.time()
-            self.sync_start_time = sync_time = self.ib.set_irigb_trigger_time(dt, delay=setting_time)
-            self.logger.info('%r: It took %f seconds to set the final trigger time' % (self, time.time() - t0))
-            t0 = time.time()
-            while any(self.ib.is_irigb_before_trigger_time()):
-                if time.time() - t0 > setting_time + 1:
-                    raise RuntimeError('Timout while waiting for the IRIG-B-based SYNC to complete')
-        elif self.sync_method == 'local_soft_trigger':
-            self.ib.sync()
-        else:
-            raise ValueError("Unknown syncing method '%s'" % self.sync_method)
+                if check:
+                    sync_ctr_after = self.ib.REFCLK.SYNC_CTR
+                    bad_ib = [ib for i,ib in enumerate(self.ib) if (sync_ctr_after[i] - sync_ctr_before[i]) & 0xf != 1]
+                    if bad_ib:
+                        raise RuntimeError('The following IceBoards did not SYNC properly: %s' % (','.join(repr(ib) for ib in bad_ib)))
 
-        if check:
-            sync_ctr_after = self.ib.REFCLK.SYNC_CTR
-            bad_ib = [ib for i,ib in enumerate(self.ib) if (sync_ctr_after[i] - sync_ctr_before[i]) & 0xf != 1]
-            if bad_ib:
-                raise RuntimeError('The following IceBoards did not SYNC properly: %s' % (','.join(repr(ib) for ib in bad_ib)))
+                if self.sync_method == 'centralized_time_trigger' or self.sync_method == 'distributed_time':
+                    self.sync_timestamps = ts = self.ib.get_irigb_time(trig=False, format='raw')
+                    self.sync_timestamp = ts[0]
 
-        if self.sync_method == 'centralized_time_trigger' or self.sync_method == 'distributed_time':
-            self.sync_timestamps = ts = self.ib.get_irigb_time(trig=False, format='raw')
-            self.sync_timestamp = ts[0]
+                    delta_ts = max(ts.nano) - min(ts.nano)
+                    self.logger.info('%r: The IRIG-B time for Frame 0 on all boards is:\n%s' %
+                        (self, '\n'.join('%r: %s (%i ns since epoch, %i ns after sync)' % (
+                            ib.handler,
+                            ts[i].isoformat(),
+                            ts[i].nano,
+                            ts[i].nano - sync_time[i].nano)
+                        for i ,ib in enumerate(self.ib))))
+                    self.logger.info('%r: The maximum Frame 0 time difference is %i ns' % (self, delta_ts) )
+                    if delta_ts > self.max_sync_time_difference:
+                        raise RuntimeError('The Frame 0 time difference of %i exceeds the maximum limit of %i' % (delta_ts, self.max_sync_time_difference))
 
-            delta_ts = max(ts.nano) - min(ts.nano)
-            self.logger.info('%r: The IRIG-B time for Frame 0 on all boards is:\n%s' %
-                (self, '\n'.join('%r: %s (%i ns since epoch, %i ns after sync)' % (
-                    ib.handler,
-                    ts[i].isoformat(),
-                    ts[i].nano,
-                    ts[i].nano - sync_time[i].nano)
-                for i ,ib in enumerate(self.ib))))
-            self.logger.info('%r: The maximum Frame 0 time difference is %i ns' % (self, delta_ts) )
-            if delta_ts > self.max_sync_time_difference:
-                raise RuntimeError('The Frame 0 time difference of %i exceeds the maximum limit of %i' % (delta_ts, self.max_sync_time_difference))
-
-        for ib in self.ib:
-            for ant in ib.ANT:
-                ant.SCALER.OVERFLOW_RESET = 1
-                ant.SCALER.OVERFLOW_RESET = 0
-
+                for ib in self.ib:
+                    for ant in ib.ANT:
+                        ant.SCALER.OVERFLOW_RESET = 1
+                        ant.SCALER.OVERFLOW_RESET = 0
+                break
+            except Exception as e:
+                trial += 1
+                if trial >= max_trials:
+                    raise RuntimeError('SYNC failed after %i trials. The last exception was:\n%r' % (trial, e))
+                self.log.warn('%r: SYNC failed on trial %i/%i due to the following error. Will retry.\n%r' % (self, trial, max_trials, e))
     @async
     def set_channelizers(self, adc_mode=None, adcdaq_mode=None,
                          data_source=None, function=None, a=1, b=0, freq_test_bins=None,
