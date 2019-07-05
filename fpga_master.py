@@ -937,9 +937,19 @@ class ChimeMaster(object):
         self.log.info("%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Last SYNC is done %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
 
 
+
         #######
         # Fom now on, we do not have to sync the array anymore
         #######
+
+
+        # Clear errors accumulated during start and initialization
+        self.log.info("Resetting FPGA statistics counters")
+        self.reset_fpga_stats()
+        self.reset_crossbar_stats()
+        self.reset_bp_shuffle_stats()
+
+
 
         # Set default initial gains. Will be overriden below
         if 'initial_gains' in conf.fpga:
@@ -950,10 +960,8 @@ class ChimeMaster(object):
         # Initialize the digital gain hdf5 writer
         self.initialize_gain_hdf5()
 
-        # Compute gains if requested
-        yield self.compute_gains(**conf.fpga.compute_gains)
 
-        # Set-up initial gains in gain bank #0
+        # Load gains from file in gain bank #0
         if conf.fpga.load_initial_gains and self.gain_hdf5:
             update_id = self.gain_hdf5.last_update
             self.log.info("%r:  Reader scaler gains from archive (update_id = %s)" % (self, update_id))
@@ -965,8 +973,12 @@ class ChimeMaster(object):
             self.log.info("Loading scaler gains in bank #0")
             yield ca.set_gains.async(gains, bank=0, when='now', gain_timestamps=gain_timestamps)
 
-        self.log.info("Waiting for 2 seconds")
-        yield sleep(2)
+        # Compute new gains if requested
+        yield self.compute_gains(**conf.fpga.compute_gains)
+
+
+        # self.log.info("Waiting for 2 seconds")
+        # yield sleep(2)
         self.log.info("finished initializing FPGAs")
 
         # Read the FPGA setting back from the FPGA
