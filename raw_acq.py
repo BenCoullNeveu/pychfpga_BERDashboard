@@ -1150,7 +1150,7 @@ class RawAcqReceiver(object):
         self.hdf5_file = None # Stop the thread from using the file before we close it
         hdf5_file.close()
         self.hdf5_start_time = None
-        self.log.info('%r: Write %i data blocks in %.3f s total (%.0f ms/write)' % (self, self.hdf5_block_writes, self.adc_hdf5_processing_time, self.adc_hdf5_processing_time * 1000. / self.hdf5_block_writes))
+        self.log.info('%r: Write %i data blocks in %.3f s total (%.0f ms/write)' % (self, self.hdf5_block_writes, self.adc_hdf5_processing_time, (self.adc_hdf5_processing_time * 1000. / self.hdf5_block_writes)) if self.hdf5_block_writes else 0)
 
 
     @coroutine
