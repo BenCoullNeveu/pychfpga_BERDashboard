@@ -482,7 +482,8 @@ class ChimeMaster(object):
                      noise_injection=None,
                      number_of_fft_averages=100,
                      number_of_gain_update_iterations=20,
-                     weight=0.2):
+                     weight=0.2,
+                     initial_gains=[ ('*', [1.0, 22])]):
         """
         Parameters:
 
@@ -517,7 +518,11 @@ class ChimeMaster(object):
             weight (float). NUmber between 0 and 1. INdicates the weigh of the
                 new data in theevolving gain solution.
 
-        Examples:
+            initial_gains (list):  list of [(target, (glin, glog)),...] describing the initial
+                gains to be used to start computing new gains.
+
+
+            Examples:
 
             chan_id = [(0,1), (1,3,4)] or [{crate:0, slot:1}, {crate:1, slot:3, channel:4}] # Select all channels of board in crate 0 slot 1, and channel 4 of crate 1 slot 3.
             chan_id = None # Selects all boards and channels in the array
@@ -563,11 +568,21 @@ class ChimeMaster(object):
                     all_stream_ids.extend(sids)
         sid_index_map = {sid:i for i,sid in enumerate(all_stream_ids)}
 
+        # load the current gains as initial gains if an initial gain table is not provided.
+        if not initial_gains:
+            initial_gains = [(cid, gains) for cid, gains in self.fpgas.get_gains(bank=0).items() if cid in all_channel_ids]
 
         @coroutine
         def iterate_gains(server, channel_ids, stream_ids):
+
+            self.log.info('%r: *** Gain calculator : Starting gain calculator iterator process' % self)
             # Greate a gain calculator engine
-            gc = calculate_gains.GainCalc(channel_ids=channel_ids, stream_ids=stream_ids, n_iterations=number_of_gain_update_iterations, weight=weight)
+            gc = calculate_gains.GainCalc(
+                channel_ids=channel_ids,
+                stream_ids=stream_ids,
+                n_iterations=number_of_gain_update_iterations,
+                weight=weight,
+                initial_gains=initial_gains)
             # Set all the initial gains on bank 0
             bank = 0
             yield self.fpgas.set_gains.async(gains=gc.get_gains(), bank=bank, when='now')
@@ -990,11 +1005,6 @@ class ChimeMaster(object):
         self.log.info("Starting HDF5 data capture")
         yield self.start_hdf5_capture()
 
-        # Clear errors accumulated during start and initialization
-        self.log.info("Resetting FPGA statistics counters")
-        self.reset_fpga_stats()
-        self.reset_crossbar_stats()
-        self.reset_bp_shuffle_stats()
 
 
         self.log.info("Finished ch_master.start()")

@@ -16,15 +16,10 @@ History:
     2014-02-21 KMB: Created from top test
 """
 # import logging
-import argparse
 import time
 import pickle
 import os
 
-# from pychfpga.core import chFPGA_controller
-#from pychfpga.core import chFPGA_receiver
-# from pychfpga.core.icecore import async, async_moment, async_sleep
-# from timestream_receiver import get_frame
 
 import numpy as np
 
@@ -37,7 +32,7 @@ class GainCalc(object):
     DONE = 'done'
     NBINS = 1024
 
-    def __init__(self, channel_ids, stream_ids,  n_iterations=18, target_rms= 1.5 * np.sqrt(2), weight=0.2):
+    def __init__(self, channel_ids, stream_ids,  n_iterations=18, target_rms= 1.5 * np.sqrt(2), weight=0.2, initial_gains=[('*', (1.0, 22))]):
         """ Computes the frequency-dependent digital gains of the specified
             channels to bring the signals within the target RMS values across
             the band.
@@ -56,6 +51,13 @@ class GainCalc(object):
                 update_gains() to identify which gain entries to update in the
                 buffer.
 
+            initial_gains (list or dict): describes the initial gains to be used for the computation. In the format::
+
+                [ (target, (glin, log)), ...]
+
+                where target is a crte/board/channel tuple that can include wildcards
+                glin is a scalar of a 1024-element vector
+                glog is an integer
 
         """
 
@@ -68,10 +70,7 @@ class GainCalc(object):
         self.nchan = len(self.channel_ids)
         # self.n_rms_samples = n_frames
         self.n_target_iterations = n_iterations
-        # Set initial default gains of (glin, glog) = (1, 22)
-        # We will start converging towards the final value from there
-        self.default_glog = 22
-        self.default_glin = 1.0
+
         self.weight = weight
 
         #for 4 bit number *sqrt2 since real and imag, check this
@@ -82,8 +81,22 @@ class GainCalc(object):
         self.temp_gains = np.zeros((self.nchan, self.NBINS), dtype=np.float32)  # temp buffer
         self.mask = np.zeros((self.nchan, self.NBINS), dtype=np.int8) # We store  abs(x)**2
 
-        self.glin = np.ones((self.nchan, self.NBINS), dtype=np.int16) * self.default_glin
-        self.glog = np.ones((self.nchan), dtype=np.int8) * self.default_glog
+        self.glin = np.zeros((self.nchan, self.NBINS), dtype=np.int16)
+        self.glog = np.zeros((self.nchan), dtype=np.int8)
+
+        # Set initial default gains of (glin, glog)
+        # We will start converging towards the final value from there
+        if isinstance(initial_gains, dict):
+            initial_gains = initial_gains.items()
+
+        self.initial_gains = initial_gains
+        for ix, cid in enumerate(self.channel_ids):
+            for target, (glin, glog) in initial_gains:
+                if all(((target[i] == '*') or target[i] == cid[i]) for i in range(len(target))):
+                    self.glin[ix] = glin
+                    self.glog[ix] = glog
+
+
         # self.state = self.SET_GAINS
 
         # useful constants
