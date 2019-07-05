@@ -37,7 +37,7 @@ class GainCalc(object):
     DONE = 'done'
     NBINS = 1024
 
-    def __init__(self, channel_ids, stream_ids,  n_iterations=18, target_rms= 1.5 * np.sqrt(2)):
+    def __init__(self, channel_ids, stream_ids,  n_iterations=18, target_rms= 1.5 * np.sqrt(2), weight=0.2):
         """ Computes the frequency-dependent digital gains of the specified
             channels to bring the signals within the target RMS values across
             the band.
@@ -72,6 +72,8 @@ class GainCalc(object):
         # We will start converging towards the final value from there
         self.default_glog = 22
         self.default_glin = 1.0
+        self.weight = weight
+
         #for 4 bit number *sqrt2 since real and imag, check this
         self.target_rms = target_rms #2.83 is 1.5bits  1.5 is 0.6bits
 
@@ -194,7 +196,7 @@ class GainCalc(object):
         # self.temp_gains[ix][...] = (20.0 * target_gains + 80.0 * self.temp_gains[ix]) / 100.0
         # self.temp_gains[ix][...] = 0.2 * target_gains + 0.8 * self.temp_gains[ix]
         # self.temp_gains[ix][...] = 0.2 * target_gains + 0.8 * self.temp_gains[ix]
-        a = 0.2
+        a = self.weight
         gmax = 4.0
         print('temp gains.shape=', self.temp_gains[bix].shape)
         print('rms.shape=', rms[ix].shape)

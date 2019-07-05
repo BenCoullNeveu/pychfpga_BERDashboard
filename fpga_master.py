@@ -436,6 +436,9 @@ class ChimeMaster(object):
 
         """
 
+        if isinstance(source, basestring):
+            source=str(source)
+
         ib_chans = self.fpgas.get_iceboards(chan_ids, lane_type='chan').items()
 
         for (ib, channels) in ib_chans:
@@ -449,7 +452,8 @@ class ChimeMaster(object):
                      enable=True,
                      noise_injection=None,
                      number_of_fft_averages=100,
-                     number_of_gain_update_iterations=20):
+                     number_of_gain_update_iterations=20,
+                     weight=0.2):
         """
         Parameters:
 
@@ -480,6 +484,9 @@ class ChimeMaster(object):
 
             number_of_gain_update_iterations: Number of incremental gain
                 updates that will be performed before the final gain solution.
+
+            weight (float). NUmber between 0 and 1. INdicates the weigh of the
+                new data in theevolving gain solution.
 
         Examples:
 
@@ -531,7 +538,7 @@ class ChimeMaster(object):
         @coroutine
         def iterate_gains(server, channel_ids, stream_ids):
             # Greate a gain calculator engine
-            gc = calculate_gains.GainCalc(channel_ids=channel_ids, stream_ids=stream_ids, n_iterations=number_of_gain_update_iterations)
+            gc = calculate_gains.GainCalc(channel_ids=channel_ids, stream_ids=stream_ids, n_iterations=number_of_gain_update_iterations, weight=weight)
             # Set all the initial gains on bank 0
             bank = 0
             yield self.fpgas.set_gains.async(gains=gc.get_gains(), bank=bank, when='now')
