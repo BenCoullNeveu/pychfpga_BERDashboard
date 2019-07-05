@@ -444,6 +444,35 @@ class ChimeMaster(object):
         for (ib, channels) in ib_chans:
                 ib.set_data_capture(channels=channels, sub_period=capture_rate, source=source)
 
+
+    @coroutine
+    def set_gains(self, gains=None):
+        """
+        Sets the data source and capture rate for the specified channels. This
+        can be called at any time after array initializationand does not
+        require sync.
+
+
+        Parameters:
+
+            gains (dict or list): list describing which channels are involved
+            and what gains are applied to them. In the format::
+
+                [ (target, (glin, glog)), ...]
+
+        or::
+
+                { target:, (glin, glog), ...}
+
+
+        """
+        if isinstance(gains, dict):
+            gains = gains.items()
+
+        for target, gain in gains: # format: [ (target, (glin, glog)), ...]
+            ib_chans = self.fpgas.get_iceboards([target], lane_type='chan').items()  # Returns [(ib, [chan, ...]), ...]
+            self.fpgas.set_gains({ib.get_id(chan):gain for ib,chans in ib_chans for chan in chans}, bank=0, when='now')
+
     @coroutine
     def compute_gains(self,
                      targets=None,
@@ -911,6 +940,12 @@ class ChimeMaster(object):
         #######
         # Fom now on, we do not have to sync the array anymore
         #######
+
+        # Set default initial gains. Will be overriden below
+        if 'initial_gains' in conf.fpga:
+            # Get a {iceboard:[list_of_channels]} dict of selected channels
+            self.log.info("%r: Overiding the following gains: %r" % (self, conf.fpga.initial_gains))
+            yield self.set_gains(gains=conf.fpga.initial_gains)
 
         # Initialize the digital gain hdf5 writer
         self.initialize_gain_hdf5()
@@ -1472,8 +1507,30 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         yield self.chime_master.set_fpga_data_capture(**params)
         coroutine_return(message='Data capture updated')
 
+    @coroutine
+    @endpoint('set-gains')
+    def set_gains(self, handler, **params):
+        """ REST endpoint to set the gains for desired channels.
 
+        Parameters:
 
+            targets (list of tuple/dict): List of tuples describing the
+                (crate, slot, channels) for which gains shall be set.
+                Missing tuple elements, "*" and None are considered to be a
+                wildcard.
+
+            ** accepts all other parameters for `ChimeMaster.compute_gains` **
+
+        Example::
+
+            curl -H "Content-Type: application/json" -X POST http://localhost:54321/set-gains -d '{"gains": [ [["*"]], [1.0, 22]] ]}'
+        """
+        if not (self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas):
+            self.log.warning("%r: FPGA array is not ready to accept command" % (self))
+            coroutine_return(message="FPGA not ready")
+
+        yield self.chime_master.set_gains(**params)
+        coroutine_return(message='Gains updated')
 
 
     @coroutine
