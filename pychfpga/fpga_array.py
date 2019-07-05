@@ -1661,7 +1661,7 @@ class FPGAArray(object):
                 trial += 1
                 if trial >= max_trials:
                     raise RuntimeError('SYNC failed after %i trials. The last exception was:\n%r' % (trial, e))
-                self.log.warn('%r: SYNC failed on trial %i/%i due to the following error. Will retry.\n%r' % (self, trial, max_trials, e))
+                self.logger.warn('%r: SYNC failed on trial %i/%i due to the following error. Will retry.\n%r' % (self, trial, max_trials, e))
     @async
     def set_channelizers(self, adc_mode=None, adcdaq_mode=None,
                          data_source=None, function=None, a=1, b=0, freq_test_bins=None,
