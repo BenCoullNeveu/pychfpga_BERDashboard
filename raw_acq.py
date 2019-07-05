@@ -1042,8 +1042,16 @@ class RawAcqReceiver(object):
         buf_ix = np.array([bix for bix in buf_ix if self.buf_stream_id[bix] in self.sid_map]) # remove buffer entries that do not have a valid stream ID
         ix = np.array([self.sid_map[sid] for sid in self.buf_stream_id[buf_ix].tolist()]) # iterating over a list of int is much faster than over an array of int32
 
-        self.fft_rms_current[ix] = ((self.buf_data[bix, ::2] ^ -128) >> 4) ** 2
-        self.fft_rms_current[ix] += ((self.buf_data[bix, 1::2] ^ -128) >> 4) ** 2
+        # Accumulate the square of the magnitude of the frequency samples. This corresponds to re**2 + im**2. We never actually use complex numbers, which saves CPU cycles.
+        #
+        # We xor with -128 to convert offect binary into two's complement (do not use +128, it is an int16)
+        # We then right-shift by four, which preserves the sign
+        #
+        # Square of values from -8 to 7 fit in an int8, but not the sum of two. So we add the squares re and im values separately into the int32 buffer
+        # todo: check if there is a more efficient way to do this
+        # c = ((self.buf_data[buf_ix, ::2]^-128)>>4).astype(complex)+ 1j*((self.buf_data[buf_ix, 1::2]^-128)>>4).astype(complex)
+        self.fft_rms_current[ix] = ((self.buf_data[buf_ix, ::2] ^ -128) >> 4) ** 2
+        self.fft_rms_current[ix] += ((self.buf_data[buf_ix, 1::2] ^ -128) >> 4) ** 2
         self.fft_metrics_updated[ix] = True
 
         # Extract the bank number for the incoming FFT packets
@@ -1055,15 +1063,7 @@ class RawAcqReceiver(object):
         cix = ix[is_valid]
         if cix.size:
             bix = buf_ix[is_valid]
-            # Accumulate the square of the magnitude of the frequency samples. This corresponds to re**2 + im**2. We never actually use complex numbers, which saves CPU cycles.
-            #
-            # We xor with -128 to convert offect binary into two's complement (do not use +128, it is an int16)
-            # We then right-shift by four, which preserves the sign
-            #
-            # Square of values from -8 to 7 fit in an int8, but not the sum of two. So we add the squares re and im values separately into the int32 buffer
-            # todo: check if there is a more efficient way to do this
-            c = ((self.buf_data[bix, ::2]^-128)>>4).astype(complex)+ 1j*((self.buf_data[bix, 1::2]^-128)>>4).astype(complex)
-            # print('got FFT data', c[:10])
+          # print('got FFT data', c[:10])
             # print('streanm ids', self.buf_stream_id[bix])
 
             self.fft_rms_buffer[cix] += self.fft_rms_current[cix]
