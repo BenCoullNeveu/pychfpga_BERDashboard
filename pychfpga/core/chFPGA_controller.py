@@ -1288,6 +1288,7 @@ class chFPGA_controller(IceBoardExtHandler):
             ant.PROBER.RESET = 1
 
         for ant in self.get_channelizers(channels):
+            ant.PROBER.SUB_PERIOD = 23  # disable sub period
             ant.PROBER.set_data_source(source)
             ant.PROBER.config_capture(
                 frames_per_burst=frames_per_burst,
