@@ -1056,6 +1056,19 @@ class ChimeMaster(object):
             self.iceboard_cb.stop()
             log.stop_logging(self.logging_handlers) # remove the handlers that were created by setup_logging()
             reap_cached_sockets()
+
+            # Close interface to gain archive
+            if self.gain_hdf5:
+                self.log.info('%r:  closing %s.' % (self, self.gain_hdf5.current_file))
+                self.gain_hdf5.close_all()
+                self.gain_hdf5 = None
+
+            # Stop writing raw_acq to hdf5
+            while self.raw_acq:
+                server_name, server = self.raw_acq.popitem()
+                msg = yield server.stop_hdf5()
+                self.log.info('%r:  stopping hdf5 writing for %s:  %s' % (self, server_name, msg))
+
             self.start_time = None
             self.state = 'off'
         coroutine_return({})

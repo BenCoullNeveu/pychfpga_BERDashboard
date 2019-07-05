@@ -673,8 +673,9 @@ class RawAcqReceiver(object):
         self.started = False
         if self.data_processing_thread:
             self.data_processing_thread.join()
+        if self.hdf5_file:
+            self.stopHdf5Disk()
         self.sockets = []
-        self.start_time = None
         self.start_time = None
 
     def start_thread(self):
@@ -1681,7 +1682,7 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
         coroutine_return(result)
 
     @coroutine
-    def stop_hdf5(self, base_dir=None, base_filename=None):
+    def stop_hdf5(self):
         result = yield self.get('stop-hdf5')
         coroutine_return(result)
 
