@@ -364,7 +364,6 @@ class ChimeMaster(object):
                 comet_broker=conf.common_config.comet_broker.as_dict(),
                 jump_thresholds=conf.common_config.jump_thresholds,
                 metrics_refresh_time=conf.common_config.metrics_refresh_time,
-                hdf5_refresh_time=conf.common_config.hdf5_refresh_time,
                 adc_rms_refresh_count=conf.common_config.adc_rms_refresh_count)
             for server_name, raw_acq_server in self.raw_acq.items()}
 
@@ -384,6 +383,10 @@ class ChimeMaster(object):
     def start_fpga_raw_data_transmission(self, capture_rate=None, capture_source=None, tmux_factor=None, sync=False):
         """ Configure the FPGAs to transmit raw data.
 
+        This is the static baseline data capture configuration that cannot be
+        dynamically changed without sync(). See set_fpga_data_capture() for
+        on-the-fly rource and rate changes.
+
         Parameters:
 
             capture_rate (float): Number of frames to send per second.
@@ -396,9 +399,9 @@ class ChimeMaster(object):
 
         If no arguments are provided, the FPGA will be set to transmit data at the idle rate and from source defined in the config file.
         """
-        conf = self.config.raw_acq.common_config
+        conf = self.config.fpga.raw_data_capture
         capture_source = capture_source or conf.capture_source
-        capture_rate = capture_rate or conf.hdf5_capture_rate
+        capture_rate = capture_rate or conf.baseline_capture_rate
         tmux_factor = tmux_factor or conf.tmux_factor
         capture_period = 1.0 / float(capture_rate)
 
@@ -433,11 +436,10 @@ class ChimeMaster(object):
 
         """
 
-        ibs, channels = self.fpgas.get_iceboars(chan_ids).items()
+        ib_chans = self.fpgas.get_iceboards(chan_ids, lane_type='chan').items()
 
-        for ib in ibs:
-            for chan in channels:
-                ib.set_data_capture(sub_period=capture_rate, source=source)
+        for (ib, channels) in ib_chans:
+                ib.set_data_capture(channels=channels, sub_period=capture_rate, source=source)
 
     @coroutine
     def compute_gains(self,
@@ -555,7 +557,14 @@ class ChimeMaster(object):
                 bank ^= 1 # switch bank
                 yield self.fpgas.set_gains.async(gains=new_gains, bank=bank, when='now')
 
+                self.gain_calc_metrics.add('fpga_gains_done', value=np.sum(gc.done))
                 # generate some metrics
+
+                for cid, (glin, glog) in new_gains.items():
+                    self.gain_calc_metrics.add('fpga_gain_value',
+                        channel_id=cid,
+                        value=np.mean(glin[1:]) * 2**glog)
+
                 for j, sid in enumerate(sids):
                     if sid not in sid_index_map:
                         continue
@@ -631,7 +640,7 @@ class ChimeMaster(object):
             yield self.compute_gains(targets=[group], **params)
 
     @coroutine
-    def start_hdf5_capture(self, capture_folder=None, capture_filename=None, capture_rate=None,
+    def start_hdf5_capture(self, capture_folder=None, capture_filename=None, refresh_time=None,
                            capture_duration=None, capture_elements_per_file=None):
         """
         Instructs the raw_acq server to start storing raw data in HDF5 files
@@ -672,6 +681,7 @@ class ChimeMaster(object):
         capture_filename = capture_filename or conf.hdf5_capture_filename
         capture_duration = capture_duration or conf.hdf5_capture_duration
         capture_elements_per_file = capture_elements_per_file or conf.hdf5_capture_elements_per_file
+        capture_refresh_time = refresh_time or conf.hdf5_capture_refresh_time,
 
         if capture_duration is not None:
             self.log.info('%r: Starting HDF5 data capture for %f seconds (0 = infinite)' % (self, capture_duration))
@@ -680,6 +690,7 @@ class ChimeMaster(object):
                 base_dir=capture_folder,
                 base_filename=capture_filename,
                 capture_duration=capture_duration,
+                capture_refresh_time=capture_refresh_time,
                 elements_per_file=capture_elements_per_file
                 )         for server_name, server in self.raw_acq.items()]
 
@@ -1415,6 +1426,35 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         future = self.chime_master.compute_gains(**params)
 
         coroutine_return(message='Gains update in progress')
+
+    @coroutine
+    @endpoint('set-data-capture')
+    def set_data_capture(self, handler, **params):
+        """ REST endpoint to set the data capture for desired channels.
+
+        Parameters:
+
+            targets (list of tuple/dict): List of tuples describing the
+                (crate, slot, channels) for which gains shall be recomputed.
+                Missing tuple elements, "*" and None are considered to be a
+                wildcard.
+
+            ** accepts all other parameters for `ChimeMaster.compute_gains` **
+
+        Example::
+
+            curl -H "Content-Type: application/json" -X POST http://localhost:54321/set-data-capture -d '{"chan_ids": [[0, 0, "*"]], "source": "scaler", "capture_rate": 16}'
+        """
+        if not (self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas):
+            self.log.warning("%r: FPGA array is not ready to accept command" % (self))
+            coroutine_return(message="FPGA not ready")
+
+        yield self.chime_master.set_fpga_data_capture(**params)
+        coroutine_return(message='Data capture updated')
+
+
+
+
 
     @coroutine
     @endpoint('serial-compute-gains')
