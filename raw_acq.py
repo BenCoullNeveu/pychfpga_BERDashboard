@@ -225,7 +225,7 @@ class RawAcqReceiver(object):
 
     @coroutine
     def start(self, name='RawAcq', ports=[], jump_thresholds=[], stream_ids=[], start_thread=True,
-              metrics_refresh_time=1, hdf5_refresh_time=30, adc_rms_refresh_count=60):
+              metrics_refresh_time=1, adc_rms_refresh_count=60):
         """ Start a raw data receiver for each specified port.
 
         For each port we monitor, create a data queue and start a
@@ -441,7 +441,7 @@ class RawAcqReceiver(object):
 
 
         # ADC HDF5 file writer parameters
-        self.hdf5_refresh_time = hdf5_refresh_time
+        self.hdf5_refresh_time = 30  # is updated when HDF5 capture is requested
         self.hdf5_last_time = np.zeros(self.NCHAN, dtype=np.float64)
         self.hdf5_block_writes = 0
 
@@ -451,6 +451,7 @@ class RawAcqReceiver(object):
         self.adc_rms_buffer = np.zeros(self.NCHAN, dtype=np.float32) # used to accumulate square values
         self.adc_rms_mean_buffer = np.zeros(self.NCHAN, dtype=np.int32) # used to accumulate square values
         self.adc_rms_frame_count = np.zeros(self.NCHAN, dtype=np.int32)
+        self.adc_rms_updated = np.zeros(self.NCHAN, dtype=bool)
 
 
         # FFT processing
@@ -972,6 +973,7 @@ class RawAcqReceiver(object):
             self.adc_rms[cix] = np.sqrt(self.adc_rms_buffer[cix] / self.adc_rms_frame_count[cix])
             self.adc_rms_frame_count[cix] = 0
             self.adc_rms_buffer[cix] = 0
+            self.adc_rms_updated[cix] = 1
 
         #########################################
         # Update averaged RMS values
@@ -1039,6 +1041,10 @@ class RawAcqReceiver(object):
         buf_ix = np.array([bix for bix in buf_ix if self.buf_stream_id[bix] in self.sid_map]) # remove buffer entries that do not have a valid stream ID
         ix = np.array([self.sid_map[sid] for sid in self.buf_stream_id[buf_ix].tolist()]) # iterating over a list of int is much faster than over an array of int32
 
+        self.fft_rms_current[ix] = ((self.buf_data[bix, ::2] ^ -128) >> 4) ** 2
+        self.fft_rms_current[ix] += ((self.buf_data[bix, 1::2] ^ -128) >> 4) ** 2
+        self.fft_metrics_updated[ix] = True
+
         # Extract the bank number for the incoming FFT packets
         self.buf_bank[buf_ix] = (self.buf_flags[buf_ix] >> 6) & 1
 
@@ -1059,16 +1065,13 @@ class RawAcqReceiver(object):
             # print('got FFT data', c[:10])
             # print('streanm ids', self.buf_stream_id[bix])
 
-            self.fft_rms_current[cix] = ((self.buf_data[bix, ::2] ^ -128) >> 4) ** 2
-            self.fft_rms_current[cix] += ((self.buf_data[bix, 1::2] ^ -128) >> 4) ** 2
             self.fft_rms_buffer[cix] += self.fft_rms_current[cix]
             self.fft_n_frames[cix] += 1
             self.fft_overflow[cix,::2] += (self.buf_data[bix, ::4] & 0b0100) != 0
             self.fft_overflow[cix,1::2] += (self.buf_data[bix, 2::4] & 0b0010) != 0
-            self.fft_metrics_updated[cix] = True
             # find which frames have reached their total:
 
-            cix = ix[self.fft_n_frames[ix] == self.fft_rms_average[ix]]
+            cix = cix[self.fft_n_frames[cix] == self.fft_rms_average[cix]]
             if cix.size:
                 self.fft_rms_done[cix] = True
                 self.fft_rms[cix] = np.sqrt(self.fft_rms_buffer[cix].astype(np.float32) / self.fft_n_frames[cix, None])
@@ -1107,15 +1110,17 @@ class RawAcqReceiver(object):
 
 
 
-    def startHdf5Disk(self, base_dir, base_filename, capture_duration=60, elements_per_file=2048*64):
+    def startHdf5Disk(self, base_dir, base_filename, capture_duration=60, capture_refresh_time=0, elements_per_file=2048*64):
         if self.hdf5_file:
-            raise RuntimeError('HDF5 dataWriter is already running')
+            self.stopHdf5Disk()
+            # raise RuntimeError('HDF5 dataWriter is already running')
         self.log.info('%.32r: Starting HDF5 data writer with base_dir=%s, base_filename=%s, capture_duration=%r (type=%s), elements_per_file=%r' %
             (self, base_dir, base_filename, capture_duration, type(capture_duration), elements_per_file))
         self.elements_per_file = elements_per_file
 
         self.hdf5_start_time = time.time() # used to keep track of how long the disk capture has been running
 
+        self.hdf5_refresh_time = capture_refresh_time
 
         # Schedule for the acquisition to stop if capture_ducation is non-zero
         if capture_duration:
@@ -1145,9 +1150,6 @@ class RawAcqReceiver(object):
         hdf5_file.close()
         self.hdf5_start_time = None
         self.log.info('%r: Write %i data blocks in %.3f s total (%.0f ms/write)' % (self, self.hdf5_block_writes, self.adc_hdf5_processing_time, self.adc_hdf5_processing_time * 1000. / self.hdf5_block_writes))
-
-
-
 
 
     @coroutine
@@ -1373,7 +1375,7 @@ class RawAcqReceiver(object):
                 #     metrics.add('raw_acq_ramp_bit_errors', value=count, crate=crate, slot=slot, chan=chan, bit=bit)
                 # for i, count in enumerate(self.metrics_jumps[ix]):
                 #     metrics.add('raw_acq_jumps', value= count, crate=crate, slot=slot, chan=chan, threshold=self.threshold[i])
-                time.sleep(0) # relinquish some time to the thread? Not sure if it helps.
+                time.sleep(0.001) # relinquish some time to the thread? Not sure if it helps.
                 yield moment
             self.metrics_updated[cix] = False
 
@@ -1381,18 +1383,19 @@ class RawAcqReceiver(object):
             cix, = np.where(self.fft_metrics_updated)  # boolean ndarray
             for ix in cix:
                 crate, slot, chan = self.unpack_stream_id(self.stream_id[ix])
-                metrics.add('raw_acq_fft_rms', value=np.sqrt(np.mean(self.fft_rms_current[ix, 1:])), crate=crate, slot=slot, chan=chan)
+                metrics.add('raw_acq_fft_rms', value=np.sqrt(np.mean(self.fft_rms_current[ix, 1:], axis=-1)), crate=crate, slot=slot, chan=chan)
                 metrics.add('raw_acq_fft_packet_length_error', value=self.metrics_fft_packet_length_error[ix], crate=crate, slot=slot, chan=chan)
                 time.sleep(0) # relinquish some time to the thread? Not sure if it helps.
                 yield moment
             self.fft_metrics_updated[cix] = False
 
-
-            for ix in range(self.NCHAN):
+            cix, = np.where(self.adc_rms_updated)  # boolean ndarray
+            for ix in cix:
                 crate, slot, chan = self.unpack_stream_id(self.stream_id[ix])
                 metrics.add('raw_acq_adc_averaged_rms', value=self.adc_rms[ix], crate=crate, slot=slot, chan=chan)
-                time.sleep(0) # relinquish some time to the thread? Not sure if it helps.
+                time.sleep(0.001) # relinquish some time to the thread? Not sure if it helps.
                 yield moment
+            self.adc_rms_updated[cix] = False
 
             metrics.add('raw_acq_run_time', value=0 if self.start_time is None else time.time() - self.start_time)
 
@@ -1500,8 +1503,11 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('start-hdf5')
-    def start_hdf5(self, handler, base_dir='./', base_filename='RawAcq', capture_duration=0, elements_per_file=2048*64):
-        self.receiver.startHdf5Disk(base_dir, base_filename, capture_duration=capture_duration, elements_per_file=elements_per_file)
+    def start_hdf5(self, handler, base_dir='./', base_filename='RawAcq', capture_duration=0, capture_refresh_time=0, elements_per_file=2048*64):
+        self.receiver.startHdf5Disk(base_dir, base_filename,
+            capture_duration=capture_duration,
+            capture_refresh_time=capture_refresh_time,
+            elements_per_file=elements_per_file)
         coroutine_return("started hdf5 writing to disk.")
 
     @coroutine
@@ -1665,8 +1671,13 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
         coroutine_return((ix, rms))
 
     @coroutine
-    def start_hdf5(self, base_dir=None, base_filename=None, capture_duration=0, elements_per_file=2048*64):
-        result = yield self.post('start-hdf5', base_dir=base_dir or self.hdf5_base_dir, base_filename=base_filename or self.base_filename, capture_duration=capture_duration, elements_per_file=elements_per_file)
+    def start_hdf5(self, base_dir=None, base_filename=None, capture_duration=0, capture_refresh_time=0, elements_per_file=2048*64):
+        result = yield self.post('start-hdf5',
+            base_dir=base_dir or self.hdf5_base_dir,
+            base_filename=base_filename or self.base_filename,
+            capture_duration=capture_duration,
+            capture_refresh_time=capture_refresh_time,
+            elements_per_file=elements_per_file)
         coroutine_return(result)
 
     @coroutine
