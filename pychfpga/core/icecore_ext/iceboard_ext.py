@@ -411,7 +411,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         self.logger.debug('%r: open() is called' % (self))
         yield self.open_core.async(udp_retries=udp_retries)
-
+        self.core_gpio.set_channelizer_reset(True)  # stop the channelizer from sending data while we initialize
         yield self.open_hw.async()
         yield self.hw.init.async()
         yield self.hw.set_led.async('GP_LED2', 1)  # Hardware link is on

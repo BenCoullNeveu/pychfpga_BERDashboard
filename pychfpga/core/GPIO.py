@@ -243,6 +243,10 @@ class GPIO_base(Module_base):
         """ Pulses the channelizer reset lines. """
         self.pulse_bit('ANT_RESET')
 
+    def set_channelizer_reset(self, state):
+        """ sets the channelizer reset lines. """
+        self.ANT_RESET = state
+
     def global_reset(self):
         """ Pulses the global reset line. """
         self.pulse_bit('GLOBAL_RESET')
