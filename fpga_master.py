@@ -975,18 +975,9 @@ class ChimeMaster(object):
         # Initialize the digital gain hdf5 writer
         self.initialize_gain_hdf5()
 
-
-        # Load gains from file in gain bank #0
+        # Load most recent gains from archive into gain bank #0
         if conf.fpga.load_initial_gains and self.gain_hdf5:
-            update_id = self.gain_hdf5.last_update
-            self.log.info("%r:  Reader scaler gains from archive (update_id = %s)" % (self, update_id))
-            gains, gain_timestamps = self.gain_hdf5.read_gain(update_id=update_id)
-            gains = {self._serial_number_to_chan_id(key): val for key, val in gains.items()}
-            gain_timestamps = {self._serial_number_to_chan_id(key): val for key, val in gain_timestamps.items()}
-
-            # Upload to bank 0 and immediately activate gain bank
-            self.log.info("Loading scaler gains in bank #0")
-            yield ca.set_gains.async(gains, bank=0, when='now', gain_timestamps=gain_timestamps)
+            yield self.load_digital_gains(update_id=None, bank=0, when='now')
 
         # Compute new gains if requested
         yield self.compute_gains(**conf.fpga.compute_gains)
@@ -994,7 +985,7 @@ class ChimeMaster(object):
 
         # self.log.info("Waiting for 2 seconds")
         # yield sleep(2)
-        self.log.info("finished initializing FPGAs")
+        self.log.info("Finished initializing FPGAs")
 
         # Read the FPGA setting back from the FPGA
         self.log.info("Getting configuration data from all FPGAs")
@@ -1006,7 +997,7 @@ class ChimeMaster(object):
         yield self.start_hdf5_capture()
 
 
-
+        # Finished with initialization.
         self.log.info("Finished ch_master.start()")
         self.start_time = start_time
         self.state = 'on'
@@ -1185,19 +1176,52 @@ class ChimeMaster(object):
         IOLoop.current().start()
 
     @coroutine
-    def load_digital_gains(self, gain_folder=None):
-        if self.fpgas:
-            # Read Gains
-            gain_folder = gain_folder or self.gain_folder
-            self.log.info('Reading digital gains from folder %s.' %gain_folder)
-            gains = yield self.fpgas.load_gains.async(gain_folder=gain_folder)
+    def load_digital_gains(self, update_id=None, bank=0, when='now'):
+        """Read gains from the archive and load on FPGAs.
 
-            # Load gains into inactive gain bank
-            self.log.info('Loading digital gains to inactive gain bank.')
-            self.fpgas.set_gains.async(gains, when=None)
-            self.log.info('New digital gains have been loaded to inactive gain bank.')
-        else:
-            self.log.info('FPGA array not yet initialized. Cannot load digital gains.')
+        Parameters:
+            update_id : str or float
+                Either a unique update_id string or a unix timestamp.  If unix timestamp
+                then the most recent update occuring before that timestamp will be loaded.
+                Defaults to the last update_id.
+            bank : 0 or 1
+                Bank where there gains will be loaded.
+            when : 'now' or int
+                If `when` is 'now' or a negative integer, the target gains are made active immediately.
+                If `when` is None, the gains are written in the specified bank but the bank switching is not activated.
+                If `when` is a positive integer, the gains will be activated starting on the unix timestamp specified by `when`.
+        """
+        if not self.fpgas:
+            msg = 'FPGA array not yet initialized. Cannot load digital gains.'
+            self.log.error(msg)
+            raise RuntimeError(msg)
+
+        if not self.gain_hdf5:
+            msg = 'Digital gain archive not yet initialized.  Cannot load digital gains.'
+            self.log.error(msg)
+            raise RuntimeError(msg)
+
+        # If update_id not provided, then load the most recent gains.
+        if update_id is None:
+            update_id = self.gain_hdf5.last_update
+
+        # Get the unique identifier for the requested gains
+        uid = self.gain_hdf5.read(update_id, 'update_id')
+
+        # Read the gains
+        self.log.info("%r:  Reading digital gains from archive (update_id = %s)" % (self, uid))
+        gains, gain_timestamps = self.gain_hdf5.read_gain(update_id=uid)
+
+        # Convert the keys from serial numbers to (crate, slot, chan) tuples
+        gains = {self._serial_number_to_chan_id(key): val for key, val in gains.items()}
+        gain_timestamps = {self._serial_number_to_chan_id(key): val for key, val in gain_timestamps.items()}
+
+        # Load to requested bank
+        self.log.info("%r:  Loading digital gains in bank #%d" % (self, bank))
+        yield self.fpgas.set_gains.async(gains, bank=bank, when=when, gain_timestamps=gain_timestamps)
+
+        # Return the unique identifier of the gains that were loaded
+        coroutine_return(uid)
 
     @coroutine
     def switch_digital_gains(self, delta_t_seconds=100):
@@ -1898,19 +1922,27 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('load-digital-gains')
-    def load_digital_gains(self, handler, gain_folder=''):
+    def load_digital_gains(self, handler, update_id=None, bank=0, when='now'):
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
-            future = self.chime_master.load_digital_gains(gain_folder=gain_folder, delta_t_seconds=delta_t_seconds)
-            IOLoop.current().add_future(future, lambda : self.log.info('Digital gains loaded.'))
-            self.log.info('Created future for load_digital_gains')
-            #coroutine_return('called load_digital_gains')
+            try:
+                uid = yield self.chime_master.load_digital_gains(update_id=update_id, bank=bank, when=when)
+
+            except Exception as exception:
+                msg = ('Failed to load digital gains from update_id = %s to bank %d.  Exception: %s' %
+                       (update_id, bank, exception))
+                self.log.error(msg)
+                coroutine_return(msg)
+
+            else:
+                msg = 'Loaded digital gains with update_id = %s to bank %d.' % (uid, bank)
+                self.log.info(msg)
+                coroutine_return(msg)
 
     @coroutine
     @endpoint('switch-digital-gains')
     def switch_digital_gains(self, handler, delta_t_seconds=100):
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
-            self.chime_master.switch_digital_gains(gain_folder=gain_folder, delta_t_seconds=delta_t_seconds)
-            #self.log.info('Created future for load_digital_gains')
+            self.chime_master.switch_digital_gains(delta_t_seconds=delta_t_seconds)
 
     @coroutine
     @endpoint('sync')
@@ -2166,16 +2198,17 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
         #coroutine_return(result)
 
     @coroutine
-    def load_digital_gains(self, gain_folder=''):
+    def load_digital_gains(self, update_id=None, bank=0, when='now'):
         """
-        load digital gains
+        Load digital gains.
         """
-        r = yield self.post('load-digital-gains', gain_folder=gain_folder, delta_t_seconds=float(delta_t_seconds))
+        res = yield self.post('load-digital-gains', update_id=update_id, bank=bank, when=when)
+        coroutine_return(res)
 
     @coroutine
     def switch_digital_gains(self, delta_t_seconds):
         """
-        load digital gains
+        Switch digital gains.
         """
         self.post('switch-digital-gains', delta_t_seconds=float(delta_t_seconds))
 
