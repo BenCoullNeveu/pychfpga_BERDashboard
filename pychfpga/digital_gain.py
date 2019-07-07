@@ -49,6 +49,10 @@ class DigitalGainArchive(Hdf5Archive):
         }
     }
 
+    _with_lock_file = True
+    _resume_writing = False
+    _check_size_after_write = True
+
     def __init__(self, output_dir=None, output_suffix="digitalgain", instrument_name="chime",
                  notes="", search=True, max_num=1, max_file_size=1e9,
                  *args, **kwargs):
@@ -187,6 +191,27 @@ class DigitalGainArchive(Hdf5Archive):
         output_file = os.path.join(output_dir, "%08d.h5" % seconds_elapsed)
 
         return output_file
+
+    def change_file(self, smp, **kwargs):
+        """Boolean indicating if the current gains should be written to new file.
+
+        Changes the file if the run name changes.
+
+        Parameters
+        ----------
+        smp: unix time
+            Time at which the datasets in kwargs were computed.
+
+        run_name : str
+            Name of the run in which the datasets in kwargs were computed.
+        """
+        current_acq = self.writer.attrs.get('acquisition_name', None)
+        current_run = kwargs.get('run_name', None)
+
+        if (current_acq is not None) and (current_run is not None):
+            return current_run[0:16] != current_acq[0:16]
+        else:
+            return False
 
     def write(self, smp=None, **kwargs):
         """Write a gain update to the file.
