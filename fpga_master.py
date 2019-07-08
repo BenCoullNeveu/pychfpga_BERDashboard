@@ -649,18 +649,36 @@ class ChimeMaster(object):
         for (ib, channels) in ib_chans:
             ib.set_data_capture(channels=channels, sub_period=23, source='adc')
 
+        # If requested save the gains
         if save_gains:
-            gains = self.fpgas.get_gains(bank=0, use_cache=True)
-            gains = {self._chan_id_to_serial_number(key): val for key, val in gains.items()}
+            self.log.info('%r: *** Gain calculator : saving gains' % (self,))
+            yield self.save_gains(bank=0)
 
-            gain_timestamps = self.fpgas.get_gain_timestamps(bank=0)
-            gain_timestamps = {self._chan_id_to_serial_number(key): val for key, val in gain_timestamps.items()}
+    @coroutine
+    def save_gains(self, bank=0):
+        """
+        Read gains from FPGAs and save them to the HDF5 archive.
 
-            self.gain_hdf5.set_gain(gains, compute_time=gain_timestamps)
-            self.gain_hdf5.write(smp=time.time(), run_name=self.run_name)
-            self.log.info('%r: *** Gain calculator : New gains have been saved' % (self,))
+        Parameters:
 
-        # self.log.info('%r: Server %s chan IDa & stream IDa are: %s' % (self, server_name,  ','.join(str(s) for s in zip(channel_ids, stream_ids))))
+            bank : 0 or 1
+                Read the gains from this bank.
+
+        """
+        if not self.gain_hdf5:
+            msg = 'Digital gain archive not yet initialized.  Cannot save digital gains.'
+            self.log.error(msg)
+            raise RuntimeError(msg)
+
+        gains = yield self.fpgas.get_gains.async(bank=bank, use_cache=True)
+        gains = {self._chan_id_to_serial_number(key): val for key, val in gains.items()}
+
+        gain_timestamps = yield self.fpgas.get_gain_timestamps.async(bank=bank)
+        gain_timestamps = {self._chan_id_to_serial_number(key): val for key, val in gain_timestamps.items()}
+
+        self.gain_hdf5.set_gain(gains, compute_time=gain_timestamps)
+        self.gain_hdf5.write(smp=time.time(), run_name=self.run_name)
+        self.log.info('%r: saved current gains to file %s.' % (self, self.gain_hdf5.archive_files[-1]))
 
     @coroutine
     def serial_compute_gains(self, **params):
