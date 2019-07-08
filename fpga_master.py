@@ -970,7 +970,7 @@ class ChimeMaster(object):
 
         # Load most recent gains from archive into gain bank #0
         if conf.fpga.load_initial_gains and self.gain_hdf5:
-            yield self.load_digital_gains(update_id=None, bank=0, when='now')
+            yield self.load_gains(update_id=None, bank=0, when='now')
 
         # Compute new gains if requested
         yield self.compute_gains(**conf.fpga.compute_gains)
@@ -1169,7 +1169,7 @@ class ChimeMaster(object):
         IOLoop.current().start()
 
     @coroutine
-    def load_digital_gains(self, update_id=None, bank=0, when='now'):
+    def load_gains(self, update_id=None, bank=0, when='now'):
         """Read gains from the archive and load on FPGAs.
 
         Parameters:
@@ -1914,11 +1914,11 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             self.log.info('FPGA array not yet initialized. No info to show.')
 
     @coroutine
-    @endpoint('load-digital-gains')
-    def load_digital_gains(self, handler, update_id=None, bank=0, when='now'):
+    @endpoint('load-gains')
+    def load_gains(self, handler, update_id=None, bank=0, when='now'):
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
             try:
-                uid = yield self.chime_master.load_digital_gains(update_id=update_id, bank=bank, when=when)
+                uid = yield self.chime_master.load_gains(update_id=update_id, bank=bank, when=when)
 
             except Exception as exception:
                 msg = ('Failed to load digital gains from update_id = %s to bank %d.  Exception: %s' %
@@ -2191,11 +2191,11 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
         #coroutine_return(result)
 
     @coroutine
-    def load_digital_gains(self, update_id=None, bank=0, when='now'):
+    def load_gains(self, update_id=None, bank=0, when='now'):
         """
         Load digital gains.
         """
-        res = yield self.post('load-digital-gains', update_id=update_id, bank=bank, when=when)
+        res = yield self.post('load-gains', update_id=update_id, bank=bank, when=when)
         coroutine_return(res)
 
     @coroutine
