@@ -2172,10 +2172,9 @@ class FPGAArray(object):
     def get_chan_output(self):
         ch_out = OrderedDict()
         for ic in self.ic:
-            for slot, ib in ic.slot.items():
-                for ch, ant in enumerate(ib.ANT):
-                    buf = ant.FUNCGEN.get_buffer()
-                    ch_out[(ic.crate_number, slot, ch)] = buf.tolist()
+            for ib in ic.slot.values():
+                for ant in ib.ANT.values():
+                    ch_out[ant.get_id()] = ant.FUNCGEN.get_buffer()
         return ch_out
 
     @async
