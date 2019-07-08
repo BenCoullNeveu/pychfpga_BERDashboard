@@ -282,8 +282,6 @@ class RawAcqReceiver(object):
 
             metrics_refresh_time (float): cadence in seconds at which metrics are updated
 
-            hdf5_refresh_time (float): cadence in seconds at which raw data is written to the hdf5 file
-
             adc_rms_refresh_count (float): number of frames to average for the rms cache
 
         Returns:

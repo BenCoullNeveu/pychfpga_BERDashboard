@@ -691,7 +691,7 @@ class ChimeMaster(object):
             yield self.compute_gains(targets=[group], **params)
 
     @coroutine
-    def start_hdf5_capture(self, capture_folder=None, capture_filename=None, refresh_time=None,
+    def start_hdf5_capture(self, capture_folder=None, capture_filename=None, capture_refresh_time=None,
                            capture_duration=None, capture_elements_per_file=None):
         """
         Instructs the raw_acq server to start storing raw data in HDF5 files
@@ -708,22 +708,15 @@ class ChimeMaster(object):
                 created. Is prepended with the time. If not specified or `None`, it will be taken
                 from the config file.
 
-            capture_rate (float): How many frames will be stored in HDF5 files per second for each
-                channel. If not specified or `None`, it will be taken from the config file.
+            capture_refresh_time (float): cadence in seconds at which raw data is written to the hdf5 file.
 
             capture_duration (float): period of time (in seconds) during which the captured data
                 will be stored to HDF5 files. After which the capture will revert to the idle rate.
                 if ``0``, the capture will continue indefinitely.  If not specified or `None`, it will be taken
                 from the config file.
 
-            capture_source (str): selects the data source. 'adc': function generator output,
-                'scaler' = scaler output. If not specified or `None`, the parameter is taken from the config file.
-
             capture_elements_per_file (int): Number of frames to store in each HDF5 files. If not
             specified or `None`, the parameter is taken from the config file.
-
-            tmux_factor (int): Number between 0 and 64.  Data capture is staggered across FPGAs in the array
-                with a step size equal to tmux_factor * 256 * 2.56microsec.
 
         """
         conf = self.config.raw_acq.common_config
@@ -732,7 +725,7 @@ class ChimeMaster(object):
         capture_filename = capture_filename or conf.hdf5_capture_filename
         capture_duration = capture_duration or conf.hdf5_capture_duration
         capture_elements_per_file = capture_elements_per_file or conf.hdf5_capture_elements_per_file
-        capture_refresh_time = refresh_time or conf.hdf5_capture_refresh_time,
+        capture_refresh_time = capture_refresh_time or conf.hdf5_capture_refresh_time
 
         if capture_duration is not None:
             self.log.info('%r: Starting HDF5 data capture for %f seconds (0 = infinite)' % (self, capture_duration))
