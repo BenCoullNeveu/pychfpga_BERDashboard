@@ -19,6 +19,7 @@ History:
 import time
 import pickle
 import os
+import traceback
 
 
 import numpy as np
@@ -77,10 +78,10 @@ class GainCalc(object):
         self.target_rms = target_rms #2.83 is 1.5bits  1.5 is 0.6bits
 
         # Buffer in which we'll accumulate the incoming data
-        self.data = np.zeros((self.nchan, self.NBINS), dtype=np.float32) # We store  abs(x)**2
         self.temp_gains = np.zeros((self.nchan, self.NBINS), dtype=np.float32)  # temp buffer
         self.mask = np.zeros((self.nchan, self.NBINS), dtype=np.int8) # We store  abs(x)**2
 
+        self.gains = np.zeros((self.nchan, self.NBINS), dtype=np.float32) #
         self.glin = np.zeros((self.nchan, self.NBINS), dtype=np.int16)
         self.glog = np.zeros((self.nchan), dtype=np.int8)
 
@@ -95,7 +96,8 @@ class GainCalc(object):
                 if all(((target[i] == '*') or target[i] == cid[i]) for i in range(len(target))):
                     self.glin[ix] = glin
                     self.glog[ix] = glog
-
+                    self.gains[ix] = np.array(glin) * 2**glog
+                    self.temp_gains[ix] = np.array(glin) * 2**glog
 
         # self.state = self.SET_GAINS
 
@@ -172,70 +174,94 @@ class GainCalc(object):
             final solution.
 
         """
+        try:
 
-        ######################
-        # Phase 1: iteratively converge the gain until we reach the target RMS
-        ######################
-        # Accumulate square of FFT values
+            ######################
+            # Phase 1: iteratively converge the gain until we reach the target RMS
+            ######################
+            # Accumulate square of FFT values
 
-        # get the buffer index of the provided ids
-        t1 = time.time()
-
-
-        # Find the input index of valid stream_ids
-        ix = np.array([i for i, sid in enumerate(stream_ids) if sid in self.stream_id_map])
-
-        # find the buffer index of the channels with the specified stream IDs
-        bix = np.array([self.stream_id_map[sid] for sid in stream_ids[ix]])
-
-        # remove channels that are already completed
-        ix_done = self.done[bix]==False
-
-        ix = ix[ix_done]
-        bix = bix[ix_done]
-
-        # Scale the current gain to the value that would get us the target RMS
-        # new_gain = ideal_rms / (data / current_gain)
-
-        # Compute current linear gain from glin/glog
-        self.temp_gains[bix] = self.glin[bix] * (2.**self.glog[bix, None])  # 2 has to be a float, otherwise it returns the ** result as int8
-        # return self.temp_gains[ix]
-        # print 'CG: Gain Iteration', self.iteration_number[ix]
-        # print 'CG: RMS is ', np.median(rms[ix, 1:], axis=-1)
-        print 'CG: Received RMS data from %i channels. Processing %i of those.' % (rms.size, bix.size)
-        print 'CG: Actual/target RMS ratio is ', np.median(rms[ix, 1:] / self.target_rms, axis=-1)
-        # Compute new gain base don the ratio of the acrual rms vs target rms
-        # We want to slowly ease into that gain to avoid being affected too much by transients, so just take 20% of thhat target and 80% of the old gain
-        # self.temp_gains[ix][...] = (20.0 * target_gains + 80.0 * self.temp_gains[ix]) / 100.0
-        # self.temp_gains[ix][...] = 0.2 * target_gains + 0.8 * self.temp_gains[ix]
-        # self.temp_gains[ix][...] = 0.2 * target_gains + 0.8 * self.temp_gains[ix]
-        a = self.weight
-        gmax = 4.0
-        print('temp gains.shape=', self.temp_gains[bix].shape)
-        print('rms.shape=', rms[ix].shape)
-        # self.temp_gains[ix] *= (1-a) + a*(np.clip(self.target_rms / rms[ix], 1/gmax/a, gmax/a))  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
-        self.temp_gains[bix] *= np.clip((1-a) + a*self.target_rms / rms[ix], 1/gmax, gmax)  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
-        # print 'CG: new_gain is ', self.temp_gains[ix]
-
-        # Convert linear gain into (glin, glog) values
-        self.glin[bix], self.glog[bix] = self.calc_gains(self.temp_gains[bix])  # glin.shape=(16,1024), glog.shape=(16)
-        self.iteration_number[bix] += 1
+            # get the buffer index of the provided ids
+            t1 = time.time()
 
 
-        # #####################################
-        # Phase 2: Cleanup gains by removing RFI spikes
-        # #####################################
-        # Identifies which channels reached the target RMS, and return the corresponding gains
-        # Here, we just stop when we reached a fixed iteration number
-        bix_done = bix[self.iteration_number[bix] == self.n_target_iterations]
-        self.done[bix_done] = True
-        # print 'Done indices:', ix_done
-        # print self.iteration_number[ix]
-        # print 'Gain is glin=%i, glog=%i, g=%f' % (self.glin[ix[0]][0], self.glog[ix[0]], self.glin[ix[0]][0] * 2**self.glog[ix[0]])
-        t2 = time.time()
-        print 'Gain updating time: %.3f ms for %i channels' % (((t2 - t1) * 1000, bix.size))
+            # Find the input index of valid stream_ids
+            ix = np.array([i for i, sid in enumerate(stream_ids) if sid in self.stream_id_map])
 
-        return self.get_gains(bix)
+            # find the buffer index of the channels with the specified stream IDs
+            bix = np.array([self.stream_id_map[sid] for sid in stream_ids[ix]])
+
+            # remove channels that are already completed
+            ix_done = self.done[bix]==False
+
+            ix = ix[ix_done]
+            bix = bix[ix_done]
+
+            # Scale the current gain to the value that would get us the target RMS
+            # new_gain = ideal_rms / (data / current_gain)
+
+            # Compute current linear gain from glin/glog
+            # self.temp_gains[bix] = self.glin[bix] * (2.**self.glog[bix, None])  # 2 has to be a float, otherwise it returns the ** result as int8
+            # print 'CG: Gain Iteration', self.iteration_number[ix]
+            # print 'CG: RMS is ', np.median(rms[ix, 1:], axis=-1)
+            # N=np.array([0,13,313,513])
+            print 'CG: Received RMS data from %i channels. Processing %i of those.' % (rms.shape[0], bix.size)
+            # print 'CG: Median Actual/target RMS ratio is ', np.median(rms[ix, 1:] / self.target_rms, axis=-1)
+            # print 'CG: Median RMS is ', np.median(rms[ix, 1:], axis=-1)
+            print 'CG: Got Stream IDs:' , stream_ids[ix]
+            # Compute new gain base don the ratio of the acrual rms vs target rms
+            # We want to slowly ease into that gain to avoid being affected too much by transients, so just take 20% of thhat target and 80% of the old gain
+            # self.temp_gains[ix][...] = (20.0 * target_gains + 80.0 * self.temp_gains[ix]) / 100.0
+            # self.temp_gains[ix][...] = 0.2 * target_gains + 0.8 * self.temp_gains[ix]
+            # self.temp_gains[ix][...] = 0.2 * target_gains + 0.8 * self.temp_gains[ix]
+            a = self.weight
+            gmax = 4.0
+            print('temp gains.shape=', self.temp_gains[bix].shape)
+            print('rms.shape=', rms[ix].shape)
+            # self.temp_gains[ix] *= (1-a) + a*(np.clip(self.target_rms / rms[ix], 1/gmax/a, gmax/a))  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
+            # self.temp_gains[bix] *= np.clip((1-a) + a*self.target_rms / rms[ix], 1/gmax, gmax)  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
+
+            self.temp_gains[bix] = np.clip(
+                self.temp_gains[bix] * np.clip(
+                    (1-a) + a*self.target_rms / rms[ix],
+                1/gmax, gmax), 1, 2**(31+16))  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
+
+
+            S=16*10 + 0
+
+            if S in  stream_ids[ix]:
+                x = np.where(stream_ids[ix]==S)[0][0]
+                bx = self.stream_id_map[S]
+                # print 'CG: Stream 0 Median Actual/target RMS ratio is ', rms[ix[0]] / self.target_rms
+                print 'CG: Stream 0 Median RMS is ', ',  '.join('%7.3f'% rms[x, i] for i in xrange(10))
+                print 'CG: Stream 0 Gain is ', ',  '.join('%7.3e'% self.temp_gains[bx, i] for i in xrange(10))
+
+            # print 'CG: new_gain is ', self.temp_gains[ix]
+
+            # Convert linear gain into (glin, glog) values
+            self.glin[bix], self.glog[bix] = self.calc_gains(self.temp_gains[bix])  # glin.shape=(16,1024), glog.shape=(16)
+            self.iteration_number[bix] += 1
+
+
+            # #####################################
+            # Phase 2: Cleanup gains by removing RFI spikes
+            # #####################################
+            # Identifies which channels reached the target RMS, and return the corresponding gains
+            # Here, we just stop when we reached a fixed iteration number
+            bix_done = bix[self.iteration_number[bix] == self.n_target_iterations]
+            self.done[bix_done] = True
+            # print 'Done indices:', ix_done
+            # print self.iteration_number[ix]
+            # print 'Gain is glin=%i, glog=%i, g=%f' % (self.glin[ix[0]][0], self.glog[ix[0]], self.glin[ix[0]][0] * 2**self.glog[ix[0]])
+            t2 = time.time()
+            print 'Gain updating time: %.3f ms for %i channels' % (((t2 - t1) * 1000, bix.size))
+
+            return self.get_gains(bix)
+
+        except Exception as e:
+            print'CG Exception:\n%r' % e
+            traceback.print_exc()
+            raise
 
     def is_done(self):
         return all(self.done)
