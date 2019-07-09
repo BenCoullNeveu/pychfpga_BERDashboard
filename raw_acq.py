@@ -218,7 +218,8 @@ class RawAcqReceiver(object):
         self.sockets = [] # Empty indicates that the receiver is not started
         self.hdf5_base_dir = None
         self.hdf5_file = None
-
+        self.lock = threading.Lock()  # Locks access to data while the receiver thread is populating it
+        self.is_locked=False #debug
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, self.name)
 
@@ -381,7 +382,7 @@ class RawAcqReceiver(object):
         # Computed buffer parameters
         self.buf_source = np.empty(self.BUF_SIZE, dtype=np.uint8)
         self.buf_bank = np.empty(self.BUF_SIZE, dtype=np.uint8)
-
+        self.buf_data_old = np.empty((self.BUF_SIZE, self.DATA_SIZE), dtype=np.uint8)
 
         self.buf_packet_length = np.empty(self.BUF_SIZE, dtype=np.uint16)
         self.buf_packet_length_ok = np.empty(self.BUF_SIZE, dtype=bool)
@@ -458,11 +459,14 @@ class RawAcqReceiver(object):
         self.fft_target_bank =  np.zeros(self.NCHAN, dtype=np.int8)
         self.fft_rms_buffer =  np.zeros((self.NCHAN, self.DATA_SIZE // 2), dtype=np.int32)
         self.fft_rms_current =  np.zeros((self.NCHAN, self.DATA_SIZE // 2), dtype=np.int32)
+        self.fft_rms_old =  np.zeros((self.NCHAN, self.DATA_SIZE // 2), dtype=np.int32)
         self.fft_n_frames =  np.zeros(self.NCHAN, dtype=np.int32)
         self.fft_rms_average = np.zeros(self.NCHAN, dtype=np.int32) + 100
         self.fft_rms = np.zeros((self.NCHAN, self.DATA_SIZE // 2), dtype=np.float32)
         self.fft_overflow =  np.zeros((self.NCHAN, self.DATA_SIZE // 2), dtype=np.int32)
         self.fft_metrics_updated = np.zeros(self.NCHAN, dtype=np.int8)
+        self.fft_mean_rms = np.zeros(self.NCHAN, dtype=np.int64)  # debug
+        self.fft_mean_rms_old = np.zeros(self.NCHAN, dtype=np.int64) # debug
 
         # Full frame capture
         self.capture_start = False
@@ -732,44 +736,44 @@ class RawAcqReceiver(object):
 
         t0 = time.time()
 
-
-        #### Process raw ADC data packets (raw capture source 0) ###
-        (adc_buf_ix, ) = np.where(self.buf_probe_id[:self.n] == 0xA0)
-        if adc_buf_ix.size:
-            self.processed_packets += adc_buf_ix.size
-            self.buf_packet_length_ok[adc_buf_ix] = self.buf_packet_length[adc_buf_ix] == self.RAW_PACKET_LENGTH
-            self.metrics_adc_packet_length_error += np.sum(self.buf_packet_length_ok[adc_buf_ix]==False)
-            adc_buf_ix = adc_buf_ix[self.buf_packet_length_ok[adc_buf_ix]]
+        with self.lock:
+            #### Process raw ADC data packets (raw capture source 0) ###
+            (adc_buf_ix, ) = np.where(self.buf_probe_id[:self.n] == 0xA0)
             if adc_buf_ix.size:
-                self.processed_adc_packets += adc_buf_ix.size
-                self.process_adc_packets(adc_buf_ix)
+                self.processed_packets += adc_buf_ix.size
+                self.buf_packet_length_ok[adc_buf_ix] = self.buf_packet_length[adc_buf_ix] == self.RAW_PACKET_LENGTH
+                self.metrics_adc_packet_length_error += np.sum(self.buf_packet_length_ok[adc_buf_ix]==False)
+                adc_buf_ix = adc_buf_ix[self.buf_packet_length_ok[adc_buf_ix]]
+                if adc_buf_ix.size:
+                    self.processed_adc_packets += adc_buf_ix.size
+                    self.process_adc_packets(adc_buf_ix)
 
-        t1 = time.time()
+            t1 = time.time()
 
 
-        #### Process raw FFT data packets (raw capture source 1) ###
-        (fft_buf_ix, ) = np.where(self.buf_probe_id[:self.n] == 0xA1)
-        if fft_buf_ix.size:
-            self.processed_packets += fft_buf_ix.size
-            self.buf_packet_length_ok[fft_buf_ix] = self.buf_packet_length[fft_buf_ix] == self.RAW_PACKET_LENGTH
-            self.metrics_fft_packet_length_error += np.sum(self.buf_packet_length_ok[fft_buf_ix]==False)
-            # print(self.buf_packet_length[fft_buf_ix] == self.RAW_PACKET_LENGTH)
-            # print(self.buf_packet_length[fft_buf_ix])
-            fft_buf_ix = fft_buf_ix[self.buf_packet_length_ok[fft_buf_ix]]
+            #### Process raw FFT data packets (raw capture source 1) ###
+            (fft_buf_ix, ) = np.where(self.buf_probe_id[:self.n] == 0xA1)
             if fft_buf_ix.size:
-                self.processed_fft_packets += fft_buf_ix.size
-                self.process_fft_packets(fft_buf_ix)
+                self.processed_packets += fft_buf_ix.size
+                self.buf_packet_length_ok[fft_buf_ix] = self.buf_packet_length[fft_buf_ix] == self.RAW_PACKET_LENGTH
+                self.metrics_fft_packet_length_error += np.sum(self.buf_packet_length_ok[fft_buf_ix]==False)
+                # print(self.buf_packet_length[fft_buf_ix] == self.RAW_PACKET_LENGTH)
+                # print(self.buf_packet_length[fft_buf_ix])
+                fft_buf_ix = fft_buf_ix[self.buf_packet_length_ok[fft_buf_ix]]
+                if fft_buf_ix.size:
+                    self.processed_fft_packets += fft_buf_ix.size
+                    self.process_fft_packets(fft_buf_ix)
 
-        t2 = time.time()
+            t2 = time.time()
 
-        #### Process Firmware correlator packets (Suitcase interferometer firmware only) ###
-        (corr_buf_ix, ) = np.where(self.buf_probe_id[:self.n] == 0xBF)
-        if corr_buf_ix.size:
-            self.processed_packets += corr_buf_ix.size
-            self.processed_corr_packets += corr_buf_ix.size
-            self.process_corr_packets(corr_buf_ix)
+            #### Process Firmware correlator packets (Suitcase interferometer firmware only) ###
+            (corr_buf_ix, ) = np.where(self.buf_probe_id[:self.n] == 0xBF)
+            if corr_buf_ix.size:
+                self.processed_packets += corr_buf_ix.size
+                self.processed_corr_packets += corr_buf_ix.size
+                self.process_corr_packets(corr_buf_ix)
 
-        t3 = time.time()
+            t3 = time.time()
 
 
 
@@ -1040,6 +1044,7 @@ class RawAcqReceiver(object):
         buf_ix = np.array([bix for bix in buf_ix if self.buf_stream_id[bix] in self.sid_map]) # remove buffer entries that do not have a valid stream ID
         ix = np.array([self.sid_map[sid] for sid in self.buf_stream_id[buf_ix].tolist()]) # iterating over a list of int is much faster than over an array of int32
 
+
         # Accumulate the square of the magnitude of the frequency samples. This corresponds to re**2 + im**2. We never actually use complex numbers, which saves CPU cycles.
         #
         # We xor with -128 to convert offect binary into two's complement (do not use +128, it is an int16)
@@ -1048,9 +1053,25 @@ class RawAcqReceiver(object):
         # Square of values from -8 to 7 fit in an int8, but not the sum of two. So we add the squares re and im values separately into the int32 buffer
         # todo: check if there is a more efficient way to do this
         # c = ((self.buf_data[buf_ix, ::2]^-128)>>4).astype(complex)+ 1j*((self.buf_data[buf_ix, 1::2]^-128)>>4).astype(complex)
+        if self.is_locked:
+            print('is locked!')
         self.fft_rms_current[ix] = ((self.buf_data[buf_ix, ::2] ^ -128) >> 4) ** 2
         self.fft_rms_current[ix] += ((self.buf_data[buf_ix, 1::2] ^ -128) >> 4) ** 2
+
+        # self.fft_rms_current[ix] = 8
+        # self.fft_rms_current[ix] += 8
         self.fft_metrics_updated[ix] = True
+
+        # if not np.array_equal(self.buf_data[buf_ix] & 0xF0, self.buf_data_old[buf_ix] & 0xF0):
+        #     print('buffer differ')
+        # self.buf_data_old[buf_ix]  = self.buf_data[buf_ix]
+
+        # if not np.array_equal(np.sum(self.fft_rms_current[ix], axis=-1), np.sum(self.fft_rms_old[ix], axis=-1)):
+        #     print('buffer differ')
+        # self.fft_rms_old[ix]  = self.fft_rms_current[ix]
+
+        # self.fft_rms[ix] = np.sqrt(self.fft_rms_current[ix].astype(np.float32))
+        # self.fft_rms_done[ix] = True
 
         # Extract the bank number for the incoming FFT packets
         self.buf_bank[buf_ix] = (self.buf_flags[buf_ix] >> 6) & 1
@@ -1074,6 +1095,7 @@ class RawAcqReceiver(object):
             if cix.size:
                 self.fft_rms_done[cix] = True
                 self.fft_rms[cix] = np.sqrt(self.fft_rms_buffer[cix].astype(np.float32) / self.fft_n_frames[cix, None])
+                self.fft_rms_buffer[cix] = 0
                 # print('Completed channels', np.sort(cix))
 
 
@@ -1199,13 +1221,14 @@ class RawAcqReceiver(object):
         ix = [self.sid_map[sid] for sid in stream_ids]
         if not ix:
             return
-        self.fft_target_bank[ix] = target_gain_bank
-        self.fft_rms_average[ix] = number_of_frames
-        self.fft_n_frames[ix] = 0
-        self.fft_rms_buffer[ix] = 0
-        self.fft_overflow[ix] = 0
-        self.fft_rms_done[ix] = False
-        self.fft_rms_started[ix] = True
+        with threading.Lock():
+            self.fft_target_bank[ix] = target_gain_bank
+            self.fft_rms_average[ix] = number_of_frames
+            self.fft_n_frames[ix] = 0
+            self.fft_rms_buffer[ix] = 0
+            self.fft_overflow[ix] = 0
+            self.fft_rms_done[ix] = False
+            self.fft_rms_started[ix] = True
 
 
     @coroutine
@@ -1226,19 +1249,23 @@ class RawAcqReceiver(object):
 
         # t1 = time.time()
         # self.log.info('%r: get_fft_rms: done vector= %s' % (self, self.fft_rms_done))
-        if all_done and not any(self.fft_rms_done[self.fft_rms_started]):
-            coroutine_return((np.array([], dtype=np.int16),np.array([])))
-            # while not all(self.fft_rms_done):
-            #     # print(self.fft_rms_done[ix])
-            #     time.sleep(0.001) # give some time to run the receiver thread
-            #     yield moment
-        # t2 = time.time()
-        # print('FFT RMS acquisition done, setup=%.3f ms, acq=%.3f ms, total=%.3f' % ((t1-t0)*1000, (t2-t1)*1000, (t2-t0)*1000))
-        ix = np.logical_and(self.fft_rms_started, self.fft_rms_done)
-        sid = self.stream_ids[ix]
-        rms = self.fft_rms[ix]
-        self.fft_rms_started[ix] = False
-        self.log.info('%r: get_fft_rms returned FFT RMS vectors from %i channels' % (self, ix.size))
+        # if self.lock.locked():
+        #     print('get_fft_rms: is locked!')
+        # with threading.Lock():
+        if True:
+            # if all_done and not any(self.fft_rms_done[self.fft_rms_started]):
+            #     coroutine_return((np.array([], dtype=np.int16),np.array([])))
+            #     # while not all(self.fft_rms_done):
+                #     # print(self.fft_rms_done[ix])
+                #     time.sleep(0.001) # give some time to run the receiver thread
+                #     yield moment
+            # t2 = time.time()
+            # print('FFT RMS acquisition done, setup=%.3f ms, acq=%.3f ms, total=%.3f' % ((t1-t0)*1000, (t2-t1)*1000, (t2-t0)*1000))
+            ix = np.logical_and(self.fft_rms_started, self.fft_rms_done)
+            sid = self.stream_ids[ix]
+            rms = self.fft_rms[ix]
+            self.fft_rms_started[ix] = False
+        self.log.info('%r: get_fft_rms returned FFT RMS vectors from %i channels' % (self, sid.size))
         coroutine_return ((sid, rms))
 
     def is_running(self):
@@ -1254,6 +1281,8 @@ class RawAcqReceiver(object):
     @coroutine
     def get_metrics(self):
         metrics = Metrics(default_type='gauge')
+
+
 
         # Node stats
 
@@ -1360,38 +1389,51 @@ class RawAcqReceiver(object):
             cix, = np.where(self.metrics_updated)  # boolean ndarray
 
             for ix in cix:
-                crate, slot, chan = self.unpack_stream_id(self.stream_id[ix])
-                # print('Addingn rms metric for cix=%s : crate=%s, slot=%s, chan=%s, value = %f' % (ix, crate, slot, chan, self.metrics_rms[ix]))
-                metrics.add('raw_acq_adc_frames', value=self.adc_frames[ix], crate=crate, slot=slot, chan=chan)
-                metrics.add('raw_acq_rms', value=self.metrics_rms[ix], crate=crate, slot=slot, chan=chan)
-                metrics.add('raw_acq_min', value=self.metrics_min[ix], crate=crate, slot=slot, chan=chan)
-                metrics.add('raw_acq_max', value=self.metrics_max[ix], crate=crate, slot=slot, chan=chan)
-                metrics.add('raw_acq_mean', value=self.metrics_mean[ix], crate=crate, slot=slot, chan=chan)
-                metrics.add('raw_acq_max_diff', value=self.metrics_maxdiff[ix], crate=crate, slot=slot, chan=chan)
-                metrics.add('raw_acq_ramp_errors', value=self.metrics_ramp_error_count[ix], crate=crate, slot=slot, chan=chan)
-                metrics.add('raw_acq_adc_packet_length_error', value=self.metrics_adc_packet_length_error[ix], crate=crate, slot=slot, chan=chan)
-                # for bit, count in enumerate(self.metrics_ramp_bit_error_count[ix]):
-                #     metrics.add('raw_acq_ramp_bit_errors', value=count, crate=crate, slot=slot, chan=chan, bit=bit)
-                # for i, count in enumerate(self.metrics_jumps[ix]):
-                #     metrics.add('raw_acq_jumps', value= count, crate=crate, slot=slot, chan=chan, threshold=self.threshold[i])
+
+                with self.lock():
+                    crate, slot, chan = self.unpack_stream_id(self.stream_id[ix])
+                    # print('Addingn rms metric for cix=%s : crate=%s, slot=%s, chan=%s, value = %f' % (ix, crate, slot, chan, self.metrics_rms[ix]))
+                    metrics.add('raw_acq_adc_frames', value=self.adc_frames[ix], crate=crate, slot=slot, chan=chan)
+                    metrics.add('raw_acq_rms', value=self.metrics_rms[ix], crate=crate, slot=slot, chan=chan)
+                    metrics.add('raw_acq_min', value=self.metrics_min[ix], crate=crate, slot=slot, chan=chan)
+                    metrics.add('raw_acq_max', value=self.metrics_max[ix], crate=crate, slot=slot, chan=chan)
+                    metrics.add('raw_acq_mean', value=self.metrics_mean[ix], crate=crate, slot=slot, chan=chan)
+                    metrics.add('raw_acq_max_diff', value=self.metrics_maxdiff[ix], crate=crate, slot=slot, chan=chan)
+                    metrics.add('raw_acq_ramp_errors', value=self.metrics_ramp_error_count[ix], crate=crate, slot=slot, chan=chan)
+                    metrics.add('raw_acq_adc_packet_length_error', value=self.metrics_adc_packet_length_error[ix], crate=crate, slot=slot, chan=chan)
+                    # for bit, count in enumerate(self.metrics_ramp_bit_error_count[ix]):
+                    #     metrics.add('raw_acq_ramp_bit_errors', value=count, crate=crate, slot=slot, chan=chan, bit=bit)
+                    # for i, count in enumerate(self.metrics_jumps[ix]):
+                    #     metrics.add('raw_acq_jumps', value= count, crate=crate, slot=slot, chan=chan, threshold=self.threshold[i])
                 time.sleep(0.001) # relinquish some time to the thread? Not sure if it helps.
                 yield moment
             self.metrics_updated[cix] = False
 
+            # ix, = np.where(self.fft_metrics_updated)  # boolean ndarray
 
+            # if not np.array_equal(self.fft_mean_rms_old[ix], self.fft_mean_rms[ix]):
+            #     print('fft rms differ!')
+            # self.fft_mean_rms_old[ix] = self.fft_mean_rms[ix]
+
+
+            # self.is_locked=True
             cix, = np.where(self.fft_metrics_updated)  # boolean ndarray
+            # self.fft_mean_rms[cix] = np.sum(self.fft_rms_current[cix, 1:].astype(np.float32), axis=-1)
             for ix in cix:
-                crate, slot, chan = self.unpack_stream_id(self.stream_id[ix])
-                metrics.add('raw_acq_fft_rms', value=np.sqrt(np.mean(self.fft_rms_current[ix, 1:], axis=-1)), crate=crate, slot=slot, chan=chan)
-                metrics.add('raw_acq_fft_packet_length_error', value=self.metrics_fft_packet_length_error[ix], crate=crate, slot=slot, chan=chan)
-                time.sleep(0) # relinquish some time to the thread? Not sure if it helps.
+                with self.lock:
+                    crate, slot, chan = self.unpack_stream_id(self.stream_id[ix])
+                    metrics.add('raw_acq_fft_rms', value=np.sqrt(np.mean(self.fft_rms_current[ix])), crate=crate, slot=slot, chan=chan)
+                    metrics.add('raw_acq_fft_packet_length_error', value=self.metrics_fft_packet_length_error[ix], crate=crate, slot=slot, chan=chan)
+                time.sleep(0.001) # relinquish some time to the thread? Not sure if it helps.
                 yield moment
-            self.fft_metrics_updated[cix] = False
+                self.fft_metrics_updated[cix] = False
+                # self.is_locked=False
 
             cix, = np.where(self.adc_rms_updated)  # boolean ndarray
             for ix in cix:
-                crate, slot, chan = self.unpack_stream_id(self.stream_id[ix])
-                metrics.add('raw_acq_adc_averaged_rms', value=self.adc_rms[ix], crate=crate, slot=slot, chan=chan)
+                with self.lock:
+                    crate, slot, chan = self.unpack_stream_id(self.stream_id[ix])
+                    metrics.add('raw_acq_adc_averaged_rms', value=self.adc_rms[ix], crate=crate, slot=slot, chan=chan)
                 time.sleep(0.001) # relinquish some time to the thread? Not sure if it helps.
                 yield moment
             self.adc_rms_updated[cix] = False
