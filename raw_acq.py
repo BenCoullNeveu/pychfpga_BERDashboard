@@ -218,7 +218,7 @@ class RawAcqReceiver(object):
         self.sockets = [] # Empty indicates that the receiver is not started
         self.hdf5_base_dir = None
         self.hdf5_file = None
-        self.lock = threading.Lock()  # Locks access to data while the receiver thread is populating it
+        self.lock = threading.RLock()  # Locks access to data while the receiver thread is populating it
         self.is_locked=False #debug
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, self.name)
@@ -447,10 +447,12 @@ class RawAcqReceiver(object):
         # ADC averaged RMS processing
         self.adc_rms_refresh_count = adc_rms_refresh_count # Number of frames to average
         self.adc_rms = np.zeros(self.NCHAN, dtype=np.float32) # final averaged values
+        self.adc_rms_timestamp = np.zeros(self.NCHAN, dtype=np.float64)
         self.adc_rms_buffer = np.zeros(self.NCHAN, dtype=np.float32) # used to accumulate square values
         self.adc_rms_mean_buffer = np.zeros(self.NCHAN, dtype=np.int32) # used to accumulate square values
         self.adc_rms_frame_count = np.zeros(self.NCHAN, dtype=np.int32)
         self.adc_rms_updated = np.zeros(self.NCHAN, dtype=bool)
+        self.adc_rms_rlock = threading.RLock()
 
 
         # FFT processing
@@ -973,10 +975,12 @@ class RawAcqReceiver(object):
         complete_ix, = np.where(self.adc_rms_frame_count[ix] == self.adc_rms_refresh_count)
         if complete_ix.size:
             cix = ix[complete_ix]
-            self.adc_rms[cix] = np.sqrt(self.adc_rms_buffer[cix] / self.adc_rms_frame_count[cix])
-            self.adc_rms_frame_count[cix] = 0
-            self.adc_rms_buffer[cix] = 0
-            self.adc_rms_updated[cix] = 1
+            with self.adc_rms_rlock:
+                self.adc_rms[cix] = np.sqrt(self.adc_rms_buffer[cix] / self.adc_rms_frame_count[cix])
+                self.adc_rms_timestamp[cix] = time.time()
+                self.adc_rms_frame_count[cix] = 0
+                self.adc_rms_buffer[cix] = 0
+                self.adc_rms_updated[cix] = 1
 
         #########################################
         # Update averaged RMS values
@@ -1221,7 +1225,7 @@ class RawAcqReceiver(object):
         ix = [self.sid_map[sid] for sid in stream_ids]
         if not ix:
             return
-        with threading.Lock():
+        with self.lock:
             self.fft_target_bank[ix] = target_gain_bank
             self.fft_rms_average[ix] = number_of_frames
             self.fft_n_frames[ix] = 0
@@ -1252,7 +1256,7 @@ class RawAcqReceiver(object):
         # if self.lock.locked():
         #     print('get_fft_rms: is locked!')
         # with threading.Lock():
-        if True:
+        with self.lock:
             # if all_done and not any(self.fft_rms_done[self.fft_rms_started]):
             #     coroutine_return((np.array([], dtype=np.int16),np.array([])))
             #     # while not all(self.fft_rms_done):
@@ -1390,7 +1394,7 @@ class RawAcqReceiver(object):
 
             for ix in cix:
 
-                with self.lock():
+                with self.lock:
                     crate, slot, chan = self.unpack_stream_id(self.stream_id[ix])
                     # print('Addingn rms metric for cix=%s : crate=%s, slot=%s, chan=%s, value = %f' % (ix, crate, slot, chan, self.metrics_rms[ix]))
                     metrics.add('raw_acq_adc_frames', value=self.adc_frames[ix], crate=crate, slot=slot, chan=chan)
@@ -1405,7 +1409,6 @@ class RawAcqReceiver(object):
                     #     metrics.add('raw_acq_ramp_bit_errors', value=count, crate=crate, slot=slot, chan=chan, bit=bit)
                     # for i, count in enumerate(self.metrics_jumps[ix]):
                     #     metrics.add('raw_acq_jumps', value= count, crate=crate, slot=slot, chan=chan, threshold=self.threshold[i])
-                time.sleep(0.001) # relinquish some time to the thread? Not sure if it helps.
                 yield moment
             self.metrics_updated[cix] = False
 
@@ -1424,19 +1427,25 @@ class RawAcqReceiver(object):
                     crate, slot, chan = self.unpack_stream_id(self.stream_id[ix])
                     metrics.add('raw_acq_fft_rms', value=np.sqrt(np.mean(self.fft_rms_current[ix])), crate=crate, slot=slot, chan=chan)
                     metrics.add('raw_acq_fft_packet_length_error', value=self.metrics_fft_packet_length_error[ix], crate=crate, slot=slot, chan=chan)
-                time.sleep(0.001) # relinquish some time to the thread? Not sure if it helps.
                 yield moment
                 self.fft_metrics_updated[cix] = False
                 # self.is_locked=False
 
-            cix, = np.where(self.adc_rms_updated)  # boolean ndarray
-            for ix in cix:
-                with self.lock:
-                    crate, slot, chan = self.unpack_stream_id(self.stream_id[ix])
-                    metrics.add('raw_acq_adc_averaged_rms', value=self.adc_rms[ix], crate=crate, slot=slot, chan=chan)
-                time.sleep(0.001) # relinquish some time to the thread? Not sure if it helps.
+            # Add the averaged adc rms metrics
+            with self.adc_rms_rlock:
+                cix, = np.where(self.adc_rms_updated)
+                if cix.size > 0:
+                    c_stream_id = self.stream_id[cix]
+                    c_adc_rms = self.adc_rms[cix]
+                    self.adc_rms_updated[cix] = False
+                else:
+                    c_stream_id = []
+                    c_adc_rms = []
+
+            for csid, crms in zip(c_stream_id, c_adc_rms):
+                crate, slot, chan = self.unpack_stream_id(csid)
+                metrics.add('raw_acq_adc_averaged_rms', value=crms, crate=crate, slot=slot, chan=chan)
                 yield moment
-            self.adc_rms_updated[cix] = False
 
             metrics.add('raw_acq_run_time', value=0 if self.start_time is None else time.time() - self.start_time)
 
@@ -1601,8 +1610,10 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     @endpoint('get-rms')
     def get_rms(self, handler):
         if self.receiver.is_running():
-            #print(self.receiver.chan_ids, self.receiver.adc_rms.tolist())
-            coroutine_return(rms=zip(self.receiver.chan_ids, self.receiver.adc_rms.tolist()))
+            with self.receiver.adc_rms_rlock:
+                coroutine_return(rms=zip(self.receiver.chan_ids,
+                                         self.receiver.adc_rms_timestamp.tolist(),
+                                         self.receiver.adc_rms.tolist()))
         else:
             coroutine_return(rms=[])
 
