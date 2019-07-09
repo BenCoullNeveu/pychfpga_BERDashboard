@@ -72,6 +72,15 @@ class ANT_channel(object):
         # self.logger.debug('  - INJECT')
         # self.INJECT.init()
 
+    def get_id(self):
+        """ Return the channel ID as a (board, slot, channel) tuple.
+
+        Returns:
+
+            channel ID as a (board, slot, channel) tuple
+        """
+
+        return self.fpga.get_id(self.ant_number)
 
     def status(self):
         """ Displays the status of the channelizer modules"""
@@ -171,7 +180,7 @@ class ANT_base(object):
             # self.logger.debug('%r: Initializing channelizer #%i %s' % (self.fpga, ant.ant_number, '' if fmc_present[i] else '(No ADC board)'))
             ant.init(fmc_present[i])
         #self.logger.debug("%r: Initializing delay tables", self.fpga)
-        
+
         if delay_table is not None:
             self.set_adc_delays(delay_table)
 

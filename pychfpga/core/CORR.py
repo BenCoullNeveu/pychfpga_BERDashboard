@@ -573,6 +573,11 @@ class CorrFrameReceiver(object):
 
         This first packet is left in the buffer.
         """
+        #If the first packet in the buffer is already on an integration boundary, we don't need to drop packets to align
+        if self.n and not (self.buf_ts[0] % self.soft_integ_period):
+            print("align: We're already aligned, no need to flush packets!")
+            return
+
         print('Waiting for first frame of the specified integration period')
         while True:
             try:
@@ -663,21 +668,21 @@ class CorrFrameReceiver(object):
 
         # sock = self.get_data_socket()
         self.socket.settimeout(data_timeout)
-        chunks = 0
+        # chunks = 0
         timeouts = 0
-        data_timeouts = 0
-        size = 0
-        dt = 0
-        packets_per_chunk = 0
+        # data_timeouts = 0
+        # size = 0
+        # dt = 0
+        # packets_per_chunk = 0
 
-        discard_if_incomplete = True
-        first_integ = True
+        # discard_if_incomplete = True
+        # first_integ = True
 
         # acquirte frames. Check timestamp. drop frames until we have an almost full first frame. Drop frames until we get the first frame of a soft frame.
 
         # Clear the software packet buffer
-        self.n = 0
-        self.last_ts = None
+        # self.n = 0
+        # self.last_ts = None
 
         # Flush the UDP buffer by reading data until we timeout. We assume
         # here that we can read the data fast enough to empty the buffer and
@@ -685,15 +690,17 @@ class CorrFrameReceiver(object):
         if flush:
             self.flush(flush_timeout)
 
-        if self.last_ts is None:
+        # Make sure we have at least one packet in the buffer so we have a reference timestamp
+        if not self.n:
             while True:
                 try:
                     s = self.socket.recv_into(self.buf[0])
-                    self.last_ts = self.buf_ts[0]
                     self.n = 1
                     break
                 except socket.timeout:
                     continue
+        # get the timestamp
+        self.last_ts = self.buf_ts[self.n-1]
 
         # Wait for a new timestamp that is the first of an integ period
         if align:

@@ -170,14 +170,14 @@ class chFPGA_controller(IceBoardExtHandler):
     }
 
     def __init__(self,
-        parent_getter=None,
-        hostname=None,
-        serial=None,
-        part_number=None,
-        crate=None,
-        slot=None,
-        mezzanine={},
-        tuber_objname='IceBoard'):
+                 parent_getter=None,
+                 hostname=None,
+                 serial=None,
+                 part_number=None,
+                 crate=None,
+                 slot=None,
+                 mezzanine={},
+                 tuber_objname='IceBoard'):
         """
         Creates an empty IceBoard/chFPGA handler object, but do not interact with the board yet.
 
@@ -215,7 +215,10 @@ class chFPGA_controller(IceBoardExtHandler):
             crate=crate,
             slot=slot,
             mezzanine=mezzanine,
-            tuber_objname=tuber_objname)
+            tuber_objname=tuber_objname,
+            local_port_number=None # 0: always select randomly,  `None`:use crate/slot if available else randomly
+
+            )
 
         # Initialize basic instance attributes, but don;t do anything that involve talking to the IceBoard.
 
@@ -640,10 +643,37 @@ class chFPGA_controller(IceBoardExtHandler):
         """ Return a list of available channel numbers """
         return self.ANT.keys()
 
+
+    def get_channelizers(self, channels=None):
+        """ Return a list of channelizer objects for the specified or all channel numbers
+
+        Parameters:
+
+            channels (list of int): channels for which we want channelizers objects. `None` returns all channelizers.
+
+        Returns:
+
+            list of channelizer objects.
+
+        """
+        if channels is None:
+            return self.ANT.values()
+        else:
+            return [self.ANT[ch] for ch in channels]
+
     @async
     def get_config(self, basic=False):
         """
         Return configuration for this FPGA.
+
+
+        Parameters:
+
+            basic (bool): If False, only the quickly accessible information is gathered
+
+        Returns:
+
+            chFPGA_config object (essentially just a namespace) containing the config parameters.
 
         TODO:
             - use yield on slow statements to make this really parallel
@@ -851,7 +881,7 @@ class chFPGA_controller(IceBoardExtHandler):
         data(chan, bin) = complex value (4+4) bits
         """
 
-        d = np.zeros((16,2048), np.int8)
+        d = np.zeros((16, 2048), np.int8)
         d[:, 0::2] = data.real
         d[:, 1::2] = data.imag
         d <<= 4
@@ -863,24 +893,37 @@ class chFPGA_controller(IceBoardExtHandler):
 
     # set_data_path = set_channelizer # for legacy compatibility
 
-    def set_data_source(self, source=None,  channels=None):
+    def set_data_source(self, source=None,  channels=None, **kwargs):
         """
-            Sets the data source on specified channels (or default channels if the channels are not specified).
+        Selects the data that is being fed into the channelizer. If a wafeform
+        name (and corresponding arguments) is provided, the function generator
+        is automatically selected and the waveform is set-up.
+
+        This function resets the channelizers, even if only the function is
+        changed. user `setfuncgen_function()` if the function generator is
+        already active and you want to change only the waveform
         """
-        data_sources = self.ANT[0].FUNCGEN.DATA_SOURCE_NAMES
-        if (source is None) or (source.lower() not in data_sources):
-            raise ValueError("Invalid data source name '%s'. Valid data sources are %s:" % (source, ', '.join(data_sources.keys())))
+        data_sources = self.ANT[0].FUNCGEN.DATA_SOURCE_NAMES.keys()
+        function_names = self.ANT[0].FUNCGEN.FUNCTION_NAMES.keys()
+
+        source = source.lower()
 
         if channels is None:
             channels = self.default_channels
 
-
-        self.set_ant_reset(1) # Reset is needed to resyncronize the system with the new data
-        for ch in channels:
-            ant = self.ANT[ch]
-            ant.FUNCGEN.set_data_source(source.lower())
-        self.set_ant_reset(0) # Reset is needed to resyncronize the system with the new data
-        #self.sync() # SYNCs the ADC, and resets (again) the antenna processor to align the data with the ADC
+        if source in data_sources:
+            self.set_ant_reset(1) # Reset is needed to resyncronize the system with the new data
+            for ant in self.get_channelizers(channels):
+                ant.FUNCGEN.set_data_source(source)
+            self.set_ant_reset(0) # Reset is needed to resyncronize the system with the new data
+        elif source in function_names:
+            self.set_ant_reset(1) # Reset is needed to resyncronize the system with the new data
+            for ant in self.get_channelizers(channels):
+                ant.FUNCGEN.set_data_source('funcgen')
+                ant.FUNCGEN.set_function(source, **kwargs)
+            self.set_ant_reset(0) # Reset is needed to resyncronize the system with the new data
+        else:
+            raise ValueError("Invalid data source or function name '%s'. Valid data sources are %s:" % (source, ', '.join(data_sources + function_names)))
 
 
     def get_data_source(self):
@@ -1024,7 +1067,26 @@ class chFPGA_controller(IceBoardExtHandler):
 
 
     def set_ant_reset(self, state):
+        """ Sets the state of the reset line of ALL channelizer.
+
+        Parameters:
+
+            state (bool): A true value will put the channelizers in reset, and data will stop flowing from them.
+
+        Note:
+            A channelizer reset is automatically done during a SYNC.
+
+        """
+
         self.GPIO.ANT_RESET = state
+
+    def get_ant_reset(self):
+        """ Get the status of the channelizer reset line.
+
+        Return:
+            (bool): state of the reset line.
+        """
+        return self.GPIO.ANT_RESET
 
     def set_corr_reset(self, state):
         self.GPIO.CORR_RESET = state
@@ -1075,6 +1137,50 @@ class chFPGA_controller(IceBoardExtHandler):
                 self.set_local_data_port_number(actual_port_number)
 
         return self._data_socket
+
+    def set_data_capture_stream_ids(self, stream_ids):
+        """ Set the STREAM ID of the raw data capture packets for each of the channels
+
+        Parameters:
+
+            stream_ids (list, dict or int): stream_ids to apply.
+
+                if `stream_ids` is a list, the stream ids in the list will be
+                applied directly to the channels.
+
+                If `stream_ids` is a dict in the format {channel:stream_id},
+                the specified channels will be set with the corresponding
+                stream_ids.
+
+                If `stream_ids` is an integer, it will be treated as a virtual
+                slot number 'slot', and all channels on the board will be set
+                to ``slot * 16 + channel_number``. There can be up to 4096
+                virtual slots.
+
+
+
+        Note: This does not set the STREAM ID of the packets sent through the
+        corner turn or the correlator engines. This is only for the raw data
+        capture done over the control interface.
+
+        Examples:
+
+            ib.set_data_capture_stream_ids([100, 101, 102, ... 115]) # set stream ids from channels 0 to 100, channel 1 to 101 etc.
+
+            ib.set_data_capture_stream_ids({0:400, 5:401}) # set stream ids for channels 0 and 5 to 400 and 401 respectively
+
+            ib.set_data_capture_stream_ids(100) # Set stream_ids for channel 0...15 to the values 1600, 1601, 1602 etc.
+        """
+
+        if isinstance(stream_ids, list):
+            stream_ids = dict(enumerate(stream_ids))
+        elif isinstance(stream_ids, int):
+            stream_ids = {ch:(stream_ids * 16 + ch) for ch in self.ANT.keys()}
+        elif not isinstance(stream_ids, dict):
+            raise TypeError('parameter must be a list, a dict or an integer')
+
+        for ch, stream_id in stream_ids.items():
+            self.ANT[ch].PROBER.STREAM_ID = stream_id
 
 
     def start_data_capture(self, period=None, frames_per_burst=1,  number_of_bursts=0,
@@ -1145,33 +1251,90 @@ class chFPGA_controller(IceBoardExtHandler):
         # print burst_period_in_frames*self.FRAME_PERIOD*1000
         # print ('continuously when TRIG=1' if not number_of_bursts else ('for a total of %i bursts' % number_of_bursts) )
         if verbose:
-            self._logger.info("%r: Configuring channelizer %s to transmit %i-frame burst every %i frames (i.e .every %.3f ms) %s." % (
-               self,
-               channels.__repr__(),
-               frames_per_burst,
-               burst_period_in_frames,
-               burst_period_in_frames*self.FRAME_PERIOD*1000,
-               ('continuously when TRIG=1' if not number_of_bursts else ('for a total of %i bursts' % number_of_bursts))))
-            frames_per_second = len(channels)*frames_per_burst*1.0/self.FRAME_PERIOD/burst_period_in_frames
-            bits_per_second = frames_per_second * 8 * self.FRAME_LENGTH
-            self._logger.debug('%r: Data rates are: %f kFrames/s, %f Mbits/s' % (self, frames_per_second/1e3, bits_per_second/1e6))
+            self._logger.info(
+                "%r: Configuring channelizer %r to capture " % (self, channels) +
+                '%i frame every %i frames (i.e .every %.3f ms) ' % (
+                   frames_per_burst,
+                   burst_period_in_frames,
+                   burst_period_in_frames * self.FRAME_PERIOD * 1000) +
+                'with first frame offset of %i frames (%.3f ms) ' % (
+                    offset,
+                    offset * self.FRAME_PERIOD * 1000) +
+                'and a send delay factor of %i (%.3f ms).' % (
+                    send_delay,
+                    send_delay * 65536 / 125e6 * 1000))
+
+            frames_per_second = frames_per_burst * 1.0 / self.FRAME_PERIOD / burst_period_in_frames
+            packet_size_in_bits = (self.FRAME_LENGTH + 10 + 42) * 8  # 10 header bytes, 42 Ethernet/IP/UDP overhead
+            self._logger.info('%r: Data rates are:\n' % (self) +
+                '    1 board, 1 channel: %.3f Mbits/s\n' % (frames_per_second * packet_size_in_bits / 1e6) +
+                '    1 board, %i channels: %.3f Mbit/s\n' % (len(channels), len(channels) * frames_per_second * packet_size_in_bits / 1e6) +
+                '    1 crate: %.3f Mbits/s' % (16 * 16 * frames_per_second * packet_size_in_bits / 1e6)
+                )
+
+
+        # stop data from going into the PROBER and MASTER to minimize the risk
+        # of malformed packets and unstable communications
+        reset_state = self.get_ant_reset()
 
         self.set_trig(0) # disable data transmission if continuous mode is currentlly selected
-#        self.set_ant_reset(1) # resets all
-#        if clear_buffer:
-#            self.flush_frame_buffer()
+        self.set_ant_reset(1) # no nonger supported by firmware
 
-        for ant in self.ANT.values():
-            ant.PROBER.set_data_source(source)
+        # Do not limit the transfer rate
+        self.GPIO.HOST_FRAME_READ_RATE = 5
+
+        # Stop data capture on *ALL* channels
+        for ant in self.get_channelizers():
             ant.PROBER.RESET = 1
-            ant.PROBER.PROBE_ID = 0xA0 + ant.ant_number
-            ant.PROBER.config_capture(frames_per_burst=frames_per_burst, burst_period=burst_period_in_frames, number_of_bursts=number_of_bursts, offset=offset, send_delay=send_delay)
-            if ant.ant_number in channels:
-                self._logger.debug('%r: Enabling Capture for Antenna %i' % (self, ant.ant_number))
-                ant.PROBER.RESET = 0
 
-        self.set_trig(1)  # enables data transmission if continuous mode is selected
-#       self.set_ant_reset(0) # disable reset all
+        for ant in self.get_channelizers(channels):
+            ant.PROBER.SUB_PERIOD = 23  # disable sub period
+            ant.PROBER.set_data_source(source)
+            ant.PROBER.config_capture(
+                frames_per_burst=frames_per_burst,
+                burst_period=burst_period_in_frames,
+                number_of_bursts=number_of_bursts,
+                offset=offset,
+                send_delay=send_delay)
+            ch = ant.ant_number
+            self._logger.debug('%r: %s raw data capture on channel %i' % (self, ('Disabling', 'Enabling')[ch in channels], ch))
+            ant.PROBER.RESET = 0
+
+        self.set_trig(1)  # **no nonger supported by firmware *** enables data transmission if continuous mode is selected
+        self.set_ant_reset(reset_state)
+
+    def set_data_capture(self, channels=None, sub_period=23, source='adc'):
+        """ Set the dynamic data capture parameters that can be changed on the
+        fly without re-syncing the board.
+
+        Parameters:
+
+            channels (list of int): channels to configure
+
+            sub_period (int): Sets how fast the data is to be temporarily
+                transmitted and captured for the selected channel.
+
+                 A capture is always done at the beginning of each primary
+                period, with subsequent captures spaced by 2**(sub_period+1)
+                frames. This can be used to speed up captures, but the rate
+                rate cannot be slower than the promary capture rate.
+
+                The spacing between the last capture of a primary period and
+                the first one of the following one might differ from other
+                intervals if the primary period is not an exact multiple of
+                the sub period.
+
+            source (str): Data source to use.
+        """
+
+        if channels is None:
+            channels = self.get_channels()
+
+        self.logger.info('%r: Setting dynamic capture parameters to sub_period=%i and source=%s for channels=%s' % (self, sub_period, source, channels))
+        for ant in self.get_channelizers(channels):
+            ant.PROBER.set_data_source(source)
+            ant.PROBER.SUB_PERIOD = sub_period
+
 
     def set_fft_bypass(self, bypass_mode, channels=None):
         """
@@ -1861,6 +2024,40 @@ class chFPGA_controller(IceBoardExtHandler):
             if sync:
                 self.sync()
 
+
+    def get_formatted_id(self, crate_slot_format='FCC{crate:02d}{slot:02d}', no_crate_format='{slot:s}', no_slot_format='{crate:s})'):
+        """ Return a string that represent the board using the provided format list.
+
+        Parameters:
+
+            x_format (str): format to be applied in the specified condition.
+            Uses the .format() syntax, with the following fields: slot=0-based
+            slot number (int) or board model/serial (str); crate=crate number
+            (int), crate model/serial (int) or None
+
+        Returns:
+            string
+        """
+
+        crate, slot_0based = board_id = self.get_id()
+
+        if crate is None:
+            return no_crate_format.format(slot=slot_0based, crate=crate, id=board_id)
+        elif slot_0based is None:
+            return no_slot_format.format(slot=slot_0based, crate=crate, id=board_id)
+        elif isinstance(slot_0based, int) and isinstance(crate, int):
+            return crate_slot_format.format(slot=slot_0based, crate=crate, id=board_id)
+        else:
+            return self.get_string_id()
+
+    def get_gains_filename(self, folder=''):
+        """ Return the name of the fulle path and filename of the file containing the gains for this board.
+
+
+        """
+        gain_filename = os.path.join(folder, 'gains_%s.pkl' % self.get_formatted_id())
+        return gain_filename
+
     def load_gains(self, folder='.'):
         """ Loads the gain file associated with this board and return the gains.
 
@@ -1875,25 +2072,58 @@ class chFPGA_controller(IceBoardExtHandler):
             gains that have been loaded. `None` if the gains are not found.
 
         """
-        slot_0based = self.slot - 1
-        crate = self.crate.crate_number
+
+        gain_filename = self.get_gains_filename(folder=folder)
         try:
-            gain_filename = os.path.join(folder, 'gains_FCC%02i%02i.pkl' % (crate, slot_0based))
-            gains = pickle.load(open(gain_filename, 'rb'))
-            self.logger.info('FCC%02i%02i: loaded gains from file %s' % (crate, slot_0based, gain_filename))
+            with open(gain_filename, 'rb') as f:
+                gains = pickle.load(f)
+            self.logger.info('%r: Loaded gains for board %s from file %s' % (self, gain_filename))
+            # ib.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
         except IOError:
-            self.logger.warn('Gain file not found for for crate %02i slot %02i (FCC%02i%02i)' % (crate, slot_0based, crate, slot_0based))
+            self.logger.warn("Gain file '%s' not found for (crate,slot)= %r" % (gain_filename, self.get_id()))
             gains = None
+
         # # Fill any missing channel info with None
         # for ch in range(self.NUMBER_OF_CHANNELIZERS):
         #     if ch not in gains:
         #         gains[ch] = None
         return gains
 
-    def set_gains(self, gain=None, postscaler=None, channels=None, use_fixed_gain=False, bank=0, when=None):
+    def save_gains(self, gains=None, folder='.'):
+        """ Save the gains file associated with this board.
+
+        The gain file is a pickled dictionary in the format {channel_number:gains,..}.
+
+        Parameters:
+
+            gains (dict): gains for all channels, in the format {channel_number:gains,..}
+
+            folder (str): Folder in which the gain files are to be found. Default is the current directory.
+
+        Returns:
+
+            gains that have been loaded. `None` if the gains are not found.
+
         """
-        Sets the gain between the (18+18) bits input of the scaler module (from the FFT) to its 4- or 8- bit scaler output.
-        The gain can be set individually for every frequency bins and every ADC channel.
+        gain_filename = self.get_gains_filename(folder=folder)
+
+        try:
+            with open(gain_filename, 'wb') as f:
+                gains = pickle.dump(gains, f)
+            # self.logger.info('Setting gains on IceBoard SN%s, crate %s, slot %i' % (ib.serial, crate, slot))
+            # ib.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
+        except IOError:
+            self.logger.warn("Gain file '%s' could not be saved for (crate,slot)=%r " % (gain_filename, self.get_id()))
+
+
+    def set_gains(self, gain=None, postscaler=None, channels=None, use_fixed_gain=False, bank=0, when=None,
+                  gain_timestamp=None):
+        """
+        Sets the digital gain used by the SCALER module to scale the (18+18)
+        bits output of the FFT to the (4+4) final channelizer output format.
+
+        The gain can be set individually for every frequency bins and every
+        ADC channel.
 
         Parameters:
 
@@ -1923,6 +2153,8 @@ class chFPGA_controller(IceBoardExtHandler):
                 gains are written immediately on the target bank and the bank is made active on the
                 next frame. If `when` is an  *int*, the gains are written immediately to the bank  bank,
                 but than bank will become active only on frame numer (timestamp) specified by when.
+
+            gain_timestamp: unix timestamp when the gains were calculated.  If not provided, defaults to current time.
 
         The actual gain between the scaler input and output for bin 'b' is:
            4-bit mode: out/in = :math:`Glin(b) * 2**(Glog-31)`
@@ -1990,9 +2222,17 @@ class chFPGA_controller(IceBoardExtHandler):
         else:  # if anything else including None, a scalar, a gain tuple etc.
             gain = [ (channels, gain) ]
 
+        # Convert the gain timestamp to list
+        if isinstance(gain_timestamp, list):
+            pass
+        elif isinstance(gain_timestamp, dict):
+            gain_timestamp = [gain_timestamp[ch] for ch, g in gain]
+        else:
+            gain_timestamp = [gain_timestamp] * len(gain)
+
         configured_channels = set()
 
-        for (channel_list, gain_value) in gain:
+        for (channel_list, gain_value), timestamp_value in zip(gain, gain_timestamp):
             # Make sure channel_list is a list (in case we provide a single channel number)
             if isinstance(channel_list, int):
                 channel_list = [channel_list]
@@ -2027,7 +2267,7 @@ class chFPGA_controller(IceBoardExtHandler):
                     self.ANT[ch].SCALER.set_fixed_gain(Glin)
                 else:
                     self.ANT[ch].SCALER.USE_GAIN_TABLE = 1
-                    self.ANT[ch].SCALER.set_gain_table(Glin, bank=bank)
+                    self.ANT[ch].SCALER.set_gain_table(Glin, bank=bank, gain_timestamp=timestamp_value)
                 configured_channels.add(ch)
         self._logger.debug('%r: Setting scaler gains for Antenna %s' % (self, ', '.join([str(i) for i in configured_channels])))
 
@@ -2038,7 +2278,7 @@ class chFPGA_controller(IceBoardExtHandler):
         """ Return the gain bank that will be used on the next automatic bank switch."""
         return [ant.SCALER.READ_COEFF_BANK ^ 1 for ant in self.ANT.values()]
 
-    def get_gains(self, bank=0):
+    def get_gains(self, bank=0, use_cache=True):
         """
         Returns the log2 SCALER gain and the linear gain table used for each channelizer.
 
@@ -2048,15 +2288,32 @@ class chFPGA_controller(IceBoardExtHandler):
 
         Returns:
 
-            list of (log_gain, linear_gain_table) for each channelizer. ``linear_gain_table`` is an
-            array of 2014 complex values.
+            list of gains for each channelizer, in the format::
+                 [[channel_number, [linear_gain_table, log gain]], ...]
+
+                 ``linear_gain_table`` is an array of 1024 complex values.
+                 ``log gain`` is an integer.
         """
         gain_list = []
-        for ant in self.ANT.values():
-            glog = ant.SCALER.SHIFT_LEFT
-            glin = ant.SCALER.get_gain_table(bank=bank)
-            gain_list.append([ant.ant_number, [glin,glog]])
+        for ch in self.get_channelizers():
+            glog = ch.SCALER.SHIFT_LEFT
+            glin = ch.SCALER.get_gain_table(bank=bank, use_cache=True)
+            gain_list.append([ch.ant_number, [glin, glog]])
         return gain_list
+
+    def get_gain_timestamps(self, bank=0):
+        """
+        Returns the timestamp at which the gains for each channel was set.
+
+        Parameters:
+
+            bank (int): gain bank from which to get the gains timestamp.
+
+        Returns:
+
+            list of (channel_number, timestamp), one for each channel. Elements are None if the gains was not set for that channel.
+        """
+        return [(ch.ant_number, ch.SCALER.get_gains_timestamp(bank=bank)) for ch in self.get_channelizers()]
 
     def switch_gains(self, bank=None, when='now'):
         """
@@ -2406,7 +2663,8 @@ class chFPGA_controller(IceBoardExtHandler):
                        cb1_lanes=16, cb1_bins=64, cb1_bypass=False, cb1_combine_data_flags=0,
                        cb2_lanes=None, cb2_bins=1, cb2_bypass=False,
                        bp_shuffle_bypass=1, crate_shuffle_bypass=1,
-                       remap=True, chan8_channel_map=range(16)):
+                       remap=True, chan8_channel_map=range(16),
+                       send_flags=True):
         """ Initializes the Corner Turn engine in the specified operation mode.
 
         This method configured the 1st, 2nd and 3rd crossbars (which each can include a remap, frame
@@ -2482,7 +2740,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
             chan8_channel_map (list) : channel remapping to be used in `chan8` mode. Defaults to the identity map (range(16))
 
-
+            send_flags (bool): If False, the Scaler and Frame flags will not be sent.
 
         """
 
@@ -2685,16 +2943,17 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_input_bins = cb1_output_bins
             cb2_input_data_flags_words_per_bin = 1
             cb2_input_frame_flags_words_per_frame = 1
-            cb2_lanes = ((0, 1), (2, 3))  #BS0 selects sublanes 0-1, BS1 selects sublanes 2-3
+            cb2_lanes = ((0, 1), (2, 3))  #BS0 selects sublanes 0-1, i.e. its 4 outputs gather data from lanes 0-1, 4-5, 8-9, and 12-13, BS1 selects sublanes 2-3 (lanes 2-3, 6-7, 10-12 and 14-15 )
+            cb2_combine_data_flags = True # hardwired to True in crossbar 2
             cb2_input_lanes_per_output_lane = cb2_lanes[0][1] - cb2_lanes[0][0] + 1 # 2 input lanes per output
             cb2_bins = 64
             cb2_bin_spacing = 1
             cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing for i in range(number_of_cb2_bin_sel)]
-            cb2_output_words_per_bin = 2 * cb2_input_words_per_bin
-            cb2_output_data_flags_words_per_bin = cb2_input_data_flags_words_per_bin * cb2_input_lanes_per_output_lane
+            cb2_output_words_per_bin = cb2_input_words_per_bin * cb2_input_lanes_per_output_lane / cb2_bin_spacing # x2 since we combine data from 2 lanes and select all bine
+            cb2_output_data_flags_words_per_bin = cb2_input_data_flags_words_per_bin * cb2_input_lanes_per_output_lane / (2 if cb2_combine_data_flags else 1)
             cb2_output_frame_flags_words_per_frame = cb2_input_frame_flags_words_per_frame * cb2_input_lanes_per_output_lane
-            cb2_output_bins = cb2_bins
-            crate_number = self.crate.crate_number
+            cb2_output_bins = cb2_bins / cb2_bin_spacing
+            crate_number = (self.crate.crate_number or 0) if self.crate else 0
             stream_type = 2
             # QSFP SHUFFLE
             crate_shuffle_bypass = True
@@ -2775,7 +3034,7 @@ class chFPGA_controller(IceBoardExtHandler):
             # CB2 ALIGN
             # cb2_timeout_period = 0
 
-            crate_number = self.crate.crate_number
+            crate_number = (self.crate.crate_number or 0) if self.crate else 0
             stream_type = 3 # crossbar 3-level data
 
             # Input packet geometry
@@ -2795,7 +3054,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_input_lanes_per_output_lane = cb2_lanes[0][1] - cb2_lanes[0][0] + 1 # 4 input lanes per output
             cb2_bins = cb1_output_bins / number_of_cb2_bin_sel # 64/2 = 32
             cb2_bin_spacing = number_of_cb2_bin_sel # 2
-            cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing + (i ^ (crate_number & 1)) for i in range(number_of_cb2_bin_sel)]
+            cb2_bin_select_map = [np.arange(cb2_bins) * cb2_bin_spacing + (i ^ (crate_number & 1)) for i in range(number_of_cb2_bin_sel)]
             cb2_combine_data_flags = True # hardwired to True in crossbar 2
 
             # Output packet geometry
@@ -2804,7 +3063,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_output_bins = cb2_bins
             cb2_output_data_flags_words_per_bin = cb2_input_data_flags_words_per_bin * cb2_input_lanes_per_output_lane / (2 if cb2_combine_data_flags else 1)
             cb2_output_frame_flags_words_per_frame = cb2_input_frame_flags_words_per_frame * cb2_input_lanes_per_output_lane
-            print("cb2_output frame flags words=%i, input frame flags words=%i, input_lanes=%i" % (cb2_output_frame_flags_words_per_frame,cb2_input_frame_flags_words_per_frame, cb2_input_lanes_per_output_lane))
+            # print("cb2_output frame flags words=%i, input frame flags words=%i, input_lanes=%i" % (cb2_output_frame_flags_words_per_frame,cb2_input_frame_flags_words_per_frame, cb2_input_lanes_per_output_lane))
 
 
             # QSFP SHUFFLE
@@ -2916,8 +3175,9 @@ class chFPGA_controller(IceBoardExtHandler):
         for (cb1_output_lane, bs) in enumerate(cb1):
             bs.BYPASS = cb1_bypass
             bs.COMBINE_DATA_FLAGS = cb1_combine_data_flags
-
+            bs.SEND_FLAGS = send_flags
             bs.GROUP_FRAMES = frames_per_packet
+            # print(stream_type, crate_number, slot_number)
             bs.STREAM_ID = (stream_type << 8) | (crate_number << 4) | slot_number
             bs.FOUR_BITS = cb1_four_bit
             bs.FIRST_FIFO_NUMBER = cb1_lanes[cb1_output_lane][0]
@@ -2949,6 +3209,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 bs.BYPASS = bool(cb2_bypass)
                 if not cb2_bypass:
                     bs.STREAM_ID = (stream_type << 8) | (crate_number << 4) | slot_number
+                    bs.SEND_FLAGS = send_flags
                     bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
                     bs.NUMBER_OF_BINS_PER_FRAME = cb2_input_bins
                     bs.NUMBER_OF_WORDS_PER_BIN = cb2_input_words_per_bin
@@ -2970,6 +3231,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 bs.BYPASS = bool(cb3_bypass)
                 if not cb3_bypass:
                     bs.STREAM_ID = (stream_type << 8) | (crate_number << 4) | slot_number  # The stream ID at the output of CB2 will be 0xSL (S=slot-1, L=lane)
+                    bs.SEND_FLAGS = send_flags
                     bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
                     bs.NUMBER_OF_DATA_FLAGS_WORDS_PER_BIN = cb3_input_data_flags_words_per_bin
                     bs.NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME = cb3_input_frame_flags_words_per_frame
@@ -2997,6 +3259,9 @@ class chFPGA_controller(IceBoardExtHandler):
         def print_packet_size(crossbar_name, frames_per_packet, bins, data_words_per_bin, data_flags_words_per_bin, frame_flags_words_per_frame):
             header_words_per_packet = 4
             packet_flags_words_per_packet = 1
+            if not send_flags:
+                data_flags_words_per_bin = 0
+                frame_flags_words_per_frame = 0
             payload_size = (header_words_per_packet  + frames_per_packet * ((data_words_per_bin + data_flags_words_per_bin) * bins + frame_flags_words_per_frame) + packet_flags_words_per_packet) * 4
             ethernet_packet_overhead_bytes = 42
             ethernet_packet_size = (ethernet_packet_overhead_bytes + payload_size + 7) // 8 * 8
@@ -3414,7 +3679,7 @@ class chFPGA_controller(IceBoardExtHandler):
     def get_string_id(self):
         """
         Return a string that uniquely represents the board. It is composed of the model and serial
-        number, or, if the serial numbe ris unknown, the hostname of the board.
+        number or the board, or, if those are unknown, the hostname of the board.
 
         Parameters:
             None
@@ -3431,31 +3696,73 @@ class chFPGA_controller(IceBoardExtHandler):
     def __repr__(self):
         return "chFPGA%s" % (self.get_id(),) # watch out, get_id() returns a tuple...
 
-    def get_id(self, lane=None):
-        """ Returns a tuple representing a unique IceBoard ID, using numeric values whenever possible.
+    def get_id(self, lane=None, default_crate=None, default_slot=None):
+        """ Returns a (crate, slot) tuple representing a unique IceBoard ID,
+        using numeric values whenever possible. A `lane` field can be
+        optionally appended.
 
         Parameters:
 
-            lane (int): caller-provided lane number to be appended to the returned tuple.
+            lane (int): caller-provided lane number to be appended to the returned tuple. Used to create channel or lane ID tuples.
+
+            default_crate: Default values to return in the crate field if there is
+                no crate or no crate_number. If None, either the crate number or crate string id is used.
+
+            default slot: Default values to return in the slot field if there is no slot number.
 
         Returns:
-             - (int, int): (numeric_crate_number, zero_based_slot_number) if the board
-               is in a crate for which a crate number was assigned
-             - (str, int): (string_crate_id, zero_based_slot_number) Identify the
-               crate with model and serial number if there is a crate but no
-               crate number is specified
-             - (str): (iceboard_id) If the board is not in a crate or the slot
-               number is unknown, use the the iceboard model and serial number
+            A (crate_id, slot_or_board_id) tuple, where:
+
+             - crate_id is:
+                - ``numeric_crate_number`` (int) if the crate number is known
+                - ``crate_model_serial_string`` (str) model and serial number string if the crate is known but not the crate number
+                - `None` if there is no crate
+
+             - slot_or_board_id
+                - ``zero_based_slot_number`` (int) zero-based slot number if the slot number is known (i.e. self.slot is not 0 or None).
+                - ``None`` if the slot number is not known and crate_id is not None.
+                - ``board_model_serial_string`` (str) if the slot number and there is no crate/backplane.
+        Notes:
+            - A board is always represented by a 2-element tuple. A crate is always represented by a one-element tuple, and a channel/lane is a 3-element tuple.
+            - The user is responsible for handling all possible types of crate (int, str, None) or slot (int, str) tuple elements
+            - crate can be None, but slot can never be None: it will be replaced by the string ID of the board so the tuple always refer to a specific board.
+            - If the crate provides a numeric slot number, the user must rely on external information to infer which board serial number correspond to the specified ID
+            - If the crate provides a numetic crate number, the user must rely on external information to infer which crate serial number correspond to thespecified ID
+            - the id must be unique, even if we have multiple stand-alone boards (i.e. no (None, None) tuple
+        Examples:
+
+            Board in a crate/backplane:
+            (2, 3): board on 4th slot of backplane with crate number 2
+            (2, None): board on crate number 2 without slot information
+            ('MGK7BP16_SN023', 3): board on 4th slot of backplane without crate number
+            ('MGK7BP1_SN001', None): self.slot is 0 or None on a backplane without crate number (e.g. unconfigured single-slot test backplane)
+
+            Stand-alone board (no backplane/crate):
+            (None, 3): No backplane, but the board slot number was manually set to  self.slot=4 (not a typical case)
+            (None, 'MGK7MB_SN0372'): No crate nor slot information (self.crate==None and self.slot==None)
 
         """
-        if not self.crate or self.slot is None:
-            return (self.get_string_id(), ) if lane is None else (self.get_string_id(), lane)
+        if self.crate: # if there is a crate/backplane
+            crate_number = self.crate.crate_number
+            crate = crate_number if crate_number is not None else default_crate if default_crate is not None else self.crate.get_string_id()
+
+            # If there is no slot info (self.slot==0 or None), we can set slot field to None because the crate field is defined and makes the tuple unique
+            slot = self.slot - 1 if self.slot else default_slot
         else:
-            return self.get_crate_id(self.slot - 1) + (tuple() if lane is None else (lane,) )
+            crate = default_crate
+            # If there is no backplane AND no slot info (None or 0), we need to use the board model/serial in the slot field to make the tuple unique.
+            slot = self.slot - 1 if self.slot else default_slot if default_slot is not None else self.get_string_id()
+        return (crate, slot) if lane is None else (crate, slot, lane)
+        # if not self.crate
+        #     crate or self.slot is None:
+        #     return (self.get_string_id(), ) if lane is None else (self.get_string_id(), lane)
+        # else:
+        #     return self.get_crate_id(self.slot - 1) + (tuple() if lane is None else (lane,) )
 
 
     def get_crate_id(self, slot=None):
         """ Return the crate ID tuple optionally appended by the specified slot number.slot
+
         Parameters:
 
             slot (int): slot number to append to the tuple. Should be zero-based.slot
@@ -3467,6 +3774,57 @@ class chFPGA_controller(IceBoardExtHandler):
             string that uniquely defined the crate.
         """
         return self.crate.get_id(slot=slot)
+
+    def get_channel_ids(self, channels=None):
+        """ return a list of channel IDs ((crate,slot,chan) tuples) for the specified or all channnels.
+
+        Parameters:
+
+            channels (list of int): chennels for which the channel id is  desired. If None, the channelID for all channels is returned.
+
+        Returns:
+            list of (crate, slot, channel) tuples
+        """
+
+        if channels is None:
+            channels = self.get_channels()
+        return [self.get_id(ch) for ch in channels]
+
+    def get_stream_ids(self, channels=None):
+        """ Return the stream_ids (integers) of specified or all channels.
+
+        Parameters:
+
+            channels (list of int): chennels for which the stream id is  desired. If None, stream ID for all channels is returned.
+
+        Returns:
+            list of int containing the stream IDs
+        """
+
+        if channels is None:
+            channels = self.get_channels()
+        return [self.ANT[ch].PROBER.get_stream_id() for ch in channels]
+
+
+    def get_stream_id(self, channel):
+        """ Return the stream_id of a specified channel.
+
+        Returns:
+            int: the stream IDs
+        """
+
+        return self.ANT[channel].PROBER.get_stream_id()
+
+
+    def get_stream_id_map(self):
+        """ Return the stream_ids of every channel of the board, indexed by channel_id.
+
+        Returns:
+            dict if the format {channel_id:stream_id}, where channel_id is a (crate, slot, channel) tuple.
+        """
+
+        return {self.get_id(ch): ant.PROBER.get_stream_id() for ch, ant in self.ANT.items()}
+
 
     #########################################################################
     #

@@ -146,6 +146,7 @@ class FPGAArray(object):
                  open=None,
                  if_ip=None,
                  udp_retries=3,
+                 fpga_ip_addr_fn='(a,b,3,d)',
 
                  # sampling_frequency=800e6,
                  # reference_frequency=10e6,
@@ -325,6 +326,7 @@ class FPGAArray(object):
              prog=prog,
              open=open,
              if_ip=if_ip,
+             fpga_ip_addr_fn=fpga_ip_addr_fn,
              sync_method=sync_method,
              sync_source=sync_source,
              sync_master=sync_master,
@@ -367,6 +369,13 @@ class FPGAArray(object):
     def run(self):
        yield self._init()
 
+
+    # Map the string to the function that computes the FPGA IP address from the ARM IP address
+    FPGA_IP_ADDR_FN_TABLE = {
+        '(a,b,3,d)': lambda a,b,c,d:(a, b, 3, d),
+        '(a,b,c+1,d)': lambda a,b,c,d:(a, b, c + 1, d),
+        }
+
     @async
     def init(self,
 
@@ -383,7 +392,7 @@ class FPGAArray(object):
              prog=None,
              open=None,
              if_ip=None,
-
+             fpga_ip_addr_fn='(a,b,3,d)',
 
              sync_method=None,
              sync_source=None,
@@ -490,6 +499,9 @@ class FPGAArray(object):
         self.logger.info('%r: ------------------------' % self)
 
         __main__._host_interface_ip_addr = if_ip
+
+        self.fpga_ip_addr_fn = self.FPGA_IP_ADDR_FN_TABLE[fpga_ip_addr_fn];
+
 
         # Fix up a few parameters for convenience
 
@@ -877,6 +889,8 @@ class FPGAArray(object):
             if if_ip:
                 self.ib.interface_ip_addr = if_ip
 
+            # Tell the boards how to compute their FPGA IP address
+            ib.fpga_ip_addr_fn = self.fpga_ip_addr_fn
 
             ########################
             # Initialize core FPGA firmware (establish FPGA UDP communications)
@@ -1127,6 +1141,7 @@ class FPGAArray(object):
     def set_operational_mode(self,
                              mode,
                              frames_per_packet=1,
+                             send_flags = True,
                              chan8_channel_map=range(8),
                              tx_power=None,
                              integration_period=16384
@@ -1156,8 +1171,19 @@ class FPGAArray(object):
                   is based on the crate number: Crate N and N+1 form a pair, whereas N
                   is a even number.
 
-            integration_period (int): (for ``corr16`` mode only): Sets the
-                integration period (in frames) of the firmware correlator.
+            frames_per_packet (int): Number of frames to combine in a single
+                packet. Is limited by the amount of buffering space inside the
+                FPGA.
+
+            send_flags (bool): If True, the Scaler and Frame flags will be
+                sent after the data block.
+
+            tx_power (dict): Power levels to be set on the GTXes.
+
+            integration_period (int): (for ``corr16`` mode only):
+                Sets the integration period (in frames) of the firmware
+                correlator.
+
 
 
         Notes:
@@ -1186,7 +1212,12 @@ class FPGAArray(object):
         if mode == 'raw_time':
             self.ib.set_fft_bypass(True)
             self.ib.set_scaler_bypass(True)
-            self.init_corner_turn(mode='chan8', frames_per_packet=frames_per_packet, chan8_channel_map=np.hstack((chan8_channel_map, [16]*8)), tx_power=tx_power)
+            self.init_corner_turn(
+                mode='chan8',
+                frames_per_packet=frames_per_packet,
+                send_flags=send_flags,
+                chan8_channel_map=np.hstack((chan8_channel_map, [16]*8)),
+                tx_power=tx_power)
 
         elif mode in ['shuffle256', 'shuffle512', 'shuffle16']:
             if not all(self.ib.CROSSBAR2) or not all(self.ib.CROSSBAR3):
@@ -1195,7 +1226,11 @@ class FPGAArray(object):
             self.ib.CROSSBAR3.SOF_WINDOW_STOP = 110
             self.ib.CROSSBAR3.TIMEOUT_PERIOD = 0
             self.ib.BP_SHUFFLE.reset_rx_equalizers()
-            self.init_corner_turn(mode=mode, frames_per_packet=frames_per_packet, tx_power=tx_power)
+            self.init_corner_turn(
+                mode=mode,
+                frames_per_packet=frames_per_packet,
+                send_flags=send_flags,
+                tx_power=tx_power)
             self.ib.BP_SHUFFLE.reset_stats()
             self.ib.CROSSBAR2.reset_stats()
             self.ib.CROSSBAR3.reset_stats()
@@ -1212,6 +1247,7 @@ class FPGAArray(object):
                      mode,
                      dsmap=range(16),
                      frames_per_packet=1,
+                     send_flags=True,
                      chan8_channel_map=range(16),
                      tx_power=None,
                      sync=True
@@ -1260,7 +1296,7 @@ class FPGAArray(object):
         #####################
         for i, ib in enumerate(self.ib):
             self.logger.info('%r: **** Initializing transmitters for IceBoard %r (SN%s) ****' % (self, ib, ib.serial))
-            ib.set_corr_reset(0)
+            ib.set_corr_reset(0) # Put the corner_turn engine in reset
 
             tx_list.append((ib.slot, 0))  # Register Bypass lane (lane 0) as a transmitter in this slot
             for j, gtx in enumerate(ib.BP_SHUFFLE.gtx):
@@ -1269,57 +1305,59 @@ class FPGAArray(object):
 
             # Initialize the crossbars to select and send data in a specific format
             # ib.init_crossbars(dsmap, frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb1_bypass=cb1_bypass, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass, remap=remap, bp_bypass=bp_bypass)
-            ib.init_crossbars(mode,
-                              dsmap=dsmap,
-                              frames_per_packet=frames_per_packet,
-                              chan8_channel_map=chan8_channel_map)
+            ib.init_crossbars(
+                mode,
+                dsmap=dsmap,
+                frames_per_packet=frames_per_packet,
+                send_flags=send_flags,
+                chan8_channel_map=chan8_channel_map)
         if ib.crate:
 
-	        #####################
-	        # Set-up receivers
-	        #####################
-	        for i, ib in enumerate(self.ib):
-	            # Disable all receivers for which there are no transmitters
-	            for j, gtx in enumerate(ib.BP_SHUFFLE.gtx[0:ib.BP_SHUFFLE.NUMBER_OF_PCB_LINKS]):
-	                if ib.slot is None:
-	                    continue
-	                rx = (ib.slot, j+1)
-	                tx = ib.crate.get_matching_tx(rx)
+            #####################
+            # Set-up receivers
+            #####################
+            for i, ib in enumerate(self.ib):
+                # Disable all receivers for which there are no transmitters
+                for j, gtx in enumerate(ib.BP_SHUFFLE.gtx[0:ib.BP_SHUFFLE.NUMBER_OF_PCB_LINKS]):
+                    if ib.slot is None:
+                        continue
+                    rx = (ib.slot, j+1)
+                    tx = ib.crate.get_matching_tx(rx)
 
-	                # disable receivers that have no corresponding transmitters
-	                if tx in tx_list:
-	                    gtx.USER_GTRXRESET = 0
-	                else:
-	                    gtx.USER_GTRXRESET = 1
-	                    # gtx.USER_RESET = 1
+                    # disable receivers that have no corresponding transmitters
+                    if tx in tx_list:
+                        gtx.USER_GTRXRESET = 0
+                    else:
+                        gtx.USER_GTRXRESET = 1
+                        # gtx.USER_RESET = 1
 
-	        # reset DFE at low power, then increase power
-	        for index in (0, 1):
-	            for tx_group in tx_power['corner_turn']:
-	                lane_group = tx_group['lane_group']
-	                default = tx_group['default']
-	                exceptions = tx_group.get('exceptions', [])
-	                self.logger.info('%r: TX power parameters are: %r (default=%r, exceptions=%r)' % (self, tx_group, default, exceptions))
-	                self.set_tx_power(lane_group=lane_group, default_power=default, exceptions=exceptions, index=index)
-	            if index == 0:
-	                time.sleep(0.3)
-	                for ib in self.ib:
-	                    self.ib.BP_SHUFFLE.reset_rx_equalizers()
+            # reset DFE at low power, then increase power
+            for index in (0, 1):
+                for tx_group in tx_power['corner_turn']:
+                    lane_group = tx_group['lane_group']
+                    default = tx_group['default']
+                    exceptions = tx_group.get('exceptions', [])
+                    self.logger.info('%r: TX power parameters are: %r (default=%r, exceptions=%r)' % (self, tx_group, default, exceptions))
+                    self.set_tx_power(lane_group=lane_group, default_power=default, exceptions=exceptions, index=index)
+                if index == 0:
+                    time.sleep(0.3)
+                    for ib in self.ib:
+                        self.ib.BP_SHUFFLE.reset_rx_equalizers()
 
-	        self.ib.BP_SHUFFLE.reset_stats()
+            self.ib.BP_SHUFFLE.reset_stats()
 
-	        # Print links
-	        for ib in self.ib:
-	            for i in range(ib.NUMBER_OF_CROSSBAR_OUTPUTS):
-	                if ib.slot is None:
-	                    continue
-	                rx = (ib.slot, i)
-	                tx = ib.crate.get_matching_tx(rx)
-	                if tx in tx_list:
-	                    pass
-	                    #self.logger.debug('%r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
-	                else:
-	                    self.logger.debug('%r: In %r, %s has no corresponding transmitter' % (self, ib.crate.handler, rx))
+            # Print links
+            for ib in self.ib:
+                for i in range(ib.NUMBER_OF_CROSSBAR_OUTPUTS):
+                    if ib.slot is None:
+                        continue
+                    rx = (ib.slot, i)
+                    tx = ib.crate.get_matching_tx(rx)
+                    if tx in tx_list:
+                        pass
+                        #self.logger.debug('%r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
+                    else:
+                        self.logger.debug('%r: In %r, %s has no corresponding transmitter' % (self, ib.crate.handler, rx))
 
 
         # sync boards
@@ -1361,7 +1399,7 @@ class FPGAArray(object):
             bp = ib.BP_SHUFFLE
             power_tuples = [(lane, exceptions.get(ib.get_id(lane), default_power)[index])
                             for lane, gtx in enumerate(bp.get_gtx(lane_group=lane_group)) if gtx]
-            self.logger.info('%r: setting Tx power for %r %s to %r' % (self, ib.handler, lane_group, power_tuples))
+            self.logger.info('%r: setting Tx power for %r %s links' % (self, ib.handler, lane_group))
             bp.set_tx_power(power_tuples, lane_group)
 
 
@@ -1526,7 +1564,7 @@ class FPGAArray(object):
         else:
             raise ValueError("Unknown syncing method '%s'" % method)
 
-    def sync(self, delay=2-0.006556800, check=True, align_to_seconds=True):
+    def sync(self, delay=2-0.006556800, check=True, align_to_seconds=True, max_trials=3):
         """ Generate a SYNC event across the whole array based on the syncing method set by ``set_sync_method()``.
 
         Parameters:
@@ -1546,74 +1584,84 @@ class FPGAArray(object):
         align_to_seconds (bool): if True, the trigger time **before** the
             ``delay`` is applied is rounded to the closest integer second.
         """
+        trial = 0
+        while True:
+            try:
+                if check:
+                    sync_ctr_before = self.ib.REFCLK.SYNC_CTR
 
-        if check:
-            sync_ctr_before = self.ib.REFCLK.SYNC_CTR
+                self.sync_timestamps = []
+                self.sync_timestamp = None
 
-        if self.sync_method == 'centralized_soft_trigger':
-            self.sync_master.remote_sync()
-        elif self.sync_method == 'centralized_time_trigger':
-            dt = self.sync_master.get_irigb_time()
-            print 'Triggering SYNC at ', dt.isoformat()
-            self.sync_master.set_irigb_trigger_time(dt, delay=delay)
-            t0 = time.time()
-            while self.sync_master.is_irigb_before_trigger_time():
-                if time.time() - t0 > delay+1:
-                    raise RuntimeError('Timout while waiting for the IRIG-B-based SYNC to complete')
-        elif self.sync_method == 'distributed_time':
-            # Estimate how much time it takes to set the trigger time
-            dt = self.ib[0].get_irigb_time()
-            t0 = time.time()
-            self.ib.set_irigb_trigger_time(dt, delay=300) # set the trigger far enough in time it should not happen before we reprogram another delay
-            setting_time = (time.time() - t0)
-            self.logger.info('%r: It takes %f seconds to set the trigger time across the array' % (self, setting_time))
-            setting_time = round(2*setting_time) + delay
-            # Now set the trigger time using that delay
-            dt = self.ib[0].get_irigb_time()
-            if align_to_seconds:
-                self.logger.info('%r: Rounding trigger time to the second' % self)
-                dt = dt.replace(microsecond=0)
-            self.logger.info('%r: Triggering SYNC %f seconds after %s' % (self, setting_time,  dt.isoformat()))
-            self.print_flush()
-            t0 = time.time()
-            self.sync_start_time = sync_time = self.ib.set_irigb_trigger_time(dt, delay=setting_time)
-            self.logger.info('%r: It took %f seconds to set the final trigger time' % (self, time.time() - t0))
-            t0 = time.time()
-            while any(self.ib.is_irigb_before_trigger_time()):
-                if time.time() - t0 > setting_time + 1:
-                    raise RuntimeError('Timout while waiting for the IRIG-B-based SYNC to complete')
-        elif self.sync_method == 'local_soft_trigger':
-            self.ib.sync()
-        else:
-            raise ValueError("Unknown syncing method '%s'" % self.sync_method)
+                if self.sync_method == 'centralized_soft_trigger':
+                    self.sync_master.remote_sync()
+                elif self.sync_method == 'centralized_time_trigger':
+                    dt = self.sync_master.get_irigb_time()
+                    print 'Triggering SYNC at ', dt.isoformat()
+                    self.sync_master.set_irigb_trigger_time(dt, delay=delay)
+                    t0 = time.time()
+                    while self.sync_master.is_irigb_before_trigger_time():
+                        if time.time() - t0 > delay+1:
+                            raise RuntimeError('Timout while waiting for the IRIG-B-based SYNC to complete')
+                elif self.sync_method == 'distributed_time':
+                    # Estimate how much time it takes to set the trigger time
+                    dt = self.ib[0].get_irigb_time()
+                    t0 = time.time()
+                    self.ib.set_irigb_trigger_time(dt, delay=300) # set the trigger far enough in time it should not happen before we reprogram another delay
+                    setting_time = (time.time() - t0)
+                    self.logger.info('%r: It takes %f seconds to set the trigger time across the array' % (self, setting_time))
+                    setting_time = round(2*setting_time) + delay
+                    # Now set the trigger time using that delay
+                    dt = self.ib[0].get_irigb_time()
+                    if align_to_seconds:
+                        self.logger.info('%r: Rounding trigger time to the second' % self)
+                        dt = dt.replace(microsecond=0)
+                    self.logger.info('%r: Triggering SYNC %f seconds after %s' % (self, setting_time,  dt.isoformat()))
+                    self.print_flush()
+                    t0 = time.time()
+                    self.sync_start_time = sync_time = self.ib.set_irigb_trigger_time(dt, delay=setting_time)
+                    self.logger.info('%r: It took %f seconds to set the final trigger time' % (self, time.time() - t0))
+                    t0 = time.time()
+                    while any(self.ib.is_irigb_before_trigger_time()):
+                        if time.time() - t0 > setting_time + 1:
+                            raise RuntimeError('Timout while waiting for the IRIG-B-based SYNC to complete')
+                elif self.sync_method == 'local_soft_trigger':
+                    self.ib.sync()
+                else:
+                    raise ValueError("Unknown syncing method '%s'" % self.sync_method)
 
-        if check:
-            sync_ctr_after = self.ib.REFCLK.SYNC_CTR
-            bad_ib = [ib for i,ib in enumerate(self.ib) if (sync_ctr_after[i] - sync_ctr_before[i]) & 0xf != 1]
-            if bad_ib:
-                raise RuntimeError('The following IceBoards did not SYNC properly: %s' % (','.join(repr(ib) for ib in bad_ib)))
+                if check:
+                    sync_ctr_after = self.ib.REFCLK.SYNC_CTR
+                    bad_ib = [ib for i,ib in enumerate(self.ib) if (sync_ctr_after[i] - sync_ctr_before[i]) & 0xf != 1]
+                    if bad_ib:
+                        raise RuntimeError('The following IceBoards did not SYNC properly: %s' % (','.join(repr(ib) for ib in bad_ib)))
 
-        if self.sync_method == 'centralized_time_trigger' or self.sync_method == 'distributed_time':
-            self.sync_timestamps = ts = self.ib.get_irigb_time(trig=False, format='raw')
-            self.sync_timestamp = ts[0]
+                if self.sync_method == 'centralized_time_trigger' or self.sync_method == 'distributed_time':
+                    self.sync_timestamps = ts = self.ib.get_irigb_time(trig=False, format='raw')
+                    self.sync_timestamp = ts[0]
 
-            delta_ts = max(ts.nano) - min(ts.nano)
-            self.logger.info('%r: The IRIG-B time for Frame 0 on all boards is:\n%s' %
-                (self, '\n'.join('%r: %s (%i ns since epoch, %i ns after sync)' % (
-                    ib.handler,
-                    ts[i].isoformat(),
-                    ts[i].nano,
-                    ts[i].nano - sync_time[i].nano)
-                for i ,ib in enumerate(self.ib))))
-            self.logger.info('%r: The maximum Frame 0 time difference is %i ns' % (self, delta_ts) )
-            if delta_ts > self.max_sync_time_difference:
-                raise RuntimeError('The Frame 0 time difference of %i exceeds the maximum limit of %i' % (delta_ts, self.max_sync_time_difference))
+                    delta_ts = max(ts.nano) - min(ts.nano)
+                    self.logger.info('%r: The IRIG-B time for Frame 0 on all boards is:\n%s' %
+                        (self, '\n'.join('%r: %s (%i ns since epoch, %i ns after sync)' % (
+                            ib.handler,
+                            ts[i].isoformat(),
+                            ts[i].nano,
+                            ts[i].nano - sync_time[i].nano)
+                        for i ,ib in enumerate(self.ib))))
+                    self.logger.info('%r: The maximum Frame 0 time difference is %i ns' % (self, delta_ts) )
+                    if delta_ts > self.max_sync_time_difference:
+                        raise RuntimeError('The Frame 0 time difference of %i exceeds the maximum limit of %i' % (delta_ts, self.max_sync_time_difference))
 
-        for ib in self.ib:
-            for ant in ib.ANT:
-                ant.SCALER.OVERFLOW_RESET = 1
-                ant.SCALER.OVERFLOW_RESET = 0
-
+                for ib in self.ib:
+                    for ant in ib.ANT:
+                        ant.SCALER.OVERFLOW_RESET = 1
+                        ant.SCALER.OVERFLOW_RESET = 0
+                break
+            except Exception as e:
+                trial += 1
+                if trial >= max_trials:
+                    raise RuntimeError('SYNC failed after %i trials. The last exception was:\n%r' % (trial, e))
+                self.logger.warn('%r: SYNC failed on trial %i/%i due to the following error. Will retry.\n%r' % (self, trial, max_trials, e))
     @async
     def set_channelizers(self, adc_mode=None, adcdaq_mode=None,
                          data_source=None, function=None, a=1, b=0, freq_test_bins=None,
@@ -1654,24 +1702,48 @@ class FPGAArray(object):
     # def get_current_gain_bank(self):
     #     return [ib.get_current_gain_bank() for ib in self.ib]
 
+    def get_stream_id_map(self):
+        """ Return the stream_ids if every channel of the array, indexed by channel_id.
+
+        Returns:
+            dict if the format {channel_id:stream_id}, where channel_id is a (crate, slot, channel) tuple.
+        """
+
+        stream_id_map = {}
+        for ib in self.ib:
+            stream_id_map.update(ib.get_stream_id_map())
+
+        if len(stream_id_map) != len(set(stream_id_map.values())):
+            self.logger.warn('%r: Stream IDs are not unique!')
+
+        return stream_id_map
+
+
     def get_iceboard(self, board):
         """ Return the ICEBoard specified by tuple or serial number.
 
         If board is already an IceBoard object, it should be returned.
         """
         if not self.ib:
-            raise RuntimeError('There are no Iceboard to select in the list')
+            raise RuntimeError('There are no Iceboard to select in the current array')
         elif isinstance(board, type(self.ib[0])):
             return board
-        elif isinstance(board, str):
+        elif isinstance(board, basestring):
             if board in self.ib.serial:
                 return self.ib.get(serial=board)
+            elif board in self.ib.hostname:
+                return self.ib.get(hostname=board)
             else:
                 raise RuntimeError('%r: Invalid Board serial number %s. Valid serial numbers are %s' %
                     (self, board, ','.join("'%s'" % ib.serial for ib in self.ib)))
-        elif isinstance(board, (tuple, list)):
-            crate, slot = board
-            return self.ic.get(crate_number=crate).slot[slot + 1]
+        elif isinstance(board, (tuple, list)) and len(board) == 2:
+            matches = [ib for ib in self.ib if tuple(board) == ib.get_id()]
+            if not matches:
+                raise RuntimeError('board ID %r did not match any board in the array: %s' % (board, [ib.get_id() for ib in self.ib]))
+            elif len(matches) > 1:
+                raise RuntimeError('board ID %r Matched multiple boards: %s' % ','.join(ib.get_string_id() for ib in matches))
+            else:
+                return matches[0]
         else:
             raise AttributeError('%r: Invalid Iceboard specification %s' % (self, board))
 
@@ -1811,35 +1883,133 @@ class FPGAArray(object):
         # get the default gains, just in case we need them
         try:
             default_gains_filename = os.path.join(gain_folder, 'default_gains.pkl')  # filename of the default gains
-            default_gains = pickle.load(open(default_gains_filename, 'rb'))
+            with open(default_gains_filename, 'rb') as f:
+                default_gains = pickle.load(f)
         except IOError:
             default_gains = None
 
         array_gains = {}
         for ib in self.ib:
-            board_id = crate, slot_0based = ib.get_id()
+            board_id = ib.get_id()
             self.logger.info('%r: Reading digital gains for (crate,slot)=%r' %
                              (self, board_id))
             board_gains = ib.load_gains(folder=gain_folder) or default_gains
             yield async_moment
 
             if not board_gains:
-                self.logger.warn('%r: Neither board-specific gain file not default gain file was found for crate %02i slot %02i (FCC%02i%02i)' % (self, crate, slot_0based, crate, slot_0based))
-
-            if board_gains is None:
+                self.logger.warn('%r: Neither board-specific gain file not default gain file was found for (crate,slot)=%r' % (self, board_id))
                 array_gains[board_id] = None
             else:
                 array_gains[board_id] = board_gains
         async_return(array_gains)
 
     @async
-    def set_gains(self, gains, bank=-1,  when='now'):
+    def save_gains(self, gains, gain_folder='/home/chime/ch_acq/gains'):
+        """ Save the gains.
+
+        Parameters:
+
+            gains (): Gains in the format {(crate,slot,channel):(glin, glog), ...} or {(crate, slot):{channel:(glin,glog),...},...}
+
+            gain_folder (str): Folder in which the gain files are located.
+
+        Returns:
+
+            The gain map in the format ``{board_id: gains}``, where
+            ``board_id`` is a two-element tuple uniquely identifying the board
+            (taken from the board's get_id()), and ``gains`` is a dict
+            containing the digital gains to be applied to the channels on that
+            board (from the board's load_gains(...))
+
+        Note:
+
+            This method does not set the digital gains in the FPGAs; it only
+            loads them from the files. See `set_gains` to set the gains using
+            the dict returned by this method.
+        """
+
+        # make sure we have a board-id-based gain table
+        gains = self.group_gains_per_board_id(gains)
+        for board_id, board_gains in gains.items():
+            ib = self.get_iceboard(board_id)
+            ib.save_gains(gains=board_gains, folder=gain_folder)
+
+
+    @async
+    def get_gains(self, bank=0, use_cache=True):
+        """ Return the digital gains programmed in the specified bank for all channels of all boards of the array.
+
+        Parameters:
+
+            `bank`: gain bank from which the gains are read.
+
+            `use_cache`: True to allow the software-cached value to be used (much faster the reading back from the FPGAs)
+
+        Returns:
+
+            Digital gains, in a channel-indexed dict, in the format::
+
+                {chan_id: (glin, glog), ...}
+
+                where:
+                     ``chan_id`` is a (crate, slot, channel) tuple that uniquely identifies a channel
+                     ``crate``= int or str or None
+                     ``slot``= int or str
+                     ``glin` = array of 1024 (int16 + 1j* int16) linear gain components
+                     ``glog`` = post-scaler factor (applies additional gain of 2**glog to all bins)
+
+        """
+        gains = {}
+        for ib in self.ib:
+            for ch, ch_gains in ib.get_gains(bank=bank, use_cache=use_cache):
+                gains[ib.get_id(ch)] = ch_gains
+            yield async_moment
+        async_return(gains)
+
+
+    @async
+    def get_gain_timestamps(self, bank=0):
+        """
+        Returns the timestamp at which the gains for each channel of thewas set.
+
+        Parameters:
+
+            bank (int): gain bank from which to get the gains timestamp.
+
+        Returns:
+
+            Timestamp of thd digital gains, in a channel-indexed dict, in the format::
+
+                {chan_id: timestamp, ...}
+
+                where:
+                     ``chan_id`` is a (crate, slot, channel) tuple that uniquely identifies a channel
+                     ``crate``= int or str or None
+                     ``slot``= int or str
+                     ``timestamp` = is a time.time() value. None if the gain was not set.
+        """
+        timestamps = {}
+        for ib in self.ib:
+            for ch, timestamp in ib.get_gain_timestamps(bank=bank):
+                timestamps[ib.get_id(ch)] = timestamp
+            yield async_moment
+        async_return(timestamps)
+
+    @async
+    def set_gains(self, gains, bank=-1,  when='now', gain_timestamps=None):
         """ Set the gains on the boards in the array.
 
         Parameters:
-            'gains': dictionary of gains specified as {board_id: gain_spec, ...}.
-                     `board_id` uniquely identifies a board and is a tuple either in the format (crate, slot) or (board_id).
-                     `gain_spec` is passed to the set_gain() method and is in the format (linear_gain, log_gain). `linear_gain` is a complex scalar or a 1024-element complex vector. log_gain is the post_scaler factor, and is a integer.
+            'gains': dictionary of gains specified as either:
+                - {board_id: {chan: (glin, glog), ...}, ...}
+                - {chan_id: (glin, glog), ...}
+                where:
+                     ``board_id`` is a (crate, slot) tuple that uniquely identifies a board
+                     ``channel_id`` is a (crate, slot, channel) tuple that uniquely identifies a channel
+                     ``crate``= int or str or None
+                     ``slot``= int or str
+                     ``glin` = array of 1024 (int16 + 1j* int16) linear gain components
+                     ``glog`` = post-scaler factor (applies additional gain of 2**glog to all bins)
 
             `bank`: gain bank in which the gains are written. If `bank`=-1 or is None, gains are
                     written in the inactive bank (which can be activated later using set_gain_bank()).
@@ -1847,22 +2017,57 @@ class FPGAArray(object):
             `when`: if `when` is 'now' or a negative integer, the target gains
                     are made active immediately.
 
-                    If `when` is None, the gains are not activated.
+                    If `when` is None, the gains are written in the specified bank but the bank switching is not activated.
 
                     If `when` is an integer, the gains will be activated starting on
                     the target timestamp specified by `when`.
 
+            `gain_timestamps`: dictionary of unix timestamps with same key format as `gains`
+                               or single unix timestamp that is applied to all channels.
+
+                               If not provided, then defaults to current time.
 
         """
-        for ch_id, gain in gains.items():
-            crate, slot_0based = ch_id[0], ch_id[1]
-            self.logger.info('%r: Setting digital gains for crate %02i slot %02i (FCC%02i%02i)' % (self, crate, slot_0based, crate, slot_0based))
-            ib = self.get_iceboard_from_id(ch_id)
-            ib.set_gains(gain=gain, bank=bank)
+        # make sure we have a board-id-based gain table
+        gains = self.group_gains_per_board_id(gains)
+
+        # format the timestamps dictionary identically to gains
+        if isinstance(gain_timestamps, dict):
+            gain_timestamps = self.group_gains_per_board_id(gain_timestamps)
+
+        # set the gains for each board
+        for board_id, g in gains.items():
+            gain_timestamp = gain_timestamps[board_id] if isinstance(gain_timestamps, dict) else gain_timestamps
+            ib = self.get_iceboard_from_id(board_id)
+            self.logger.info('%r: Setting digital gains for (crate,slot)=%r (%s)' % (self, board_id, ib.get_formatted_id()))
+            ib.set_gains(gain=g, bank=bank, when=None, gain_timestamp=gain_timestamp)
             yield async_moment
 
         if when is not None:
             self.switch_gains(bank=bank, when=when)
+
+
+
+    def group_gains_per_board_id(self, channel_based_gains):
+        """ Convert a channel_id based gain table into a board_id-based gain table.
+
+        Parameters:
+            channel_based_bains (dict): dict containing channel-based gain  entries in the format {channel_id: gains, ...}, where ``channel_id`` is a 3-element (crate, slot, channel)tuple
+
+        Returns:
+            A board_id-based gain table in the format {board_id: {channel:gains,...},...}.
+
+        Note:
+            - Entries that are not a 3-element tuples are left untouched, allowing a board-id based table or another dict to be passed.
+
+        """
+        board_based_gains = {}
+        for id_, gains in channel_based_gains.items():
+            if isinstance(id_, (tuple, list)) and len(id_) == 3:
+                board_based_gains.setdefault(tuple(id_[:-1]), {})[id_[-1]] = gains
+            else:
+                board_based_gains[id_] = gains
+        return board_based_gains
 
     @async
     def compute_gains(self, enable=True, slots=None, noise_injection=None, gain_folder='/home/chime/ch_acq/gains'):
@@ -1967,10 +2172,9 @@ class FPGAArray(object):
     def get_chan_output(self):
         ch_out = OrderedDict()
         for ic in self.ic:
-            for slot, ib in ic.slot.items():
-                for ch, ant in enumerate(ib.ANT):
-                    buf = ant.FUNCGEN.get_buffer()
-                    ch_out[(ic.crate_number, slot, ch)] = buf.tolist()
+            for ib in ic.slot.values():
+                for ant in ib.ANT.values():
+                    ch_out[ant.get_id()] = ant.FUNCGEN.get_buffer()
         return ch_out
 
     @async
@@ -3067,20 +3271,20 @@ class FPGAArray(object):
 
         # Command errors
 
-
-        for i, ib in enumerate(self.ib):
-            try:
-                fn, ts = yield ib.capture_frame_time.async(format='raw')
-                if not i:
-                    fn0, ts0 = (fn, ts)
-                crate, slot = ib.get_id()
-                slot = ib.slot - 1
-                metrics.add('fpga_time_delta', ts.nano - ts0.nano, crate=crate, slot=slot)
-                metrics.add('fpga_frame_number_delta', fn - fn0, crate=crate, slot=slot)
-                metrics.add('fpga_time_error', ts.nano - (self.sync_timestamps[i].nano + fn*2560), crate=crate, slot=slot)
-                metrics.add('fpga_sync_time_delta', self.sync_timestamps[i].nano - self.sync_timestamps[0].nano, crate=crate, slot=slot)
-            except RuntimeError:
-                self.logger.error('%r: Timeout while capturing frame time' % ib)
+        if self.sync_timestamps:
+            for i, ib in enumerate(self.ib):
+                try:
+                    fn, ts = yield ib.capture_frame_time.async(format='raw')
+                    if not i:
+                        fn0, ts0 = (fn, ts)
+                    crate, slot = ib.get_id()
+                    slot = ib.slot - 1
+                    metrics.add('fpga_time_delta', ts.nano - ts0.nano, crate=crate, slot=slot)
+                    metrics.add('fpga_frame_number_delta', fn - fn0, crate=crate, slot=slot)
+                    metrics.add('fpga_time_error', ts.nano - (self.sync_timestamps[i].nano + fn*2560), crate=crate, slot=slot)
+                    metrics.add('fpga_sync_time_delta', self.sync_timestamps[i].nano - self.sync_timestamps[0].nano, crate=crate, slot=slot)
+                except RuntimeError:
+                    self.logger.error('%r: Timeout while capturing frame time' % ib)
 
         async_return(metrics)
 
@@ -3278,7 +3482,7 @@ class FPGAArray(object):
                 self.logger.info("%r: Setting ADC delays" % (self))
                 ib.set_adc_delays(**kwargs)
                 yield async_moment
-	    else:
+            else:
                 self.logger.warning("%r: Communication with FPGA is not initialized. Cannot set ADC delays" % (self))
 
 
@@ -3755,10 +3959,10 @@ def create_fpga_array(args=None):
     fpga_array = FPGAArray(**fpga_array_params)  # Create FPGA array
 
     # GPU array
-    gpu_array = GPUArray(**config.get('cli_gpu_array', {}))     # Create FPGA array
+    #gpu_array = GPUArray(**config.get('cli_gpu_array', {}))     # Create FPGA array
 
 
-    return config, fpga_array, gpu_array, ps_array
+    return config, fpga_array, Ccoll([]), ps_array
 
 if __name__ == '__main__':
     (config, ca, nodes, ps) = create_fpga_array()

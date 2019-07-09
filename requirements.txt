@@ -1,5 +1,5 @@
 # Requirements as per PEP508 standard
-# This file is used by setup.py to create the dependency list 
+# This file is used by setup.py to create the dependency list
 # but can be used manually as well with ``pip install -r requirements.txt``
 
 # Private packages
@@ -8,6 +8,7 @@ wtl.metrics @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.metrics.git
 wtl.log @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.log.git
 wtl.rest @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.rest.git
 wtl.config @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.config.git
+wtl.archive @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.h5-archive.git@v1.0.2
 
 # PyPi packages
 numpy==1.15.2
