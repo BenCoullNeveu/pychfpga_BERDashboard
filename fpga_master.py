@@ -466,7 +466,7 @@ class ChimeMaster(object):
 
         or::
 
-                { target:, (glin, glog), ...}
+                { target: (glin, glog), ...}
 
 
         """
@@ -593,12 +593,18 @@ class ChimeMaster(object):
             # start the integration of FFT data for specified channels
             # We will iterate until all channels have a solution, or until we have reached an iteration limit
             iteration = 0
+            fft_rms_requested = {sid:False for sid in stream_ids}
+
             while True:
                 self.log.info('%r: *** Gain calculator : Acquiring data block %i' % (self, iteration))
+                required_sids = [sid for sid, requested in fft_rms_requested.items() if not requested]
                 yield server.start_fft_rms(
-                    stream_ids=stream_ids,
+                    stream_ids=required_sids,
                     target_gain_bank=bank,
                     number_of_frames=number_of_fft_averages)
+                # Flag the stream IDs that that we required. They may or may not come in immediatly on the next poll.
+                for sid in required_sids:
+                    fft_rms_requested[sid] = True
 
                 while True:
                     sids, rms = yield server.get_fft_rms()
@@ -609,8 +615,11 @@ class ChimeMaster(object):
                 self.log.info('%r: *** Gain calculator : Got FFT RMS values for Channel ID: Stream ID%s' % (self,
                     ', '.join('%s:%i' % (channel_ids[sid_index_map[sid]], sid) for sid in sids if sid in sid_index_map)))
                 new_gains = gc.update_gains(np.array(sids), np.array(rms))
-                bank ^= 1 # switch bank
+                # bank ^= 1 # switch bank  # Can't do that right now: the formware does not switch glog
                 yield self.fpgas.set_gains.async(gains=new_gains, bank=bank, when='now')
+                # Indicate we need to request new rms values for the channels that were just processed
+                for sid in sids:
+                    fft_rms_requested[sid] = False
 
                 self.gain_calc_metrics.add('fpga_gains_done', value=np.sum(gc.done))
                 # generate some metrics
@@ -635,10 +644,12 @@ class ChimeMaster(object):
                         value=gc.iteration_number[bix])
                     self.gain_calc_metrics.add('fpga_gain_calc_percent_complete',
                         stream_id=sid, channel_id=cid,
-                        value=gc.percent_done())
-                if gc.is_done() or (iteration > 2 * number_of_gain_update_iterations):
+                        value=gc.iteration_number[bix].astype(np.float32) / number_of_gain_update_iterations * 100.0)
+                # if gc.is_done() or (iteration > 2 * number_of_gain_update_iterations):
+                if gc.is_done():
                     break
                 iteration += 1
+                yield sleep(1)
 
             filtered_gains, mask = gc.get_filtered_gains()
             yield self.fpgas.set_gains.async(gains=filtered_gains, bank=0, when='now')
