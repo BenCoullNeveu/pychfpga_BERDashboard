@@ -424,7 +424,7 @@ class ChimeMaster(object):
 
 
     @coroutine
-    def set_fpga_data_capture(self, chan_ids=None, capture_rate=23, source='adc'):
+    def set_fpga_data_capture(self, chan_ids=None, capture_rate=23, source=None):
         """
         Sets the data source and capture rate for the specified channels. This
         can be called at any time after array initializationand does not
@@ -436,13 +436,17 @@ class ChimeMaster(object):
 
         """
 
+
         if isinstance(source, basestring):
             source=str(source)
+
+        conf = self.config.fpga.raw_data_capture
+        capture_source = source or conf.capture_source
 
         ib_chans = self.fpgas.get_iceboards(chan_ids, lane_type='chan').items()
 
         for (ib, channels) in ib_chans:
-                ib.set_data_capture(channels=channels, sub_period=capture_rate, source=source)
+                ib.set_data_capture(channels=channels, sub_period=capture_rate, source=capture_source)
 
 
     @coroutine
