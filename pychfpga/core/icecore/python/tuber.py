@@ -146,7 +146,7 @@ class Context(async.Parallelizable):
             if argsize > 1000:
                 h = tuple((call['object'], call['method'], tuple(call['args']), frozenset(call['kwargs'].items())) for call in calls)
                 if h in json_cache:
-                    log.info('%r: using cashed JSON in request')
+                    log.debug('Tuber: Using cached JSON request for call list starting with  method %s' % calls[0]['method'])
                     json_in = json_cache[h]
                 else:
                     json_in = json.dumps(calls)

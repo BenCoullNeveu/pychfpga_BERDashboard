@@ -491,25 +491,25 @@ class XGLinkArray(XGLinkCore):
 
     # backplane link-specific registers
     # TX_TEST_ENABLE  = BitField(CONTROL, 4+0, 1, doc='')
-    RESET_STATS     = BitField(CONTROL, 4+0, 2, doc='')
-    LANE_SEL        = BitField(CONTROL, 4+0, 3, width=5, doc='')
+    RESET_STATS     = BitField(CONTROL, 4 + 0, 2, doc='')
+    LANE_SEL        = BitField(CONTROL, 4 + 0, 3, width=5, doc='')
 
-    BYPASS_PCB_SHUFFLE = BitField(CONTROL, 4+1, 0, doc='')
-    BYPASS_QSFP_SHUFFLE = BitField(CONTROL, 4+1, 1, doc='')
+    BYPASS_PCB_SHUFFLE = BitField(CONTROL, 4 + 1, 0, doc='')
+    BYPASS_QSFP_SHUFFLE = BitField(CONTROL, 4 + 1, 1, doc='')
 
     # FIFO_RESET      = BitField(CONTROL, 4+1, 0, doc='Resets the RX FIFO')
 
-    RX_FIFO_OVERFLOW = BitField(STATUS, 2+0, 0, doc='Sticky fifo overflow bit for the selected lane. Is cleared when RESET_STATS=1.')
-    RESET_MON        = BitField(STATUS, 2+0, 1, doc='State of the reset line')
-    RX_FRAME_DETECT  = BitField(STATUS, 2+0, 2, doc='Sticky bit indicating that a data frame was detected. Is cleared when RESET_STATS=1.')
-    TX_FIFO_OVERFLOW = BitField(STATUS, 2+0, 3, doc='Sticky fifo overflow bit for the selected lane. Is cleared when RESET_STATS=1.')
+    RX_FIFO_OVERFLOW = BitField(STATUS, 2 + 0, 0, doc='Sticky fifo overflow bit for the selected lane. Is cleared when RESET_STATS=1.')
+    RESET_MON        = BitField(STATUS, 2 + 0, 1, doc='State of the reset line')
+    RX_FRAME_DETECT  = BitField(STATUS, 2 + 0, 2, doc='Sticky bit indicating that a data frame was detected. Is cleared when RESET_STATS=1.')
+    TX_FIFO_OVERFLOW = BitField(STATUS, 2 + 0, 3, doc='Sticky fifo overflow bit for the selected lane. Is cleared when RESET_STATS=1.')
     # TEST_CTR         = BitField(STATUS, 2+0, 4, width=3, doc='State of the test pattern counter')
 
-    RX_ERROR_CTR        = BitField(STATUS, 2+2, 0, width=16, doc='Current value of the error counter for the selected lane. Saturates at 0xFFFF. Is cleared when RESET_STATS=1.')
-    RX_MAX_FRAME_LENGTH = BitField(STATUS, 2+4, 0, width=13, doc='Current value of the maximum frame length detector. Is cleared when RESET_STATS=1.')
-    RX_MIN_FRAME_LENGTH = BitField(STATUS, 2+6, 0, width=13, doc='Current value of the minimum frame length detector. Is cleared when RESET_STATS=1.')
+    RX_ERROR_CTR        = BitField(STATUS, 2 + 2, 0, width=16, doc='Current value of the error counter for the selected lane. Saturates at 0xFFFF. Is cleared when RESET_STATS=1.')
+    RX_MAX_FRAME_LENGTH = BitField(STATUS, 2 + 4, 0, width=13, doc='Current value of the maximum frame length detector. Is cleared when RESET_STATS=1.')
+    RX_MIN_FRAME_LENGTH = BitField(STATUS, 2 + 6, 0, width=13, doc='Current value of the minimum frame length detector. Is cleared when RESET_STATS=1.')
     # RX_CTR              = BitField(STATUS, 2+5, 0, width=8, doc='Free runing counter on the local RX clock. Is cleared when RESET_STATS=1.')
-    RX_FRAME_CTR        = BitField(STATUS, 2+7, 0, width=8, doc='Number of frames received since reset. Is cleared when RESET_STATS=1.')
+    RX_FRAME_CTR        = BitField(STATUS, 2 + 7, 0, width=8, doc='Number of frames received since reset. Is cleared when RESET_STATS=1.')
     # DELAY_CAPTURE       = BitField(STATUS, 2+10, 0, width=16, doc="")
 
 

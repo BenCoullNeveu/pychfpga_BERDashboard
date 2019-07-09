@@ -397,7 +397,6 @@ class ShuffleCrossbar(Module_base):
             bs.FIFO_OVERFLOW_RESET = 1
             bs.FIFO_OVERFLOW_RESET = 0
 
-
     def print_crossbar_monitor(self, reset=True):
 
         if reset:
@@ -406,10 +405,11 @@ class ShuffleCrossbar(Module_base):
 
         lane_range = range(self.NUMBER_OF_CROSSBAR_INPUTS)
         lane_map = self.get_lane_map()
+        rx_lane_group = {2: 'pcb', 3: 'qsfp'}[self.crossbar_level]
         active_slots = set(self.fpga.crate.slot.keys())
-        rx_errors = self.fpga.BP_SHUFFLE.get_rx_lane_monitor('ERROR_CTR')
-        rx_max_frame = self.fpga.BP_SHUFFLE.get_rx_lane_monitor('MAX_FRAME_LENGTH')
-        rx_min_frame = self.fpga.BP_SHUFFLE.get_rx_lane_monitor('MIN_FRAME_LENGTH')
+        rx_errors = self.fpga.BP_SHUFFLE.get_rx_lane_monitor('ERROR_CTR', lane_group=rx_lane_group)
+        rx_max_frame = self.fpga.BP_SHUFFLE.get_rx_lane_monitor('MAX_FRAME_LENGTH', lane_group=rx_lane_group)
+        rx_min_frame = self.fpga.BP_SHUFFLE.get_rx_lane_monitor('MIN_FRAME_LENGTH', lane_group=rx_lane_group)
 
         stream_id = self.capture_stream_id()
         stream_id = [stream_id[lane] for lane in lane_map]
