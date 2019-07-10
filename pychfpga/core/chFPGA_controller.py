@@ -234,12 +234,18 @@ class chFPGA_controller(IceBoardExtHandler):
         self.recv = None
 
     @async
-    def open(self, init=1, verbose=0, udp_retries=10, **kwargs):
+    def open(self, init=1, verbose=0, **kwargs):
         """
         Opens communication with the FPGA, retreives the firmware configuration information and
         create the Python objects needed to operate the firmware. If `init` =1, the :meth:`init`
         method will be called to initialize the FPGA. Otherwise, this is a read-only operation, i.e.
         the state of the FPGA is unchanged.
+
+
+        The parameters that control FPGA communications are the default set at
+        object creation. To pass specific parameters, explicitely call
+        open_core() with the desired parameters before calling open().
+
 
         Parameters:
 
@@ -247,11 +253,12 @@ class chFPGA_controller(IceBoardExtHandler):
                         the FPGA config; -1: Don<t read the FPGA and do not create the Python
                         objects.
             verbose (int): verbosity level, which is passed to the `init()` method.
-            udp_retries: Number of retries that are made while sendinc commands to the FPGA before raising an exception.
+
             kwargs: All remaining parameters are passed to `init()` method if the `init` parameter is 1.
         """
 
-        yield super(chFPGA_controller, self).open.async(udp_retries=udp_retries)  # Open UDP communication link
+        yield super(chFPGA_controller, self).open.async()  # Open UDP communication link
+
         self.logger.debug('%r: Instantiating chFPGA firmware handlers objects' % (self))
 
         # self.read = self.mmi.read
