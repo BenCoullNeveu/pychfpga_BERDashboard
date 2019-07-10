@@ -2456,41 +2456,46 @@ class chFPGA_controller(IceBoardExtHandler):
 
             source (str): is the source name
 
-                * 0: sync : User-generated SYNC signal (sunc_out)
-                * 1: pps : 1 PPS signal from the IRIG-B decoder (pps_out)
-                * 2: pwm : Output from the frame-based pwm generator (pwm_out)
-                * 3: irigb_trig :# not(irigb_before_target)
-                * 4: bp_trig : (bp_trig_reg)
-                * 5: bp_time : (bp_time_reg)
-                * 6: refclk : 10 MHz reference clock (clk10)
-                * 7: irigb_gen : (irigb_gen_out)
-                * 8: heartbeat1 : (gpio_led_int(4))
-                * 9: heartbeat2 : (gpio_led_int(7))
-                * 10: debug1 : (debug1, currently crossbar2.align_pulse)
-                * 11: debug2 : (debug2, currently crossbar0.lane_monitor)
-                * 12: user_bit0 : (user_bit(0))
-                * 13: user_bit1 : (user_bit(1))
-                * 14: debug3 : (chan_lane_monitor(2)(to_integer(unsigned(user_bit))))
-                * 15: fmc_refclk :# Refclk from Mezz selected by user_bits(0:1)  (fmc_refclk(to_integer(unsigned(user_bit)))
+                * 'sync' : User-generated SYNC signal (sunc_out)
+                * 'pps' : 1 PPS signal from the IRIG-B decoder (pps_out)
+                * 'pwm' : Output from the frame-based pwm generator (pwm_out)
+                * 'irigb_trig' :# not(irigb_before_target)
+                * 'bp_trig' : (bp_trig_reg)
+                * 'bp_time' : (bp_time_reg)
+                * 'refclk' : 10 MHz reference clock (clk10)
+                * 'irigb_gen' : (irigb_gen_out)
+                * 'heartbeat1' : (gpio_led_int(4))
+                * 'heartbeat2' : (gpio_led_int(7))
+                * 'debug1' : (debug1, currently crossbar2.align_pulse)
+                * 'debug2' : (debug2, currently crossbar0.lane_monitor)
+                * 'user_bit0' : (user_bit(0))
+                * 'user_bit1' : (user_bit(1))
+                * 'fmc_refclk' :# Refclk from Mezz selected by user_bits(0:1)  (fmc_refclk(to_integer(unsigned(user_bit)))
+                * 'input' : SMA is a high-impedance input and is not driving any signal
 
 
             output (str or int) is the number or name of the output to configure.
 
-               * 0=SMA-A on the motherboard
-               * 1=SMA on the backplane and FPGA LED1,
-               * 2=SMA-B and FPGA LED2 on the motherboard LED on the backplane.
+               * 'sma_a" or 0: SMA-A on the motherboard
+               * 'bp_sma' or 1: SMA on the backplane and FPGA LED1,
+               * 'sma_b' or 2: SMA-B and FPGA LED2 on the motherboard LED on the backplane.
 
         """
         self.GPIO.set_user_output_source(source, output=output)
 
-    def get_user_output_source(self):
-        """ Return the name of the source currently routed to SMA-A
+    def get_user_output_source(self, output):
+        """ Return the name of the source that drives the specified SMA
+
+
+        Parameters:
+
+            output (sma): Name of the SMA to query
 
         Returns:
 
-            str: name of the source currently routed to SMA-A
+            str: name of the source currently routed to the specified SMA
         """
-        return self.GPIO.get_user_output_source()
+        return self.GPIO.get_user_output_source(output=output)
 
     def set_sync_source(self, source):
         """ Sets the source of the signal that will trigger SYNC events.
@@ -2511,6 +2516,20 @@ class chFPGA_controller(IceBoardExtHandler):
             str describing the SYNC trigger source.
         """
         return self.REFCLK.get_sync_source()
+
+    @async
+    def set_irigb_source(self, source):
+        """ Set the source of the IRIG-B signal. Also configures the user SMA as an 'input' if that SMA is used as a source.
+
+        Parameters:
+
+            source (str): Name of the source to use.
+
+        """
+        yield super(chFPGA_controller, self).set_irigb_source.async(source=source)
+        # If an user SMA is used, configure it as an input
+        if source in self.GPIO.USER_OUTPUTS:
+            self.set_user_output_source(output=source, source='input')
 
     def set_pwm(self, enable, offset, high_time, period, local_sync=False):
         """ Sets the frame-based PWM generator. All times are stated as the number of frames.

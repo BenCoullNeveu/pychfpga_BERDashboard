@@ -163,13 +163,16 @@ class Module_base(object):
         up in the BITS table to find the bit definition (port, bit position
         etc). Returns a boolean."""
 
+        if isinstance(bitfield, basestring):
+            bitfield = self.get_bitfield(bitfield)
+
         if bitfield.page == BitField.DRP:
             data = self.read_drp(bitfield._addr) # read 16-bit value
             return (data >> bitfield.bit) & ((1 << bitfield.width)-1)
 
         word_width = 8
-        lsb_addr = bitfield.addr - int(bitfield.bit//word_width)
-        msb_addr = bitfield.addr - int((bitfield.bit+bitfield.width-1)//word_width)
+        lsb_addr = bitfield.addr - int(bitfield.bit // word_width)
+        msb_addr = bitfield.addr - int((bitfield.bit + bitfield.width - 1) // word_width)
         number_of_bytes = lsb_addr - msb_addr + 1
         data_type = {1: np.dtype('>u1'),
                      2: np.dtype('>u2'),
@@ -187,7 +190,7 @@ class Module_base(object):
         name of the bitfield.
         """
 
-        if isinstance(bitfield, str):
+        if isinstance(bitfield, basestring):
             bitfield = self.get_bitfield(bitfield)
 
         if (data >= 2**bitfield.width) or data < 0:

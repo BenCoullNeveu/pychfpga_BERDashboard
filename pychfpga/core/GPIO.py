@@ -203,15 +203,19 @@ class GPIO_base(Module_base):
         }
 
     USER_OUTPUTS = {
-        0: 'USER_MUX_SOURCE0',
         'sma_a': 'USER_MUX_SOURCE0',
-        1: 'USER_MUX_SOURCE1',
-        'bp_sma_fpga_led1': 'USER_MUX_SOURCE1',
+        0: 'USER_MUX_SOURCE0',
+
         'bp_sma': 'USER_MUX_SOURCE1',
-        2: 'USER_MUX_SOURCE2',
+        'bp_sma_fpga_led1': 'USER_MUX_SOURCE1',
+        1: 'USER_MUX_SOURCE1',
+
+        'sma_b': 'USER_MUX_SOURCE2',
         'sma_b_fpga_led2': 'USER_MUX_SOURCE2',
+        2: 'USER_MUX_SOURCE2',
+
+        'bp_gpio_int': 'USER_MUX_SOURCE3',
         3: 'USER_MUX_SOURCE3',
-        'bp_gpio_int': 'USER_MUX_SOURCE3'
         }
 
     def set_user_output_source(self, source='', output=None):
@@ -231,9 +235,15 @@ class GPIO_base(Module_base):
 
         self.write_bitfield(self.USER_OUTPUTS[output], self.USER_OUTPUT_SOURCE_TABLE[source])
 
-    def get_user_output_source(self):
+    def get_user_output_source(self, output):
         """ Return the current user output source as a string """
-        current_value = self.USER_MUX_SOURCE
+
+        if output not in self.USER_OUTPUTS:
+            raise AttributeError("Invalid output '%s'. Valid outputs are %s." % (
+                output, ', '.join(str(k) for k in self.USER_OUTPUTS.keys())))
+
+        current_value = self.read_bitfield(self.USER_OUTPUTS[output])
+
         for (source, value) in self.USER_OUTPUT_SOURCE_TABLE.items():
             if current_value == value:
                 return source
