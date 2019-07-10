@@ -359,7 +359,7 @@ class RawAcqReceiver(object):
             ('header', self.header_dtype, 1),
             ('data', np.int8, self.DATA_SIZE)])
         self.PACKET_SIZE = self.packet_dtype.itemsize
-        self.NCHAN = len(stream_ids)
+        self.NCHAN = len(stream_ids) # channels to be received for each captured frame
 
 
         # Define the packet buffer
@@ -398,20 +398,48 @@ class RawAcqReceiver(object):
         self.slot_number_mismatch_count = 0
 
         # self.buffer_preprocessing_time = 0
-        self.adc_processing_time = 0
-        self.fft_processing_time = 0
-        self.corr_processing_time = 0
-        self.packet_readout_time = 0
-        self.total_processing_time = 0
-        self.adc_hdf5_processing_time = 0
-        self.adc_metrics_processing_time = 0
-        self.adc_total_hdf5_processing_time = 0
-        self.adc_rms_processing_time = 0
-        self.processed_packets = 0
+
+        self.packet_max_readout_time = 0
+        self.current_packet_readout_time = 0
+
+
+        # Number of packets that are received
         self.received_packets = 0
-        self.processed_adc_packets = 0
-        self.processed_fft_packets = 0
-        self.processed_corr_packets = 0
+
+
+        # Statistics on how much time it takes to process valid ADC, FFT or
+        # CORR packets. The packet count includes only valid packets (right
+        # header and length), but length include time to select the valid
+        # samples in addition to process them.
+
+        self.processed_packets = 0
+        self.packet_max_processing_time = 0
+        self.current_processed_packets = 0
+        self.packet_current_processing_time = 0
+
+
+
+        self.adc_processed_packets = 0
+        self.adc_max_processing_time = 0
+        self.adc_current_processing_time = 0
+        self.adc_current_processed_packets = 0
+
+        self.fft_processed_packets = 0
+        self.fft_max_processing_time = 0
+        self.fft_current_processing_time = 0
+        self.fft_current_processed_packets = 0
+
+        self.corr_processed_packets = 0
+        self.corr_max_processing_time = 0
+        self.corr_current_processed_packets = 0
+        self.corr_current_processing_time = 0
+
+        self.adc_hdf5_max_processing_time = 0
+        self.adc_metrics_max_processing_time = 0
+        self.adc_total_hdf5_processing_time = 0
+        self.adc_rms_max_processing_time = 0
+
+
 
 
         # Channel-indexed arrays
@@ -706,7 +734,7 @@ class RawAcqReceiver(object):
                         t0 = time.time()
                         self.buf_packet_length[self.n] = sock.recv_into(self.buf[self.n])
                         self.n += 1
-                        self.packet_readout_time = max(time.time() - t0, self.packet_readout_time)
+                        self.packet_max_readout_time = max(time.time() - t0, self.packet_max_readout_time)
                         if self.n == self.BUF_SIZE:
                             self.process_rx_buffer()
                             self.n = 0
@@ -738,16 +766,20 @@ class RawAcqReceiver(object):
 
         t0 = time.time()
 
+        self.received_packets += self.n
+
         with self.lock:
             #### Process raw ADC data packets (raw capture source 0) ###
             (adc_buf_ix, ) = np.where(self.buf_probe_id[:self.n] == 0xA0)
             if adc_buf_ix.size:
-                self.processed_packets += adc_buf_ix.size
                 self.buf_packet_length_ok[adc_buf_ix] = self.buf_packet_length[adc_buf_ix] == self.RAW_PACKET_LENGTH
                 self.metrics_adc_packet_length_error += np.sum(self.buf_packet_length_ok[adc_buf_ix]==False)
                 adc_buf_ix = adc_buf_ix[self.buf_packet_length_ok[adc_buf_ix]]
                 if adc_buf_ix.size:
-                    self.processed_adc_packets += adc_buf_ix.size
+                    self.processed_packets += adc_buf_ix.size
+                    self.current_processed_packets += adc_buf_ix.size
+                    self.adc_processed_packets += adc_buf_ix.size
+                    self.adc_current_processed_packets += adc_buf_ix.size
                     self.process_adc_packets(adc_buf_ix)
 
             t1 = time.time()
@@ -756,14 +788,16 @@ class RawAcqReceiver(object):
             #### Process raw FFT data packets (raw capture source 1) ###
             (fft_buf_ix, ) = np.where(self.buf_probe_id[:self.n] == 0xA1)
             if fft_buf_ix.size:
-                self.processed_packets += fft_buf_ix.size
                 self.buf_packet_length_ok[fft_buf_ix] = self.buf_packet_length[fft_buf_ix] == self.RAW_PACKET_LENGTH
                 self.metrics_fft_packet_length_error += np.sum(self.buf_packet_length_ok[fft_buf_ix]==False)
                 # print(self.buf_packet_length[fft_buf_ix] == self.RAW_PACKET_LENGTH)
                 # print(self.buf_packet_length[fft_buf_ix])
                 fft_buf_ix = fft_buf_ix[self.buf_packet_length_ok[fft_buf_ix]]
                 if fft_buf_ix.size:
-                    self.processed_fft_packets += fft_buf_ix.size
+                    self.processed_packets += fft_buf_ix.size
+                    self.current_processed_packets += fft_buf_ix.size
+                    self.fft_processed_packets += fft_buf_ix.size
+                    self.fft_current_processed_packets += fft_buf_ix.size
                     self.process_fft_packets(fft_buf_ix)
 
             t2 = time.time()
@@ -772,7 +806,9 @@ class RawAcqReceiver(object):
             (corr_buf_ix, ) = np.where(self.buf_probe_id[:self.n] == 0xBF)
             if corr_buf_ix.size:
                 self.processed_packets += corr_buf_ix.size
-                self.processed_corr_packets += corr_buf_ix.size
+                self.current_processed_packets += corr_buf_ix.size
+                self.corr_processed_packets += corr_buf_ix.size
+                self.corr_current_processed_packets += corr_buf_ix.size
                 self.process_corr_packets(corr_buf_ix)
 
             t3 = time.time()
@@ -780,11 +816,15 @@ class RawAcqReceiver(object):
 
 
         # self.buffer_preprocessing_time = max(t1 - t0, self.buffer_preprocessing_time)
-        self.received_packets += self.n
-        self.adc_processing_time = max(t1 - t0, self.adc_processing_time)
-        self.fft_processing_time = max(t2 - t1, self.fft_processing_time)
-        self.corr_processing_time = max(t3 - t2, self.corr_processing_time)
-        self.total_processing_time = max(t3 - t0, self.total_processing_time)
+        self.adc_max_processing_time = max(t1 - t0, self.adc_max_processing_time)
+        self.fft_max_processing_time = max(t2 - t1, self.fft_max_processing_time)
+        self.corr_max_processing_time = max(t3 - t2, self.corr_max_processing_time)
+        self.packet_max_processing_time = max(t3 - t0, self.packet_max_processing_time)
+
+        self.adc_current_processing_time += t1 - t0
+        self.fft_current_processing_time += t2 - t1
+        self.corr_current_processing_time += t3 - t2
+        self.packet_current_processing_time += t3 - t0
 
 
 
@@ -852,10 +892,10 @@ class RawAcqReceiver(object):
 
         t3 = time.time()
 
-        self.adc_metrics_processing_time = max(t1 - t0, self.adc_metrics_processing_time)
+        self.adc_metrics_max_processing_time = max(t1 - t0, self.adc_metrics_max_processing_time)
         self.adc_total_hdf5_processing_time += t2 - t1
-        self.adc_hdf5_processing_time = max(t2 - t1, self.adc_hdf5_processing_time)
-        self.adc_rms_processing_time = max(t3 - t2, self.adc_rms_processing_time)
+        self.adc_hdf5_max_processing_time = max(t2 - t1, self.adc_hdf5_max_processing_time)
+        self.adc_rms_max_processing_time = max(t3 - t2, self.adc_rms_max_processing_time)
 
 
     def process_adc_metrics(self, buf_ix, ix):
@@ -1126,11 +1166,11 @@ class RawAcqReceiver(object):
         if self.processed_packets: # avoid divide by zero errors
             print('Processing time for %i packets= readout: %.3f ms/frame pre: %.3f ms/frame, adc:%.3f ms/frame, fft:%.3f ms/frame, proc_total: %.3f ms/frame' % (
                  self.processed_packets,
-                 self.packet_readout_time * 1000. /self.processed_packets * self.NCHAN,
+                 self.packet_max_readout_time * 1000. /self.processed_packets * self.NCHAN,
                  self.buffer_preprocessing_time * 1000. /self.processed_packets * self.NCHAN,
-                 self.adc_processing_time * 1000. /self.processed_packets * self.NCHAN,
-                 self.fft_processing_time * 1000. / self.processed_packets * self.NCHAN,
-                 self.total_processing_time * 1000. / self.processed_packets * self.NCHAN
+                 self.adc_max_processing_time * 1000. /self.processed_packets * self.NCHAN,
+                 self.fft_max_processing_time * 1000. / self.processed_packets * self.NCHAN,
+                 self.packet_max_processing_time * 1000. / self.processed_packets * self.NCHAN
                  ))
 
 
@@ -1174,7 +1214,7 @@ class RawAcqReceiver(object):
         self.hdf5_file = None # Stop the thread from using the file before we close it
         hdf5_file.close()
         self.hdf5_start_time = None
-        self.log.info('%r: Write %i data blocks in %.3f s total (%.0f ms/write)' % (self, self.hdf5_block_writes, self.adc_hdf5_processing_time, (self.adc_hdf5_processing_time * 1000. / self.hdf5_block_writes)) if self.hdf5_block_writes else 0)
+        self.log.info('%r: Write %i data blocks in %.3f s total (%.0f ms/write)' % (self, self.hdf5_block_writes, self.adc_hdf5_max_processing_time, (self.adc_hdf5_max_processing_time * 1000. / self.hdf5_block_writes)) if self.hdf5_block_writes else 0)
 
 
     @coroutine
@@ -1364,29 +1404,60 @@ class RawAcqReceiver(object):
                 # yield moment
 
             # metrics.add('raw_acq_packet_receiver_delay_between_calls', value=self.delay_between_calls)
+
+
             metrics.add('raw_acq_received_packets', value=self.received_packets)
             metrics.add('raw_acq_processed_packets', value=self.processed_packets)
-            metrics.add('raw_acq_processed_adc_packets', value=self.processed_adc_packets)
-            metrics.add('raw_acq_processed_fft_packets', value=self.processed_fft_packets)
-            metrics.add('raw_acq_processed_corr_packets', value=self.processed_corr_packets)
+            metrics.add('raw_acq_processed_adc_packets', value=self.adc_processed_packets)
+            metrics.add('raw_acq_processed_fft_packets', value=self.fft_processed_packets)
+            metrics.add('raw_acq_processed_corr_packets', value=self.corr_processed_packets)
             metrics.add('raw_acq_hdf5_data_block_writes', value=self.hdf5_block_writes)
 
-            metrics.add('raw_acq_average_packet_readout_time', value=self.packet_readout_time)
-            metrics.add('raw_acq_average_adc_processing_time', value=self.adc_processing_time)
-            metrics.add('raw_acq_average_fft_processing_time', value=self.fft_processing_time)
-            metrics.add('raw_acq_average_processing_time', self.total_processing_time)
-            self.packet_readout_time = 0
-            self.adc_processing_time = 0
-            self.fft_processing_time = 0
-            self.total_processing_time = 0
 
 
-            metrics.add('raw_acq_average_metrics_processing_time', value=self.adc_metrics_processing_time)
-            metrics.add('raw_acq_average_hdf5_processing_time', value=self.adc_hdf5_processing_time)
-            metrics.add('raw_acq_average_rms_processing_time', value=self.adc_rms_processing_time)
-            self.adc_metrics_processing_time = 0
-            self.adc_hdf5_processing_time = 0
-            self.adc_rms_processing_time = 0
+            # Generate metrics on the maximum processing time since the value was queried
+            with self.lock:
+                packet_max_readout_time = self.packet_max_readout_time
+                packet_max_processing_time = self.packet_max_processing_time
+                adc_max_processing_time = self.adc_max_processing_time
+                fft_max_processing_time = self.fft_max_processing_time
+                adc_metrics_max_processing_time = self.adc_metrics_max_processing_time
+                adc_hdf5_max_processing_time = self.adc_hdf5_max_processing_time
+                adc_rms_max_processing_time = self.adc_rms_max_processing_time
+                self.packet_max_readout_time = 0
+                self.packet_max_processing_time = 0
+                self.adc_max_processing_time = 0
+                self.fft_max_processing_time = 0
+                self.adc_metrics_max_processing_time = 0
+                self.adc_hdf5_max_processing_time = 0
+                self.adc_rms_max_processing_time = 0
+
+            metrics.add('raw_acq_packet_max_readout_time', value=packet_max_readout_time)
+            metrics.add('raw_acq_packet_max_processing_time', value=packet_max_processing_time)
+            metrics.add('raw_acq_adc_max_processing_time', value=adc_max_processing_time)
+            metrics.add('raw_acq_fft_max_processing_time', value=fft_max_processing_time)
+            metrics.add('raw_acq_adc_metrics_max_processing_time', value=adc_metrics_max_processing_time)
+            metrics.add('raw_acq_adc_hdf5_max_processing_time', value=adc_hdf5_max_processing_time)
+            metrics.add('raw_acq_adc_rms_max_processing_time', value=adc_rms_max_processing_time)
+
+
+            # Generate metrics on the average processing time since last query
+            with self.lock:
+                packet_avg_processing_time = (self.packet_current_processing_time * 1.0 * self.NCHAN / self.current_processed_packets) if self.current_processed_packets else 0
+                adc_avg_processing_time = (self.adc_current_processing_time * 1.0 * self.NCHAN / self.adc_current_processed_packets) if self.adc_current_processed_packets else 0
+                fft_avg_processing_time = (self.fft_current_processing_time * 1.0 * self.NCHAN / self.fft_current_processed_packets) if self.fft_current_processed_packets else 0
+                self.packet_current_processing_time = 0
+                self.adc_current_processing_time = 0
+                self.fft_current_processing_time = 0
+                self.current_processed_packets = 0
+                self.adc_current_processed_packets = 0
+                self.fft_current_processed_packets = 0
+
+            metrics.add('raw_acq_packet_avg_processing_time', value=packet_avg_processing_time)
+            metrics.add('raw_acq_adc_avg_processing_time', value=adc_avg_processing_time)
+            metrics.add('raw_acq_fft_avg_processing_time', value=fft_avg_processing_time)
+
+
 
             yield moment
 
@@ -1395,20 +1466,30 @@ class RawAcqReceiver(object):
             for ix in cix:
 
                 with self.lock:
-                    crate, slot, chan = self.unpack_stream_id(self.stream_id[ix])
-                    # print('Addingn rms metric for cix=%s : crate=%s, slot=%s, chan=%s, value = %f' % (ix, crate, slot, chan, self.metrics_rms[ix]))
-                    metrics.add('raw_acq_adc_frames', value=self.adc_frames[ix], crate=crate, slot=slot, chan=chan)
-                    metrics.add('raw_acq_rms', value=self.metrics_rms[ix], crate=crate, slot=slot, chan=chan)
-                    metrics.add('raw_acq_min', value=self.metrics_min[ix], crate=crate, slot=slot, chan=chan)
-                    metrics.add('raw_acq_max', value=self.metrics_max[ix], crate=crate, slot=slot, chan=chan)
-                    metrics.add('raw_acq_mean', value=self.metrics_mean[ix], crate=crate, slot=slot, chan=chan)
-                    metrics.add('raw_acq_max_diff', value=self.metrics_maxdiff[ix], crate=crate, slot=slot, chan=chan)
-                    metrics.add('raw_acq_ramp_errors', value=self.metrics_ramp_error_count[ix], crate=crate, slot=slot, chan=chan)
-                    metrics.add('raw_acq_adc_packet_length_error', value=self.metrics_adc_packet_length_error[ix], crate=crate, slot=slot, chan=chan)
-                    # for bit, count in enumerate(self.metrics_ramp_bit_error_count[ix]):
-                    #     metrics.add('raw_acq_ramp_bit_errors', value=count, crate=crate, slot=slot, chan=chan, bit=bit)
-                    # for i, count in enumerate(self.metrics_jumps[ix]):
-                    #     metrics.add('raw_acq_jumps', value= count, crate=crate, slot=slot, chan=chan, threshold=self.threshold[i])
+                    adc_frames = self.adc_frames[ix]
+                    metrics_rms = self.metrics_rms[ix]
+                    metrics_min = self.metrics_min[ix]
+                    metrics_max = self.metrics_max[ix]
+                    metrics_mean = self.metrics_mean[ix]
+                    metrics_maxdiff = self.metrics_maxdiff[ix]
+                    metrics_ramp_error_count = self.metrics_ramp_error_count[ix]
+                    metrics_adc_packet_length_error = self.metrics_adc_packet_length_error[ix]
+
+                crate, slot, chan = self.unpack_stream_id(self.stream_id[ix])
+                # print('Addingn rms metric for cix=%s : crate=%s, slot=%s, chan=%s, value = %f' % (ix, crate, slot, chan, self.metrics_rms[ix]))
+                metrics.add('raw_acq_adc_frames', value=adc_frames, crate=crate, slot=slot, chan=chan)
+                metrics.add('raw_acq_rms', value=metrics_rms, crate=crate, slot=slot, chan=chan)
+                metrics.add('raw_acq_min', value=metrics_min, crate=crate, slot=slot, chan=chan)
+                metrics.add('raw_acq_max', value=metrics_max, crate=crate, slot=slot, chan=chan)
+                metrics.add('raw_acq_mean', value=metrics_mean, crate=crate, slot=slot, chan=chan)
+                metrics.add('raw_acq_max_diff', value=metrics_maxdiff, crate=crate, slot=slot, chan=chan)
+                metrics.add('raw_acq_ramp_errors', value=metrics_ramp_error_count, crate=crate, slot=slot, chan=chan)
+                metrics.add('raw_acq_adc_packet_length_error', value=metrics_adc_packet_length_error, crate=crate, slot=slot, chan=chan)
+                # for bit, count in enumerate(self.metrics_ramp_bit_error_count[ix]):
+                #     metrics.add('raw_acq_ramp_bit_errors', value=count, crate=crate, slot=slot, chan=chan, bit=bit)
+                # for i, count in enumerate(self.metrics_jumps[ix]):
+                #     metrics.add('raw_acq_jumps', value= count, crate=crate, slot=slot, chan=chan, threshold=self.threshold[i])
+                time.sleep(0.001) # relinquish some time to the thread? Not sure if it helps.
                 yield moment
             self.metrics_updated[cix] = False
 
@@ -1424,9 +1505,16 @@ class RawAcqReceiver(object):
             # self.fft_mean_rms[cix] = np.sum(self.fft_rms_current[cix, 1:].astype(np.float32), axis=-1)
             for ix in cix:
                 with self.lock:
-                    crate, slot, chan = self.unpack_stream_id(self.stream_id[ix])
-                    metrics.add('raw_acq_fft_rms', value=np.sqrt(np.mean(self.fft_rms_current[ix])), crate=crate, slot=slot, chan=chan)
-                    metrics.add('raw_acq_fft_packet_length_error', value=self.metrics_fft_packet_length_error[ix], crate=crate, slot=slot, chan=chan)
+                    stream_id = self.stream_id[ix]
+                    fft_rms_current = self.fft_rms_current[ix]
+                    metrics_fft_packet_length_error = self.metrics_fft_packet_length_error[ix]
+                    fft_scaler_overflows = self.fft_overflow[ix]
+
+                crate, slot, chan = self.unpack_stream_id(stream_id)
+                metrics.add('raw_acq_fft_rms', value=np.sqrt(np.mean(fft_rms_current)), crate=crate, slot=slot, chan=chan)
+                metrics.add('raw_acq_fft_packet_length_error', value=metrics_fft_packet_length_error, crate=crate, slot=slot, chan=chan)
+                metrics.add('raw_acq_fft_scaler_overflows', value=np.sum(fft_scaler_overflows), crate=crate, slot=slot, chan=chan)
+                time.sleep(0.001) # relinquish some time to the thread? Not sure if it helps.
                 yield moment
                 self.fft_metrics_updated[cix] = False
                 # self.is_locked=False
