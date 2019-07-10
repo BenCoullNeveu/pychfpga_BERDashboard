@@ -436,9 +436,8 @@ class ChimeMaster(object):
 
         """
 
-
         if isinstance(source, basestring):
-            source=str(source)
+            source = str(source) # make sure we don't have unicode
 
         conf = self.config.fpga.raw_data_capture
         capture_source = source or conf.capture_source
@@ -447,6 +446,7 @@ class ChimeMaster(object):
 
         for (ib, channels) in ib_chans:
                 ib.set_data_capture(channels=channels, sub_period=capture_rate, source=capture_source)
+                yield moment
 
 
     @coroutine
@@ -661,8 +661,7 @@ class ChimeMaster(object):
                for raw_acq_server_name, raw_acq_server in self.raw_acq.items()]
 
         # Return the data capture of the selected channels to the adc source and baseline capture rate
-        for (ib, channels) in ib_chans:
-            ib.set_data_capture(channels=channels, sub_period=23, source='adc')
+        yield self.set_fpga_data_capture(targets)
 
         # If requested save the gains
         if save_gains:
