@@ -1101,6 +1101,8 @@ class RawAcqReceiver(object):
             print('is locked!')
         self.fft_rms_current[ix] = ((self.buf_data[buf_ix, ::2] ^ -128) >> 4) ** 2
         self.fft_rms_current[ix] += ((self.buf_data[buf_ix, 1::2] ^ -128) >> 4) ** 2
+        self.fft_overflow[ix,::2] += (self.buf_data[buf_ix, ::4] & 0b0100) != 0
+        self.fft_overflow[ix,1::2] += (self.buf_data[buf_ix, ::4] & 0b0010) != 0
 
         # self.fft_rms_current[ix] = 8
         # self.fft_rms_current[ix] += 8
@@ -1131,8 +1133,6 @@ class RawAcqReceiver(object):
 
             self.fft_rms_buffer[cix] += self.fft_rms_current[cix]
             self.fft_n_frames[cix] += 1
-            self.fft_overflow[cix,::2] += (self.buf_data[bix, ::4] & 0b0100) != 0
-            self.fft_overflow[cix,1::2] += (self.buf_data[bix, 2::4] & 0b0010) != 0
             # find which frames have reached their total:
 
             cix = cix[self.fft_n_frames[cix] == self.fft_rms_average[cix]]
@@ -1508,7 +1508,7 @@ class RawAcqReceiver(object):
                     stream_id = self.stream_id[ix]
                     fft_rms_current = self.fft_rms_current[ix]
                     metrics_fft_packet_length_error = self.metrics_fft_packet_length_error[ix]
-                    fft_scaler_overflows = self.fft_overflow[ix]
+                    fft_scaler_overflows = self.fft_overflow[ix, 1:] # skip bin 0
 
                 crate, slot, chan = self.unpack_stream_id(stream_id)
                 metrics.add('raw_acq_fft_rms', value=np.sqrt(np.mean(fft_rms_current)), crate=crate, slot=slot, chan=chan)
