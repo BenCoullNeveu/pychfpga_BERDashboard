@@ -1042,6 +1042,7 @@ class ChimeMaster(object):
             self.log.info("%r: Overiding the following gains: %r" % (self, conf.fpga.initial_gains))
             yield self.set_gains(gains=conf.fpga.initial_gains)
 
+
         # Initialize the digital gain hdf5 writer
         self.log.info("%r: Initializing HDF5 gain archive reader/writer" % (self))
         self.initialize_gain_hdf5()
@@ -1051,6 +1052,9 @@ class ChimeMaster(object):
             yield self.load_gains(update_id=None, bank=0, when='now')
 
         # Compute new gains if requested
+        self.log.info("*** Debug: Disabling offset encoding")
+        # self.fpgas.ib.set_gains((0,0), bank=0, when='now')
+        self.fpgas.ib.set_offset_binary_encoding(True)
         yield self.compute_gains(**conf.fpga.compute_gains)
 
 

@@ -3578,7 +3578,6 @@ class chFPGA_controller(IceBoardExtHandler):
             metrics = Metrics()
         async_return(metrics)
 
-
     @async
     def get_channelizer_metrics(self, reset=True):
         metrics = Metrics(
@@ -3916,7 +3915,12 @@ class chFPGA_controller(IceBoardExtHandler):
         self.set_ant_reset(0)
         #self.sync()
 
-    def start_correlator(self, integration_period=16384, autocorr_only=False, correlators=None, bandwidth_limit=0.5e9, verbose=1):
+    def start_correlator(self,
+                         integration_period=16384,
+                         autocorr_only=False,
+                         correlators=None,
+                         bandwidth_limit=0.5e9,
+                         verbose=1):
         """
         (Re)starts the correlator with the specified integration time.
 
@@ -3953,10 +3957,17 @@ class chFPGA_controller(IceBoardExtHandler):
 
         Returns:
             None
+
+        Note:
+
+            - Sets the offest binary encoding to False. This is not restored
+              when the correlator is stopped.
+
         """
         if not self.CORR:
             raise RuntimeError('The FPGA firmware does not contain a correlator core')
 
+        self.set_offset_binary_encoding(False)
         self.CORR.start_correlator(integration_period=integration_period,
                                    autocorr_only=autocorr_only,
                                    correlators=correlators,
