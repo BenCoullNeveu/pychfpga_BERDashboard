@@ -582,6 +582,9 @@ class ChimeMaster(object):
         if not initial_gains:
             initial_gains = [(cid, gains) for cid, gains in self.fpgas.get_gains(bank=0).items() if cid in all_channel_ids]
 
+        # compute an approxitame amount of time to wait for the data, which is 1/2 of the time it should date to accumulate
+        wait_time = min(2.56e-6 * 2**(capture_rate + 1) * number_of_fft_averages / 2, 1)
+
         @coroutine
         def iterate_gains(server, channel_ids, stream_ids):
 
@@ -613,13 +616,14 @@ class ChimeMaster(object):
                     fft_rms_requested[sid] = True
 
                 while True:
+                    self.log.info('%r: *** Gain calculator : waiting for averaged FFT data from raw acq for %.3f s' % (self, wait_time))
+                    yield sleep(wait_time)
                     sids, rms = yield server.get_fft_rms()
                     if sids:
                         break
-                    self.log.info('%r: *** Gain calculator : waiting for averaged FFT data from raw acq' % (self))
-                    yield sleep(1)
-                self.log.info('%r: *** Gain calculator : Got FFT RMS values for Channel ID: Stream ID%s' % (self,
-                    ', '.join('%s:%i' % (channel_ids[sid_index_map[sid]], sid) for sid in sids if sid in sid_index_map)))
+                # self.log.info('%r: *** Gain calculator : Got FFT RMS values for Channel ID: Stream ID%s' % (self,
+                #     ', '.join('%s:%i' % (channel_ids[sid_index_map[sid]], sid) for sid in sids if sid in sid_index_map)))
+                self.log.info('%r: *** Gain calculator : Got FFT RMS values for %i channels' % (self, len(sids)))
                 new_gains = gc.update_gains(np.array(sids), np.array(rms))
                 # bank ^= 1 # switch bank  # Can't do that right now: the formware does not switch glog
                 yield self.fpgas.set_gains.async(gains=new_gains, bank=bank, when='now')
