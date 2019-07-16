@@ -763,7 +763,6 @@ class ChimeMaster(object):
         """
         conf = self.config.raw_acq.common_config
         capture_folder = capture_folder or conf.hdf5_capture_folder
-        capture_folder = os.path.join(self.run_folder, capture_folder)
         capture_filename = capture_filename or conf.hdf5_capture_filename
         capture_duration = capture_duration or conf.hdf5_capture_duration
         capture_elements_per_file = capture_elements_per_file or conf.hdf5_capture_elements_per_file
@@ -772,7 +771,7 @@ class ChimeMaster(object):
         if capture_duration is not None:
             self.log.info('%r: Starting HDF5 data capture for %f seconds (0 = infinite)' % (self, capture_duration))
 
-            yield [server.start_hdf5(
+            yield [server.start_raw_hdf5(
                 base_dir=capture_folder,
                 base_filename=capture_filename,
                 capture_duration=capture_duration,
@@ -780,6 +779,62 @@ class ChimeMaster(object):
                 elements_per_file=capture_elements_per_file
                 )         for server_name, server in self.raw_acq.items()]
 
+    @coroutine
+    def start_corr_hdf5_capture(self,
+                           capture_folder=None,
+                           capture_filename=None,
+                           capture_duration=None,
+                           capture_n_inputs=None,
+                           capture_elements_per_file=None):
+        """
+        Instructs the raw_acq server to start storing raw data in HDF5 files
+        at a specified rate, duration and in the specified folder.
+
+
+        Parameters:
+
+            capture_folder (str): path to the folder where the raw data folder will be created. If it is
+                a relative path, it will be relative to the run folder. If not specified or `None`, it
+                will be taken from the config file.
+
+            capture_filename (str): name of the folder in which the HDF5 files ``nnnnnn.h5`` will be
+                created. Is prepended with the time. If not specified or `None`, it will be taken
+                from the config file.
+
+            capture_refresh_time (float): cadence in seconds at which raw data is written to the hdf5 file.
+
+            capture_duration (float): period of time (in seconds) during which the captured data
+                will be stored to HDF5 files. After which the capture will revert to the idle rate.
+                if ``0``, the capture will continue indefinitely.  If not specified or `None`, it will be taken
+                from the config file.
+
+            capture_elements_per_file (int): Number of frames to store in each HDF5 files. If not
+            specified or `None`, the parameter is taken from the config file.
+
+        """
+        conf = self.config.fpga.firmware_correlator
+        capture_folder = capture_folder or conf.hdf5_capture_folder or '.'
+        capture_filename = capture_filename or conf.hdf5_capture_filename
+        capture_duration = capture_duration or conf.hdf5_capture_duration
+        capture_elements_per_file = capture_elements_per_file or conf.hdf5_capture_elements_per_file
+        capture_n_inputs = capture_n_inputs or conf.hdf5_capture_n_inputs
+        software_integration_period = conf.software_integration_period
+
+        if conf.enable and capture_duration is not None:
+            self.log.info('%r: Starting HDF5 data capture for %f seconds (0 = infinite)' % (self, capture_duration))
+
+            print('************#### firm integ=%s'% self.corr_firmware_integration_period)
+            yield [server.start_corr_hdf5(
+                base_dir=capture_folder,
+                base_filename=capture_filename,
+                capture_duration=capture_duration,
+                capture_n_inputs=capture_n_inputs,
+                elements_per_file=capture_elements_per_file,
+                software_integration_period=software_integration_period,
+                firmware_integration_period=self.corr_firmware_integration_period, # also for time computation only
+                frame0_irigb_time=self.frame0_irigb_time.nano if self.frame0_irigb_time else 0,  # update frame 0 time from last sync
+
+                )         for server_name, server in self.raw_acq.items()]
 
 
     def set_state(self, new_state):
@@ -809,7 +864,6 @@ class ChimeMaster(object):
         try:
 
         # Register config with comet broker
-        try:
             enable_comet = config['comet_broker']['enabled']
         except KeyError:
             msg = "Missing config value 'comet_broker/enabled'."
@@ -1016,6 +1070,19 @@ class ChimeMaster(object):
         # Setup noise injection for normal operation
         self.setup_noise_injection(conf.fpga.noise_injection)
 
+        # Start correlator data transmission if present in the FPGA-based
+        # firmware correlationlator is present in the FPGA
+
+        corr_config = self.config.fpga.get('firmware_correlator', {})
+
+        if corr_config and corr_config.enable:
+            self.corr_firmware_integration_period = corr_config.firmware_integration_period
+            self.fpgas.ib.start_correlator(self.corr_firmware_integration_period)
+            print('******************** Enabling corr with integ=', self.corr_firmware_integration_period)
+        else:
+            self.corr_firmware_integration_period = None
+            print('******************** Corr is not enabled. Corr_config=%r, enable=%r' % (corr_config, corr_config.enable if corr_config else 'none'))
+
         # Start raw_data capture
         self.log.info("Starting baseline raw data data capture")
         yield self.start_fpga_raw_data_transmission(sync=False)
@@ -1025,6 +1092,8 @@ class ChimeMaster(object):
         ca.sync()  # synchronize all the boards in the array
         self.log.info("%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Last SYNC is done %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
 
+        # save the time of frame0 after sync
+        self.frame0_irigb_time = self.fpgas.sync_timestamp
 
 
         #######
@@ -1072,13 +1141,20 @@ class ChimeMaster(object):
 
 
         # Start storage of raw_data received by the raw_acq server in HDF5 files
-        self.log.info("Starting HDF5 data capture")
+        self.log.info("Starting Raw data HDF5 data capture")
         yield self.start_hdf5_capture()
+
+
+        self.log.info("*** Debug: Disabling offset encoding")
+        # self.fpgas.ib.set_gains((0,0), bank=0, when='now')
+        self.fpgas.ib.set_offset_binary_encoding(False)
+
+        self.log.info("Starting Correlator HDF5 data capture")
+        yield self.start_corr_hdf5_capture()
 
 
         # Finished with initialization.
         self.log.info("Finished ch_master.start()")
-        self.start_time = start_time
         self.state = 'on'
         coroutine_return({})
 
@@ -1200,7 +1276,7 @@ class ChimeMaster(object):
             # Stop writing raw_acq to hdf5
             while self.raw_acq:
                 server_name, server = self.raw_acq.popitem()
-                msg = yield server.stop_hdf5()
+                msg = yield server.stop_raw_hdf5()
                 self.log.info('%r:  stopping hdf5 writing for %s:  %s' % (self, server_name, msg))
 
             self.start_time = None
