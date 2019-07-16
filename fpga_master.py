@@ -680,9 +680,9 @@ class ChimeMaster(object):
                 Read the gains from this bank.
 
         """
-        if not self.gain_hdf5:
+        if self.gain_hdf5 is None:
             msg = 'Digital gain archive not yet initialized.  Cannot save digital gains.'
-            self.log.error(msg)
+            self.log.error('%r: %s' % (self,  msg))
             raise RuntimeError(msg)
 
         gains = yield self.fpgas.get_gains.async(bank=bank, use_cache=True)
@@ -999,6 +999,7 @@ class ChimeMaster(object):
             yield self.set_gains(gains=conf.fpga.initial_gains)
 
         # Initialize the digital gain hdf5 writer
+        self.log.info("%r: Initializing HDF5 gain archive reader/writer" % (self,))
         self.initialize_gain_hdf5()
 
         # Load most recent gains from archive into gain bank #0
@@ -1139,7 +1140,7 @@ class ChimeMaster(object):
             reap_cached_sockets()
 
             # Close interface to gain archive
-            if self.gain_hdf5:
+            if self.gain_hdf5 is not None:
                 self.log.info('%r:  closing %s.' % (self, self.gain_hdf5.current_file))
                 self.gain_hdf5.close_all()
                 self.gain_hdf5 = None
@@ -1301,10 +1302,12 @@ class ChimeMaster(object):
                               dtype=[('chan_id', 'u2'), ('correlator_input', 'S32')])
 
         # Initialize writer
+        hdf5_conf = self.config.fpga.gain_hdf5.copy()
+        hdf5_conf['output_dir'] = os.path.expanduser(hdf5_conf.get('output_dir', '.'))
         self.gain_hdf5 = DigitalGainArchive(freq=freq, input=inputs,
                                             instrument_name=self.config.corr_name,
                                             attrs={'git_version_tag': self.GIT_VERSION},
-                                            **self.config.fpga.gain_hdf5)
+                                            **hdf5_conf)
 
     def _chan_id_to_serial_number(self, chan_id):
 
