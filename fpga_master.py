@@ -356,6 +356,8 @@ class ChimeMaster(object):
                     src_addresses = [(ib.hostname, 80) for ib in port_entry.iceboards]
                     recv_ports[server_name].append(dict(port=port_id, sources=src_addresses))
 
+
+
         # Start the receivers concurrently
         start_results = yield {server_name: raw_acq_server.start(
                 name=recv_names[server_name],
@@ -364,7 +366,11 @@ class ChimeMaster(object):
                 comet_broker=conf.common_config.comet_broker.as_dict(),
                 jump_thresholds=conf.common_config.jump_thresholds,
                 metrics_refresh_time=conf.common_config.metrics_refresh_time,
-                adc_rms_refresh_count=conf.common_config.adc_rms_refresh_count)
+                adc_rms_refresh_count=conf.common_config.adc_rms_refresh_count,
+                data_folder=self.data_folder,
+                run_folder=self.run_folder,
+                run_name=self.run_name,
+                )
             for server_name, raw_acq_server in self.raw_acq.items()}
 
         # Configure the FPGA transmit addresses based on what the receiver returned
@@ -776,18 +782,27 @@ class ChimeMaster(object):
         """ Sets the state to a specified value. Used for debugging. """
         self.state = new_state
 
-    def expand_path(self, pattern, **kwargs):
-        pattern = os.path.expanduser(pattern % kwargs)
+    def expand_path(self, pattern, extra_fields={}):
+        """ Expand fields in a string.
+        """
+        fields = {
+            'start_time': self.start_time,
+            'isotime': self.run_isotime,
+            'localtime': self.run_localtime,
+            'corr_name': self.corr_name,
+            'data_folder': self.data_folder,
+            'run_name': self.run_name,
+            'run_folder': self.run_folder
+            }
+        fields.update(extra_fields)
+        return os.path.expanduser(pattern % fields)
 
+        # Register configuration with the Comet server
+    def register_config(self):
 
+        config = self.config
 
-    @coroutine
-    def start(self, **config):
-        """ Make the telescope operational by starting and initializing the FPGA F-Engine and the GPU X Engine (Kotekan), CHRX, and raw_acq remote processes. """
-        self.log.debug('%r: Starting ChimeMaster instance' % (self))
-        self.log.info('%r: Starting fpga_master.start()', self)
-        if self.state != 'off':
-            coroutine_return(dict(error='already started'))
+        try:
 
         # Register config with comet broker
         try:
@@ -821,23 +836,53 @@ class ChimeMaster(object):
         else:
             self.log.warning("Config registration DISABLED. This is only OK for testing.")
 
+    @coroutine
+    def start(self, **config):
+        """ Make the telescope operational by starting and initializing the FPGA F-Engine and the GPU X Engine (Kotekan), CHRX, and raw_acq remote processes. """
+        self.log.debug('%r: Starting ChimeMaster instance' % (self))
+        self.log.info('%r: Starting fpga_master.start()', self)
+
+        if self.state != 'off':
+            coroutine_return(dict(error='already started'))
+
+        # Set/Get configuration
         if config:
             self.set_config(config)
-        conf = self.config # Shortcut. We use `conf` a lot below.
+        conf = config = self.config # Shortcut. We use `conf` a lot below.
         self.state = 'starting'
 
+
+        self.start_time = time.time()
+        self.run_isotime = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(self.start_time))
+        self.run_localtime = time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(self.start_time))
+
+        # Give a more meaningful error if the user did not provide a valid config file
         if not hasattr(conf, 'corr_name'):
             raise RuntimeError('CHIME master configuration data does not define the correlator name. Was the correct object selected in the configuration file (i.e. config.yaml:object)')
 
-        # Create output directories
-        start_time = time.time()
-        isotime = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(start_time))
-        localtime = time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(start_time))
-        #print('run name=%s, config = %r' % (conf.run_name , dict(isotime=isotime, corr_name=conf.corr_name)))
-        self.run_name = conf.run_name % dict(isotime=isotime, localtime=localtime, corr_name=conf.corr_name)
-        str_args = dict(isotime=isotime, corr_name=conf.corr_name, run_name=self.run_name)
-        self.run_folder = os.path.expanduser(conf.run_folder % str_args)
-        self.current_folder = os.path.expanduser(conf.current_folder % str_args)
+        self.corr_name = conf.corr_name
+
+        # Initialize run variables so they all exist for  expand_path
+        self.data_folder = None
+        self.run_name = None
+        self.run_folder = None
+        self.current_folder = None
+
+
+        # Create run variables
+        self.data_folder = self.expand_path(conf.data_folder)
+        self.run_name = self.expand_path(conf.run_name)
+        self.run_folder = self.expand_path(conf.run_folder)
+        self.current_folder = self.expand_path(conf.current_folder)
+
+        print('%r: Run parameters:')
+        print('%r:    Correlator name: %s' % (self, self.corr_name))
+        print('%r:    data folder: %s' % (self, self.data_folder))
+        print('%r:    run folder: %s' % (self, self.run_folder))
+        print('%r:    current folder symlink: %s' % (self, self.current_folder))
+
+        # Register configuration with the Comet server
+        self.register_config()
 
 
         # Create the run folder
@@ -890,9 +935,9 @@ class ChimeMaster(object):
         filename = os.path.join(self.run_folder, 'info.txt')
         with open(filename, 'w') as h:
             h.write('Run name: %s\n' % self.run_name)
-            h.write('Run start time (local): %s\n' % localtime)
-            h.write('Run start time (UTC): %s\n' % isotime)
-            h.write('Correlator/config name: %s\n' % conf.corr_name)
+            h.write('Run start time (local): %s\n' % self.run_localtime)
+            h.write('Run start time (UTC): %s\n' % self.run_isotime)
+            h.write('Correlator/config name: %s\n' % self.corr_name)
             h.write('Run folder: %s\n' % self.run_folder)
 
         # Create objects to communicates to the remote processes needed to run the array
