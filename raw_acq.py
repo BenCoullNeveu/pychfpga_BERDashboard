@@ -35,6 +35,7 @@ except ImportError:
 
 # Local imports
 from pychfpga import get_git_version
+from pychfpga.core import CORR
 
 
 class RawAcqReceiver(object):
@@ -1556,9 +1557,154 @@ class HDF5RawWriter(object):
             # Port numbers
             for i, port in enumerate(self.port_number):
                 metrics.add('raw_acq_port_number', value=port, index=i, name=self.ports[i])
+#######################################################
+#######################################################
+#######################################################
+# Correlator HDF5 data writer
+#######################################################
+#######################################################
+#######################################################
 
-        coroutine_return(metrics)
+class HDF5CorrWriter(object):
+    """ Object representing a HDF5 file containing N-squared correlation data
+    """
+    def __init__(self,
+                 base_dir='.',
+                 filename='%(file_number)04d',
+                 n_inputs=16,
+                 elements_per_file=256,
+                 n_freq_bins=1024,
+                 sample_freq=800.,
+                 include_counts=True,
+                 include_sat=True): #, crate_and_slot_from_port = False):
 
+        self.log = log.get_logger(self)
+
+
+        self.filename = filename
+        self.base_dir = base_dir
+        self.n_inputs = n_inputs
+        self.elements_per_file = elements_per_file
+        self.n_freq_bins = n_freq_bins
+        self.sample_freq = sample_freq
+        self.include_counts = include_counts
+        self.include_sat = include_sat
+
+
+        self.prod_dtype = np.dtype([('input_a', np.uint16), ('input_b', np.uint16)])
+        # self.prod_axis = np.array([(i, j) for i, j in itertools.product(range(inputs_per_file), repeat=2) if i >= j],
+        #                           dtype=self.prod_dtype)
+
+        # Compute the index arrays that will build the product vector form the raw correlator data for the desired inputs
+        (i, j) = np.triu_indices(self.n_inputs)
+        self.prod_axis = np.array(zip(i,j), dtype=self.prod_dtype)
+        self.raw_to_vector_map = CORR.get_raw_to_matrix_map()[..., i, j]
+        self.n_prod = len(i)
+
+        self.start_time = time.time()
+
+        df = self.sample_freq / (2 * self.n_freq_bins)
+        self.freq_dtype = np.dtype([('centre', np.float64), ('width', np.float64)])
+        self.freq_axis = np.array([(k, df) for k in (self.sample_freq - df * np.arange(self.n_freq_bins))],
+                                  dtype=self.freq_dtype)
+        self.f = None
+        self.file_number = 0 # current file number
+        self.n_total = 0 # total number of elements written so far in all files
+        self.start_new_hdf5_file()
+
+    def start_new_hdf5_file(self):
+        self.close()
+        fields=dict(
+            file_number=self.file_number,
+            elapsed_seconds=time.time() - self.start_time)
+
+        filename = self.filename % fields
+        filename = os.path.join(self.base_dir, filename)
+        self.open(filename)
+        self.n = 0
+        self.file_number += 1
+
+
+    def open(self, filename):
+
+        self.current_filename = filename
+        self.lock_filename = self.current_filename + '.lock'
+        # # create a lock file
+        with open(self.lock_filename, 'w') as h:
+            h.write('locked\n')
+
+        #self.log.info('%r: Opening raw data HDF5 file %s' % (self, self.filename))
+        print('%r: Opening HDF5 file %s' % (self, self.filename))
+        self.f = h5py.File(self.current_filename, 'w', libver='earliest')
+        self.f.attrs["instrument_name"] = "D3A"
+        self.f.attrs["acquisition_name"] = "corr"
+        self.f.attrs["file_name"] = self.base_dir + '/' + self.filename
+        self.f.attrs["data_type"] = "correlation data"
+        # We use complex128, which can store 53-bit integers exactly.
+        # Complex64 offers 23-bit integers, which does not leave a lot of room
+        # for integration of the incoming 18-bit data.
+        self.vis = self.f.create_dataset('vis',(1, 1024, self.n_prod), dtype=np.complex128, maxshape=(None, 1024, self.n_prod))
+        self.vis.attrs['axis'] = ['time', 'freq', 'prod']
+        if self.include_counts:
+            self.counts = self.f.create_dataset('counts',(1, 1024, self.n_prod), dtype=np.uint32, maxshape=(None, 1024, self.n_prod))
+            self.counts.attrs['axis'] = ['time', 'freq', 'prod']
+        if self.include_sat:
+            self.sat = self.f.create_dataset('sat',(1, 1024, self.n_prod), dtype=np.complex64, maxshape=(None, 1024, self.n_prod))
+            self.sat.attrs['axis'] = ['time', 'freq', 'prod']
+
+
+        self.index_map = self.f.create_group("index_map")
+
+        self.time_dtype = np.dtype([
+            ('integ_number', np.uint32),
+            ('fpga_count', np.uint64),
+            ('irigb_time', np.uint64),
+            ('ctime', np.float64)])
+        self.time = self.index_map.create_dataset('time', (1, ), dtype=self.time_dtype, maxshape=(None,))
+        self.prod = self.index_map.create_dataset('prod', data=self.prod_axis, dtype=self.prod_dtype)
+        self.freq = self.index_map.create_dataset('freq', data=self.freq_axis, dtype=self.freq_dtype)
+        self.n = 0
+
+    def write(self, integ_number, fpga_frame_number, irigb_time, raw_data, counts, saturations):
+
+        n1 = self.n
+        self.n += 1
+        self.n_total += 1
+
+        self.time.resize((self.n, ))
+        self.vis.resize((self.n, 1024, self.n_prod))
+        if self.include_counts:
+            self.counts.resize((self.n, 1024, self.n_prod))
+        if self.include_sat:
+            self.sat.resize((self.n, 1024, self.n_prod))
+
+        # count = self.count[m[0], m[1]]
+        # sat_cplx = self.sat_cplx[m[0], m[1], m[2]]
+        m = self.raw_to_vector_map
+
+        current_time = time.time()
+        print('shapes are: raw_data %r, counts %r, sat %r' % (raw_data[m[0], m[1], m[2]].dtype, counts[m[0], m[1]].dtype,saturations[m[0], m[1], m[2]].dtype))
+        self.time[n1] = (integ_number, fpga_frame_number, irigb_time, current_time)
+        self.vis[n1] = raw_data[m[0], m[1], m[2]]
+        if self.include_counts:
+            self.counts[n1] = counts[m[0], m[1]]
+        if self.include_sat:
+            self.sat[n1] = saturations[m[0], m[1], m[2]]
+
+        if self.n >= self.elements_per_file:
+            self.start_new_hdf5_file()
+
+    def close(self):
+        if self.f:
+            # self.snapshot_index_map.resize((self.n,))
+            # self.snapshot_index_map[:] = np.arange(self.n) + self.n_total
+            self.log.info('%r: Closing HDF5 file %s' % (self, self.current_filename))
+            self.f.close()
+            try:
+                os.remove(self.lock_filename)
+                # os.rename(self.lock_filename, self.filename)
+            except OSError:
+                self.log.error('%r: Unable to rename HDF5 lock file from %s to %s' % (self, self.lock_filename, self.current_filename))
 
 
 ################################################
