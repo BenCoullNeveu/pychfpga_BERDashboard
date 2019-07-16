@@ -3567,7 +3567,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
     @async
     def get_bp_shuffle_metrics(self, reset=True):
-        if not self.is_open():
+        if not self.is_open() or not self.BP_SHUFFLE:
             async_return(Metrics())
         try:
             yield self.clear_fpga_udp_errors.async()
@@ -3611,9 +3611,9 @@ class chFPGA_controller(IceBoardExtHandler):
         try:
             # yield self.check_command_count.async(reset=True)
             yield self.clear_fpga_udp_errors.async()
-            metrics += yield self.CROSSBAR.get_metrics.async(reset=reset)
-            metrics += yield self.CROSSBAR2.get_metrics.async(reset=reset)
-            metrics += yield self.CROSSBAR3.get_metrics.async(reset=reset)
+            for cb in [self.CROSSBAR, self.CROSSBAR2, self.CROSSBAR3]:
+                if cb: # make sure the crossbar is in this firmware
+                    metrics += yield cb.get_metrics.async(reset=reset)
         except IOError as e:
             self.logger.error('%r: Error getting FPGA crossbar metrics. Error is %r' % (self, e))
         except Exception as e:
