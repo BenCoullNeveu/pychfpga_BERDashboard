@@ -161,6 +161,7 @@ class FPGAArray(object):
                  mode=None,
                  frames_per_packet=2,
                  tx_power=None,
+                 integration_period=None,
 
                  stderr_log_level=None,
                  syslog_log_level=None,
@@ -335,6 +336,7 @@ class FPGAArray(object):
              mode=mode,
              frames_per_packet=frames_per_packet,
              tx_power=tx_power,
+             integration_period=integration_period,
              stderr_log_level=stderr_log_level,
              syslog_log_level=syslog_log_level,
              udp_retries=udp_retries,
@@ -405,6 +407,7 @@ class FPGAArray(object):
              mode=None,
              frames_per_packet=2,
              tx_power=None,
+             integration_period=None,
 
              stderr_log_level=None,
              syslog_log_level=None,
@@ -966,7 +969,11 @@ class FPGAArray(object):
             ########################
             if mode:
                 self.logger.info('%r: Setting operational mode to %s' % (self, mode))
-                self.set_operational_mode(mode=mode, frames_per_packet=frames_per_packet, tx_power=tx_power)
+                self.set_operational_mode(
+                    mode=mode,
+                    frames_per_packet=frames_per_packet,
+                    tx_power=tx_power,
+                    integration_period=integration_period)
 
             ########################
             # Initializing backplane hardware communication firmware
@@ -1252,7 +1259,8 @@ class FPGAArray(object):
                 raise RuntimeError('All IceBoards must have a firmware correlator engine')
             self.ib.init_crossbars(mode, frames_per_packet=1)
             self.ib.set_offset_binary_encoding(False)  # The firmware correlator engine expects 1's complement encoding
-            self.ib.start_correlator(integration_period=integration_period)
+            if integration_period:
+                self.ib.start_correlator(integration_period=integration_period)
         else:
             raise ValueError('Unknown operational mode')
 
@@ -2965,14 +2973,16 @@ class FPGAArray(object):
 
         for ib in self.ib:
             for cb in [ib.CROSSBAR, ib.CROSSBAR2, ib.CROSSBAR3]:
-                cb.reset_stats()
+                if cb:  # make sure the crossbar exists in this firmware
+                    cb.reset_stats()
 
     def reset_bp_shuffle_stats(self):
         """ Reset error statistics for the backplane shuffle.
         """
 
         for ib in self.ib:
-            ib.BP_SHUFFLE.reset_stats()
+            if ib.BP_SHUFFLE: # makesure we have a shuffle block in this firmware
+                ib.BP_SHUFFLE.reset_stats()
 
     def get_shuffle_status(self):
 
