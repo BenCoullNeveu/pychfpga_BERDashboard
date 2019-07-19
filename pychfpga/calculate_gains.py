@@ -96,8 +96,8 @@ class GainCalc(object):
                 if all(((target[i] == '*') or target[i] == cid[i]) for i in range(len(target))):
                     self.glin[ix] = glin
                     self.glog[ix] = glog
-                    self.gains[ix] = np.array(glin) * 2**glog
-                    self.temp_gains[ix] = np.array(glin) * 2**glog
+                    self.gains[ix] = np.array(glin) * 2.0**glog
+                    self.temp_gains[ix] = np.array(glin) * 2.0**glog
 
         # self.state = self.SET_GAINS
 

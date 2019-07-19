@@ -205,11 +205,14 @@ class GPIO_base(Module_base):
     USER_OUTPUTS = {
         0: 'USER_MUX_SOURCE0',
         'sma_a': 'USER_MUX_SOURCE0',
+
         1: 'USER_MUX_SOURCE1',
-        'bp_sma_fpga_led1': 'USER_MUX_SOURCE1',
-        'bp_sma': 'USER_MUX_SOURCE1',
+        'sma_b_fpga_led2': 'USER_MUX_SOURCE1',
+
         2: 'USER_MUX_SOURCE2',
-        'sma_b_fpga_led2': 'USER_MUX_SOURCE2',
+        'bp_sma_fpga_led1': 'USER_MUX_SOURCE2',
+        'bp_sma': 'USER_MUX_SOURCE2',
+
         3: 'USER_MUX_SOURCE3',
         'bp_gpio_int': 'USER_MUX_SOURCE3'
         }
