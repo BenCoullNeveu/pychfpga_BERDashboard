@@ -13,6 +13,8 @@ import datetime
 from util import NameSpace
 import textwrap
 import sys, os
+import subprocess
+import re
 
 from socket import timeout
 
@@ -260,6 +262,13 @@ class MGADC08CarrierTests():
 
         cfg = self.cfg.carrier_tests.setup
         self.instr = util.open_instruments(self.cfg.instruments, cfg.instruments)  # open only instruments listed in cfg.instruments
+
+        stat_command = ['ifconfig', 'eno1']
+        x = subprocess.check_output(stat_command)
+        m = re.search('mtu 9000', x)
+        if (m == None ):
+            print "\nNeed to change the ethernet port MTU setting. Please enter password when asked."
+            os.system('sudo ifconfig eno1 mtu 9000')
 
         print '\n-------------------------------'
         print '  - Make sure the mezzanine is mounted to the iceboard (or connected via the extension cable), and the iceboard is properly set up (see handbook).'
@@ -1031,7 +1040,7 @@ class MGADC08CarrierTests():
                         data = r.read_frames(cfg.number_of_frames)
                         if channel in data:
                             break
-                        assert trial < 3, 'Did not receive data from the board.'
+                        assert trial < 40, 'Did not receive data from the board.'
                         trial += 1
 
                             # answer = input_yes_no('Did not receive data from the board. Want to try again [Y] or quit [Q]?' )

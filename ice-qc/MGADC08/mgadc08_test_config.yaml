@@ -9,7 +9,7 @@ comment: |
         this is indented more
 
 # test_results_folder: './test_results'
-test_results_folder: '../digicoqc'
+test_results_folder: '../test_results/adc_mezz_qc'
 mgadc08_model_number: ['MGADC08']
 xformat: ['pdf']  # Output formats for the test reports. xml is always saved.
 
@@ -89,12 +89,12 @@ bench_tests:
            - ['J7-3 (2.5V)',    {delay: 0.1, zmin: 500}]
            - ['J7-4 (3.3V)',    {delay: 0.1, zmin: 500}]
            - ['3V3 test point', {delay: 0.1, zmin: 500}]
-           - ['1V8 test point', {delay: 0.1, zmin: 500}]
+           - ['1V8 test point', {delay: 0.1, zmin: 300}]
 
     smoke_test:
         rails:
             vcc12v: {vmin: 11.9, vmax: 12.1, imin: 0.010, imax: 0.120} # ps12v, Output 1
-            vcc3v3: {vmin: 3.2,  vmax: 3.4,  imin: 2.400, imax: 2.800} # ps3v3_2v5, Output 1
+            vcc3v3: {vmin: 3.2,  vmax: 3.4,  imin: 2.000, imax: 2.800} # ps3v3_2v5, Output 1
             vcc2v5: {vmin: 2.4,  vmax: 2.6,  imin: 0.090, imax: 0.120} # ps3v3_2v5, Output 2
 
         min_test_voltage: 0.1   # voltage below which we ask the user to try again a voltage measurmenet
@@ -117,7 +117,7 @@ carrier_tests:
         revision_table:
             2: {sn_min: 0, sn_max: 42}
             3: {sn_min: 43, sn_max: 1000}
-        overwrite: False  # true, false, ask
+        overwrite: ask  # true, false, ask
 
     power_test:
         # instruments: [dmm] # Subset of instruments we use in these tests
