@@ -462,6 +462,7 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
     def tearDown(self):
         self.instr.ps18v.output(state=False, readonly=False) #Ensuring power on N5764A is off
 
+    
     def connect_to_board(self, xr, cfg , questions = True, powerdown = True, program = 0,iceboards="*"):
 
         if questions:
@@ -472,12 +473,12 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
                 pass;
 
         if powerdown:
-            self.instr.ps18v.output(state=False, readonly=False) #Ensuring power on N5764A is off
-            self.instr.ps18v.clear() #Clearing any previous protection
-            self.instr.ps18v.control_voltage(voltage=cfg.vlt, readonly=False) #Setting voltage to 18V, power still off
-            self.instr.ps18v.set_current_limit(current=cfg.curlmt, ocp=True) #Setting current limit and turning on ocp feature
-            self.instr.ps18v.output(state=True, readonly=False) #Turning power on
-            print "\nThe board has been powered up.\n"
+             self.instr.ps18v.output(state=False, readonly=False) #Ensuring power on N5764A is off
+             self.instr.ps18v.clear() #Clearing any previous protection
+             self.instr.ps18v.control_voltage(voltage=cfg.vlt, readonly=False) #Setting voltage to 18V, power still off
+             self.instr.ps18v.set_current_limit(current=cfg.curlmt, ocp=True) #Setting current limit and turning on ocp feature
+             self.instr.ps18v.output(state=True, readonly=False) #Turning power on
+             print "\nThe board has been powered up.\n"
 
         #while (input_yes_no("Do the front panel lights indicate that the board is ready? [Y/N]", additional_answers=[]) != True):
         #    pass;
@@ -497,7 +498,10 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
             response = os.system("ping -c 1 -i 3 " + serial)
             count = count + 1
 
-        ibs = fpga_array.FPGAArray(iceboards="*", open = 0, prog = program, mdns_timeout=20, ping=1)
+        current_path = os.path.dirname(__file__)
+        current_path += '/' if current_path else ''
+        bitfile = current_path + self.cfg.fpga_bit_file
+        ibs = fpga_array.FPGAArray(iceboards="*", open = 0, prog = 0, mdns_timeout=20, ping=1, bitfile=bitfile)
         if xr.params.serial in ibs.ib.discover_serial().values():
             print "Found an iceboard with the correct serial number on the network"
             ib_index = ibs.ib.discover_serial().values().index(xr.params.serial)
@@ -515,8 +519,13 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
             print "We found: " + str(ibs.ib.discover_serial().values())
             assert False, "IceBoard not found"
 
+        #Changing some infrastucture here - actually simplifies things if you now get rigt of ib_index etc..
+        #QC code was designed to work on its on network with just 1 iceboard. These mods let it work in a lab with other boards present
         print "Connecting to iceboard at : %s.\n" %ib.hostname
-
+        ibs = fpga_array.FPGAArray(iceboards=[ib.hostname], open = 0, prog = program, mdns_timeout=20, ping=1, bitfile=bitfile)
+        ib=ibs.ib[0]
+        ib_index=0
+    
         return (ib, ibs, ib_index)
 
     def prog_fpga(self, ib):
@@ -1245,33 +1254,6 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
                 print len(data[i])
                 i=i+1;
 
-            #receiver.close()
-            #ib.stop_data_capture()
-
-            # frames = 1
-            # good_frames = 0
-            # while (frames!=0 and good_frames<frames):
-            #     try:
-            #         #print "trying to get a frame"
-            #         data = receiver.read_frames(verbose=0)
-            #         for chanNum in range(16):
-            #             data_list[chanNum,:] = data[channels[chanNum]]
-            #         good_frames+=1
-            #         #print "got a frame"
-            #         if (good_frames % 100) == 0:
-            #             print 'Captured {0} frames'.format(good_frames) 
-            #     except KeyError:
-            #         print "missing a frame, skipping"
-            #         print data
-            #         missed += 1
-            #         pass
-            #     except ValueError:
-            #         print "got a weird frame... carrying on!"
-            #     except:
-            #         receiver.close()
-            #         ib.stop_data_capture()
-            #         raise
-            # print "lost {0} to get {1}".format(missed, frames)
             receiver.close()
             ib.stop_data_capture()
 
@@ -1391,7 +1373,7 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
 
         xr.header('Test-Results')
 
-        print "\nMeasuring  gtx error rate over a 20 second period"
+        print "\nMeasuring  gtx error rate over a 20 second period - WARNING THIS TEST IS IGNORING (not on purpose) THE BP_QSFP LINKS - NEED JF's ATTENTION HERE"
         meas_ber1 = ibs.get_ber(tx_power = cfg.tx_power, print_ = 0, period = 20)
         #print meas_ber1
 
@@ -1400,12 +1382,16 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
         gpu_rate = True
         bad_lanes = []
 
+        print(cfg.bp_limit)
+        print(type(cfg.bp_limit))
+
         for key in meas_ber1.keys():
-            if key[0] == 'BP':
+            if key[0] == 'pcb':
                 if meas_ber1[key] >= cfg.bp_limit:
+                    print "Exceeded limits"
                     bp_rate = False
                     bad_lanes.append((key, meas_ber1[key]))
-            elif key[0] == 'BP_QSFP':
+            elif key[0] == 'qsfp':
                 if meas_ber1[key] >= cfg.qsfp_limit:
                     qsfp_rate = False
                     bad_lanes.append((key, meas_ber1[key]))
@@ -1438,11 +1424,11 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
         bad_lanes = []
 
         for key in meas_ber2.keys():
-            if key[0] == 'BP':
+            if key[0] == 'pcb':
                 if meas_ber2[key] >= cfg.bp_limit:
                     bp_rate = False
                     bad_lanes.append((key, meas_ber2[key]))
-            elif key[0] == 'BP_QSFP':
+            elif key[0] == 'qsfp':
                 if meas_ber2[key] >= cfg.qsfp_limit:
                     qsfp_rate = False
                     bad_lanes.append((key, meas_ber2[key]))
@@ -1469,7 +1455,6 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
         #finally:
             #xr.save_data(status)
         xr.params.test_locals = locals()
-
 
 if __name__ == '__main__':
     """ Run the test in this file."""
