@@ -30,7 +30,7 @@ class ReceiverThread(threading.Thread):
     BUF_SIZE=65536
     data = bytearray(BUF_SIZE)
     data_buf = buffer(data)
-    data_block = np.zeros((16,2048+9), dtype=np.uint8)
+    data_block = np.zeros((16,2048+10), dtype=np.uint8)
     #Number of frequency bin pairs, Number of antennas, Number of bytes per word, header
     #NUMBER_OF_CORRELATORS = 5
     #NUMBER_OF_ANTENNAS_TO_CORRELATE = 5 #8
@@ -175,11 +175,12 @@ class ReceiverThread(threading.Thread):
                         nc += 1
 
             ###### TIMESTREAM DATA HANDLER ###########
-            elif (frame_id & 0xF0 == 0xA0): # if timestream or spectrum data
-                (probe_id, stream_id, word_length, timestamp) = struct.unpack_from('>BHHL', self.data_buf)
+            elif (frame_id == 0xA0): # if timestream or spectrum data
+                (probe_id,  stream_id, flags, ts_high, timestamp) = struct.unpack_from('>BHBHL', self.data_buf)
+                timestamp += ts_high << 32
                 # If we don't want to wait for all frames with the same timestanp to be grouped, put the frame immediately on the queue
                 if self._send_every_frame.is_set():
-                    self.data_block[0,:] = self.data[:2048+9]
+                    self.data_block[0,:] = self.data[:2048 + 10]
                     # If the queue is full, make room by poping the oldest element
                     if self.queue.full():
                         self.queue.get()
@@ -215,11 +216,11 @@ class ReceiverThread(threading.Thread):
                     if n < 0 or n >= 16:
                         if self.verbose:
                             print 'Timestream Receiver: received %i Timestrem/Spectrum frames with the same timestamp.' % n
-                    elif nbytes != 2048 + 9:
+                    elif nbytes != 2048 + 10:
                         if self.verbose:
-                            print 'Timestream Receiver: Timestrem/Spectrum frame has %i bytes instead of 2048+9=2057 bytes. First bytes are: 0x%s' % (nbytes, ' '.join('%02X' % c for c in self.data[:32]))
+                            print 'Timestream Receiver: Timestrem/Spectrum frame has %i bytes instead of 2048+10=2058 bytes. First bytes are: 0x%s' % (nbytes, ' '.join('%02X' % c for c in self.data[:32]))
                     else:
-                        self.data_block[n, :] = self.data[: 2048 + 9]
+                        self.data_block[n, :] = self.data[: 2048 + 10]
                         n += 1
             ###### UNKNOWN FRAME TYPE###########
             else:  # unknown frame format
@@ -238,7 +239,7 @@ class ReceiverThread(threading.Thread):
                 t = time.time()
                 dt = t-last_display_time
                 if dt > print_delay:
-                    print 'Received %i frames at %f frames/s (%f Mb/s), buffer size = %i, overflows= %i' % (self.n_frames, self.n_frames/dt, self.n_frames/dt*(2048+9)*8/1e6,  self.queue.qsize(), self.queue_overflow)
+                    print 'Received %i frames at %f frames/s (%f Mb/s), buffer size = %i, overflows= %i' % (self.n_frames, self.n_frames/dt, self.n_frames/dt*(2048+10)*8/1e6,  self.queue.qsize(), self.queue_overflow)
                     last_display_time = t
                     self.n_frames = 0
         except KeyboardInterrupt:
@@ -247,7 +248,7 @@ class ReceiverThread(threading.Thread):
 class chFPGA_receiver(object):
     # define constants
     FRAME_BUFFER_LENGTH = 2#10
-    FRAME_HEADER_LENGTH = 9
+    FRAME_HEADER_LENGTH = 10
     CORR_FRAME_HEADER_LENGTH = 11
     LOG2_FRAME_LENGTH = 11
     FRAME_LENGTH = 2**LOG2_FRAME_LENGTH
@@ -374,11 +375,10 @@ class chFPGA_receiver(object):
                     print 'Bad header'
                     break
                 else:
-                    (probe_id, stream_id, word_length, timestamp) = struct.unpack_from('>BHHL', in_frame)
-                    channel = probe_id & 0x0F
-                    flags = word_length >> 12
-                    word_length &= (2**12 - 1)
-
+                    (probe_id, stream_id, flags, ts_high, timestamp) = struct.unpack_from('>BHBHL', in_frame)
+                    timestamp += ts_high << 32
+                    channel = stream_id & 0x0F
+                    
                 if(len(in_frame) != self.FRAME_LENGTH+self.FRAME_HEADER_LENGTH):
                     print 'Frame too short'
                     break
@@ -393,7 +393,7 @@ class chFPGA_receiver(object):
                     raw_data^=0x80
 
                 if verbose >=2:
-                    print 'Packet received from port %i. Frame header information:  probe_id #=%i, stream_id #=%i, Word length=%i words, timestamp=%i, flags=%i' % (channel, probe_id, stream_id, word_length, timestamp, flags)
+                    print 'Packet received from port %i. Frame header information:  probe_id #=%i, stream_id #=%i, flags=%i words, timestamp=%i, flags=%i' % (channel, probe_id, stream_id, flags, timestamp, flags)
                     print data
                     #pass
                 # Make sure there is an empty vector on the first storage so we can concatenate to it the new data
