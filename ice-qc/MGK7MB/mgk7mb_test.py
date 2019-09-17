@@ -485,6 +485,7 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
 
         print "\nNeed to kill and restart avahi - this clears the cache which causes us troubles. Please enter password if asked."
         os.system('sudo avahi-daemon --kill')
+        time.sleep(2)
         os.system('sudo avahi-daemon --daemonize')
 
         serial = 'iceboard%s.local' %xr.params.serial
