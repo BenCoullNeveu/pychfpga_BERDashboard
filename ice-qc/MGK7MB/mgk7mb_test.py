@@ -483,6 +483,10 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
         #while (input_yes_no("Do the front panel lights indicate that the board is ready? [Y/N]", additional_answers=[]) != True):
         #    pass;
 
+        print "\nNeed to kill and restart avahi - this clears the cache which causes us troubles. Please enter password if asked."
+        os.system('sudo avahi-daemon --kill')
+        os.system('sudo avahi-daemon --daemonize')
+
         serial = 'iceboard%s.local' %xr.params.serial
         if "*" in iceboards:
             print "Waiting for 'iceboard.local' or '%s' to boot and show up on the network (70 second timeout)" %serial
