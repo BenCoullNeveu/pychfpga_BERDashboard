@@ -2694,25 +2694,21 @@ class FPGAArray(object):
 
         # Remove links that do not exist or have no GTX (direct lanes)
         if gtx_only:
-            link_map = {link: gtxes for link, gtxes in link_map.items() if None not in gtxes}
+            link_map = {link: gtxes for link, gtxes in link_map.items() if (('int' not in gtxes) and (None not in gtxes))}
 
         # link_list.sort(key=lambda (lt, (sc, ss, sl), (dc, ds, dl)): ss * 16 + ds)
         return link_map
 
 
     @async
-    def get_ber(self, link_list=None, period=0.1, tx_power=None, print_=True):
+    def get_ber(self, link_list=None, period=0.1, tx_power=12, print_=True, tx_init_power=7, tx_qsfp_power=15, minerrors_toprint=0):
 
         links = self.get_link_map(link_list, gtx_only=True)
 
         for link, (source_gtx, dest_gtx) in links.items():
             # First, make sure we can get errors by setting the wrong RX PRBS Sequence
-            if source_gtx is None or dest_gtx is None:
+            if source_gtx is None or dest_gtx is None or source_gtx is 'int' or dest_gtx is 'int':
                 continue
-            if link[0] == 'BP_QSFP':
-                source_gtx.TXDIFFCTRL = 12
-            if tx_power is not None:
-                source_gtx.TXDIFFCTRL = tx_power
 
             source_gtx.TXPRBSSEL = 4
             dest_gtx.RXPRBSCNTRESET = 1
@@ -2724,10 +2720,48 @@ class FPGAArray(object):
                     break
                 if time.time() - t0 > 1:
                     raise SystemError('Cannot detect errors even with the wrong sequence! Are the links connected as expected?')
+
+        # Perform BER test on a single list, to be run in parallel below
+        @async
+        def one_link_ber(link):
+            (link_type, (sc, ss, sl), (dc, ds, dl)), (source_gtx, dest_gtx) = link
+
             dest_gtx.RXPRBSSEL = 4
-            dest_gtx.RXDFELPMRESET = 1
-            time.sleep(0.00005)
-            dest_gtx.RXDFELPMRESET = 0
+            source_gtx.TXPRBSSEL = 4
+            source_gtx.TXDIFFCTRL = tx_init_power #Setting initial power level
+
+            dest_gtx.RXDFELPMRESET=1  #Retting the Reciever DFE
+            yield gen.sleep(0.5)
+            dest_gtx.RXDFELPMRESET=0
+
+            if (link_type == 'pcb'):
+                source_gtx.TXDIFFCTRL=tx_power
+            else:
+                source_gtx.TXDIFFCTRL=tx_qsfp_power
+
+            #if print_:
+            #    print 'Measuring BER for link %s' % (link[0],),
+            #    print source_gtx.TXDIFFCTRL
+            dest_gtx.RXPRBSCNTRESET=1 #Resetting errors
+            yield gen.sleep(0.5)
+            dest_gtx.RXPRBSCNTRESET=0
+
+            yield gen.sleep(period)
+
+            cnt = dest_gtx.ERR_CTR
+            err = (float(cnt) * 16) / (period * 10e9)
+            err_max = (float(cnt) * 16 + 1) / (period * 10e9)
+
+            #source_gtx.TXPRBSSEL = 0  #Setting PRBS to 0 (data path)
+            #dest_gtx.TXPRBSSEL = 0  #Setting PRBS to 0 (data path)
+            if print_ and (cnt > minerrors_toprint):
+                print '%r BER = %1.1e (%i errors, BER<%1.1e)' % (link[0], err, cnt, err_max)
+            self.print_flush()
+            async_return(err)
+
+        # Run BER test on each link in parallel
+        ber_table = yield {link: one_link_ber.async((link, gtxes)) for link, gtxes in links.items()}
+        async_return(ber_table)
 
         # Perform BER test on a single list, to be run in parallel below
         @async
@@ -2741,20 +2775,7 @@ class FPGAArray(object):
             if print_:
                 print 'Measuring BER for link %s' % (link[0],),
                 print source_gtx.TXDIFFCTRL
-            # dest_gtx.RXPRBSCNTRESET=1
-            # dest_gtx.RXPRBSCNTRESET=0
-            # dest_gtx.RXPRBSCNTRESET=1
-            # dest_gtx.RXPRBSCNTRESET=0
-            # t0=time.time()
-            # while time.time()-t0 < 13:
-            #    print  dest_gtx.ERR_CTR, 'from', dest_gtx
-            #    #dest_gtx.RXPRBSCNTRESET=1
-            #    #dest_gtx.RXPRBSCNTRESET=0
-            #    time.sleep(0.5)
-            #    #if not dest_gtx.ERR_CTR:
-            #    #    print 'locked',
-            #    #    break
-            #dest_gtx.RXPRBSCNTRESET=1
+
             dest_gtx.RXDFELPMRESET = 1
             time.sleep(0.00005)
             dest_gtx.RXDFELPMRESET = 0

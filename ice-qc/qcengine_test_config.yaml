@@ -9,7 +9,7 @@ comment: |
         this is indented more
 
 # test_results_folder: './test_results'
-test_results_folder: 'digicoqc'
+test_results_folder: '/home/sharktooth/iceqc'
 model_number: ['MGK7BP16','MGADC08','MGK7MB']
 xformat: ['pdf']  # Output formats for the test reports. xml is always saved.
 

@@ -200,8 +200,10 @@ class agilent_dmm(GPIB.GPIB):
 
     def local(self):
         if not self.is_gpib:
-            raise RuntimeError('the LOCAL command is only supported through the GPIB interface')
-        super(agilent_dmm, self).local()
+            #raise RuntimeError('the LOCAL command is only supported through the GPIB interface')
+            pass
+        else:
+            super(agilent_dmm, self).local()
         # self.command('SYST:LOC')  # Not supported
         # self.command('DIAG:LOCAL')  # Works only with VXI
 

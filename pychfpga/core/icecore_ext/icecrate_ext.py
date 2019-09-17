@@ -1310,6 +1310,18 @@ class IceCrate_MGK7BP1_Handler(IceCrateExtHandler):
             qsfp_link_id = (crate_id, qsfp_slot, qsfp_lane)
             bp_link_id = (crate_id, qsfp_lane, qsfp_slot + 1)
             link_uid = '%s_%i' % (cable_uid, qsfp_lane)
-            links.append(('BP_QSFP', qsfp_link_id, bp_link_id, link_uid))
+            links.append(('qsfp', qsfp_link_id, bp_link_id, link_uid))
 
+        return links
+
+    def get_qsfp_cable_map(self, get_cable_id=True, use_qsfp_link_id=False):
+
+                #{(link_type, (tx_crate, tx_slot, tx_lane), (rx_crate, rx_slot, rx_lane)) : (tx_gtx_instance, rx_gtx_instance)}
+
+        crate_id = self.get_id()[0]
+
+        links = {(crate_id, 0, 0): (crate_id, 0, 4),
+                 (crate_id, 0, 1): (crate_id, 0, 5),
+                 (crate_id, 0, 2): (crate_id, 0, 6),
+                 (crate_id, 0, 3): (crate_id, 0, 7)}
         return links
