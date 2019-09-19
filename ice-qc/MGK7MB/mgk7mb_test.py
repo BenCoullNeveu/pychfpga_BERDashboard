@@ -981,6 +981,7 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
         xr.header('FPGA test')
 
         cfg = self.cfg.motherboard_tests.fpga_test
+        cfg2 = self.cfg.motherboard_tests.sensors
         test_results = NameSpace()
         passed = False
 
@@ -1001,6 +1002,7 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
         if(ib.is_voltage_nominal() == True):
             print "\nThe board reports that all the buck regulators have their voltages within 5% tolerance"
         else:
+            voltage={}
             voltage['VCC3V3']       = ib.get_motherboard_voltage('MOTHERBOARD_RAIL_VCC3V3')
             voltage['VCC12V0']      = ib.get_motherboard_voltage('MOTHERBOARD_RAIL_VCC12V0')
             voltage['VCC5V5']       = ib.get_motherboard_voltage('MOTHERBOARD_RAIL_VCC5V5')
@@ -1010,13 +1012,14 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
             voltage['VCC1V5']       = ib.get_motherboard_voltage('MOTHERBOARD_RAIL_VCC1V5')
             voltage['VCC1V8']       = ib.get_motherboard_voltage('MOTHERBOARD_RAIL_VCC1V8')
             voltage['VADJ']         = ib.get_motherboard_voltage('MOTHERBOARD_RAIL_VADJ')
-
+            values_ok=[]
             for x in voltage:
-                values_ok.append(in_range(voltage[x], cfg.voltage[x]['nom'],cfg.voltage[x]['pmargin'], cfg.voltage[x]['amargin']))
+                values_ok.append(in_range(voltage[x], cfg2.voltage[x]['nom'],cfg2.voltage[x]['pmargin'], cfg2.voltage[x]['amargin']))
                 if (values_ok[-1]==False):
                     print "The voltage on %s is out of range - measured voltage is: %.3f" %(x, voltage[x])
 
             passed = False
+            print "Check that all the hand soldered buck caps are in place"
             assert False, "One or more of the buck rails reports that its voltage is out of the permitted 5% tollerance margin"
 
         cookie = hex(ib.fpga_mmi_read(ib.FPGA_CORE_FIRMWARE_COOKIE_ADDR))
