@@ -2483,9 +2483,9 @@ class chFPGA_controller(IceBoardExtHandler):
 
             output (str or int) is the number or name of the output to configure.
 
-               * 'sma_a" or 0: SMA-A on the motherboard
-               * 'bp_sma' or 1: SMA on the backplane and FPGA LED1,
-               * 'sma_b' or 2: SMA-B and FPGA LED2 on the motherboard LED on the backplane.
+               * 'sma_a' or 0: SMA-A on the motherboard
+               * 'sma_b' or 1: SMA-B and FPGA LED2 on the motherboard LED on the backplane
+               * 'bp_sma' or 2: BP_SMA on the backplane and FPGA LED1
 
         """
         self.GPIO.set_user_output_source(source, output=output)

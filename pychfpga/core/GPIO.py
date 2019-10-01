@@ -203,19 +203,18 @@ class GPIO_base(Module_base):
         }
 
     USER_OUTPUTS = {
-        'sma_a': 'USER_MUX_SOURCE0',
         0: 'USER_MUX_SOURCE0',
+        'sma_a': 'USER_MUX_SOURCE0',
 
-        'bp_sma': 'USER_MUX_SOURCE1',
-        'bp_sma_fpga_led1': 'USER_MUX_SOURCE1',
         1: 'USER_MUX_SOURCE1',
+        'sma_b_fpga_led2': 'USER_MUX_SOURCE1',
 
-        'sma_b': 'USER_MUX_SOURCE2',
-        'sma_b_fpga_led2': 'USER_MUX_SOURCE2',
         2: 'USER_MUX_SOURCE2',
+        'bp_sma_fpga_led1': 'USER_MUX_SOURCE2',
+        'bp_sma': 'USER_MUX_SOURCE2',
 
-        'bp_gpio_int': 'USER_MUX_SOURCE3',
         3: 'USER_MUX_SOURCE3',
+        'bp_gpio_int': 'USER_MUX_SOURCE3'
         }
 
     def set_user_output_source(self, source='', output=None):

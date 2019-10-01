@@ -1117,7 +1117,7 @@ class ChimeMaster(object):
 
 
         # Initialize the digital gain hdf5 writer
-        self.log.info("%r: Initializing HDF5 gain archive reader/writer" % (self))
+        self.log.info("%r: Initializing HDF5 gain archive reader/writer" % (self,))
         self.initialize_gain_hdf5()
 
         # Load most recent gains from archive into gain bank #0
@@ -1431,8 +1431,7 @@ class ChimeMaster(object):
 
         # Initialize writer
         hdf5_conf = self.config.fpga.gain_hdf5.copy()
-        hdf5_conf['output_dir'] = os.path.expanduser(hdf5_conf['output_dir'])
-        print(hdf5_conf)
+        hdf5_conf['output_dir'] = os.path.expanduser(hdf5_conf.get('output_dir', '.'))
         self.gain_hdf5 = DigitalGainArchive(freq=freq, input=inputs,
                                             instrument_name=self.config.corr_name,
                                             attrs={'git_version_tag': self.GIT_VERSION},
