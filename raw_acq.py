@@ -2528,8 +2528,11 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('get-rms')
     def get_rms(self, handler):
-        rms = yield self.receiver.raw_packet_processor.get_adc_rms()
-        coroutine_return(rms=rms)
+        if self.receiver.is_running() and self.receiver.raw_packet_processor is not None:
+            rms = yield self.receiver.raw_packet_processor.get_adc_rms()
+            coroutine_return(rms=rms)
+        else:
+            coroutine_return("raw packet processor not yet running")
 
     @coroutine
     @endpoint('get-monitoring-data')

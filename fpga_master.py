@@ -452,8 +452,8 @@ class ChimeMaster(object):
         ib_chans = self.fpgas.get_iceboards(chan_ids, lane_type='chan').items()
 
         for (ib, channels) in ib_chans:
-                ib.set_data_capture(channels=channels, sub_period=capture_rate, source=capture_source)
-                yield moment
+            ib.set_data_capture(channels=channels, sub_period=capture_rate, source=capture_source)
+            yield moment
 
 
     @coroutine
@@ -665,7 +665,7 @@ class ChimeMaster(object):
             filtered_gains, mask = gc.get_filtered_gains()
             yield self.fpgas.set_gains.async(gains=filtered_gains, bank=0, when='now')
 
-            self.log.info('%r: *** Gain calculator : Finished computing gains. %f %% of the gains calculations completed successfully' % (self, len(filtered_gains)))
+            self.log.info('%r: *** Gain calculator : Finished computing gains. Gain calculations completed successfully for %d channels.' % (self, len(filtered_gains)))
 
         # Perform the gain iterations in parallel on all raw acq servers
         yield [iterate_gains(raw_acq_server, server_channel_ids[raw_acq_server_name], server_stream_ids[raw_acq_server_name])
