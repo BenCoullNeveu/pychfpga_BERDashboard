@@ -911,9 +911,9 @@ class RawPacketProcessor(object):
             same_ts = self.buf_ts[buf_ix] == self.buf_ts[buf_ix[0]]
 
             # Select the buffer index that have the same timestamp and have a valid stream ID
-            bix = np.array([b for b in buf_ix[same_ts].tolist() if self.buf_stream_id[b] in self.sid_map])
+            bix = np.array([b for b in buf_ix[same_ts].tolist() if self.buf_stream_id[b] in self.sid_map], dtype=np.int16)  # make sure we have an integer array, even with an empty list
             # Find the channel index of each incoming packets by looking up their STREAM ID.
-            ix = np.array([self.sid_map[sid] for sid in self.buf_stream_id[bix].tolist()]) # iterating over a list of int is much faster than over an array of int32
+            ix = np.array([self.sid_map[sid] for sid in self.buf_stream_id[bix].tolist()], dtype=np.int16) # iterating over a list of int is much faster than over an array of int32
 
             # removed selected buffer indices for the next iteration
             buf_ix = buf_ix[same_ts == False]
@@ -1288,9 +1288,9 @@ class RawPacketProcessor(object):
             same_ts = self.buf_ts[buf_ix] == self.buf_ts[buf_ix[0]]
 
             # Select the buffer index that have the same timestamp and have a valid stream ID
-            bix = np.array([b for b in buf_ix[same_ts].tolist() if self.buf_stream_id[b] in self.sid_map])
+            bix = np.array([b for b in buf_ix[same_ts].tolist() if self.buf_stream_id[b] in self.sid_map], dtype=np.int16)
             # Find the channel index of each incoming packets by looking up their STREAM ID.
-            ix = np.array([self.sid_map[sid] for sid in self.buf_stream_id[bix].tolist()]) # iterating over a list of int is much faster than over an array of int32
+            ix = np.array([self.sid_map[sid] for sid in self.buf_stream_id[bix].tolist()], dtype=np.int16) # iterating over a list of int is much faster than over an array of int32
             # Remove selected buffer indices for the next iteration
             buf_ix = buf_ix[same_ts == False]
 
@@ -2528,11 +2528,12 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('get-rms')
     def get_rms(self, handler):
-        if self.receiver.is_running() and self.receiver.raw_packet_processor is not None:
+        if self.receiver and self.receiver.is_running() and self.receiver.raw_packet_processor is not None:
             rms = yield self.receiver.raw_packet_processor.get_adc_rms()
-            coroutine_return(rms=rms)
         else:
-            coroutine_return("raw packet processor not yet running")
+            rms = []  # if the receiver is not ready, return an empty list. This won't cause the caller to crash.
+            # coroutine_return("raw packet processor not yet running")
+        coroutine_return(rms=rms)
 
     @coroutine
     @endpoint('get-monitoring-data')
