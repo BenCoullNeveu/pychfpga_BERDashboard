@@ -933,11 +933,11 @@ class ChimeMaster(object):
         self.run_folder = self.expand_path(conf.run_folder)
         self.current_folder = self.expand_path(conf.current_folder)
 
-        print('%r: Run parameters:')
-        print('%r:    Correlator name: %s' % (self, self.corr_name))
-        print('%r:    data folder: %s' % (self, self.data_folder))
-        print('%r:    run folder: %s' % (self, self.run_folder))
-        print('%r:    current folder symlink: %s' % (self, self.current_folder))
+        self.log.info('%r: Run parameters:')
+        self.log.info('%r:    Correlator name: %s' % (self, self.corr_name))
+        self.log.info('%r:    data folder: %s' % (self, self.data_folder))
+        self.log.info('%r:    run folder: %s' % (self, self.run_folder))
+        self.log.info('%r:    current folder symlink: %s' % (self, self.current_folder))
 
         # Register configuration with the Comet server
         self.register_config()
@@ -1121,15 +1121,17 @@ class ChimeMaster(object):
         self.initialize_gain_hdf5()
 
         # Load most recent gains from archive into gain bank #0
-        if conf.fpga.load_initial_gains and self.gain_hdf5 is not None:
+        if conf.fpga.load_initial_gains and self.gain_hdf5:
             yield self.load_gains(update_id=None, bank=0, when='now')
 
-        # Compute new gains if requested
-        self.log.info("*** Debug: Disabling offset encoding")
-        # self.fpgas.ib.set_gains((0,0), bank=0, when='now')
-        self.fpgas.ib.set_offset_binary_encoding(True)
-        yield self.compute_gains(**conf.fpga.compute_gains)
+        # Enable offset encoding for gain calculation
+        if corr_config and corr_config.enable:
+            self.log.info("*** Enabling offset encoding for gain calculation")
+            # self.fpgas.ib.set_gains((0,0), bank=0, when='now')
+            self.fpgas.ib.set_offset_binary_encoding(True)
 
+        # Compute new gains if requested
+        yield self.compute_gains(**conf.fpga.compute_gains)
 
         # self.log.info("Waiting for 2 seconds")
         # yield sleep(2)
@@ -1144,10 +1146,11 @@ class ChimeMaster(object):
         self.log.info("Starting Raw data HDF5 data capture")
         yield self.start_hdf5_capture()
 
-
-        self.log.info("*** Debug: Disabling offset encoding")
-        # self.fpgas.ib.set_gains((0,0), bank=0, when='now')
-        self.fpgas.ib.set_offset_binary_encoding(False)
+        # Disable offset encoding if correlating
+        if corr_config and corr_config.enable:
+            self.log.info("*** Disabling offset encoding")
+            # self.fpgas.ib.set_gains((0,0), bank=0, when='now')
+            self.fpgas.ib.set_offset_binary_encoding(False)
 
         self.log.info("Starting Correlator HDF5 data capture")
         yield self.start_corr_hdf5_capture()
@@ -1348,10 +1351,10 @@ class ChimeMaster(object):
         """
         if not self.fpgas:
             msg = 'FPGA array not yet initialized. Cannot load digital gains.'
-            self.log.error(msg)
+            self.log.error('%r: %s' % (self, msg))
             raise RuntimeError(msg)
 
-        if self.gain_hdf5 is None:
+        if not self.gain_hdf5:
             msg = 'Digital gain archive not yet initialized.  Cannot load digital gains.'
             self.log.error('%r: %s' % (self, msg))
             raise RuntimeError(msg)
