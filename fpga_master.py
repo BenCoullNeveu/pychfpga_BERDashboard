@@ -1152,8 +1152,8 @@ class ChimeMaster(object):
             # self.fpgas.ib.set_gains((0,0), bank=0, when='now')
             self.fpgas.ib.set_offset_binary_encoding(False)
 
-        self.log.info("Starting Correlator HDF5 data capture")
-        yield self.start_corr_hdf5_capture()
+            self.log.info("Starting Correlator HDF5 data capture")
+            yield self.start_corr_hdf5_capture()
 
 
         # Finished with initialization.
