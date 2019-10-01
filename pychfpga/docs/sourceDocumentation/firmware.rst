@@ -1,74 +1,16 @@
 Arm Firmware
 ============
 
-The arm firmware is stored using git annex, with the images stored on Microsoft onedrive.
+The arm firmware is stored in git LFS in the ``pychfpga`` repository, under the folder pychfpga/pychfpga/arm_firmware.
 
-Without Git-Annex:
-------------------
+The file is a linux image compressed with bzip2. The file shall be about 100 Mbytes. If is just a few kilobytes, git probably didn't get the file itself, but rather its pointer text file. Make sure you have git LFS installed (it is already included in modern versions of git), make sure you are in the correct branch, and do a ``git lfs pull`` to replace the pointer with the actual data.
 
-If you've never used git annex before:
-
-on a mac::
-
-    $ brew install git-annex
-
-on linux::
-    $ sudo apt-get install git-annex
-
-If you haven't used a onedrive remote, first follow
-these instructions
-(not necessary to have/use your own account or have onedrive client installed, this
-accesses the onedrive api with python)::
-
-http://git-annex.branchable.com/tips/skydriveannex/
-
-reproduced here:
-
-skydriveannex 0.2.1
-
-Hook program for gitannex to use skydrive (previously Windows Live SkyDrive and Windows Live Folders) as backend
-Requirements:
-
-    python2
-    python-yaml
-
-Credit for the Skydrive api interface goes to https://github.com/mk-fg/python-skydrive
-Install
-
-Clone the git repository in your home folder.
-
-    $git clone git://github.com/TobiasTheViking/skydriveannex.git 
-
-This should make a ~/skydriveannex folder
-Setup
-
-Make the file executable, and link it into PATH
-
-    $cd ~/skydriveannex; chmod +x git-annex-remote-skydrive; sudo ln -sf `pwd`/git-annex-remote-skydrive /usr/local/bin/git-annex-remote-skydrive
-
-With Git-Annex:
----------------
-Now that you have the prerequisites, cd back to your ch_acq folder and run::
-
-    $ git annex enableremote skydrive
-
-This will open a browser, enter chime.correlator@outlook.com as the user, and standard chime password (ask if you don't know),
-click yes, then copy the URL in the browser.
-then run::
-
-    $ export OAUTH='[URL]'
-    $ git annex enableremote skydrive
-
-If successful should now be able to get firmware releases. for example:
-from the ch_acq/pychfpga/firmware/arm/2015-02-13/ directory:
-    $ git annex get iceboard_chime28.tar.gz
-
-will now download to your machine from onedrive.
-
-Untar the file to get the full image.
 
 Create SD card on a mac:
 ---------
+
+Uncompress the image file.
+
 
 Find which drive is SD card::
     $ sudo diskutil list
@@ -101,7 +43,15 @@ Clone the image, safely remove::
     $ sudo eject /dev/sdb
 (the eject command here may error, is important on some distros...)
 
+Windows:
+--------
+Uncompress the file, using for example 7-zip. You will get an .img file.
 
+Use an application to write the image to the SD card. Win32diskimager is free, minimalist, and works well.
+
+It takes about 45 seconds to write the image using a fast SD card adapter.
+
+Eject the card when you are finished to make sure there are no pending writes.
 
 
 

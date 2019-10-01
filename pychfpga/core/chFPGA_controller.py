@@ -234,12 +234,18 @@ class chFPGA_controller(IceBoardExtHandler):
         self.recv = None
 
     @async
-    def open(self, init=1, verbose=0, udp_retries=10, **kwargs):
+    def open(self, init=1, verbose=0, **kwargs):
         """
         Opens communication with the FPGA, retreives the firmware configuration information and
         create the Python objects needed to operate the firmware. If `init` =1, the :meth:`init`
         method will be called to initialize the FPGA. Otherwise, this is a read-only operation, i.e.
         the state of the FPGA is unchanged.
+
+
+        The parameters that control FPGA communications are the default set at
+        object creation. To pass specific parameters, explicitely call
+        open_core() with the desired parameters before calling open().
+
 
         Parameters:
 
@@ -247,11 +253,12 @@ class chFPGA_controller(IceBoardExtHandler):
                         the FPGA config; -1: Don<t read the FPGA and do not create the Python
                         objects.
             verbose (int): verbosity level, which is passed to the `init()` method.
-            udp_retries: Number of retries that are made while sendinc commands to the FPGA before raising an exception.
+
             kwargs: All remaining parameters are passed to `init()` method if the `init` parameter is 1.
         """
 
-        yield super(chFPGA_controller, self).open.async(udp_retries=udp_retries)  # Open UDP communication link
+        yield super(chFPGA_controller, self).open.async()  # Open UDP communication link
+
         self.logger.debug('%r: Instantiating chFPGA firmware handlers objects' % (self))
 
         # self.read = self.mmi.read
@@ -2456,22 +2463,22 @@ class chFPGA_controller(IceBoardExtHandler):
 
             source (str): is the source name
 
-                * 0: sync : User-generated SYNC signal (sunc_out)
-                * 1: pps : 1 PPS signal from the IRIG-B decoder (pps_out)
-                * 2: pwm : Output from the frame-based pwm generator (pwm_out)
-                * 3: irigb_trig :# not(irigb_before_target)
-                * 4: bp_trig : (bp_trig_reg)
-                * 5: bp_time : (bp_time_reg)
-                * 6: refclk : 10 MHz reference clock (clk10)
-                * 7: irigb_gen : (irigb_gen_out)
-                * 8: heartbeat1 : (gpio_led_int(4))
-                * 9: heartbeat2 : (gpio_led_int(7))
-                * 10: debug1 : (debug1, currently crossbar2.align_pulse)
-                * 11: debug2 : (debug2, currently crossbar0.lane_monitor)
-                * 12: user_bit0 : (user_bit(0))
-                * 13: user_bit1 : (user_bit(1))
-                * 14: debug3 : (chan_lane_monitor(2)(to_integer(unsigned(user_bit))))
-                * 15: fmc_refclk :# Refclk from Mezz selected by user_bits(0:1)  (fmc_refclk(to_integer(unsigned(user_bit)))
+                * 'sync' : User-generated SYNC signal (sunc_out)
+                * 'pps' : 1 PPS signal from the IRIG-B decoder (pps_out)
+                * 'pwm' : Output from the frame-based pwm generator (pwm_out)
+                * 'irigb_trig' :# not(irigb_before_target)
+                * 'bp_trig' : (bp_trig_reg)
+                * 'bp_time' : (bp_time_reg)
+                * 'refclk' : 10 MHz reference clock (clk10)
+                * 'irigb_gen' : (irigb_gen_out)
+                * 'heartbeat1' : (gpio_led_int(4))
+                * 'heartbeat2' : (gpio_led_int(7))
+                * 'debug1' : (debug1, currently crossbar2.align_pulse)
+                * 'debug2' : (debug2, currently crossbar0.lane_monitor)
+                * 'user_bit0' : (user_bit(0))
+                * 'user_bit1' : (user_bit(1))
+                * 'fmc_refclk' :# Refclk from Mezz selected by user_bits(0:1)  (fmc_refclk(to_integer(unsigned(user_bit)))
+                * 'input' : SMA is a high-impedance input and is not driving any signal
 
 
             output (str or int) is the number or name of the output to configure.
@@ -2483,14 +2490,19 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         self.GPIO.set_user_output_source(source, output=output)
 
-    def get_user_output_source(self):
-        """ Return the name of the source currently routed to SMA-A
+    def get_user_output_source(self, output):
+        """ Return the name of the source that drives the specified SMA
+
+
+        Parameters:
+
+            output (sma): Name of the SMA to query
 
         Returns:
 
-            str: name of the source currently routed to SMA-A
+            str: name of the source currently routed to the specified SMA
         """
-        return self.GPIO.get_user_output_source()
+        return self.GPIO.get_user_output_source(output=output)
 
     def set_sync_source(self, source):
         """ Sets the source of the signal that will trigger SYNC events.
@@ -2511,6 +2523,20 @@ class chFPGA_controller(IceBoardExtHandler):
             str describing the SYNC trigger source.
         """
         return self.REFCLK.get_sync_source()
+
+    @async
+    def set_irigb_source(self, source):
+        """ Set the source of the IRIG-B signal. Also configures the user SMA as an 'input' if that SMA is used as a source.
+
+        Parameters:
+
+            source (str): Name of the source to use.
+
+        """
+        yield super(chFPGA_controller, self).set_irigb_source.async(source=source)
+        # If an user SMA is used, configure it as an input
+        if source in self.GPIO.USER_OUTPUTS:
+            self.set_user_output_source(output=source, source='input')
 
     def set_pwm(self, enable, offset, high_time, period, local_sync=False):
         """ Sets the frame-based PWM generator. All times are stated as the number of frames.
@@ -3541,7 +3567,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
     @async
     def get_bp_shuffle_metrics(self, reset=True):
-        if not self.is_open():
+        if not self.is_open() or not self.BP_SHUFFLE:
             async_return(Metrics())
         try:
             yield self.clear_fpga_udp_errors.async()
@@ -3551,7 +3577,6 @@ class chFPGA_controller(IceBoardExtHandler):
             self.logger.error('%r: Error getting FPGA backplane link metrics. Error is %r' % (self, e))
             metrics = Metrics()
         async_return(metrics)
-
 
     @async
     def get_channelizer_metrics(self, reset=True):
@@ -3585,9 +3610,9 @@ class chFPGA_controller(IceBoardExtHandler):
         try:
             # yield self.check_command_count.async(reset=True)
             yield self.clear_fpga_udp_errors.async()
-            metrics += yield self.CROSSBAR.get_metrics.async(reset=reset)
-            metrics += yield self.CROSSBAR2.get_metrics.async(reset=reset)
-            metrics += yield self.CROSSBAR3.get_metrics.async(reset=reset)
+            for cb in [self.CROSSBAR, self.CROSSBAR2, self.CROSSBAR3]:
+                if cb: # make sure the crossbar is in this firmware
+                    metrics += yield cb.get_metrics.async(reset=reset)
         except IOError as e:
             self.logger.error('%r: Error getting FPGA crossbar metrics. Error is %r' % (self, e))
         except Exception as e:
@@ -3890,7 +3915,12 @@ class chFPGA_controller(IceBoardExtHandler):
         self.set_ant_reset(0)
         #self.sync()
 
-    def start_correlator(self, integration_period=16384, autocorr_only=False, correlators=None, bandwidth_limit=0.5e9, verbose=1):
+    def start_correlator(self,
+                         integration_period=16384,
+                         autocorr_only=False,
+                         correlators=None,
+                         bandwidth_limit=0.5e9,
+                         verbose=1):
         """
         (Re)starts the correlator with the specified integration time.
 
@@ -3927,10 +3957,17 @@ class chFPGA_controller(IceBoardExtHandler):
 
         Returns:
             None
+
+        Note:
+
+            - Sets the offest binary encoding to False. This is not restored
+              when the correlator is stopped.
+
         """
         if not self.CORR:
             raise RuntimeError('The FPGA firmware does not contain a correlator core')
 
+        self.set_offset_binary_encoding(False)
         self.CORR.start_correlator(integration_period=integration_period,
                                    autocorr_only=autocorr_only,
                                    correlators=correlators,

@@ -50,10 +50,14 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
     - IRIG-B subsystem operation (through the ARM SPI interface)
 
-    `IceBoardExtHandler` can be created as a standard Python object initialized with a number of
-    parameters which set corresponding attributes (see below). If a `parent_getter` function is
-    provided, the value of these attributes will instead be fetched dynamically from the parent
-    object. Note that any explicitely specified parameter overrides a parent parameter.
+    `IceBoardExtHandler` can be created as a standard Python object
+    initialized with a number of parameters which set corresponding attributes
+    (see below). If a `parent_getter` function is provided, the value of some
+    of these attributes will instead be fetched dynamically from the parent
+    object unless explicit values (i.e. not None) are provided here. An
+    explicittly provided parameter will always use the provided value and will
+    no longer be fetched from the parent, nor will it be set on the parent.
+
 
     Parameters:
 
@@ -79,19 +83,25 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             processor through the Tuber interface.
 
         fpga_ip_address (str): FPGA's listening IP address in the form 'xx.xx.xx.xx'. If None
-            (default), the address will be obtained by converting the ARM address 'a.b.c.d' into 'a.b.3.d'.
+            (default), the address will be obtained by converting the ARM address using the function provided in fpga_ip_addr_fn.
 
-        fpga_port_number (int): FPGA listening port number for commands. Defaults to 41000. If None,
+        fpga_ip_addr_fn (function): function (A,B,C,D) = fn(a,b,c,d) which
+            generates the FPGA address (A,B,C,D) based on the ARM IP address
+            (a,b,c,d).
+
+        fpga_port_number (int): FPGA's listening port number for commands. Defaults to 41000. If None,
             the local port number is used.
 
         local_port_number (int): UDP port number to use to receive command
             replies. If 0, the number is allocated randomly by the OS. If
             None, a fixed number based on the crate_number and a slot number
-            will be used if available.,
+            will be used if available.
 
-        fpga_ip_addr_fn (function): function (A,B,C,D) = fn(a,b,c,d) which
-            generates the FPGA address (A,B,C,D) based on the ARM IP address
-            (a,b,c,d).
+        interface_ip_addr (str): IP address of the interface to be used to
+            communicate with both the ARM and FPGA. If `None`, the interface
+            will be detected automatically by establishing a connection with
+            the ARM.
+
 
     Python-based application-specific FPGA firmware and hardware handler are meant to be derived
     from this class.
@@ -166,6 +176,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
 
     def __init__(self,
+                # Parameters that can be provided by the parent object
                  parent_getter=None,
                  hostname=None,
                  serial=None,
@@ -174,10 +185,14 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                  slot=None,
                  mezzanine={},
                  tuber_objname='IceBoard',
+
+                 # Parameters that are always local
                  fpga_ip_addr=None,
-                 fpga_ip_addr_fn=lambda a,b,c,d:(a,b,3,d),
+                 fpga_ip_addr_fn=lambda a, b, c, d: (a, b, 3, d),
+                 udp_retries = 10,
                  fpga_port_number=None,
-                 local_port_number=None
+                 local_port_number=None,
+                 interface_ip_addr=None
                  ):
         """
         Creates an Iceboard that is accessed through the networking parameters
@@ -197,10 +212,16 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             tuber_objname=tuber_objname)
         self.logger = logging.getLogger(__name__)
 
+        # Store opbject-specific local paramaters
+
         self.fpga_ip_addr = fpga_ip_addr
         self.fpga_ip_addr_fn = fpga_ip_addr_fn
+        self.udp_retries = udp_retries
         self.fpga_port_number = fpga_port_number
         self.local_port_number = local_port_number
+        self.interface_ip_addr = interface_ip_addr
+
+        # Initialize local variables
 
         self._mezzanine_ipmi_cache = {1: None, 2: None}
         self._is_core_open = None
@@ -239,12 +260,53 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     #     self._fpga_spi_poke(addr, value)
 
     @async
-    def open_core(self, udp_retries=5):
+    def open_core(self, udp_retries=None, fpga_ip_addr_fn=None, interface_ip_addr=None):
         """
-        Establishes the connection with the hardware and firmware on the
-        IceBoard and create all appropriate handling classes.
+        Establishes the direct UDP connection with the FPGA and instantiate
+        the basic objects that are essential to communicate with the FPGA
+        firmware and the board hardware, including I2C link through the FPGA.
+
+
+
+        Parameters:
+
+            udp_retries (int): How many times UDP commands will be retried
+                before an IOError exception is raised. If `None`, the default
+                value set at object creation will be used.
+
+            fpga_ip_addr_fn (function): Function used to compute the FPGA IP
+                address out of the ARM IP address. If `None`, the default
+                value set at object creation will be used.
+
+            interface_ip_addr (str): IP address of the interface to be used to
+                communicate with both the ARM and FPGA. If `None`, the interface
+                will be detected automatically by establishing a connection with
+                the ARM.
+
         """
         # print '%r: opening core' % self
+        self.logger.info('%r: Opening UDP connection to the FPGA' % self)
+
+        # Check if core communications with the FPGA was already opened
+        if self.is_core_open():
+            if any(x is not None for x in [udp_retries, fpga_ip_addr_fn, interface_ip_addr]):
+                raise RuntimeError('Attempting to re-open an already-open UDP communication channel with new parameters')
+            self.logger.debug(
+                '%r: Attempting to open core while it is already opened. '
+                'Ignoring.' % (self))
+            return
+
+
+        # Overrides communication parameter defaults if specified
+        if udp_retries is not None:
+            self.udp_retries = udp_retries
+
+        if fpga_ip_addr_fn is not None:
+            self.fpga_ip_addr_fn = fpga_ip_addr_fn
+
+        if interface_ip_addr is not None:
+            self.interface_ip_addr = interface_ip_addr
+
 
         if not (yield self.is_fpga_programmed.async()):
             raise RuntimeError(
@@ -296,13 +358,6 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
 
 
-        # if the FPGA handler instance was not created, check if one exists
-        # create it
-        if self.is_core_open():
-            self.logger.debug(
-                '%r: Attempting to open core while it is already opened. '
-                'Ignoring.' % (self))
-            return
 
         # -------------------------------------------------------------------------
         # Open the UDP MMI interface
@@ -314,7 +369,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             fpga_port_number=self.fpga_port_number, # none or 0: use local port number
             interface_ip_addr=self.interface_ip_addr,
             local_port_number=self.local_port_number, # 0 = randomly assigned by os
-            udp_retries=udp_retries,
+            udp_retries=self.udp_retries,
             parent=self)
         self.mmi.open()
         self.local_port_number = self.mmi.local_port_number
@@ -407,10 +462,10 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             self._is_hw_open = False
 
     @async
-    def open(self, udp_retries=10):
+    def open(self, **kwargs):
 
         self.logger.debug('%r: open() is called' % (self))
-        yield self.open_core.async(udp_retries=udp_retries)
+        yield self.open_core.async(**kwargs)
         self.core_gpio.set_channelizer_reset(True)  # stop the channelizer from sending data while we initialize
         yield self.open_hw.async()
         yield self.hw.init.async()

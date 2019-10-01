@@ -134,7 +134,7 @@ class FPGAArray(object):
                  hwm=None,
                  iceboards=[], icecrates=[], mezzanines=[], exclude_iceboards=[],
                  crate_map={},
-                 ignore_missing_boards = False,
+                 ignore_missing_boards=False,
 
                  subarrays=None,
                  ping=True,
@@ -145,7 +145,7 @@ class FPGAArray(object):
                  prog=None,
                  open=None,
                  if_ip=None,
-                 udp_retries=3,
+                 udp_retries=10,
                  fpga_ip_addr_fn='(a,b,3,d)',
 
                  # sampling_frequency=800e6,
@@ -161,6 +161,7 @@ class FPGAArray(object):
                  mode=None,
                  frames_per_packet=2,
                  tx_power=None,
+                 integration_period=None,
 
                  stderr_log_level=None,
                  syslog_log_level=None,
@@ -318,7 +319,7 @@ class FPGAArray(object):
              mezzanines=mezzanines,
              exclude_iceboards=exclude_iceboards,
              crate_map=crate_map,
-             ignore_missing_boards = ignore_missing_boards,
+             ignore_missing_boards=ignore_missing_boards,
              subarrays=subarrays, ping=ping,
              mdns_timeout=mdns_timeout,
              no_mezz=no_mezz,
@@ -335,6 +336,7 @@ class FPGAArray(object):
              mode=mode,
              frames_per_packet=frames_per_packet,
              tx_power=tx_power,
+             integration_period=integration_period,
              stderr_log_level=stderr_log_level,
              syslog_log_level=syslog_log_level,
              udp_retries=udp_retries,
@@ -391,8 +393,10 @@ class FPGAArray(object):
              bitfile=None,
              prog=None,
              open=None,
+
              if_ip=None,
              fpga_ip_addr_fn='(a,b,3,d)',
+             udp_retries=10,
 
              sync_method=None,
              sync_source=None,
@@ -403,10 +407,10 @@ class FPGAArray(object):
              mode=None,
              frames_per_packet=2,
              tx_power=None,
+             integration_period=None,
 
              stderr_log_level=None,
              syslog_log_level=None,
-             udp_retries=3,
 
              #ioloop=None,
 
@@ -464,15 +468,17 @@ class FPGAArray(object):
         #        parent_logger.setLevel(min(parent_logger.level, log_handler.level))  # make sure all messages from this handler are passed to the parent handler
 
 
-
+        # If no bitfile is provided, automaticaly select the bitfile in the
+        # current repository based on th eoperational mode.
         if bitfile is None:
-            fpga_array_path = os.path.dirname(__file__)
-            fpga_array_path += '/' if fpga_array_path else ''
-            #bitfile = ( fpga_array_path +
-            #    '../../chfpga/xilinx_projects/SIFPGA_MGK7MB/SIFPGA_MGK7MB.runs/impl_1/SIFPGA_MGK7MB.bit')  # DOLCEK - Firmware correlator
-            bitfile = ( fpga_array_path +
-                'fpga_bitstreams/chFPGA_MGK7MB_Rev2.bit') # ORIGINAL - recent one used for CHIME / does not include the firmware correlator
-            #bitfile = '/home/suit/Desktop/bitfiles/chFPGA_MGK7MB_Rev2 (16 CH,0 FFT,8 GPU,0 CORR).bit'  # When using this bit files, we encountered this error: IOError: chFPGA('MGK7BP1_SN001', 0).FpgaMmi(10.10.3.240): chFPGA('MGK7BP1_SN001', 0).FpgaMmi(10.10.3.240): Timeout during FPGA command.
+            if mode == 'corr16':
+                filename = 'SIFPGA_MGK7MB.bit'
+            else:
+                filename = 'chFPGA_MGK7MB_Rev2.bit'
+            bitfile = os.path.join(
+                os.path.dirname(__file__),
+                'fpga_bitstreams',
+                filename)
 
 
 
@@ -496,12 +502,19 @@ class FPGAArray(object):
         # self.logger.info('%r:     reference_frequency = %s' % (self, reference_frequency))
         self.logger.info('%r:     sync_method = %s' % (self, sync_method))
         self.logger.info('%r:     sync_source = %s' % (self, sync_source))
+        self.logger.info('%r:     fpga_ip_addr_fn = %s' % (self, fpga_ip_addr_fn))
         self.logger.info('%r: ------------------------' % self)
 
         __main__._host_interface_ip_addr = if_ip
 
-        self.fpga_ip_addr_fn = self.FPGA_IP_ADDR_FN_TABLE[fpga_ip_addr_fn];
 
+        # COnvert the FPGA IP-setting function name to an actual function
+        if fpga_ip_addr_fn in self.FPGA_IP_ADDR_FN_TABLE:
+            fpga_ip_addr_fn = self.FPGA_IP_ADDR_FN_TABLE[fpga_ip_addr_fn]
+        else:
+            raise AttributeError("Invalid 'fpga_ip_addr_fn' string '%s'. "
+                "Valid strings are  %s" %
+                (fpga_ip_addr_fn, ', '.join("'%s'" % fn for fn in self.FPGA_IP_ADDR_FN_TABLE)))
 
         # Fix up a few parameters for convenience
 
@@ -804,22 +817,26 @@ class FPGAArray(object):
         #################################
         # Check if all the hardware we wanted is present
         #################################
-        # Check for missing crates
-        current_crates = [(c.part_number, self._to_integer(c.serial)) for c in ic]
-        #print current_crates
-        missing_crates = [(model, serial) for (model, serial) in hw_table.icecrates
-                          if (model, self._to_integer(serial)) not in current_crates]
-        #print missing_crates
+        # List all the crates we know about along with their model/serial tuple
+        # Format: {icecrate_object : (model, integer_serial),...}
+        current_crates = {c: (c.part_number, self._to_integer(c.serial)) for c in self.ic}
+
+        # Find if explicitely requested crates were not found
+        missing_crates = [model_serial for model_serial in hw_table.icecrates
+                          if model_serial not in current_crates.values()]
         if missing_crates:
             raise RuntimeError('%r: The following crates are missing: %s' %
                 (self, ', '.join('%s SN%s' % (model, serial) for (model, serial) in missing_crates)))
-        # Check for missing boards
-        missing_slots = { (ic.part_number, ic.serial, ic.crate_number): set(range(1, ic.NUMBER_OF_SLOTS + 1)) - set(ic.slot) for ic in self.ic}
+
+        # Check for missing boards in explicitely-specified crates
+        missing_slots = {
+            (model_serial, ic.crate_number): set(range(1, ic.NUMBER_OF_SLOTS + 1)) - set(ic.slot)
+            for ic, model_serial in current_crates.items() if model_serial in hw_table.icecrates}
         if any(missing_slots.values()):
             message = '%s: The following slots are missing:\n%s' % (
                 self,
                 '\n'.join('    Crate #%s (%s SN%s): slots %s' % (number, model, serial, ', '.join(str(s) for s in slots))
-                for (model, serial, number), slots in missing_slots.items() if slots))
+                for ((model, serial), number), slots in missing_slots.items() if slots))
             if not ignore_missing_boards:
                 raise RuntimeError(message)
             else:
@@ -884,13 +901,6 @@ class FPGAArray(object):
         #################################
 
         if self.ib and open is not None and open > 0:
-            # Set the interface over which the FPGA UDP communication will be done
-            # Not needed in normal uses: we now get the interface automatically by examining info from the socket connected to the ARM
-            if if_ip:
-                self.ib.interface_ip_addr = if_ip
-
-            # Tell the boards how to compute their FPGA IP address
-            ib.fpga_ip_addr_fn = self.fpga_ip_addr_fn
 
             ########################
             # Initialize core FPGA firmware (establish FPGA UDP communications)
@@ -898,7 +908,7 @@ class FPGAArray(object):
             @async
             def open_core(ib, max_trials=3):
                 """ Try to open the FPGA core firmware (including UDP
-                communications) and reprogram the FPGA and retry a numer of
+                communications) and reprogram the FPGA and retry a number of
                 times if this fails.
 
                 Parameters:
@@ -916,7 +926,14 @@ class FPGAArray(object):
                 while True:
                     try:
                         self.logger.info('%r: Initializing core FPGA firmware, including FPGA UDP communications (calling ib.open_core()). Trial %i/%i.' % (self, trial, max_trials))
-                        yield ib.open_core.async()
+
+                        # Initialize FPGA UDP communications. Overrides
+                        # default parameters that were temporarily set when
+                        # the iceboard handler object was created.
+                        yield ib.open_core.async(
+                            udp_retries=udp_retries,
+                            fpga_ip_addr_fn=fpga_ip_addr_fn,
+                            interface_ip_addr=if_ip)
                         return
                     except IOError as e:
                         self.logger.error('%r: Error while initializing core firmware on trial %i/%i. Error is: \n%r' % (self, trial, max_trials, e))
@@ -934,7 +951,6 @@ class FPGAArray(object):
 
             self.logger.info('%r: Initializing FPGA firmware (calling ib.open())' % self)
             yield [ib.open.async(adc_delay_table=ADC_DELAY_TABLE,
-                                 udp_retries=udp_retries,
                                  init=open,
                                  **kwargs
                                  # sampling_frequency=sampling_frequency,
@@ -953,7 +969,11 @@ class FPGAArray(object):
             ########################
             if mode:
                 self.logger.info('%r: Setting operational mode to %s' % (self, mode))
-                self.set_operational_mode(mode=mode, frames_per_packet=frames_per_packet, tx_power=tx_power)
+                self.set_operational_mode(
+                    mode=mode,
+                    frames_per_packet=frames_per_packet,
+                    tx_power=tx_power,
+                    integration_period=integration_period)
 
             ########################
             # Initializing backplane hardware communication firmware
@@ -1239,7 +1259,8 @@ class FPGAArray(object):
                 raise RuntimeError('All IceBoards must have a firmware correlator engine')
             self.ib.init_crossbars(mode, frames_per_packet=1)
             self.ib.set_offset_binary_encoding(False)  # The firmware correlator engine expects 1's complement encoding
-            self.ib.start_correlator(integration_period=integration_period)
+            if integration_period:
+                self.ib.start_correlator(integration_period=integration_period)
         else:
             raise ValueError('Unknown operational mode')
 
@@ -2952,14 +2973,16 @@ class FPGAArray(object):
 
         for ib in self.ib:
             for cb in [ib.CROSSBAR, ib.CROSSBAR2, ib.CROSSBAR3]:
-                cb.reset_stats()
+                if cb:  # make sure the crossbar exists in this firmware
+                    cb.reset_stats()
 
     def reset_bp_shuffle_stats(self):
         """ Reset error statistics for the backplane shuffle.
         """
 
         for ib in self.ib:
-            ib.BP_SHUFFLE.reset_stats()
+            if ib.BP_SHUFFLE: # makesure we have a shuffle block in this firmware
+                ib.BP_SHUFFLE.reset_stats()
 
     def get_shuffle_status(self):
 
@@ -3704,6 +3727,7 @@ def add_fpga_array_arguments(parser):
     parser.add_argument('-m', '--mode',      type=str, help="Operational mode ('shuffle16', 'shuffle256', 'shuffle512'). If not specified, set_operational_mode() is not called.")
     parser.add_argument('-f', '--frames_per_packet', '--fpp',     type=int, help="Number of frames per packeet. Default=2.")
     parser.add_argument('-u', '--udp_retries', type=int, help="Number of times UDP packet transmission to the FPGA will be retried.")
+    parser.add_argument('--fpga_ip_addr_fn', type=str, help="Method used to set the FPGA IP address relative to the ARM address")
     parser.add_argument('hwm',               type=str, nargs='*', default=argparse.SUPPRESS, help="target hardware")  # allows free-style hardware description string
 
     defaults = dict(
