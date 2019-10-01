@@ -656,7 +656,8 @@ class RawAcqReceiver(object):
             'raw_acq_start_time': time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(self.start_time)),
             'data_folder': self.data_folder or '.',
             'run_name': self.run_name or 'Unknown',
-            'run_folder': self.run_folder or '.'
+            'run_folder': self.run_folder or '.',
+            'corr_name': self.corr_name or 'Unknown'
             }
         fields.update(extra_fields)
         return os.path.expanduser(path % fields)
@@ -1098,7 +1099,9 @@ class RawPacketProcessor(object):
                 (self, self.hdf5_base_dir))
             self.hdf5_base_dir = './'
 
-        self.hdf5_file = HDF5RawWriter(base_dir=self.hdf5_base_dir, elements_per_file=self.elements_per_file)
+        self.hdf5_file = HDF5RawWriter(base_dir=self.hdf5_base_dir,
+                                       filename=base_filename,
+                                       elements_per_file=self.elements_per_file)
 
 
     def stop_adc_hdf5(self):

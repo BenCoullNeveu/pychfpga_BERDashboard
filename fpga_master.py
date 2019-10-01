@@ -370,6 +370,7 @@ class ChimeMaster(object):
                 data_folder=self.data_folder,
                 run_folder=self.run_folder,
                 run_name=self.run_name,
+                corr_name=self.corr_name
                 )
             for server_name, raw_acq_server in self.raw_acq.items()}
 
