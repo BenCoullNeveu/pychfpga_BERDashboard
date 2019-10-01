@@ -860,11 +860,10 @@ class ChimeMaster(object):
         # Register configuration with the Comet server
     def register_config(self):
 
-        config = self.config
-
-        try:
+        config = self.config.as_dict()
 
         # Register config with comet broker
+        try:
             enable_comet = config['comet_broker']['enabled']
         except KeyError:
             msg = "Missing config value 'comet_broker/enabled'."
