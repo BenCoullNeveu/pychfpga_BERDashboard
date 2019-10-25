@@ -35,40 +35,56 @@ Create a clean python environment and install the `pychfpga` package all its dep
 	$ source my_env/bin/activate  # activate the new environment
 	$ pip install -e ./pychfpga  # install in-place
 
+If you plan manual interactive sessions (which is useful for debugging first installations), install ipython:
+
+	$ pip install ipython
+
+
+Hardware prerequisites
+----------------------
+
+
+- The Iceboards FPGA Ethernet port (SFP+) must connect to a switch/router port that support 1G Ethernet (that is the only speed supported by the FPGA). The ARM Ethernet port (the dual RJ-45 connectors) also need to be connected to the switch (those work at any speed).
+
+- The network on which the IceBoard(s) is/are connected shall have a DHCP server that offer a subnet of 255.255.0.0. Assuming the ARM processor on the board is be given the address a.b.c.d, by default the FPGA will be assigned the address a.b.3.d. So the DHCP server should be set-up to not give addresses in the range a.b.3.*.
+
+- If you are expecting to gather raw ADC, FFT or correlator data over the 1G Ethernet link (ot the QSFP+), all the routers/switches in the path between the IceBoards and the computer must be enabled for Jumbo Frames.
+
 
 Manual operation (using fpga_array)
 -----------------------------------
 
-Make sure you have ipython installed in your current environment::
+`fpga_array` creates an object that represents any number of ICEBoards and ICECrates and allows their initialization. Once started, it returns control to you. (See `fpga_master` for a full stand-alone automated server).
 
-	$ source my_env/bin/activate  # activate the python environment
-	$ pip install ipython
-
-Manually starting up the system with fpga_array
------------------------------------------------
-
-`fpga_array` creates an object that represents any number of ICEBoards and ICECrates and allows their initialization. Once started, it returns control to you. (See `fpga_master` for a full interactive server). First start ipython:
+Manual operations are done through ipython. First start ipython in the proper folder and python environment:
 
 	source my_env/bin/activate  # activate the python environment
 	cd pychfpga
 	ipython
 
-Assuming you have a single board with IP address 1.2.3.4 and want to use an external correlator that will process the data from the two QSFP+ links (mode `shuffle16`):
+We are now ready to initialize your board(s).
+
+Assuming you have a single IceBoard with IP address 1.2.3.4 and want to use an external correlator that will process the data from the two QSFP+ links (mode `shuffle16`):
 
 
 	run -i fpga_array 1.2.3.4 --prog --open --sync_method local_soft_trigger --mode shuffle16
 
-If you have avahi, you can specify the board model and serial number. In the following example, we start the board with the stand-alone firmware correlator (more `corr16`) that will stream integrated data over the 1G Ethernet SFP+ link:
+If you have avahi/bonjour server (a MDNS server) running on your computer, you can specify the board through its model and serial number, and the MDNS protocol will resolve the IP address of the board. In the following example, we start the IceBoard MGK7MB serial 0123 with the stand-alone firmware correlator (mode `corr16`) that will stream integrated data over the 1G Ethernet SFP+ link:
 
 	run -i fpga_array mb 123 --prog --open --sync_method local_soft_trigger --mode corr16
 
-With avahi present, you can select an ensemble of boards by crate model and serial number (here boards on 16-slot backplane model MGK7BP16 serial 12 and 13). We itialize 2 crates (32 boards, 512 analog inputs) and corner-turn engine for use with an external correlator farm (mode shuffle512), and synchronized together through IRIG-B:
+With avahi/bonjour present, you can also select an ensemble of boards by crate model and serial number. Here we select all boards on . Here we intialize 2 crates that are based on the 16-slot backplane model MGK7BP16, and with the serial numbers 12 and 13. These crates will be given the crate number 0 and 1, respectively. We have 512 analog inputs we pass through the FPGA's corner-turn engine and send to an external correlator farm (mode shuffle512). All the boards in the arrayare synchronized together through IRIG-B:
 
-	run -i fpga_array bp16 12 13 --prog --open --sync_method distributed_time --mode corr512
+	run -i fpga_array bp16 12:0 13:1 --prog --open --sync_method distributed_time --mode shuffle512
 
 
 Server-based operation
 ======================
+
+`fpga_master` is a stand-alone server that initializes and operates the IceBoards based on a configuration file, and provides a web server that can receive REST commands over HTTP and can publish monitoring metrics that can be scraped by Prometheus and displayed by Grafana (all free programs).
+
+`raw_acq` is another stand-alone server that is run in parallel with `fpga_master` to receive, analyze and store the raw ADC, FFT or *firmware* correlator data that is captured periodically and sent by the IceBoards over the FPGA SFP+ 1G Ethernet link. This server does *not* process the real-time post-corner-turn-but-not-correlated data coming out of the IceBoard's QSFP+ links; those are meant to go directly to high-performance correlator nodes.
+
 
 Prerequisites
 -------------
@@ -80,7 +96,7 @@ Prerequisites
     sudo sysctl -w net.core.rmem_default=26214400
 
 
-- Install Prometheus and Grafana if you want to view the system status graphs published by `fpga_master`. The Prometheus config file and grafana panels need to be installed.
+- Install Prometheus and Grafana if you want to view the system status graphs published by `fpga_master`. The appropriate Prometheus config file and grafana panels need to be installed.
 
 - You need a YAML configuration file for the servers.
 
