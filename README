@@ -3,23 +3,24 @@ pychfpga: ICEBoard & FPGA-based correlator control
 
 
 
-Prerequisites
--------------
+Prerequisites for installation and manual operations
+----------------------------------------------------
 
 Before you start, you need:
 
-	- a ssh key loaded in ssh_agent that allows you to access your bitbucket account::
+- A bitbucket account (https://bitbucket.org)
+- A `ssh` key loaded in `ssh_agent` that allows you to access your bitbucket account::
 
-		    eval `ssh-agent -s`
-		    ssh-add path_to_bitbucket_key
+	    eval `ssh-agent -s`
+	    ssh-add path_to_bitbucket_key
 
-	- Permissions to the pychfpga and dependent repositories in bitbucket. Ask McGill administrator.
-	- git LFS (git >1.8.2 includes LFS by default)
-	- Python 2.7 (Python 3 **not** supported)
-	- pip 18.1 (2018-10-05) or later (to support the PEP 508 dependency specs)
-	- mdns/avahi/bonjour development libraries should be installed to allow the python package pybonjour to install::
+- Permissions to the pychfpga and dependent repositories in bitbucket. Ask McGill administrator.
+- git LFS (git >1.8.2 includes LFS by default)
+- Python 2.7 (Python 3 **not** supported)
+- pip 18.1 (2018-10-05) or later (to support the PEP 508 dependency specs)
+- mdns/avahi/bonjour development libraries should be installed to allow the python package pybonjour to install::
 
-		sudo apt install  libavahi-compat-libdnssd1  # on Ubuntu
+	sudo apt install  libavahi-compat-libdnssd1  # on Ubuntu
 
 Obtaining and installing pychfpga
 ---------------------------------
@@ -72,16 +73,16 @@ Server-based operation
 Prerequisites
 -------------
 
-	- If you expect to receive raw ADC, FFT or correlator packets from the IceBoard (using `raw_acq.py`, for example), you need to enable jumbo frames and increase buffer size. The following commands do that for the current session. You might want to make those changes permanent::
+- If you expect to receive raw ADC, FFT or correlator packets from the IceBoard (using `raw_acq.py`, for example), you need to enable jumbo frames and increase buffer size. The following commands do that for the current session. You might want to make those changes permanent (not shown here)::
 
-		sudo ifconfig eth0 mtu 9000 # replace "eth0" with your interface name
-        sudo sysctl -w net.core.rmem_max=26214400
-        sudo sysctl -w net.core.rmem_default=26214400
+	sudo ifconfig eth0 mtu 9000 # replace "eth0" with your interface name
+    sudo sysctl -w net.core.rmem_max=26214400
+    sudo sysctl -w net.core.rmem_default=26214400
 
 
-	- Install Prometheus and Grafana if you want to view the system status graphs published by `fpga_master`
+- Install Prometheus and Grafana if you want to view the system status graphs published by `fpga_master`. The Prometheus config file and grafana panels need to be installed.
 
-	- You need a YAML configuration file
+- You need a YAML configuration file for the servers.
 
 Operation
 ---------
