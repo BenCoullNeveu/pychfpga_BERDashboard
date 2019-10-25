@@ -7,6 +7,7 @@ Prerequisites
 -------------
 
 Before you start, you need:
+
 	- a ssh key loaded in ssh_agent that allows you to access your bitbucket account::
 
 		    eval `ssh-agent -s`
@@ -20,8 +21,8 @@ Before you start, you need:
 
 		sudo apt install  libavahi-compat-libdnssd1  # on Ubuntu
 
-Obtaining and installing ``pychfpga``
-------------------------------------
+Obtaining and installing pychfpga
+---------------------------------
 
 Get the ``pychfpga`` repository::
 
@@ -34,8 +35,8 @@ Create a clean python environment and install the `pychfpga` package all its dep
 	$ pip install -e ./pychfpga  # install in-place
 
 
-Manual operation through `fpga_array`
--------------------------------------
+Manual operation (using fpga_array)
+-----------------------------------
 
 Make sure you have ipython installed in your current environment::
 
@@ -45,7 +46,7 @@ Make sure you have ipython installed in your current environment::
 Manually starting up the system with fpga_array
 -----------------------------------------------
 
-`fpga_array` creates an object that represents any number of ICEBoards and ICECrates and allow their initialization. Once started, it returns control to you. (See `fpga_master` for a full interactive server). First start ipython::
+`fpga_array` creates an object that represents any number of ICEBoards and ICECrates and allows their initialization. Once started, it returns control to you. (See `fpga_master` for a full interactive server). First start ipython:
 
 	source my_env/bin/activate  # activate the python environment
 	cd pychfpga
@@ -56,7 +57,7 @@ Assuming you have a single board with IP address 1.2.3.4 and want to use an exte
 
 	run -i fpga_array 1.2.3.4 --prog --open --sync_method local_soft_trigger --mode shuffle16
 
-If you have avahi, you can specify the board model and serial number. In the following example, we start the board with the stand-alone firmware correlator (more `corr16`) that will stream integrated data over the 1G Ethernet SFP+ link::
+If you have avahi, you can specify the board model and serial number. In the following example, we start the board with the stand-alone firmware correlator (more `corr16`) that will stream integrated data over the 1G Ethernet SFP+ link:
 
 	run -i fpga_array mb 123 --prog --open --sync_method local_soft_trigger --mode corr16
 
@@ -65,11 +66,11 @@ With avahi present, you can select an ensemble of boards by crate model and seri
 	run -i fpga_array bp16 12 13 --prog --open --sync_method distributed_time --mode corr512
 
 
-`fpga_master` and `raw_acq`
----------------------------
+Server-based operation
+======================
 
 Prerequisites
-+++++++++++++
+-------------
 
 	- If you expect to receive raw ADC, FFT or correlator packets from the IceBoard (using `raw_acq.py`, for example), you need to enable jumbo frames and increase buffer size. The following commands do that for the current session. You might want to make those changes permanent::
 
@@ -83,7 +84,7 @@ Prerequisites
 	- You need a YAML configuration file
 
 Operation
-+++++++++
+---------
 
 First, make sure you are in the pychfpga folder and in the right python environment::
 
