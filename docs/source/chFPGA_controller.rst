@@ -72,7 +72,7 @@ Method Summary (in alphabetical order)
       ~chFPGA_controller.tuber_context
 
 
-.. currentmodule:: sourceDocumentation
+.. currentmodule:: tuber_methods
 
 .. rubric:: Tuber: system methods
 
@@ -219,7 +219,6 @@ Method Summary (in alphabetical order)
       ~chFPGA_controller.get_FFT_bypass
       ~chFPGA_controller.get_FFT_shift
       ~chFPGA_controller.capture_adc_eye_diagram
-      ~chFPGA_controller.check_adc_data_acquisition
       ~chFPGA_controller.compute_adc_delay_offsets
       ~chFPGA_controller.compute_adc_delays
       ~chFPGA_controller.tune_adc_delays
@@ -394,7 +393,7 @@ The `_SYSTEM_I2C_BASE_ADDR` is defined elsewhere.
       ~chFPGA_controller.NUMBER_OF_FMC_SLOTS
       ~chFPGA_controller.crate
       ~chFPGA_controller.detect_irigb_source
-      ~chFPGA_controller.fpga_ip_addr
+      .. ~chFPGA_controller.fpga_ip_addr
       ~chFPGA_controller.hostname
       ~chFPGA_controller.init
       ~chFPGA_controller.interface_ip_addr
@@ -493,7 +492,6 @@ Channelizer and ADC data acqusition
 .. automethod:: chFPGA_controller.get_FFT_bypass
 .. automethod:: chFPGA_controller.get_FFT_shift
 .. automethod:: chFPGA_controller.capture_adc_eye_diagram
-.. automethod:: chFPGA_controller.check_adc_data_acquisition
 .. automethod:: chFPGA_controller.compute_adc_delay_offsets
 .. automethod:: chFPGA_controller.compute_adc_delays
 .. automethod:: chFPGA_controller.tune_adc_delays

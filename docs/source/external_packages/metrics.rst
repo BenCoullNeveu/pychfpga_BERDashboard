@@ -2,7 +2,7 @@
 ==================================================
 
 
-.. automodule:: pychfpga.core.metrics
+.. automodule:: wtl.metrics
 
 
 .. autoclass: Metrics

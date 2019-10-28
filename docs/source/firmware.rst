@@ -7,17 +7,19 @@ The file is a linux image compressed with bzip2. The file shall be about 100 Mby
 
 
 Create SD card on a mac:
----------
+------------------------
 
 Uncompress the image file.
 
 
 Find which drive is SD card::
     $ sudo diskutil list
+
 (be sure you are correct, as this can wipe your system if used incorrectly)
 
 Unmount it::
     $ sudo diskutil umountDisk /dev/disk3
+
 Clone the image, then safely remove::
 
     $ sudo dd if=iceboard_chime28.img of=/dev/rdisk3 bs=10m
@@ -29,6 +31,7 @@ Linux:
 
 Find the drive::
     $ lsblk
+
 (be sure you are correct, as this can wipe your system if used incorrectly)
 
 Unmount it::
@@ -41,6 +44,7 @@ Clone the image, safely remove::
     $ sudo umount /dev/sdb1
     $ sudo umount /dev/sdb2
     $ sudo eject /dev/sdb
+
 (the eject command here may error, is important on some distros...)
 
 Windows:

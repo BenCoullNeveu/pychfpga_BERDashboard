@@ -13,7 +13,6 @@ The `pychfpga` package defines the modules and classes needed to operate an arra
    icecore
    icecore_ext
    IceBoard
-   metrics
 
 List of Modules
 ---------------
@@ -38,7 +37,6 @@ List of Modules
    core.icecore.async
    core.icecore.Ccoll
    core.icecore.NameSpace
-   core.metrics
 
 
 

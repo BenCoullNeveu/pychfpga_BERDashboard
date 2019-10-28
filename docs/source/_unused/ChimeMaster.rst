@@ -1,14 +1,13 @@
-:class:`ch_master.ChimeMaster`
-==============================
+:class:`fpga_master.ChimeMaster`
+================================
 
-.. currentmodule:: ch_master
+.. currentmodule:: fpga_master
 
 .. autoclass:: ChimeMaster
 
 .. autosummary::  ChimeMaster
 
    ChimeMaster
-   Metric
 
 
 Methods

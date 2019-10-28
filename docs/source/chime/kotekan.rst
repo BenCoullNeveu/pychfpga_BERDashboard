@@ -1,15 +1,15 @@
 :mod:`kotekan` module: GPU node correlator control process
 ==========================================================
 
-.. automodule:: kotekan
+.. .. automodule:: kotekan
 
-.. autosummary::
+.. .. autosummary::
 
 	kotekan.KotekanAsyncRESTClient
 
 kotekan REST Server
 *******************
 
-.. autoclass:: kotekan.KotekanAsyncRESTClient
-	:members:
+.. .. autoclass:: kotekan.KotekanAsyncRESTClient
+..	:members:
 

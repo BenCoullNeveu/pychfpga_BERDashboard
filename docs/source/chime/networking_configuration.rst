@@ -81,7 +81,7 @@ All lag link leds should be green
 
 
 Central switch (Nexus 3132Q)
-----------------
+----------------------------
 
 32x40G—This is the default port mode. Only the first 24 QSFP ports are break-out capable. You cannot enter the speed 10000 command on ports 25 through 32.
 

@@ -14,7 +14,7 @@ Summary
 
       FPGAArray
       FPGABitstream
-      GPUArray
+      .. GPUArray
       PSArray
 
 .. rubric:: Support functions
@@ -33,7 +33,7 @@ Summary
       parse_args_as_dict
       parse_hw_string
       setup_logging
-      validate_config
+      .. validate_config
 
 
 Classes

@@ -1,7 +1,7 @@
 :mod:`kotekan_master` module: GPU node array master controller
 ==============================================================
 
-.. automodule:: kotekan_master
+.. .. automodule:: kotekan_master
 
 .. _kotekan_master_cli:
 
@@ -10,7 +10,7 @@ Command-line interface
 
 The module ``kotekan_master.py`` module can can be used as a script to start and operate the X-engine GPU nodes.
 
-The first line this module contains a shebang (``#!/usr/bin/env python``) that allows Linux to automatically recognize it as a python script and run it with the python interpreter when invoked as ``./ch_master.py``. Alternatively, the script can also be launched from a shell with ``python kotekan_master.py`` or from within ipython with ``run -i kotekan_master``.
+The first line this module contains a shebang (``#!/usr/bin/env python``) that allows Linux to automatically recognize it as a python script and run it with the python interpreter when invoked as ``./fpga_master.py``. Alternatively, the script can also be launched from a shell with ``python kotekan_master.py`` or from within ipython with ``run -i kotekan_master``.
 
 In a nutshell, the script operates by creating a ``kotekan_master`` REST client object that provides an interface to the kotekan_master REST server that is specified in the provided configuration. If the server is not found, a local server is created. The server is then initialized with the provided configuration file by sending the `start` REST command along with the configuration file.
 
@@ -23,7 +23,7 @@ The command-line syntax is::
 where:
 
    ``config``:
-      reference to a *ch_master* configuration element found in the specified YAML file. The command line code will automatically
+      reference to a *fpga_master* configuration element found in the specified YAML file. The command line code will automatically
       The ``config`` field is in the form [[filename]:]name{.name}. Default filename is
       ``config.yaml``. For example::
 
@@ -87,7 +87,7 @@ A configuration describes:
 
 The configuration file example is::
 
-    ch_master_config_name:
+    fpga_master_config_name:
             servers: # List all the existing servers (multiple servers could operate different sets of nodes)
                 default_server:
                         hostname: localhost
@@ -114,9 +114,9 @@ Class summary
 
 .. autosummary::
 
-   kotekan_master.KotekanMaster
-   kotekan_master.KotekanMasterAsyncRESTServer
-   kotekan_master.KotekanMasterAsyncRESTClient
+   .. kotekan_master.KotekanMaster
+   .. kotekan_master.KotekanMasterAsyncRESTServer
+   .. kotekan_master.KotekanMasterAsyncRESTClient
 
 
 
@@ -124,19 +124,19 @@ Class summary
 Classes
 -------
 
-.. autoclass:: kotekan_master.KotekanMaster
-   :members:
-   :undoc-members:
+.. .. autoclass:: kotekan_master.KotekanMaster
+..    :members:
+..    :undoc-members:
 
 
 
-.. autoclass:: kotekan_master.KotekanMasterAsyncRESTServer
-   :members:
-   :undoc-members:
+.. .. autoclass:: kotekan_master.KotekanMasterAsyncRESTServer
+..    :members:
+..    :undoc-members:
 
-.. autoclass:: kotekan_master.KotekanMasterAsyncRESTClient
-   :members:
-   :undoc-members:
+.. .. autoclass:: kotekan_master.KotekanMasterAsyncRESTClient
+..    :members:
+..    :undoc-members:
 
 
 

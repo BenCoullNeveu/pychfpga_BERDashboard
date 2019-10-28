@@ -91,7 +91,7 @@ GPS REST Server
 
    	.. automethod:: start(self, handler, **config)
    	.. automethod:: stop(self, handler)
-	.. automethod:: get_minitoring_data(self, handler)
+	.. automethod:: monitoringMetrics(self, handler)
 
 	.. rubric:: Support methods
 

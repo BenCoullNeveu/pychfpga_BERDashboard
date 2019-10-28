@@ -76,31 +76,31 @@ The weather server configuration is a Python dictionary that is typically loaded
 
 Python Module Summary
 *********************
-.. currentmodule:: weather
-.. automodule:: weather
+.. .. currentmodule:: weather
+.. .. automodule:: weather
 
-.. autosummary::
+.. .. autosummary::
 
-	weather.get_wview_metrics
-	weather.WeatherAsyncRESTServer
-	weather.WeatherAsyncRESTClient
+.. 	weather.get_wview_metrics
+.. 	weather.WeatherAsyncRESTServer
+.. 	weather.WeatherAsyncRESTClient
 
 Weather data scraping function
 ******************************
 
-.. autofunction:: weather.get_wview_metrics
+autofunction:: weather.get_wview_metrics
 
 
 Weather REST Server
 *******************
 
-..	autoclass:: weather.WeatherAsyncRESTServer
+.. ..	autoclass:: weather.WeatherAsyncRESTServer
 
-	.. rubric:: REST Endpoint handlers
+.. ..	rubric:: REST Endpoint handlers
 
-   	.. automethod:: start(self, handler, **config)
-   	.. automethod:: stop(self, handler)
-	.. automethod:: get_monitoring_data(self, handler)
+.. ..   	automethod:: start(self, handler, **config)
+.. ..   	automethod:: stop(self, handler)
+.. ..	automethod:: get_monitoring_data(self, handler)
 
 ..	.. rubric:: Support methods
 
@@ -108,7 +108,7 @@ Weather REST Server
 Weather REST Client
 *******************
 
-.. autoclass:: weather.WeatherAsyncRESTClient
+.. .. autoclass:: weather.WeatherAsyncRESTClient
    :members:
    :undoc-members:
 ..   .. automethod:: PowerSupplyAsyncRESTClient.start
