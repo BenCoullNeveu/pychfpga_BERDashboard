@@ -96,7 +96,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
     `chFPGA_controller` inherits from the following classes:
 
-    .. image:: ../images/chfpga_controller_class_inheritance_diagram.svg
+    .. image:: ./images/chfpga_controller_class_inheritance_diagram.svg
        :width: 80%
 
     - `IceBoardExtHandler`  provides the basic Ethernet/UDP-based Memory-mapped Interface (MMI) to
@@ -3982,12 +3982,14 @@ class chFPGA_controller(IceBoardExtHandler):
 
     def compute_corr_output(self, data, integration_period=16384):
         """
-        Compute the expected correlator output given the channelizer output :paramref:`databb`.
+        Compute the expected correlator output given the channelizer output `data`.
 
         Parameters:
-            databb (float): some value
+
             data (ndarray): data[channel, bin] = complex
+
         Returns:
+
             array(bins, i, j) = complex
         """
         corr = data.T[:,None,:]* data.T[:,:,None].conj()*integration_period
@@ -3997,13 +3999,11 @@ class chFPGA_controller(IceBoardExtHandler):
         return corr
 
     def test_correlator_output(self, data, integration_period=32768, verbose=0):
-        """ Set the channelizer outputs to :paramref:`data` and check the correlator output.
+        """ Set the channelizer outputs to `data` and check the correlator output.
 
-        :param int data: super!
 
         Parameters:
-            dataaa (float): some value
-            datax (ndarray): Data that should appear at the channelizer
+            data (ndarray): Data that should appear at the channelizer
                 output, indexed as data[channel, bin] = complex_value. channel
                 ranges from 0 to 15, bin from 0 to 1023. The complex value has the
                 ranged of a signed (4+4) bit, meaning that the real and imaginary

@@ -500,13 +500,13 @@ class ChimeMaster(object):
 
             targets: list of tuples (or dict) describing the (crate, board,
                 channel) (or {crate:c, board:b, channel:ch}) whose gains needs
-                to be recomputed. Missing elements, `None` or `"*"` is treated
+                to be recomputed. Missing elements, `None` or  ``"*"`` is treated
                 as a wildcard.
 
             capture_rate (int): Sets how fast the data is to be temporarily
                 transmitted and captured for the selected channel. This sets
                 the number of frames between captures, which is a power of 2
-                set by `Nframes=2**(capture_rate+1)`. Independently of this,
+                set by ``Nframes=2**(capture_rate+1)``. Independently of this,
                 the rate cannot be slower than the promary capture rate set at
                 FPGA initialization.
 
@@ -526,14 +526,14 @@ class ChimeMaster(object):
             number_of_gain_update_iterations: Number of incremental gain
                 updates that will be performed before the final gain solution.
 
-            weight (float). NUmber between 0 and 1. INdicates the weigh of the
+            weight (float). NUmber between 0 and 1. Indicates the weigh of the
                 new data in theevolving gain solution.
 
             initial_gains (list):  list of [(target, (glin, glog)),...] describing the initial
                 gains to be used to start computing new gains.
 
 
-            Examples:
+        Examples:
 
             chan_id = [(0,1), (1,3,4)] or [{crate:0, slot:1}, {crate:1, slot:3, channel:4}] # Select all channels of board in crate 0 slot 1, and channel 4 of crate 1 slot 3.
             chan_id = None # Selects all boards and channels in the array
@@ -714,12 +714,12 @@ class ChimeMaster(object):
 
             targets: list of tuples (or dict) describing the (crate, board,
                 channel) (or {crate:c, board:b, channel:ch}) whose gains needs
-                to be recomputed. Missing elements, `None` or `"*"` are treated
+                to be recomputed. Missing elements, `None` or ``"*"`` are treated
                 as a wildcard.  List will be iterated over and the channels matching
                 each element of the list will have their gains computed in parallel.
                 If not provided, then will default to  a list of the crates.
 
-            ** accepts all other parameters for `compute_gains` **
+            **accepts all other parameters for `compute_gains`**
 
         """
 
@@ -1671,10 +1671,10 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
             targets (list of tuple/dict): List of tuples describing the
                 (crate, slot, channels) for which gains shall be recomputed.
-                Missing tuple elements, "*" and None are considered to be a
+                Missing tuple elements, ``"*"`` and `None` are considered to be a
                 wildcard.
 
-            ** accepts all other parameters for `ChimeMaster.compute_gains` **
+            **accepts all other parameters for `ChimeMaster.compute_gains`**
 
         Example::
 
@@ -1697,10 +1697,10 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
             targets (list of tuple/dict): List of tuples describing the
                 (crate, slot, channels) for which gains shall be recomputed.
-                Missing tuple elements, "*" and None are considered to be a
+                Missing tuple elements, ``"*"`` and None are considered to be a
                 wildcard.
 
-            ** accepts all other parameters for `ChimeMaster.compute_gains` **
+            **accepts all other parameters for `ChimeMaster.compute_gains`**
 
         Example::
 
@@ -1722,10 +1722,10 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
             targets (list of tuple/dict): List of tuples describing the
                 (crate, slot, channels) for which gains shall be set.
-                Missing tuple elements, "*" and None are considered to be a
+                Missing tuple elements, ``"*"`` and None are considered to be a
                 wildcard.
 
-            ** accepts all other parameters for `ChimeMaster.compute_gains` **
+            **accepts all other parameters for `ChimeMaster.compute_gains`**
 
         Example::
 
@@ -1748,12 +1748,12 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
             targets: list of tuples (or dict) describing the (crate, board,
                 channel) (or {crate:c, board:b, channel:ch}) whose gains needs
-                to be recomputed. Missing elements, `None` or `"*"` are treated
+                to be recomputed. Missing elements, `None` or ``"*"`` are treated
                 as a wildcard.  List will be iterated over and the channels matching
                 each element of the list will have their gains computed in parallel.
                 If not provided, then will default to  a list of the crates.
 
-            ** accepts all other parameters for `ChimeMaster.compute_gains` **
+            **accepts all other parameters for `ChimeMaster.compute_gains`**
 
         Example::
 
