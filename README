@@ -22,23 +22,25 @@ Before you start, you need:
 
 	sudo apt install  libavahi-compat-libdnssd1  # on Ubuntu
 
-To operate a board, You also need the following hardware:
+To operate a board, You also need the following:
 
 - One or multiple Iceboards, in a crate or on the benchtop
 - A generic IceBoard SD card installed in each board (the card contains the ARM linux system)
-- A SFP+ to RJ45 adapter connected in the SFP+ cage
-- Power supply to power the board or crate
-- Proper cooling (fans)
+- A SFP+ to RJ45 adapter connected in the SFP+ cage of each IceBoard
+- Power supply to power the board(s) or crate(s)
+- Proper cooling (fans) on the FPGA and some airflow over the ADCs mezzanines
+- A 1G Ethernet switch or router (NOT a 10/100 device!) to which the IceBboard will be connected, and which connects directly or routes to your control computer
+- Two Ethernet cables per IceBoard to connect the FPGA and ARM to the switch
+- A control computer (Windows or Linux, Mac not tested) connected on the same subnet as the IceBoard(s)
+- All the switches/router between the IceBoard(s) and control computer must have Jumbo frame enabled if you are expecting to gather raw ADC, FFT or correlator data over the 1G Ethernet link (ot the QSFP+).
+- The computer firewall must allow the UDP packets from the FPGA to be accepted
+- The IceBoard/computer subnet shall have:
+
+   - A net mask of at least 255.255.252.0 (/22) or larger (e.g. 255.255.0.0) to include the FPGA addresses of *.*.3.*.
+   - A DHCP server configured to provide IP addresses that are not in the range *.*.3.* (e.g DHCP provides addresses in 192.168.0.*).
+
 - If multiple boards are to be used in a synchronized fashion, an external 10 MHz clock and IRIG-B source (often from a GPS receiver) must be fed to each board via SMA connectors or through the crate's backplane.
 
-- Two Ethernet cables need to be connected between the IceBoard and the 1 G Ethernet switch or router that connects to your control PC:
-
-   - One cable connects to the ARM Ethernet port on the dual RJ-45 connectors. That port works at any speed.
-   - One cable connects to the FPGA Ethernet port through the SFP+ cage using a SFP-to-RJ45 1G Adapter.  That port operates supports **only** 1G Ethernet.
-
-- The network on which the IceBoard(s) is/are connected shall have a DHCP server that offer a subnet of 255.255.252.0 (a /22 address  space). Note this is not the usual 255.255.255.0 or /24 subnet. The reason is as follows: assuming the ARM processor on the board is be given the address a.b.c.d, by default the FPGA will be assigned the address a.b.3.d. So the DHCP server should be set-up to not give addresses in the range a.b.3.*.
-
-- If you are expecting to gather raw ADC, FFT or correlator data over the 1G Ethernet link (ot the QSFP+), all the routers/switches in the path between the IceBoards and the computer must be enabled for Jumbo Frames.
 
 
 
@@ -72,6 +74,17 @@ Configuring the hardware
 - Connect the power supply
 - Power up the board. The 2 PLL LEDs at the bottom of the front panel shall turn on immediately to indicate there is a clock. After about 25 seconds, the upper leds will blink then stay on to show that the ARM has acquired an IP address and had finished booting.
 
+
+Connections
+-----------
+
+Two Ethernet cables need to be connected between the IceBoard and the 1G Ethernet switch or router that connects to your control PC:
+
+   - One cable connects to the ARM Ethernet port on the dual RJ-45 connectors. That port works at any speed.
+   - One cable connects to the FPGA Ethernet port through the SFP+ cage using a SFP-to-RJ45 1G Adapter.  That port operates supports **only** 1G Ethernet.
+
+
+
 Manual operation (using fpga_array)
 -----------------------------------
 
@@ -83,7 +96,7 @@ Manual operations are done through ipython. First start ipython in the proper fo
 	cd pychfpga
 	ipython
 
-We are now ready to initialize your board(s). Here are a few specific examples depending on your setup (from a single board to a full 128-board array)
+Power-up the boards. We are now ready to initialize your board(s). Here are a few specific examples depending on your setup (from a single board to a full 128-board array)
 
 Assuming you have a single IceBoard with IP address 1.2.3.4 and want to use an external correlator that will process the data from the two QSFP+ links (mode `shuffle16`):
 
