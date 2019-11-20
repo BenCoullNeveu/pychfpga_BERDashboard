@@ -458,6 +458,7 @@ class chFPGA_controller(IceBoardExtHandler):
     def init(self,
              sampling_frequency=800e6,
              reference_frequency=10e6,
+             adc_mode=0,
              adc_delay_table=None,
              data_width=4,
              group_frames=4,
@@ -556,7 +557,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 yield async_sleep(0.2) # Give it some time for the power to stabilize
                 # We need to initialize the ADC board befor we initialize ANT (and its data acquisition) because the delay blocks need a clock
                 self._logger.debug('%r:   Initializing FMC%i' % (self, mezz_number - 1))
-                mezz.init(sampling_frequency=sampling_frequency, reference_frequency=reference_frequency)
+                mezz.init(sampling_frequency=sampling_frequency, reference_frequency=reference_frequency, adc_mode=adc_mode)
                 # mezz.status()
             else:
                 self._logger.debug('%r:    Skipping FMC%i initialization since no board is present in that slot' % (self, mezz_number - 1))
@@ -808,7 +809,8 @@ class chFPGA_controller(IceBoardExtHandler):
 
 
     def set_channelizer(self,
-                        adc_mode=None, adcdaq_mode=None,
+                        adc_mode=None, adc_sampling_mode=None, adc_bandwidth=2,
+                        adcdaq_mode=None,
                         data_source=None, function=None, a=1, b=0, freq_test_bins=None,
                         fft_bypass=None, fft_shift=None,
                         scaler_bypass=None, gain=None, postscaler=None, offset_binary_encoding=None,
@@ -819,8 +821,8 @@ class chFPGA_controller(IceBoardExtHandler):
                   ADC --> ADCDAQ --> FUNCGEN --> --> FFT --> SCALER
         """
         # Set the ADC chip operational mode (data, ramp, pulse)
-        if adc_mode is not None:
-            self.set_adc_mode(mode=adc_mode, sync=False)
+        if adc_mode is not None or adc_sampling_mode is not None:
+            self.set_adc_mode(mode=adc_mode, sampling_mode=adc_sampling_mode, bandwidth=adc_bandwidth, sync=False)
 
         # Set the FPGA's ADC data acquisition module operational mode
         if adcdaq_mode is not None:
@@ -984,7 +986,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
     # ADC_MODE_NAMES_REVERSED = util.reverse_dict(ADC_MODE_NAMES)
 
-    def set_adc_mode(self, mode='data', channels=None, sync=True):
+    def set_adc_mode(self, mode='data', sampling_mode=0, bandwidth=2, channels=None, sync=True):
         """
         Sets the operating mode of the all the ADCs, sets the proper CAPTURE
         period, and sends a SYNC to actuate the change.
@@ -1015,7 +1017,7 @@ class chFPGA_controller(IceBoardExtHandler):
         # Set the mode on all affected ADC boards
         adc_boards = self.get_adc_board(channels)
         for adc_board in adc_boards:
-                adc_board.ADC.set_test_mode(test_mode=mode_value)
+                adc_board.ADC.set_test_mode(test_mode=mode_value, adc_mode=sampling_mode, bandwidth=bandwidth)
 
         # Set the capture period for all specified channels
         for ch in channels:

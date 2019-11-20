@@ -158,6 +158,8 @@ class FPGAArray(object):
                  sync_master_time_source=None,
                  max_sync_time_difference=100,
 
+                 adc_mode=0,
+
                  mode=None,
                  frames_per_packet=2,
                  tx_power=None,
@@ -441,6 +443,7 @@ class FPGAArray(object):
              sync_master=sync_master,
              sync_master_time_source=sync_master_time_source,
              max_sync_time_difference=max_sync_time_difference,
+             adc_mode=adc_mode,
              mode=mode,
              frames_per_packet=frames_per_packet,
              tx_power=tx_power,
@@ -514,6 +517,8 @@ class FPGAArray(object):
              sync_master=None,
              sync_master_time_source=None,
              max_sync_time_difference=20,
+
+             adc_mode=0,
 
              mode=None,
              frames_per_packet=2,
@@ -1063,9 +1068,10 @@ class FPGAArray(object):
             # Initialize application specific FPGA firmware
             ########################
 
-            self.logger.info('%r: Initializing FPGA firmware (calling ib.open())' % self)
+            self.logger.info('%r: Initializing FPGA firmware (calling ib.open(adc_mode=%i))' % (self, adc_mode))
             yield [ib.open.async(adc_delay_table=ADC_DELAY_TABLE,
                                  init=open,
+                                 adc_mode=adc_mode,
                                  **kwargs
                                  # sampling_frequency=sampling_frequency,
                                  # reference_frequency=reference_frequency,
@@ -2366,7 +2372,9 @@ class FPGAArray(object):
                     raise RuntimeError('SYNC failed after %i trials. The last exception was:\n%r' % (trial, e))
                 self.logger.warn('%r: SYNC failed on trial %i/%i due to the following error. Will retry.\n%r' % (self, trial, max_trials, e))
     @async
-    def set_channelizers(self, adc_mode=None, adcdaq_mode=None,
+    def set_channelizers(self,
+                         adc_mode=None, adc_sampling_mode=None, adc_bandwidth=2,
+                         adcdaq_mode=None,
                          data_source=None, function=None, a=1, b=0, freq_test_bins=None,
                          fft_bypass=None, fft_shift=None,
                          scaler_bypass=None, gain=None, postscaler=None, offset_binary_encoding=None,
@@ -2378,7 +2386,9 @@ class FPGAArray(object):
             See IceBoard's set_channelizer(...) for details.
         """
         for ib in self.ib:
-            ib.set_channelizer(adc_mode=adc_mode, adcdaq_mode=adcdaq_mode,
+            ib.set_channelizer(
+                        adcdaq_mode=adcdaq_mode,
+                        adc_mode=adc_mode, adc_sampling_mode=adc_sampling_mode, adc_bandwidth=adc_bandwidth,
                         data_source=data_source, function=function, a=a, b=b, freq_test_bins=freq_test_bins,
                         fft_bypass=fft_bypass, fft_shift=fft_shift,
                         scaler_bypass=scaler_bypass, gain=gain, postscaler=postscaler,

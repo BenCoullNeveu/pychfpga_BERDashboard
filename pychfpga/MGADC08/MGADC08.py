@@ -228,7 +228,7 @@ class MGADC08_Handler(FMCMezzanineHandler):
     #     """ returns a boolean indicating whether the ADC board is present"""
     #     return self._board_is_present
 
-    def init(self, sampling_frequency=800e6, reference_frequency=10e6, verbose=0):
+    def init(self, sampling_frequency=800e6, reference_frequency=10e6, verbose=0, adc_mode=0, adc_bandwidth=2):
         """ Initializes the FMC board modules"""
 
         # Do nothing if the FMC is not present
@@ -257,7 +257,7 @@ class MGADC08_Handler(FMCMezzanineHandler):
         self.ADC_PLL.init(fout=2*self.sampling_frequency/1e6, fref=self.reference_frequency/1e6, verbose=verbose)
 
         # self.logger.debug('%r:   - ADC' % self)
-        self.ADC.init()
+        self.ADC.init(adc_mode=adc_mode, bandwidth=adc_bandwidth)
 
     def status(self):
         """ Displays the status of the ADC board"""

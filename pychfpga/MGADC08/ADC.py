@@ -51,16 +51,45 @@ class ADC_chip(object):
     def init(self, adc_mode=0, standby_mode=0, dmux=False, gray_code=False, bandwidth=2, full_scale=0, test_mode=0, sync_delay=0x08):
         """
         Writes the control and test register of the ADC
-            adc_mode (0-15, default=0=4 channel mode): selects between 1,2 and 4 channel mode and which analog input is used
+
+        Parameters:
+
+            adc_mode (int): (0-15, default=0=4 channel mode): selects between 1,2 and 4 channel mode and which analog input is used
+
+                - 0b00xx: 4-channel mode A+B+C+D (1.25 Gsps/channel)
+                - 0b0100: 2-channel mode A+C (2.5 Gsps/channel)
+                - 0b0101: 2-channel mode B+C (2.5 Gsps/channel)
+                - 0b0110: 2-channel mode A+D (2.5 Gsps/channel)
+                - 0b0111: 2-channel mode B+D (2.5 Gsps/channel)
+                - 0b1000: 1-channel mode A (5 Gsps/channel)
+                - 0b1001: 1-channel mode B (5 Gsps/channel)
+                - 0b1010: 1-channel mode C (5 Gsps/channel)
+                - 0b1011: 1-channel mode D (5 Gsps/channel)
+                - 0b1100: Common input mode, simultaneous sampling mode A
+                - 0b1101: Common input mode, simultaneous sampling mode B
+                - 0b1110: Common input mode, simultaneous sampling mode C
+                - 0b1111: Common input mode, simultaneous sampling mode D
+
             standby_mode (0-3, default=0 full active): selects the active mode. 0=Full active, 3=full standby
+
             dmux (bool, default=false): selects whether the 2:1 DMUX mode is selected
+
             gray_code (bool, default=False): selects if output is in binary (false) or gray code (True)
-            bandwidth (0-3, default=2), selects the analog bandwiddth of the ADC: 0= 500 MHz, 1=600 MHz, 2=1.5 GHz, 3=2 GHz
+
+            bandwidth (0-3, default=2), selects the analog bandwiddth of the ADC:
+                0= 500 MHz
+                1=600 MHz
+                2=1.5 GHz
+                3=2 GHz
+
             full_scale (0-1, default=0), selects the full scale peak-to-peak voltage: 0=500 mV full scale, 1=625 mV full scale
+
             test_mode (0-2, default=0): test mode of the ADC: 0= Normal operation, 1=ramp, 2= 00/FF pulse
+
             sync_delay (0-15, default=8): Number of clocks to hold off the data clock after a SYNC event
         """
 
+        self.logger.info('%r: initializing ADC chip with ADC mode %i' % (self, adc_mode))
 
         ADC_MODE = adc_mode # 0-15, 0=4-channel mode
         STDBY = standby_mode # 0-3, 0=Full active, 3=Full standby
@@ -70,7 +99,7 @@ class ADC_chip(object):
         FS = full_scale # 0=500 mV full scale, 1=625 mV full scale
         TEST = bool(test_mode) # 0=No test mode, 1=test mode activated
 
-        REG_CONTROL_Value = np.uint32((TEST<<12)+(FS<<10)+(BDW<<8)+(BG<<7)+(DMUX_RATIO<<6)+(STDBY<<4)+ADC_MODE)
+        REG_CONTROL_Value = np.uint32((TEST << 12) + (FS << 10) + (BDW << 8) + (BG << 7) + (DMUX_RATIO << 6) + (STDBY << 4) + ADC_MODE)
         REG_TEST_Value = (0, 0, 1)[test_mode] # Select test pattern: test=0: no test mode, test=1:ramp, test=2: flashing 0xff
         REG_SYNC_Value = sync_delay #0-15
 
