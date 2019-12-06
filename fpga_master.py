@@ -356,6 +356,8 @@ class ChimeMaster(object):
                     src_addresses = [(ib.hostname, 80) for ib in port_entry.iceboards]
                     recv_ports[server_name].append(dict(port=port_id, sources=src_addresses))
 
+
+
         # Start the receivers concurrently
         start_results = yield {server_name: raw_acq_server.start(
                 name=recv_names[server_name],
@@ -364,7 +366,12 @@ class ChimeMaster(object):
                 comet_broker=conf.common_config.comet_broker.as_dict(),
                 jump_thresholds=conf.common_config.jump_thresholds,
                 metrics_refresh_time=conf.common_config.metrics_refresh_time,
-                adc_rms_refresh_count=conf.common_config.adc_rms_refresh_count)
+                adc_rms_refresh_count=conf.common_config.adc_rms_refresh_count,
+                data_folder=self.data_folder,
+                run_folder=self.run_folder,
+                run_name=self.run_name,
+                corr_name=self.corr_name
+                )
             for server_name, raw_acq_server in self.raw_acq.items()}
 
         # Configure the FPGA transmit addresses based on what the receiver returned
@@ -436,9 +443,8 @@ class ChimeMaster(object):
 
         """
 
-
         if isinstance(source, basestring):
-            source=str(source)
+            source = str(source) # make sure we don't have unicode
 
         conf = self.config.fpga.raw_data_capture
         capture_source = source or conf.capture_source
@@ -446,7 +452,8 @@ class ChimeMaster(object):
         ib_chans = self.fpgas.get_iceboards(chan_ids, lane_type='chan').items()
 
         for (ib, channels) in ib_chans:
-                ib.set_data_capture(channels=channels, sub_period=capture_rate, source=capture_source)
+            ib.set_data_capture(channels=channels, sub_period=capture_rate, source=capture_source)
+            yield moment
 
 
     @coroutine
@@ -576,6 +583,9 @@ class ChimeMaster(object):
         if not initial_gains:
             initial_gains = [(cid, gains) for cid, gains in self.fpgas.get_gains(bank=0).items() if cid in all_channel_ids]
 
+        # compute an approxitame amount of time to wait for the data, which is 1/2 of the time it should date to accumulate
+        wait_time = min(2.56e-6 * 2**(capture_rate + 1) * number_of_fft_averages / 2, 1)
+
         @coroutine
         def iterate_gains(server, channel_ids, stream_ids):
 
@@ -607,13 +617,14 @@ class ChimeMaster(object):
                     fft_rms_requested[sid] = True
 
                 while True:
+                    self.log.info('%r: *** Gain calculator : waiting for averaged FFT data from raw acq for %.3f s' % (self, wait_time))
+                    yield sleep(wait_time)
                     sids, rms = yield server.get_fft_rms()
                     if sids:
                         break
-                    self.log.info('%r: *** Gain calculator : waiting for averaged FFT data from raw acq' % (self))
-                    yield sleep(1)
-                self.log.info('%r: *** Gain calculator : Got FFT RMS values for Channel ID: Stream ID%s' % (self,
-                    ', '.join('%s:%i' % (channel_ids[sid_index_map[sid]], sid) for sid in sids if sid in sid_index_map)))
+                # self.log.info('%r: *** Gain calculator : Got FFT RMS values for Channel ID: Stream ID%s' % (self,
+                #     ', '.join('%s:%i' % (channel_ids[sid_index_map[sid]], sid) for sid in sids if sid in sid_index_map)))
+                self.log.info('%r: *** Gain calculator : Got FFT RMS values for %i channels' % (self, len(sids)))
                 new_gains = gc.update_gains(np.array(sids), np.array(rms))
                 # bank ^= 1 # switch bank  # Can't do that right now: the formware does not switch glog
                 yield self.fpgas.set_gains.async(gains=new_gains, bank=bank, when='now')
@@ -654,15 +665,14 @@ class ChimeMaster(object):
             filtered_gains, mask = gc.get_filtered_gains()
             yield self.fpgas.set_gains.async(gains=filtered_gains, bank=0, when='now')
 
-            self.log.info('%r: *** Gain calculator : Finished computing gains. %f %% of the gains calculations completed successfully' % (self, len(filtered_gains)))
+            self.log.info('%r: *** Gain calculator : Finished computing gains. Gain calculations completed successfully for %d channels.' % (self, len(filtered_gains)))
 
         # Perform the gain iterations in parallel on all raw acq servers
         yield [iterate_gains(raw_acq_server, server_channel_ids[raw_acq_server_name], server_stream_ids[raw_acq_server_name])
                for raw_acq_server_name, raw_acq_server in self.raw_acq.items()]
 
         # Return the data capture of the selected channels to the adc source and baseline capture rate
-        for (ib, channels) in ib_chans:
-            ib.set_data_capture(channels=channels, sub_period=23, source='adc')
+        yield self.set_fpga_data_capture(targets)
 
         # If requested save the gains
         if save_gains:
@@ -681,7 +691,7 @@ class ChimeMaster(object):
 
         """
         if self.gain_hdf5 is None:
-            msg = 'Digital gain archive not yet initialized.  Cannot save digital gains.'
+            msg = 'Digital gain archive not yet initialized. Cannot save digital gains.'
             self.log.error('%r: %s' % (self,  msg))
             raise RuntimeError(msg)
 
@@ -754,7 +764,6 @@ class ChimeMaster(object):
         """
         conf = self.config.raw_acq.common_config
         capture_folder = capture_folder or conf.hdf5_capture_folder
-        capture_folder = os.path.join(self.run_folder, capture_folder)
         capture_filename = capture_filename or conf.hdf5_capture_filename
         capture_duration = capture_duration or conf.hdf5_capture_duration
         capture_elements_per_file = capture_elements_per_file or conf.hdf5_capture_elements_per_file
@@ -763,7 +772,7 @@ class ChimeMaster(object):
         if capture_duration is not None:
             self.log.info('%r: Starting HDF5 data capture for %f seconds (0 = infinite)' % (self, capture_duration))
 
-            yield [server.start_hdf5(
+            yield [server.start_raw_hdf5(
                 base_dir=capture_folder,
                 base_filename=capture_filename,
                 capture_duration=capture_duration,
@@ -771,24 +780,87 @@ class ChimeMaster(object):
                 elements_per_file=capture_elements_per_file
                 )         for server_name, server in self.raw_acq.items()]
 
+    @coroutine
+    def start_corr_hdf5_capture(self,
+                           capture_folder=None,
+                           capture_filename=None,
+                           capture_duration=None,
+                           capture_n_inputs=None,
+                           capture_elements_per_file=None):
+        """
+        Instructs the raw_acq server to start storing raw data in HDF5 files
+        at a specified rate, duration and in the specified folder.
+
+
+        Parameters:
+
+            capture_folder (str): path to the folder where the raw data folder will be created. If it is
+                a relative path, it will be relative to the run folder. If not specified or `None`, it
+                will be taken from the config file.
+
+            capture_filename (str): name of the folder in which the HDF5 files ``nnnnnn.h5`` will be
+                created. Is prepended with the time. If not specified or `None`, it will be taken
+                from the config file.
+
+            capture_refresh_time (float): cadence in seconds at which raw data is written to the hdf5 file.
+
+            capture_duration (float): period of time (in seconds) during which the captured data
+                will be stored to HDF5 files. After which the capture will revert to the idle rate.
+                if ``0``, the capture will continue indefinitely.  If not specified or `None`, it will be taken
+                from the config file.
+
+            capture_elements_per_file (int): Number of frames to store in each HDF5 files. If not
+            specified or `None`, the parameter is taken from the config file.
+
+        """
+        conf = self.config.fpga.firmware_correlator
+        capture_folder = capture_folder or conf.hdf5_capture_folder or '.'
+        capture_filename = capture_filename or conf.hdf5_capture_filename
+        capture_duration = capture_duration or conf.hdf5_capture_duration
+        capture_elements_per_file = capture_elements_per_file or conf.hdf5_capture_elements_per_file
+        capture_n_inputs = capture_n_inputs or conf.hdf5_capture_n_inputs
+        software_integration_period = conf.software_integration_period
+
+        if conf.enable and capture_duration is not None:
+            self.log.info('%r: Starting HDF5 data capture for %f seconds (0 = infinite)' % (self, capture_duration))
+
+            print('************#### firm integ=%s'% self.corr_firmware_integration_period)
+            yield [server.start_corr_hdf5(
+                base_dir=capture_folder,
+                base_filename=capture_filename,
+                capture_duration=capture_duration,
+                capture_n_inputs=capture_n_inputs,
+                elements_per_file=capture_elements_per_file,
+                software_integration_period=software_integration_period,
+                firmware_integration_period=self.corr_firmware_integration_period, # also for time computation only
+                frame0_irigb_time=self.frame0_irigb_time.nano if self.frame0_irigb_time else 0,  # update frame 0 time from last sync
+
+                )         for server_name, server in self.raw_acq.items()]
 
 
     def set_state(self, new_state):
         """ Sets the state to a specified value. Used for debugging. """
         self.state = new_state
 
-    def expand_path(self, pattern, **kwargs):
-        pattern = os.path.expanduser(pattern % kwargs)
+    def expand_path(self, pattern, extra_fields={}):
+        """ Expand fields in a string.
+        """
+        fields = {
+            'start_time': self.start_time,
+            'isotime': self.run_isotime,
+            'localtime': self.run_localtime,
+            'corr_name': self.corr_name,
+            'data_folder': self.data_folder,
+            'run_name': self.run_name,
+            'run_folder': self.run_folder
+            }
+        fields.update(extra_fields)
+        return os.path.expanduser(pattern % fields)
 
+        # Register configuration with the Comet server
+    def register_config(self):
 
-
-    @coroutine
-    def start(self, **config):
-        """ Make the telescope operational by starting and initializing the FPGA F-Engine and the GPU X Engine (Kotekan), CHRX, and raw_acq remote processes. """
-        self.log.debug('%r: Starting ChimeMaster instance' % (self))
-        self.log.info('%r: Starting fpga_master.start()', self)
-        if self.state != 'off':
-            coroutine_return(dict(error='already started'))
+        config = self.config.as_dict()
 
         # Register config with comet broker
         try:
@@ -822,23 +894,53 @@ class ChimeMaster(object):
         else:
             self.log.warning("Config registration DISABLED. This is only OK for testing.")
 
+    @coroutine
+    def start(self, **config):
+        """ Make the telescope operational by starting and initializing the FPGA F-Engine and the GPU X Engine (Kotekan), CHRX, and raw_acq remote processes. """
+        self.log.debug('%r: Starting ChimeMaster instance' % (self))
+        self.log.info('%r: Starting fpga_master.start()', self)
+
+        if self.state != 'off':
+            coroutine_return(dict(error='already started'))
+
+        # Set/Get configuration
         if config:
             self.set_config(config)
-        conf = self.config # Shortcut. We use `conf` a lot below.
+        conf = config = self.config # Shortcut. We use `conf` a lot below.
         self.state = 'starting'
 
+
+        self.start_time = time.time()
+        self.run_isotime = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(self.start_time))
+        self.run_localtime = time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(self.start_time))
+
+        # Give a more meaningful error if the user did not provide a valid config file
         if not hasattr(conf, 'corr_name'):
             raise RuntimeError('CHIME master configuration data does not define the correlator name. Was the correct object selected in the configuration file (i.e. config.yaml:object)')
 
-        # Create output directories
-        start_time = time.time()
-        isotime = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(start_time))
-        localtime = time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(start_time))
-        #print('run name=%s, config = %r' % (conf.run_name , dict(isotime=isotime, corr_name=conf.corr_name)))
-        self.run_name = conf.run_name % dict(isotime=isotime, localtime=localtime, corr_name=conf.corr_name)
-        str_args = dict(isotime=isotime, corr_name=conf.corr_name, run_name=self.run_name)
-        self.run_folder = os.path.expanduser(conf.run_folder % str_args)
-        self.current_folder = os.path.expanduser(conf.current_folder % str_args)
+        self.corr_name = conf.corr_name
+
+        # Initialize run variables so they all exist for  expand_path
+        self.data_folder = None
+        self.run_name = None
+        self.run_folder = None
+        self.current_folder = None
+
+
+        # Create run variables
+        self.data_folder = self.expand_path(conf.data_folder)
+        self.run_name = self.expand_path(conf.run_name)
+        self.run_folder = self.expand_path(conf.run_folder)
+        self.current_folder = self.expand_path(conf.current_folder)
+
+        self.log.info('%r: Run parameters:')
+        self.log.info('%r:    Correlator name: %s' % (self, self.corr_name))
+        self.log.info('%r:    data folder: %s' % (self, self.data_folder))
+        self.log.info('%r:    run folder: %s' % (self, self.run_folder))
+        self.log.info('%r:    current folder symlink: %s' % (self, self.current_folder))
+
+        # Register configuration with the Comet server
+        self.register_config()
 
 
         # Create the run folder
@@ -891,9 +993,9 @@ class ChimeMaster(object):
         filename = os.path.join(self.run_folder, 'info.txt')
         with open(filename, 'w') as h:
             h.write('Run name: %s\n' % self.run_name)
-            h.write('Run start time (local): %s\n' % localtime)
-            h.write('Run start time (UTC): %s\n' % isotime)
-            h.write('Correlator/config name: %s\n' % conf.corr_name)
+            h.write('Run start time (local): %s\n' % self.run_localtime)
+            h.write('Run start time (UTC): %s\n' % self.run_isotime)
+            h.write('Correlator/config name: %s\n' % self.corr_name)
             h.write('Run folder: %s\n' % self.run_folder)
 
         # Create objects to communicates to the remote processes needed to run the array
@@ -968,6 +1070,19 @@ class ChimeMaster(object):
         # Setup noise injection for normal operation
         self.setup_noise_injection(conf.fpga.noise_injection)
 
+        # Start correlator data transmission if present in the FPGA-based
+        # firmware correlationlator is present in the FPGA
+
+        corr_config = self.config.fpga.get('firmware_correlator', {})
+
+        if corr_config and corr_config.enable:
+            self.corr_firmware_integration_period = corr_config.firmware_integration_period
+            self.fpgas.ib.start_correlator(self.corr_firmware_integration_period)
+            print('******************** Enabling corr with integ=', self.corr_firmware_integration_period)
+        else:
+            self.corr_firmware_integration_period = None
+            print('******************** Corr is not enabled. Corr_config=%r, enable=%r' % (corr_config, corr_config.enable if corr_config else 'none'))
+
         # Start raw_data capture
         self.log.info("Starting baseline raw data data capture")
         yield self.start_fpga_raw_data_transmission(sync=False)
@@ -977,6 +1092,8 @@ class ChimeMaster(object):
         ca.sync()  # synchronize all the boards in the array
         self.log.info("%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Last SYNC is done %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
 
+        # save the time of frame0 after sync
+        self.frame0_irigb_time = self.fpgas.sync_timestamp
 
 
         #######
@@ -998,6 +1115,7 @@ class ChimeMaster(object):
             self.log.info("%r: Overiding the following gains: %r" % (self, conf.fpga.initial_gains))
             yield self.set_gains(gains=conf.fpga.initial_gains)
 
+
         # Initialize the digital gain hdf5 writer
         self.log.info("%r: Initializing HDF5 gain archive reader/writer" % (self,))
         self.initialize_gain_hdf5()
@@ -1006,9 +1124,14 @@ class ChimeMaster(object):
         if conf.fpga.load_initial_gains and self.gain_hdf5:
             yield self.load_gains(update_id=None, bank=0, when='now')
 
+        # Enable offset encoding for gain calculation
+        if corr_config and corr_config.enable:
+            self.log.info("*** Enabling offset encoding for gain calculation")
+            # self.fpgas.ib.set_gains((0,0), bank=0, when='now')
+            self.fpgas.ib.set_offset_binary_encoding(True)
+
         # Compute new gains if requested
         yield self.compute_gains(**conf.fpga.compute_gains)
-
 
         # self.log.info("Waiting for 2 seconds")
         # yield sleep(2)
@@ -1020,13 +1143,21 @@ class ChimeMaster(object):
 
 
         # Start storage of raw_data received by the raw_acq server in HDF5 files
-        self.log.info("Starting HDF5 data capture")
+        self.log.info("Starting Raw data HDF5 data capture")
         yield self.start_hdf5_capture()
+
+        # Disable offset encoding if correlating
+        if corr_config and corr_config.enable:
+            self.log.info("*** Disabling offset encoding")
+            # self.fpgas.ib.set_gains((0,0), bank=0, when='now')
+            self.fpgas.ib.set_offset_binary_encoding(False)
+
+            self.log.info("Starting Correlator HDF5 data capture")
+            yield self.start_corr_hdf5_capture()
 
 
         # Finished with initialization.
         self.log.info("Finished ch_master.start()")
-        self.start_time = start_time
         self.state = 'on'
         coroutine_return({})
 
@@ -1148,7 +1279,7 @@ class ChimeMaster(object):
             # Stop writing raw_acq to hdf5
             while self.raw_acq:
                 server_name, server = self.raw_acq.popitem()
-                msg = yield server.stop_hdf5()
+                msg = yield server.stop_raw_hdf5()
                 self.log.info('%r:  stopping hdf5 writing for %s:  %s' % (self, server_name, msg))
 
             self.start_time = None
@@ -1220,12 +1351,12 @@ class ChimeMaster(object):
         """
         if not self.fpgas:
             msg = 'FPGA array not yet initialized. Cannot load digital gains.'
-            self.log.error(msg)
+            self.log.error('%r: %s' % (self, msg))
             raise RuntimeError(msg)
 
         if not self.gain_hdf5:
             msg = 'Digital gain archive not yet initialized.  Cannot load digital gains.'
-            self.log.error(msg)
+            self.log.error('%r: %s' % (self, msg))
             raise RuntimeError(msg)
 
         # If update_id not provided, then load the most recent gains.

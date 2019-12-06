@@ -234,9 +234,15 @@ class GPIO_base(Module_base):
 
         self.write_bitfield(self.USER_OUTPUTS[output], self.USER_OUTPUT_SOURCE_TABLE[source])
 
-    def get_user_output_source(self):
+    def get_user_output_source(self, output):
         """ Return the current user output source as a string """
-        current_value = self.USER_MUX_SOURCE
+
+        if output not in self.USER_OUTPUTS:
+            raise AttributeError("Invalid output '%s'. Valid outputs are %s." % (
+                output, ', '.join(str(k) for k in self.USER_OUTPUTS.keys())))
+
+        current_value = self.read_bitfield(self.USER_OUTPUTS[output])
+
         for (source, value) in self.USER_OUTPUT_SOURCE_TABLE.items():
             if current_value == value:
                 return source

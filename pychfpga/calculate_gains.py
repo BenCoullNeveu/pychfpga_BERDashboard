@@ -186,13 +186,13 @@ class GainCalc(object):
 
 
             # Find the input index of valid stream_ids
-            ix = np.array([i for i, sid in enumerate(stream_ids) if sid in self.stream_id_map])
+            ix = np.array([i for i, sid in enumerate(stream_ids) if sid in self.stream_id_map], dtype=np.int16)
 
             # find the buffer index of the channels with the specified stream IDs
-            bix = np.array([self.stream_id_map[sid] for sid in stream_ids[ix]])
+            bix = np.array([self.stream_id_map[sid] for sid in stream_ids[ix]], dtype=np.int16)
 
             # remove channels that are already completed
-            ix_done = self.done[bix]==False
+            ix_done = self.done[bix] == False
 
             ix = ix[ix_done]
             bix = bix[ix_done]
@@ -227,10 +227,10 @@ class GainCalc(object):
                 1/gmax, gmax), 1, 2**(31+16))  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
 
 
-            S=16*10 + 0
-
-            if S in  stream_ids[ix]:
-                x = np.where(stream_ids[ix]==S)[0][0]
+            # Debugging code: prints rms and gain for selected stream ID.
+            S = 16*10 + 0
+            if S in stream_ids[ix]:
+                x = np.where(stream_ids[ix] == S)[0][0]
                 bx = self.stream_id_map[S]
                 # print 'CG: Stream 0 Median Actual/target RMS ratio is ', rms[ix[0]] / self.target_rms
                 print 'CG: Stream 0 Median RMS is ', ',  '.join('%7.3f'% rms[x, i] for i in xrange(10))
@@ -240,12 +240,15 @@ class GainCalc(object):
 
             # Convert linear gain into (glin, glog) values
             self.glin[bix], self.glog[bix] = self.calc_gains(self.temp_gains[bix])  # glin.shape=(16,1024), glog.shape=(16)
+
+
+            # #####################################
+            # Keep track of how many iteration we have done
+            # #####################################
+
+            # increment iteration counter for all processed channels
             self.iteration_number[bix] += 1
 
-
-            # #####################################
-            # Phase 2: Cleanup gains by removing RFI spikes
-            # #####################################
             # Identifies which channels reached the target RMS, and return the corresponding gains
             # Here, we just stop when we reached a fixed iteration number
             bix_done = bix[self.iteration_number[bix] == self.n_target_iterations]

@@ -10,7 +10,7 @@ import numpy as np
 
 from wtl.archive import Hdf5Archive
 
-__version__ = u'0.4'
+__version__ = u'0.5'
 __archive_version__ = u'3.2.0'
 
 class DigitalGainArchive(Hdf5Archive):
@@ -34,7 +34,7 @@ class DigitalGainArchive(Hdf5Archive):
         },
         'compute_time': {
             'axes': ['update_time', 'input'],
-            'dtype': np.float32,
+            'dtype': np.float64,
             'metric': False,
         },
         'gain_coeff': {
