@@ -2249,7 +2249,7 @@ class FPGAArray(object):
 
  
     @staticmethod
-    def shuffle512_cb3_remap(bad_links, freq_bins):
+    def shuffle512_cb3_remap(bad_links, freq_bins, output_cb3_bins=False):
         """
         Generates a frequency map by assigning flagged/less important frequency bins to
         links connected to bad/down GPU nodes. The remapping is
@@ -2265,11 +2265,18 @@ class FPGAArray(object):
             1024-long array with frequency bins ordered by importance (important bins first).
             Frequency bins are assigned to good/up links/nodes when available based on their 
             importance.
+        output_cb3_bins: bool (optional)
+            If False, the frequency assignment is given as cb3_bins (in the range 0-31).
+            If True, the frequency assignment is given as frequency bins (in the range
+            0-1023)
         Output:
         -------
         freq_map: dict
             Describes the frequency bin assignment for each link. Its items have the form
-            {..., (crate parity, slot, link): [freq. bin 0, ..., freq. bin 3], ...}.
+            {..., (crate parity, slot, link): [freq. bin 0, ..., freq. bin 3], ...} if
+            output_cb3_bins=False, or
+            {..., (crate parity, slot, link): [cb3 bin 0, ..., cb3 bin 3], ...} if
+            output_cb3_bins=True.
         """
         
         freq_bins = np.array(freq_bins) # Make sure freq_bins is an np.array
@@ -2288,18 +2295,23 @@ class FPGAArray(object):
                 freq_bins_cs = np.arange(crate*Nslot+slot, Nfreq, Nfreq_cs) 
                 # Indices of allowed freq_bins, sorted by importance
                 freq_bins_cs_indices = np.sort(sorter[freq_bins_cs]) 
+                # CB3 bin indices, sorted by importance
+                cb3_bins = np.arange(Nfreq_cs)[np.argsort(sorter[freq_bins_cs])]
                 i_top, i_bottom = 0, Nfreq_cs
                 for link in range(Nlink):
                     stream_id = (crate, slot, link)
                     if list(stream_id) in bad_links: # Bad link: assign less important freq. bins
-                        freq_remap[stream_id] = list(freq_bins[freq_bins_cs_indices[i_bottom-Nfreq_link:i_bottom]])
+                        freq_remap[stream_id] = list(cb3_bins[i_bottom-Nfreq_link:i_bottom] if
+                                                output_cb3_bins else
+                                                freq_bins[freq_bins_cs_indices[i_bottom-Nfreq_link:i_bottom]])
                         i_bottom -= Nfreq_link
                     else: # Good link: assign important freq. bins
-                        freq_remap[stream_id] = list(freq_bins[freq_bins_cs_indices[i_top: i_top+Nfreq_link]])
+                        freq_remap[stream_id] = list(cb3_bins[i_top:i_top+Nfreq_link] if
+                                                output_cb3_bins else
+                                                freq_bins[freq_bins_cs_indices[i_top:i_top+Nfreq_link]])
                         i_top += Nfreq_link
                         
         return freq_remap    
-
 
 
     def get_shuffle_output(self, chan_map):
