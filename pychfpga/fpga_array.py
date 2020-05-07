@@ -2247,21 +2247,21 @@ class FPGAArray(object):
 
         return self.get_shuffle_output(self.get_chan_identity_map())
 
-
-    
-    def shuffle512_cb3_remap(self, bad_links, freq_bins):
+ 
+    @staticmethod
+    def shuffle512_cb3_remap(bad_links, freq_bins):
         """
         Generates a frequency map by assigning flagged/less important frequency bins to
-        links (crate parity, slot, link) connected to bad/down GPU nodes. The remapping is
+        links connected to bad/down GPU nodes. The remapping is
         restricted to changes at the third crossbar for 'shuffle512' operation.
         
         Parameters:
         -----------
-        bad_links: list of (crate parity, slot, link) tuples/lists
+        bad_links: list of [crate parity, slot, link] lists
             List of links connected to bad/down GPU nodes. Least important frequencies are 
             assigned to these links. Crate parity is either 0 (even) or 1 (odd). Slot
             is an integer between 0 and 15, and link is an integer between 0 and 7
-        freq_bins: np.array
+        freq_bins: list or np.array
             1024-long array with frequency bins ordered by importance (important bins first).
             Frequency bins are assigned to good/up links/nodes when available based on their 
             importance.
@@ -2272,6 +2272,8 @@ class FPGAArray(object):
             {..., (crate parity, slot, link): [freq. bin 0, ..., freq. bin 3], ...}.
         """
         
+        freq_bins = np.array(freq_bins) # Make sure freq_bins is an np.array
+
         # Number of freq. bins, crates (per crate pair), slots (per crate), links (per board) 
         # (SHOULD BE ABLE TO GET THIS FROM FPGA ARRAY OBJECT)
         Nfreq, Ncrate, Nslot, Nlink = 1024, 2, 16, 8 
@@ -2289,7 +2291,7 @@ class FPGAArray(object):
                 i_top, i_bottom = 0, Nfreq_cs
                 for link in range(Nlink):
                     stream_id = (crate, slot, link)
-                    if stream_id in bad_links: # Bad link: assign less important freq. bins
+                    if list(stream_id) in bad_links: # Bad link: assign less important freq. bins
                         freq_remap[stream_id] = list(freq_bins[freq_bins_cs_indices[i_bottom-Nfreq_link:i_bottom]])
                         i_bottom -= Nfreq_link
                     else: # Good link: assign important freq. bins
