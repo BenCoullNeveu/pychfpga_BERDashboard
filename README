@@ -25,7 +25,7 @@ Before you start, you need:
 To operate a board, You also need the following:
 
 - One or multiple Iceboards, in a crate or on the benchtop
-- A generic IceBoard SD card installed in each board (the card contains the ARM linux system)
+- A generic IceBoard SD card installed in each board (the card contains the ARM linux system). The SD card image that works with the current release is in ``./pychfpga/arm_firmware`.
 - A SFP+ to RJ45 adapter connected in the SFP+ cage of each IceBoard
 - Power supply to power the board(s) or crate(s)
 - Proper cooling (fans) on the FPGA and some airflow over the ADCs mezzanines
