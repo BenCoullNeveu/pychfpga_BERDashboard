@@ -496,6 +496,8 @@ class ChimeMaster(object):
                      weight=0.2,
                      initial_gains=[ ('*', [1.0, 22])]):
         """
+        Starts the background iteratove process of computing the optimal digital gains on the FPGA to acheive the target RMS.
+
         Parameters:
 
             targets: list of tuples (or dict) describing the (crate, board,
