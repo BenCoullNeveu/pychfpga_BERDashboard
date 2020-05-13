@@ -162,6 +162,8 @@ class FPGAArray(object):
                  frames_per_packet=2,
                  tx_power=None,
                  integration_period=None,
+                 corner_turn_bad_links=None,
+                 corner_turn_bin_priority=None,
 
                  stderr_log_level=None,
                  syslog_log_level=None,
@@ -175,75 +177,35 @@ class FPGAArray(object):
 
         Parameters:
 
-            None: Hardware map creation
-            hwm (str, list or HardwareMap): Describe the contents of the hardware
-                map database, which lists the IceBoards, IceCrates and Mezzanines.
+            --------------------Category: **Hardware map creation**--------------------
+
+            hwm (str, list or HardwareMap): Describes the hardware
+                map, which lists the IceBoards, IceCrates and Mezzanines
                 that are present in the system and their relationship. The hardware
-                map creation depending on the type of the `hwm` parameter:
+                map creation depending on the type of the `hwm` parameter.
 
-                *str* or *list of str*: A string or list of strings that describes the hardware to be
-                    added to the hardware map in the format::
+                - *str* or *list of str* : A string or list of strings that describes the hardware to be
+                  added to the hardware map in the format:
 
-                        " [{Iceboard_descriptors} {Icecrate_descriptors} {mezzanine_descriptors}] "
+                  ``hwm := {Iceboard_descriptors | Icecrate_descriptors | mezzanine_descriptors} ...``
 
-                    where:
-                       Iceboard descriptors: "[MGK7]MB serial serial ..." or "hostname" or "ip_address"
-                       icecrate descriptors: "[MGK7]BP16 serial[:crate_number] serial[:crate_number]...",
+                  where
 
-                    Autodiscovery is used as needed to complete the hardware map
-                    (see notes below). See `parse_hw_string` for a description of
-                    the syntax
+                  ``Iceboard_descriptors := {[MGK7]MB serial [serial] ... | hostname | ip_address}``
 
-                    Example:
+                  ``Icecrate_descriptors := {[MGK7]BP16 serial[:crate_number] [serial[:crate_number]] ...}``,
 
-                    "MGK7BP16 025 026" or abbreviated form "BP16 25 26" Selects
-                        all iceboards on crates SN025 and SN026 with default crate
-                        numbers 0 and 1 respectively.
+                  Autodiscovery is used as needed to complete the hardware map
+                  (see notes below). See `parse_hw_string` for a description of
+                  the syntax
 
-                    "MGK7MB 0125 0330" or "MB 0125 0330", "MB 125 330", "MB
-                        10.10.10.225 10.10.10.111" or "MB iceboard0125.local
-                        iceboard0330.local" all select the Iceboards specified by
-                        serial/hostname/IP address.
+                - *list of dict*: list of dicts that describe the hardware map elements to create.
 
-                    .. note:
-                        If an IceBoard is specified by IP address (e.g. '10.10.10.7'),
-                        then the board can be added directly in the hardware map. This
-                        does *not* rely on the system mDNS client or the Python
-                        ``pybonjour`` package.
-
-                        If an IceBoard is specified by its mDNS hostname (e.g.
-                        'iceboard0007.local'), the operating system will automatically
-                        resolve the IP address using mDNS, assuming that a mDNS client
-                        (Bonjour on Windows or Mac, avahi on Linux) is running on this
-                        computer. The ``pybonjour`` Python package is *not* needed.
-
-                        In both cases, the crate, slot and serial number information will
-                        be automatically obtained directly through the IceBoard's ARM
-                        processor if that information not already present in the hardware
-                        map.
-
-                        If an IceBoard is specified by its serial number (e.g. '0007', or
-                        just a numeric 7 as a convenient shortcut), the board will use the
-                        ``pybonjour`` package to actively query mDNS and find boards that
-                        match the serial number.
-
-
-                    .. note:
-                        Selecting boards by IceCrate serial number *always*
-                        require the ``pybonjour`` package and the system mDNS
-                        client to automatically probe the network and discover the
-                        specified Iceboards that advertised themseles along with
-                        their associated crate number.
-
-
-                *list of dict*: list of dicts that describe the hardware map elements to create.
-
-                *HardwareMap*: Fully formed hardware map, provided directly as a
-                    HardwareMap database object. If a fully-formed hardware map is
-                    provided, it will additionally be vetted by removing the
-                    Iceboards that fail the `ping` test and do not meet the
-                    ``subarray`` criteria.
-
+                - *HardwareMap*: Fully formed hardware map, provided directly as a
+                  HardwareMap database object. If a fully-formed hardware map is
+                  provided, it will additionally be vetted by removing the
+                  Iceboards that fail the `ping` test and do not meet the
+                  ``subarray`` criteria.
 
             crate_map (dict): Maps crate numbers to (model, serial). Not
                 needed if the crate numbers are already specified in the
@@ -252,8 +214,12 @@ class FPGAArray(object):
                 string.
 
             iceboards (list of str) : Iceboard to add to the hardware map,
-                specified by IP address, hostname, or serial number. Equivalent to
-                adding `hwm` string "MGK7MB iceboard[0] iceboard[1] ...".iceboard
+                specified as an IP address, hostname, or serial number. The
+                boards specified here are added to the hardware map specified
+                in `hwm` parameter. When a serial number is used, the IceBoard
+                model MGK7MB is implied. For example, specifying ``iceboards =
+                "003 007"`` is equivalent to adding ``"MGK7MB 003 007"`` to
+                the `hwm` parameter.
 
             exclude_iceboards (list of str) : Serial numbers of Iceboards to be
                 excluded in case of autodiscovered boards. Can be useful to specify a
@@ -262,12 +228,15 @@ class FPGAArray(object):
             icecrates (list of str): Adds all the iceboards from the crates that have the
                 serial numbers specified in the provided list of strings.
 
-                Examples:
+                Examples
+
                     ``icecrates='003'`` or ``icecrates=['003']`` will discover and select all boards from crate SN003
+
                     ``icecrates=['003', '004']`` will select boards from crates SN003 and SN004.
+
                     ``icecrates=[]`` will select all boards on the network
 
-            None: Hardware map filtering
+            ----------Category: **Hardware map filtering**----------
 
             subarrays : List of integers describing the subarrays to include in
                 the default IceBoard set. If None, all
@@ -281,25 +250,111 @@ class FPGAArray(object):
                 explicitely fails. If ``ping`` is false, the presence of boards is not
                 checked.
 
-            None: Configuration & initialization
+            ----------Category: **Configuration & initialization**----------
 
-            bitfile : String. Filename of the bitfile used to program the FPGAs
+            bitfile (str): Filename of the bitfile used to program the FPGAs
 
-            prog : If ``prog=1``, the FPGAs in the selected Iceboards will be
+            prog (int): If ``prog=1``, the FPGAs in the selected Iceboards will be
                 configured only if they are not already configured with the same
                 firmware. If ``prog=2``, they will always be reconfigured. If
                 ``prog`` is 0, None or is not specified, the FPGAs are never configured.
 
-            open : If ``open=1``, establish communication with the boards and
-               initialize the firmware and software. If ``open`` is None or not
-               specified, the software and firmwar eis not initialized.
+            open (int): If ``open=1``, establish communication with the boards and
+               initialize the firmware and software. If ``open`` is `None` or is not
+               specified, the software and firmware is not initialized.
 
-            if_ip : string corresponding to the IP address of adapter through
+            if_ip (str): string corresponding to the IP address of adapter through
                 which the connection to the FPGA will be established. If not
                 specified, the system will assume that the FPGA is reached trough
                 the same interface that reaches the ARM processor.
 
-            None: Logging
+
+            udp_retries (int): Number of retries performed when UDP command
+                packets sent to the FPGA do not receive a response.
+
+            fpga_ip_addr_fn (str): Specifies how the FPGA IP address is
+                determined. The valid modes are shown below, and should be
+                types exactly without additional spaces. In those modes,
+                ``a.b.c.d`` corresponds to the IP address of the IceBoard ARM
+                processor.
+
+                   - '(a,b,3,d)': Uses the IP address of the ARM but replaces the third byte by ``3``
+                   - '(a,b,c+1,d)': Uses the IP address of the ARM but adds 1 to the third byte
+
+
+            sync_method (str): Method used to synchronize (to sync) the data acquisition on an array of boards:
+
+                'distributed_time',
+
+            sync_source (str): Source of the signal that is used to synchronize each board
+
+                'bp_trig',
+
+            sync_master=None,
+
+            sync_master_time_source=None,
+
+            max_sync_time_difference (int): Maximum time difference, in nanoseconds, between the time of frame 0 of each board in an array.
+
+
+            ----------Category: **Corner-turn engine parameters**----------
+
+            mode (str): Operational mode of the Corner-turn engine. The following modes are supported:
+
+                    - 'chan8': Corner-turn engine is mostly bypassed and raw 8-bit data from 8
+                      channelizers is sent directly to the 8 CT-Engine outputs.
+
+                    - 'chan4': Corner-turn engine is mostly bypassed and raw 8-bit data from 16
+                      channelizers is sent directly to the 8 CT-Engine outputs.
+
+                    - 'shuffle16': A corner-turn operation is applied only within the 16 channelizer
+                      outputs of this board.
+
+                    - 'shuffle256': The corner-turn operation is applies between 16 channelizers within
+                      a board and between the 16 boards within a crate using the backplane PCB links.
+
+                    - 'shuffle512': The corner-turn operation is applies between 16 channelizers within
+                      a board, between the 16 boards within a crate using the backplane PCB links,
+                      and between 2 crates using the backplane QSFP links.
+
+                    - 'corr16': The corner-turn engine is configured to feed the
+                      internal firmware correlator (only if the firmware was
+                      compiled with it).
+
+
+            frames_per_packet (int): Number of frames that are grouped in each
+                packets at the output of the corner turn engine. Default is 2.
+                Packets contents is ordered so that the data from both frames
+                shows in a single block, followed by the scaler flages for
+                both frames, etc. Is limited by the amount of buffering
+                available in the FPGA's corner turn engine stages. Contiguous
+                data blocks help the receiver node make more efficient memory
+                transfers.
+
+            tx_power (dict): Initial training and final TX power levels to be
+                assigned to the data links used by the corner turn engine.
+                These include the backplane PCB links between boards in a
+                crate, backplane QSFP links between crates, or iceboard QSFP
+                links that offload  the output of the corner turn engine.
+
+
+            corner_turn_bad_links (list of tuples): List of corner turn engine
+                outputs links [(crate, slot, links), ...] that should
+                preferably NOT be assigned any frequency bins if possible.
+
+            corner_turn_bin_priority (list of int): List of frequency bins
+                that are to be assigned to the corner turn output, in order of
+                priority (most desirable frequency first). The lowest priority
+                bins will be assigned to the bad links as much as possible,
+                depending on the constraints of the corner turn engine
+                flexibility.
+
+            ----------Category: **Firmware corelator parameters (if implemented in the FPGA)**----------
+
+            integration_period=None,
+
+
+            ----------Category: **Logging parameters**----------
 
             If logging is not set up by the top level application, you can
             optionally specify the folowing arguments to create syslog and stderr
@@ -310,6 +365,53 @@ class FPGAArray(object):
             syslog_log_level: sets up a SYSLOG handler
 
             stderr_log_level: sets up a handler that prints on stderr
+
+
+        Example:
+
+            **Hardware map specifications**
+
+            ``hwm="MGK7BP16 025 026"`` or abbreviated form ``hwm="BP16 25 26"`` selects
+            all iceboards on crates SN025 and SN026 with default crate
+            numbers 0 and 1 respectively.
+
+            ``hwm="MGK7MB 0125 0330"`` or ``hwm="MB 0125 0330"``, ``hwm="MB 125 330"``, ``hwm="MB
+            10.10.10.225 10.10.10.111"`` or ``hwm="MB iceboard0125.local
+            iceboard0330.local"`` all select the Iceboards specified by
+            serial/hostname/IP address.
+
+            Note:
+
+                If an IceBoard is specified by IP address (e.g. '10.10.10.7'),
+                then the board can be added directly in the hardware map. This
+                does *not* rely on the system mDNS client or the Python
+                ``pybonjour`` package.
+
+                If an IceBoard is specified by its mDNS hostname (e.g.
+                'iceboard0007.local'), the operating system will automatically
+                resolve the IP address using mDNS, assuming that a mDNS client
+                (Bonjour on Windows or Mac, avahi on Linux) is running on this
+                computer. The ``pybonjour`` Python package is *not* needed.
+
+                In both cases, the crate, slot and serial number information will
+                be automatically obtained directly through the IceBoard's ARM
+                processor if that information not already present in the hardware
+                map.
+
+                If an IceBoard is specified by its serial number (e.g. '0007', or
+                just a numeric 7 as a convenient shortcut), the board will use the
+                ``pybonjour`` package to actively query mDNS and find boards that
+                match the serial number.
+
+
+            Note:
+
+                Selecting boards by IceCrate serial number *always*
+                require the ``pybonjour`` package and the system mDNS
+                client to automatically probe the network and discover the
+                specified Iceboards that advertised themseles along with
+                their associated crate number.
+
         """
         init = functools.partial(
              self.init.async,
@@ -337,6 +439,8 @@ class FPGAArray(object):
              frames_per_packet=frames_per_packet,
              tx_power=tx_power,
              integration_period=integration_period,
+             corner_turn_bad_links=corner_turn_bad_links,
+             corner_turn_bin_priority=corner_turn_bin_priority,
              stderr_log_level=stderr_log_level,
              syslog_log_level=syslog_log_level,
              udp_retries=udp_retries,
@@ -408,6 +512,8 @@ class FPGAArray(object):
              frames_per_packet=2,
              tx_power=None,
              integration_period=None,
+             corner_turn_bad_links=None,
+             corner_turn_bin_priority=None,
 
              stderr_log_level=None,
              syslog_log_level=None,
@@ -973,7 +1079,9 @@ class FPGAArray(object):
                     mode=mode,
                     frames_per_packet=frames_per_packet,
                     tx_power=tx_power,
-                    integration_period=integration_period)
+                    integration_period=integration_period,
+                    corner_turn_bad_links=corner_turn_bad_links,
+                    corner_turn_bin_priority=corner_turn_bin_priority)
 
             ########################
             # Initializing backplane hardware communication firmware
@@ -1164,7 +1272,9 @@ class FPGAArray(object):
                              send_flags = True,
                              chan8_channel_map=range(8),
                              tx_power=None,
-                             integration_period=16384
+                             integration_period=16384,
+                             corner_turn_bad_links=None,
+                             corner_turn_bin_priority=None,
                              ):
         """ Set the operational mode of the array.
 
@@ -1173,8 +1283,11 @@ class FPGAArray(object):
 
             mode (str): operational mode string.
 
-                - 'raw_time': Each boards stream raw 8-bit time samples from channels
-                    0-7 to the corresponding GPU ports.
+                - 'chan8': Corner-turn engine is mostly bypassed and raw 8-bit data from 8
+                  channelizers is sent directly to the 8 CT-Engine outputs.
+
+                - 'chan4': Corner-turn engine is mostly bypassed and raw 8-bit data from 16
+                  channelizers is sent directly to the 8 CT-Engine outputs.
 
                 - 'shuffle16': Acquire, channelize and shuffle data within each Iceboard individually and
                   send the data through the IceBoard QSFP+ ports. There is no data shuffling between boards.
@@ -1191,6 +1304,9 @@ class FPGAArray(object):
                   is based on the crate number: Crate N and N+1 form a pair, whereas N
                   is a even number.
 
+                - 'corr16': The corner-turn engine is configured to feed the
+                  internal firmware correlator (only if the firmware was compiled with it).
+
             frames_per_packet (int): Number of frames to combine in a single
                 packet. Is limited by the amount of buffering space inside the
                 FPGA.
@@ -1203,6 +1319,17 @@ class FPGAArray(object):
             integration_period (int): (for ``corr16`` mode only):
                 Sets the integration period (in frames) of the firmware
                 correlator.
+
+            corner_turn_bad_links (list of tuples): List of corner turn engine
+                outputs links [(crate, slot, links), ...] that should
+                preferably NOT be assigned any frequency bins if possible.
+
+            corner_turn_bin_priority (list of int): List of frequency bins
+                that are to be assigned to the corner turn output, in order of
+                priority (most desirable frequency first). The lowest priority
+                bins will be assigned to the bad links as much as possible,
+                depending on the constraints of the corner turn engine
+                flexibility.
 
 
 
@@ -1246,23 +1373,72 @@ class FPGAArray(object):
             self.ib.CROSSBAR3.SOF_WINDOW_STOP = 110
             self.ib.CROSSBAR3.TIMEOUT_PERIOD = 0
             self.ib.BP_SHUFFLE.reset_rx_equalizers()
+
             self.init_corner_turn(
                 mode=mode,
                 frames_per_packet=frames_per_packet,
                 send_flags=send_flags,
-                tx_power=tx_power)
+                tx_power=tx_power,
+                bad_links=corner_turn_bad_links,
+                bin_priority=corner_turn_bin_priority)
             self.ib.BP_SHUFFLE.reset_stats()
             self.ib.CROSSBAR2.reset_stats()
             self.ib.CROSSBAR3.reset_stats()
+
         elif mode =='corr16':
             if not all(self.ib.CORR):
                 raise RuntimeError('All IceBoards must have a firmware correlator engine')
-            self.ib.init_crossbars(mode, frames_per_packet=1)
+            bin_map = self.get_corner_turn_bin_map(
+                mode=mode,
+                bad_links=corner_turn_bad_links,
+                bin_priority=corner_turn_bin_priority)
+            for ib in self.ib:
+                ib.init_crossbars(mode, frames_per_packet=1, bin_map=bin_map[ib.get_id()])
             self.ib.set_offset_binary_encoding(False)  # The firmware correlator engine expects 1's complement encoding
             if integration_period:
                 self.ib.start_correlator(integration_period=integration_period)
         else:
             raise ValueError('Unknown operational mode')
+
+    def get_corner_turn_bin_map(self, mode, bad_links=None, bin_priority=None):
+        """ Get the bin selection map for every board of the array in order to route the bins toward the  desired output links
+
+        Parameters:
+
+            bad_links: List of corner_turn outputs [(crate, slot, link) , ...]
+                that can't process data. low-priotity frequencies will be
+                assigned to those bins.
+
+            bin_priority: list of all frequency bins (from 0 to 1023) in order
+                of priority, with the useful bins at the beginning of the
+                list.
+
+
+        Returns:
+            A dictionary that deescribes the corner-turn bin selection map for every board, in the format
+                { (crate, slot):{'cb1':cb1_bins, 'cb2':cb2_bins, 'cb3':cb3_bins}, ... }
+            where
+                ``cb1_bins``: list of 16 lists describing the bins indices that are selected by each bin selector of the 1st crossbar
+                ``cb2_bins``: list of 2 lists describing the bins indices that are selected by each bin selector of the 2nd crossbar
+                ``cb3_bins``: list of 8 lists describing the bins indices that are selected by each bin selector of the 3rd crossbar
+        """
+        # Use default mapping
+        if mode='shuffle512':
+            bin_map = {}
+
+            cb3_map = self.shuffle512_cb3_remap(bad_links, bin_priority)
+            # cb3_map describes only odd and even crate numbers. We expand the list to cover all crates explicitely.
+            for ib in self.ib:
+                cb3_bins = [cb3_map.get((crate & 1, slot, lane), None)
+                    for crate, slot, lane in ib.GPU.get_lane_ids()]
+                bin_map[ib.get_id()] = {
+                    'cb1':None,
+                    'cb2':None,
+                    'cb3':cb3_bins}
+        else: # other modes. Use defaults.
+            bin_map = {ib.get_id(): {'cb1':None,'cb2':None, 'cb3':None}
+                       for ib in self.ib}
+        return bin_map
 
     def init_corner_turn(self,
                      mode,
@@ -1271,6 +1447,9 @@ class FPGAArray(object):
                      send_flags=True,
                      chan8_channel_map=range(16),
                      tx_power=None,
+                     bin_map=None,
+                     bad_links=None,
+                     bin_priority=None,
                      sync=True
                      ):
         """ Setup the crossbars and data shuffling in every board of the array.
@@ -1312,6 +1491,11 @@ class FPGAArray(object):
 
         self.logger.info('%r: Configuring crate-wide data shuffling with frames_per_packet=%i' % (self, frames_per_packet))
 
+        bin_map = self.get_corner_turn_bin_map(
+            mode=mode,
+            bad_links=bad_links,
+            bin_priority=bin_priority)
+
         #####################
         # Set-up transmitters
         #####################
@@ -1331,7 +1515,9 @@ class FPGAArray(object):
                 dsmap=dsmap,
                 frames_per_packet=frames_per_packet,
                 send_flags=send_flags,
-                chan8_channel_map=chan8_channel_map)
+                chan8_channel_map=chan8_channel_map,
+                bin_map=bin_map[ib.get_id()])
+
         if ib.crate:
 
             #####################
@@ -2247,23 +2433,23 @@ class FPGAArray(object):
 
         return self.get_shuffle_output(self.get_chan_identity_map())
 
- 
+
     @staticmethod
     def shuffle512_cb3_remap(bad_links, freq_bins):
         """
         Generates a frequency map by assigning flagged/less important frequency bins to
         links connected to bad/down GPU nodes. The remapping is
         restricted to changes at the third crossbar for 'shuffle512' operation.
-        
+
         Parameters:
         -----------
         bad_links: list of [crate parity, slot, link] lists
-            List of links connected to bad/down GPU nodes. Least important frequencies are 
+            List of links connected to bad/down GPU nodes. Least important frequencies are
             assigned to these links. Crate parity is either 0 (even) or 1 (odd). Slot
             is an integer between 0 and 15, and link is an integer between 0 and 7
         freq_bins: list or np.array
             1024-long array with frequency bins ordered by importance (important bins first).
-            Frequency bins are assigned to good/up links/nodes when available based on their 
+            Frequency bins are assigned to good/up links/nodes when available based on their
             importance.
         Output:
         -------
@@ -2271,12 +2457,12 @@ class FPGAArray(object):
             Describes the frequency bin assignment for each link. Its items have the form
             {..., (crate parity, slot, link): [freq. bin 0, ..., freq. bin 3], ...}.
         """
-        
+
         freq_bins = np.array(freq_bins) # Make sure freq_bins is an np.array
 
-        # Number of freq. bins, crates (per crate pair), slots (per crate), links (per board) 
+        # Number of freq. bins, crates (per crate pair), slots (per crate), links (per board)
         # (SHOULD BE ABLE TO GET THIS FROM FPGA ARRAY OBJECT)
-        Nfreq, Ncrate, Nslot, Nlink = 1024, 2, 16, 8 
+        Nfreq, Ncrate, Nslot, Nlink = 1024, 2, 16, 8
         Nfreq_cs = Nfreq//(Ncrate*Nslot) # Freq. bins per (crate, slot)
         Nfreq_link = Nfreq_cs // Nlink   # Freq. bins per (crate, slot, link)
 
@@ -2285,9 +2471,9 @@ class FPGAArray(object):
         for slot in range(Nslot):
             for crate in range(Ncrate):
                 # Freq bins that can be assigned to (crate parity, slot) under standard map
-                freq_bins_cs = np.arange(crate*Nslot+slot, Nfreq, Nfreq_cs) 
+                freq_bins_cs = np.arange(crate*Nslot+slot, Nfreq, Nfreq_cs)
                 # Indices of allowed freq_bins, sorted by importance
-                freq_bins_cs_indices = np.sort(sorter[freq_bins_cs]) 
+                freq_bins_cs_indices = np.sort(sorter[freq_bins_cs])
                 i_top, i_bottom = 0, Nfreq_cs
                 for link in range(Nlink):
                     stream_id = (crate, slot, link)
@@ -2297,8 +2483,8 @@ class FPGAArray(object):
                     else: # Good link: assign important freq. bins
                         freq_remap[stream_id] = list(freq_bins[freq_bins_cs_indices[i_top: i_top+Nfreq_link]])
                         i_top += Nfreq_link
-                        
-        return freq_remap    
+
+        return freq_remap
 
 
 
