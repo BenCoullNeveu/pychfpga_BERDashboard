@@ -3,7 +3,7 @@
 Installation
 ============
 
-This page describes how to install and configure the software required to run ch_master and all the other software included in :mod:`ch_acq` package.
+This page describes how to install and configure the software required to run ch_master and all the other software included in :mod:`pychfpga` package.
 
 Requirements
 ------------
@@ -53,7 +53,8 @@ Windows installation
 Pre-requisites:
 
   - You need Microsoft Visual C++ 9.0 for `netifaces`. Get it from http://aka.ms/vcpython27
-  - Install `bonjour` (part of itunes - you can extract the Itunes install package and just install bonjour).
+  - Install ``bonjour``
+     (part of itunes - you can extract the Itunes install package and just install bonjour).
 
 Create and activate an environment if needed.
 
