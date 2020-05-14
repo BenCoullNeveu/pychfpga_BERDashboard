@@ -1344,7 +1344,6 @@ class FPGAArray(object):
         # use defaults that were set during initialization unless overriden
         mode = mode or self.mode
         tx_power = tx_power or self.tx_power
-
         self.logger.info('%r: Setting operational mode to %s' % (self, mode))
         self.logger.info('%r: Using tx_power=%r' % (self, tx_power))
         # To make sure that the data acquisition and transmission will be done at the same rate, refuse to operate if there
@@ -1423,7 +1422,9 @@ class FPGAArray(object):
                 ``cb3_bins``: list of 8 lists describing the bins indices that are selected by each bin selector of the 3rd crossbar
         """
         # Use default mapping
-        if mode='shuffle512':
+        bad_links = bad_links or []
+        bin_priority = bin_priority or range(1024)
+        if mode == 'shuffle512':
             bin_map = {}
 
             cb3_map = self.shuffle512_cb3_remap(bad_links, bin_priority)
