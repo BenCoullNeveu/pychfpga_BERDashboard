@@ -3619,7 +3619,7 @@ class chFPGA_controller(IceBoardExtHandler):
             for (cb2_bin_sel, bs) in enumerate(cb2):
                 bs.BYPASS = bool(cb2_bypass)
                 if not cb2_bypass:
-                    bs.STREAM_ID = stream_id[cb2_bin_sel * cb2.NUMBER_OF_OUTPUTS_PER_BIN_SEL] << 4
+                    bs.STREAM_ID = stream_id[cb2_bin_sel * cb2.NUMBER_OF_OUTPUTS_PER_BIN_SEL] >> 4
                     bs.SEND_FLAGS = send_flags
                     bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
                     bs.NUMBER_OF_BINS_PER_FRAME = cb2_input_bins
@@ -3645,7 +3645,7 @@ class chFPGA_controller(IceBoardExtHandler):
             for (cb3_bin_sel, bs) in enumerate(cb3):
                 bs.BYPASS = bool(cb3_bypass)
                 if not cb3_bypass:
-                    bs.STREAM_ID = stream_id[cb3_bin_sel * cb3.NUMBER_OF_OUTPUTS_PER_BIN_SEL] << 4
+                    bs.STREAM_ID = stream_id[cb3_bin_sel * cb3.NUMBER_OF_OUTPUTS_PER_BIN_SEL] >> 4
                     bs.SEND_FLAGS = send_flags
                     bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
                     bs.NUMBER_OF_DATA_FLAGS_WORDS_PER_BIN = cb3_input_data_flags_words_per_bin

@@ -1696,7 +1696,7 @@ class FPGAArray(object):
         freq_map = self.get_frequency_map(format='l:bb')
         # Retain only one bin number  for each bin
         self.corner_turn_frequency_bins = {lane_id: sorted(set(data['data']))
-            for lane_id, data in fmap.iteritems()}
+            for lane_id, data in freq_map.iteritems()}
 
         # sync boards
         #soft_sync(c, sync_board)
