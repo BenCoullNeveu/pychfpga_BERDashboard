@@ -2522,7 +2522,7 @@ class FPGAArray(object):
         This map is obtained by passing the channelizer identity map through the shuffle map.
         """
 
-        return self.get_shuffle_output(self.get_chan_identity_map())
+        return self.get_shuffle_output(self.get_chan_identity_map(format=format))
 
     def get_chan_identity_map(self, format='cslb'):
         """ Return an identity map that describes the origin of each of the 1024 samples contained in the channelizer output packets.
@@ -2574,44 +2574,43 @@ class FPGAArray(object):
         # Output lane id is converted to (crate_number, slot, lane)
 
         cb1_out = OrderedDict()
-        for ic in self.ic:
-            for slot, ib in ic.slot.items():
-                cb1_in = {ch: chan_map[(ic.crate_number, slot, ch)] for ch, ant in enumerate(ib.ANT)} # extract channels for this inceboard only
+        for ib in self.ib:
+                cb1_in = {ch: chan_map[(crate, slot, ch)] for (crate, slot, ch) in ib.get_channel_ids()} # extract channels for this inceboard only
                 for lane, data in ib.CROSSBAR.map(cb1_in).items():
-                    cb1_out[(ic.crate_number, slot, lane)] = data
+                    cb1_out[ib.get_id(lane)] = data
 
         # Apply pcb shuffling
         pcb_shuffle_out = OrderedDict()
         for ic in self.ic:
             pcb_link_map = ic.get_pcb_link_map()
             for (rx_slot, rx_lane), (tx_slot, tx_lane) in pcb_link_map.items():
-                pcb_shuffle_out[(ic.crate_number, rx_slot, rx_lane)] = cb1_out[(ic.crate_number, tx_slot, tx_lane)]
+                pcb_shuffle_out[(ic.crate_number, rx_slot-1, rx_lane)] = cb1_out[(ic.crate_number, tx_slot-1, tx_lane)]
 
         # Apply CROSSBAR2
         cb2_out = OrderedDict()
-        for ic in self.ic:
-            for slot, ib in ic.slot.items():
-                cb2_in = {lane: pcb_shuffle_out[(ic.crate_number, slot, lane)] for lane in range(ib.BP_SHUFFLE.NUMBER_OF_PCB_LANES)} # extract channels for this inceboard only
-                for lane, data in ib.CROSSBAR2.map(cb2_in).items():
-                    cb2_out[(ic.crate_number, slot, lane)] = data
+        for ib in self.ib:
+            (crate, slot) = ib.get_id()
+            cb2_in = {lane: pcb_shuffle_out[(crate, slot, lane)] for lane in xrange(ib.BP_SHUFFLE.NUMBER_OF_PCB_LANES)} # extract channels for this inceboard only
+            for lane, data in ib.CROSSBAR2.map(cb2_in).iteritems():
+                cb2_out[(crate, slot, lane)] = data
 
         # Apply QSFP shuffling
         qsfp_shuffle_out = OrderedDict()
-        for ic in self.ic:
-            for slot, ib in ic.slot.items():
+        for ib in self.ib:
+                (crate, slot) = ib.get_id()
                 bypass = ib.BP_SHUFFLE.BYPASS_QSFP_SHUFFLE
                 number_of_qsfp_lanes = ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES
                 for rx_lane in range(number_of_qsfp_lanes):
                     crate_offset = rx_lane * 2 // number_of_qsfp_lanes if not bypass else 0
-                    qsfp_shuffle_out[(ic.crate_number, slot, rx_lane)] = cb2_out[(ic.crate_number ^ crate_offset, slot, rx_lane)]
+                    qsfp_shuffle_out[(crate, slot, rx_lane)] = cb2_out[(crate ^ crate_offset, slot, rx_lane)]
 
         # Apply CROSSBAR3
         cb3_out = OrderedDict()
-        for ic in self.ic:
-            for slot, ib in ic.slot.items():
-                cb_in = {lane: qsfp_shuffle_out[(ic.crate_number, slot, lane)] for lane in range(ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES)} # extract channels for this inceboard only
-                for lane, data in ib.CROSSBAR3.map(cb_in).items():
-                    cb3_out[(ic.crate_number, slot, lane)] = data
+        for ib in self.ib:
+                (crate, slot) = ib.get_id()
+                cb_in = {lane: qsfp_shuffle_out[(crate, slot, lane)] for lane in xrange(ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES)} # extract channels for this inceboard only
+                for lane, data in ib.CROSSBAR3.map(cb_in).iteritems():
+                    cb3_out[(crate, slot, lane)] = data
 
         return cb3_out
 
