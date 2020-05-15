@@ -1444,6 +1444,118 @@ class FPGAArray(object):
                        for ib in self.ib}
         return bin_map
 
+
+    @staticmethod
+    def shuffle512_cb3_remap(mode, bad_links, freq_bins, output_cb3_bins=False):
+        """
+        Generates a frequency map by assigning flagged/less important frequency bins to
+        links connected to bad/down GPU nodes. The remapping is
+        restricted to changes at the third crossbar for 'shuffle512' and 'shuffle256' operation.
+
+        Parameters:
+
+        mode (str): operational mode of the corner turn engine. Either
+            `'shuffle512'` or '`shuffle256'`.
+
+        bad_links (list of tuples): list of [crate parity, slot, link] lists
+            List of links connected to bad/down GPU nodes. Least important frequencies are
+            assigned to these links. Crate parity is either 0 (even) or 1 (odd). Slot
+            is an integer between 0 and 15, and link is an integer between 0 and 7
+
+        freq_bins (list of int): list or np.array
+            1024-long array with frequency bins ordered by importance (important bins first).
+            Frequency bins are assigned to good/up links/nodes when available based on their
+            importance.
+
+        output_cb3_bins: bool (optional)
+
+            If False, the frequency assignment is given as a relative bin
+            index that address the 32 bins at the input of the 3rd crossbar
+            (in the range 0-31).
+
+            If True, the frequency assignment is given as frequency bins (in the range
+            0-1023)
+
+
+        Returns
+
+        freq_map: dict
+            Describes the frequency bin assignment for each link. Its items have the form
+
+            {..., (crate parity, slot, link): [freq. bin 0, ..., freq. bin 3], ...} if
+            output_cb3_bins=False, or
+
+            {..., (crate parity, slot, link): [cb3 bin 0, ..., cb3 bin 3], ...} if
+            output_cb3_bins=True.
+        """
+
+        freq_bins = np.array(freq_bins) # Make sure freq_bins is an np.array
+        freq_bins_priority = np.argsort(freq_bins) # indices that sort freq_bins in ascending order
+        bad_links = [tuple(link) for link in bad_links]
+
+
+        Nfreq = 1024 # Number of frequency bins
+        Nslot = 16 # boards per crates
+        Nlink = 8  # GPU links per board
+        if mode == 'shuffle512':
+            Ncrate = 2
+            Nbix = 32 # Bins per CB3 input
+            Nbins = 4 # Bins per CB3 output
+            bix_to_bin = lambda crate, slot, bix: (Nslot * Ncrate * bix) + (Nslot * crate) + slot
+        elif mode == 'shuffle256':
+            Ncrate = 1
+            Nbix = 64
+            Nbins=8
+            bix_to_bin = lambda crate, slot, bix: (Nslot * bix) + slot
+        else:
+            raise ValueError('Invalid shuffle mode %s' % mode)
+
+        # Number of freq. bins, crates (per crate pair), slots (per crate), links (per board)
+        # (SHOULD BE ABLE TO GET THIS FROM FPGA ARRAY OBJECT)
+        # Nfreq_cs = Nfreq // (Ncrate * Nslot) # Freq. bins per (crate, slot) = 32 (4 per lane) (Now Nbix)
+        # Nbins = Nfreq_cs // Nlink   # Freq. bins per (crate, slot, link) = 4 per lane (now Nbins)
+
+        freq_remap = {}
+        for slot in range(Nslot):
+            for crate in range(Ncrate):
+                # Freq bins that can be assigned to (crate parity, slot) under standard map
+                # cb3 output, shuffle512: bin = 16*2*8*bix + 16*2*lane + 16*crate + slot, bix=0..3
+                # cb3 output, shuffle256: bin = 16*8*bix + 16*lane  + slot, bix=0...7, bix=0..7
+
+                # available_bins = np.arange(crate * Nslot + slot, Nfreq, Nfreq_cs)
+                available_bix = np.arange(Nbix)
+                available_bins = bix_to_bin(crate, slot, available_bix) # absolute bin number available at the input of CB3 on this (crate, slot)
+                available_priority = np.argsort(freq_bins_priority[available_bins]) # indices of available bins/bix, in priority order (first is most important)
+                available_bix = list(available_bix[available_priority]) # bin indices, sorted by importance. Convert to a list so we can easily delete items.
+                # Indices of allowed freq_bins, sorted by importance
+                # available_bins_indices = np.sort(freq_bins_priority[available_bins])
+                # available_bins = list(available_bins[available_priority]) # absolute bins, sorted by importance
+
+                # i_top = 0
+                # i_bottom = Nbix
+                # Assign bix, lane per lane
+                for link in range(Nlink):
+                    link_id = (crate, slot, link)
+                    if link_id in bad_links: # Bad link: assign less important freq. bins
+                        bix = available_bix[-Nbins:] # take the bottom (lower priority) bix
+                        del available_bix[-Nbins:] # remove from the list
+                        # freq_remap[link_id] = list(
+                        #     available_bix[i_bottom - Nbins:i_bottom] if output_cb3_bins else
+                        #     freq_bins[available_bins_indices[i_bottom - Nbins:i_bottom]])
+                        # i_bottom -= Nbins
+                    else: # Good link: assign important freq. bins
+                        bix = available_bix[:Nbins] # take the top bix (higher priority)
+                        del available_bix[:Nbins] # remove from the list
+                        # freq_remap[link_id] = list(available_bix[i_top:i_top + Nbins] if
+                        #                         output_cb3_bins else
+                        #                         freq_bins[available_bins_indices[i_top:i_top + Nbins]])
+                        # i_top += Nbins
+                    bix = np.sort(bix) # order selected bins in increasing order. Now a numpy array again.  The bins are always transmitted that way.
+                    freq_remap[link_id] = list(bix if output_cb3_bins else bix_to_bin(crate, slot, bix))
+                if len(available_bix):
+                    raise RuntimeError('Not all bins were processed. This should not happen')
+        return freq_remap
+
     def init_corner_turn(self,
                      mode,
                      dsmap=range(16),
@@ -2362,31 +2474,6 @@ class FPGAArray(object):
 
 
 
-    def get_chan_identity_map(self):
-        """ Return an identity map that describes the origin of each of the 1024 samples contained in the channelizer output packets.
-        The map is a dict:
-            {channelizer_id: [sample_id0, ... sample_id1023]}
-        where channelizer_id is represented by the tuple (crate_number, slot_number, channel_number) and
-        each sample_id is the tuple (crate_number, slot, channel, bin_number)
-
-        This map can be propagated through the shuffle map (see
-        `apply_shuffle_map` method) to obtain the contents of the output of
-        the corner-turn engine.
-        """
-        ch_out = OrderedDict()
-        for ic in self.ic:
-            for slot, ib in ic.slot.items():
-                for ch, ant in enumerate(ib.ANT):
-                        ch_out[(ic.crate_number, slot, ch)] = [(ic.crate_number, slot, ch, bin_number) for bin_number in range(1024)]
-        return ch_out
-
-    def get_chan_output(self):
-        ch_out = OrderedDict()
-        for ic in self.ic:
-            for ib in ic.slot.values():
-                for ant in ib.ANT.values():
-                    ch_out[ant.get_id()] = ant.FUNCGEN.get_buffer()
-        return ch_out
 
     @async
     def reset_corr(self, delay=0.1):
@@ -2429,7 +2516,7 @@ class FPGAArray(object):
 
 
 
-    def get_frequency_map(self):
+    def get_frequency_map(self, format='cslb'):
         """ Returns a map describing the content (crate, slot, channel, bin) of every packet at the output of the corner turn engine.
 
         This map is obtained by passing the channelizer identity map through the shuffle map.
@@ -2437,117 +2524,38 @@ class FPGAArray(object):
 
         return self.get_shuffle_output(self.get_chan_identity_map())
 
+    def get_chan_identity_map(self, format='cslb'):
+        """ Return an identity map that describes the origin of each of the 1024 samples contained in the channelizer output packets.
+        The map is a dict:
+            {channelizer_id: [sample_id0, ... sample_id1023]}
+        where channelizer_id is represented by the tuple (crate_number, slot_number, channel_number) and
+        each sample_id is the tuple (crate_number, slot, channel, bin_number)
 
-    @staticmethod
-    def shuffle512_cb3_remap(mode, bad_links, freq_bins, output_cb3_bins=False):
+        This map can be propagated through the shuffle map (see
+        `apply_shuffle_map` method) to obtain the contents of the output of
+        the corner-turn engine.
         """
-        Generates a frequency map by assigning flagged/less important frequency bins to
-        links connected to bad/down GPU nodes. The remapping is
-        restricted to changes at the third crossbar for 'shuffle512' and 'shuffle256' operation.
+        ch_out = OrderedDict()
+        for ib in self.ib:
+            for (crate, slot, lane) in ib.get_channel_ids():
 
-        Parameters:
+                if format == 'cslb':
+                    ch_out[(crate, slot, lane)] = [(crate, slot, lane, bin) for bin in xrange(1024)]
+                elif format == 'c':
+                    ch_out[(crate, slot, lane)] = [crate*256 + slot*16 + lane for bin in xrange(1024)]
+                elif format == 'cb':
+                    ch_out[(crate, slot, lane)] = [(crate*256 + slot*16 + lane, bin) for bin in xrange(1024)]
+                elif format == 'b':
+                    ch_out[(crate, slot, lane)] = [bin for bin in xrange(1024)]
+        return ch_out
 
-        mode (str): operational mode of the corner turn engine. Either
-            `'shuffle512'` or '`shuffle256'`.
-
-        bad_links (list of tuples): list of [crate parity, slot, link] lists
-            List of links connected to bad/down GPU nodes. Least important frequencies are
-            assigned to these links. Crate parity is either 0 (even) or 1 (odd). Slot
-            is an integer between 0 and 15, and link is an integer between 0 and 7
-
-        freq_bins (list of int): list or np.array
-            1024-long array with frequency bins ordered by importance (important bins first).
-            Frequency bins are assigned to good/up links/nodes when available based on their
-            importance.
-
-        output_cb3_bins: bool (optional)
-
-            If False, the frequency assignment is given as a relative bin
-            index that address the 32 bins at the input of the 3rd crossbar
-            (in the range 0-31).
-
-            If True, the frequency assignment is given as frequency bins (in the range
-            0-1023)
-
-
-        Returns
-
-        freq_map: dict
-            Describes the frequency bin assignment for each link. Its items have the form
-
-            {..., (crate parity, slot, link): [freq. bin 0, ..., freq. bin 3], ...} if
-            output_cb3_bins=False, or
-
-            {..., (crate parity, slot, link): [cb3 bin 0, ..., cb3 bin 3], ...} if
-            output_cb3_bins=True.
-        """
-
-        freq_bins = np.array(freq_bins) # Make sure freq_bins is an np.array
-        freq_bins_priority = np.argsort(freq_bins) # indices that sort freq_bins in ascending order
-        bad_links = [tuple(link) for link in bad_links]
-
-
-        Nfreq = 1024 # Number of frequency bins
-        Nslot = 16 # boards per crates
-        Nlink = 8  # GPU links per board
-        if mode == 'shuffle512':
-            Ncrate = 2
-            Nbix = 32 # Bins per CB3 input
-            Nbins = 4 # Bins per CB3 output
-            bix_to_bin = lambda crate, slot, bix: (Nslot * Ncrate * bix) + (Nslot * crate) + slot
-        elif mode == 'shuffle256':
-            Ncrate = 1
-            Nbix = 64
-            Nbins=8
-            bix_to_bin = lambda crate, slot, bix: (Nslot * bix) + slot
-        else:
-            raise ValueError('Invalid shuffle mode %s' % mode)
-
-        # Number of freq. bins, crates (per crate pair), slots (per crate), links (per board)
-        # (SHOULD BE ABLE TO GET THIS FROM FPGA ARRAY OBJECT)
-        # Nfreq_cs = Nfreq // (Ncrate * Nslot) # Freq. bins per (crate, slot) = 32 (4 per lane) (Now Nbix)
-        # Nbins = Nfreq_cs // Nlink   # Freq. bins per (crate, slot, link) = 4 per lane (now Nbins)
-
-        freq_remap = {}
-        for slot in range(Nslot):
-            for crate in range(Ncrate):
-                # Freq bins that can be assigned to (crate parity, slot) under standard map
-                # cb3 output, shuffle512: bin = 16*2*8*bix + 16*2*lane + 16*crate + slot, bix=0..3
-                # cb3 output, shuffle256: bin = 16*8*bix + 16*lane  + slot, bix=0...7, bix=0..7
-
-                # available_bins = np.arange(crate * Nslot + slot, Nfreq, Nfreq_cs)
-                available_bix = np.arange(Nbix)
-                available_bins = bix_to_bin(crate, slot, available_bix) # absolute bin number available at the input of CB3 on this (crate, slot)
-                available_priority = np.argsort(freq_bins_priority[available_bins]) # indices of available bins/bix, in priority order (first is most important)
-                available_bix = list(available_bix[available_priority]) # bin indices, sorted by importance. Convert to a list so we can easily delete items.
-                # Indices of allowed freq_bins, sorted by importance
-                # available_bins_indices = np.sort(freq_bins_priority[available_bins])
-                # available_bins = list(available_bins[available_priority]) # absolute bins, sorted by importance
-
-                # i_top = 0
-                # i_bottom = Nbix
-                # Assign bix, lane per lane
-                for link in range(Nlink):
-                    link_id = (crate, slot, link)
-                    if link_id in bad_links: # Bad link: assign less important freq. bins
-                        bix = available_bix[-Nbins:] # take the bottom (lower priority) bix
-                        del available_bix[-Nbins:] # remove from the list
-                        # freq_remap[link_id] = list(
-                        #     available_bix[i_bottom - Nbins:i_bottom] if output_cb3_bins else
-                        #     freq_bins[available_bins_indices[i_bottom - Nbins:i_bottom]])
-                        # i_bottom -= Nbins
-                    else: # Good link: assign important freq. bins
-                        bix = available_bix[:Nbins] # take the top bix (higher priority)
-                        del available_bix[:Nbins] # remove from the list
-                        # freq_remap[link_id] = list(available_bix[i_top:i_top + Nbins] if
-                        #                         output_cb3_bins else
-                        #                         freq_bins[available_bins_indices[i_top:i_top + Nbins]])
-                        # i_top += Nbins
-                    bix = np.sort(bix) # order selected bins in increasing order. Now a numpy array again.  The bins are always transmitted that way.
-                    freq_remap[link_id] = list(bix if output_cb3_bins else bix_to_bin(crate, slot, bix))
-                if len(available_bix):
-                    raise RuntimeError('Not all bins were processed. This should not happen')
-        return freq_remap
+    def get_chan_output(self):
+        ch_out = OrderedDict()
+        for ic in self.ic:
+            for ib in ic.slot.values():
+                for ant in ib.ANT.values():
+                    ch_out[ant.get_id()] = ant.FUNCGEN.get_buffer()
+        return ch_out
 
 
     def get_shuffle_output(self, chan_map):
@@ -2565,42 +2573,43 @@ class FPGAArray(object):
         # Channels are converted to (crate_number, slot, input_number)
         # Output lane id is converted to (crate_number, slot, lane)
 
-        cb0_out = OrderedDict()
+        cb1_out = OrderedDict()
         for ic in self.ic:
             for slot, ib in ic.slot.items():
-                ch_in = {ch: chan_map[(ic.crate_number, slot, ch)] for ch, ant in enumerate(ib.ANT)} # extract channels for this inceboard only
-                for lane, data in ib.CROSSBAR.map(ch_in).items():
-                    cb0_out[(ic.crate_number, slot, lane)] = data
+                cb1_in = {ch: chan_map[(ic.crate_number, slot, ch)] for ch, ant in enumerate(ib.ANT)} # extract channels for this inceboard only
+                for lane, data in ib.CROSSBAR.map(cb1_in).items():
+                    cb1_out[(ic.crate_number, slot, lane)] = data
 
         # Apply pcb shuffling
-        bp_out = OrderedDict()
+        pcb_shuffle_out = OrderedDict()
         for ic in self.ic:
             pcb_link_map = ic.get_pcb_link_map()
             for (rx_slot, rx_lane), (tx_slot, tx_lane) in pcb_link_map.items():
-                bp_out[(ic.crate_number, rx_slot, rx_lane)] = cb0_out[(ic.crate_number, tx_slot, tx_lane)]
+                pcb_shuffle_out[(ic.crate_number, rx_slot, rx_lane)] = cb1_out[(ic.crate_number, tx_slot, tx_lane)]
 
         # Apply CROSSBAR2
         cb2_out = OrderedDict()
         for ic in self.ic:
             for slot, ib in ic.slot.items():
-                cb_in = {lane: bp_out[(ic.crate_number, slot, lane)] for lane in range(ib.BP_SHUFFLE.NUMBER_OF_PCB_LANES)} # extract channels for this inceboard only
-                for lane, data in ib.CROSSBAR2.map(cb_in).items():
+                cb2_in = {lane: pcb_shuffle_out[(ic.crate_number, slot, lane)] for lane in range(ib.BP_SHUFFLE.NUMBER_OF_PCB_LANES)} # extract channels for this inceboard only
+                for lane, data in ib.CROSSBAR2.map(cb2_in).items():
                     cb2_out[(ic.crate_number, slot, lane)] = data
 
         # Apply QSFP shuffling
-        qsfp_out = OrderedDict()
+        qsfp_shuffle_out = OrderedDict()
         for ic in self.ic:
             for slot, ib in ic.slot.items():
                 bypass = ib.BP_SHUFFLE.BYPASS_QSFP_SHUFFLE
-                for rx_lane in range(ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES):
-                    crate_offset = rx_lane * 2 // ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES if not bypass else 0
-                    qsfp_out[(ic.crate_number, slot, rx_lane)] = cb2_out[(ic.crate_number ^ crate_offset, slot, rx_lane)]
+                number_of_qsfp_lanes = ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES
+                for rx_lane in range(number_of_qsfp_lanes):
+                    crate_offset = rx_lane * 2 // number_of_qsfp_lanes if not bypass else 0
+                    qsfp_shuffle_out[(ic.crate_number, slot, rx_lane)] = cb2_out[(ic.crate_number ^ crate_offset, slot, rx_lane)]
 
         # Apply CROSSBAR3
         cb3_out = OrderedDict()
         for ic in self.ic:
             for slot, ib in ic.slot.items():
-                cb_in = {lane: qsfp_out[(ic.crate_number, slot, lane)] for lane in range(ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES)} # extract channels for this inceboard only
+                cb_in = {lane: qsfp_shuffle_out[(ic.crate_number, slot, lane)] for lane in range(ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES)} # extract channels for this inceboard only
                 for lane, data in ib.CROSSBAR3.map(cb_in).items():
                     cb3_out[(ic.crate_number, slot, lane)] = data
 
