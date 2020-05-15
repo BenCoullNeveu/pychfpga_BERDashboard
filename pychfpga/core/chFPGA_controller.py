@@ -2806,6 +2806,10 @@ class chFPGA_controller(IceBoardExtHandler):
 
             send_flags (bool): If False, the Scaler and Frame flags will not be sent.
 
+        Returns:
+
+            list of the stream ids at each output lane of the corner turn engine
+
         Note:
             bin_map is a dict in the format
 
@@ -3573,13 +3577,15 @@ class chFPGA_controller(IceBoardExtHandler):
         # Configure CROSSBAR 1
         #-------------------------
         # Select the bins so slot 0 receives bins 0-63, slot 1 has 64-127 ... slot 15 has 960-1023
+
+        stream_id = [((stream_type << 12) | (crate_number << 8) | (slot_number << 4) | lane) for lane in range(cb1.NUMBER_OF_CROSSBAR_OUTPUTS)]
         for (cb1_output_lane, bs) in enumerate(cb1):
             bs.BYPASS = cb1_bypass
+            bs.STREAM_ID = stream_id[cb1_output_lane] >> 4 # lane is already hardwared in the last 4 bits
             bs.COMBINE_DATA_FLAGS = cb1_combine_data_flags
             bs.SEND_FLAGS = send_flags
             bs.GROUP_FRAMES = frames_per_packet
             # print(stream_type, crate_number, slot_number)
-            bs.STREAM_ID = (stream_type << 8) | (crate_number << 4) | slot_number
             bs.FOUR_BITS = cb1_four_bit
             bs.FIRST_FIFO_NUMBER = cb1_lanes[cb1_output_lane][0]
             bs.LAST_FIFO_NUMBER = cb1_lanes[cb1_output_lane][1]
@@ -3600,16 +3606,20 @@ class chFPGA_controller(IceBoardExtHandler):
         #-------------------------
         # Configure CROSSBAR 2
         #-------------------------
-        if self.CROSSBAR2:
-            self.CROSSBAR2.set_lane_map(cb2_lane_map)
+        if cb2:
+            if cb2_bypass:  # if we bypass, just remap the stream ids from the previous crossbar
+                stream_id = [stream_id[i] for i in cb2_lane_map]
+            else: # otherwise, the bin selector overr
+                stream_id = [((stream_type << 12) | (crate_number << 8) | (slot_number << 4) | lane) for lane in range(cb2.NUMBER_OF_CROSSBAR_OUTPUTS)]
+            cb2.set_lane_map(cb2_lane_map)
             if cb2_timeout_period is not None:
-                self.CROSSBAR2.TIMEOUT_PERIOD = cb2_timeout_period
+                cb2.TIMEOUT_PERIOD = cb2_timeout_period
             if cb2_sof_window_stop is not None:
-                self.CROSSBAR2.SOF_WINDOW_STOP = cb2_sof_window_stop
+                cb2.SOF_WINDOW_STOP = cb2_sof_window_stop
             for (cb2_bin_sel, bs) in enumerate(cb2):
                 bs.BYPASS = bool(cb2_bypass)
                 if not cb2_bypass:
-                    bs.STREAM_ID = (stream_type << 8) | (crate_number << 4) | slot_number
+                    bs.STREAM_ID = stream_id[cb2_bin_sel * cb2.NUMBER_OF_OUTPUTS_PER_BIN_SEL] << 4
                     bs.SEND_FLAGS = send_flags
                     bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
                     bs.NUMBER_OF_BINS_PER_FRAME = cb2_input_bins
@@ -3626,12 +3636,16 @@ class chFPGA_controller(IceBoardExtHandler):
         #-------------------------
         # Configure CROSSBAR 3
         #-------------------------
-        if self.CROSSBAR3:
-            self.CROSSBAR3.set_lane_map(cb3_lane_map)
+        if cb3:
+            cb3.set_lane_map(cb3_lane_map)
+            if cb3_bypass:  # if we bypass, just remap the stream ids from the previous crossbar
+                stream_id = [stream_id[i] for i in cb3_lane_map]
+            else: # otherwise, the bin selector overr
+                stream_id = [((stream_type << 12) | (crate_number << 8) | (slot_number << 4) | lane) for lane in range(cb3.NUMBER_OF_CROSSBAR_OUTPUTS)]
             for (cb3_bin_sel, bs) in enumerate(cb3):
                 bs.BYPASS = bool(cb3_bypass)
                 if not cb3_bypass:
-                    bs.STREAM_ID = (stream_type << 8) | (crate_number << 4) | slot_number  # The stream ID at the output of CB2 will be 0xSL (S=slot-1, L=lane)
+                    bs.STREAM_ID = stream_id[cb3_bin_sel * cb3.NUMBER_OF_OUTPUTS_PER_BIN_SEL] << 4
                     bs.SEND_FLAGS = send_flags
                     bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
                     bs.NUMBER_OF_DATA_FLAGS_WORDS_PER_BIN = cb3_input_data_flags_words_per_bin
@@ -3695,6 +3709,8 @@ class chFPGA_controller(IceBoardExtHandler):
 
         self.set_corr_reset(0)
         self.set_ant_reset(0)
+        return stream_id
+
 
     def reset_gpu_links(self):
         """ Resets the GPU links.

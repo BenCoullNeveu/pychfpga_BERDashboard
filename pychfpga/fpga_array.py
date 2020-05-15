@@ -1358,7 +1358,7 @@ class FPGAArray(object):
         if mode == 'raw_time':
             self.ib.set_fft_bypass(True)
             self.ib.set_scaler_bypass(True)
-            self.init_corner_turn(
+            self.corner_turn_stream_ids = self.init_corner_turn(
                 mode='chan8',
                 frames_per_packet=frames_per_packet,
                 send_flags=send_flags,
@@ -1391,6 +1391,8 @@ class FPGAArray(object):
                 mode=mode,
                 bad_links=corner_turn_bad_links,
                 bin_priority=corner_turn_bin_priority)
+            self.corner_turn_stream_ids = None
+            self.corner_turn_frequency_bins = None
             for ib in self.ib:
                 ib.init_crossbars(mode, frames_per_packet=1, bin_map=bin_map[ib.get_id()])
             self.ib.set_offset_binary_encoding(False)  # The firmware correlator engine expects 1's complement encoding
@@ -1615,6 +1617,7 @@ class FPGAArray(object):
         #####################
         # Set-up transmitters
         #####################
+        self.corner_turn_stream_ids = {}
         for i, ib in enumerate(self.ib):
             self.logger.info('%r: **** Initializing transmitters for IceBoard %r (SN%s) ****' % (self, ib, ib.serial))
             ib.set_corr_reset(0) # Put the corner_turn engine in reset
@@ -1626,13 +1629,20 @@ class FPGAArray(object):
 
             # Initialize the crossbars to select and send data in a specific format
             # ib.init_crossbars(dsmap, frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb1_bypass=cb1_bypass, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass, remap=remap, bp_bypass=bp_bypass)
-            ib.init_crossbars(
+            stream_ids = ib.init_crossbars(
                 mode,
                 dsmap=dsmap,
                 frames_per_packet=frames_per_packet,
                 send_flags=send_flags,
                 chan8_channel_map=chan8_channel_map,
                 bin_map=bin_map[ib.get_id()])
+
+            for lane, stream_id in enumerate(stream_ids):
+                self.corner_turn_stream_ids[ib.get_id(lane)] = stream_id
+
+        # Check if stream IDs are unique
+        if len(self.corner_turn_stream_ids) != len(set(self.corner_turn_stream_ids.values())):
+            raise self.logger.warn('%r: Stream IDs are not unique across the array')
 
         if ib.crate:
 
@@ -1682,6 +1692,11 @@ class FPGAArray(object):
                     else:
                         self.logger.debug('%r: In %r, %s has no corresponding transmitter' % (self, ib.crate.handler, rx))
 
+        # Get the exhaustive frequency map that is implemented by the current corner
+        freq_map = self.get_frequency_map(format='l:bb')
+        # Retain only one bin number  for each bin
+        self.corner_turn_frequency_bins = {lane_id: sorted(set(data['data']))
+            for lane_id, data in fmap.iteritems()}
 
         # sync boards
         #soft_sync(c, sync_board)
@@ -2516,7 +2531,7 @@ class FPGAArray(object):
 
 
 
-    def get_frequency_map(self, format='cslb'):
+    def get_frequency_map(self, format='cscb'):
         """ Returns a map describing the content (crate, slot, channel, bin) of every packet at the output of the corner turn engine.
 
         This map is obtained by passing the channelizer identity map through the shuffle map.
@@ -2539,13 +2554,13 @@ class FPGAArray(object):
         for ib in self.ib:
             for (crate, slot, lane) in ib.get_channel_ids():
 
-                if format == 'cslb':
+                if format == 'l:cscb': # Unique (crate, slot, local_channel)
                     ch_out[(crate, slot, lane)] = [(crate, slot, lane, bin) for bin in xrange(1024)]
-                elif format == 'c':
+                elif format == 'l:cc': # Non-unique global channel numbers (repeated for each bin)
                     ch_out[(crate, slot, lane)] = [crate*256 + slot*16 + lane for bin in xrange(1024)]
-                elif format == 'cb':
+                elif format == 'l:cb': # Unique (global channel, lane) tuple
                     ch_out[(crate, slot, lane)] = [(crate*256 + slot*16 + lane, bin) for bin in xrange(1024)]
-                elif format == 'b':
+                elif format == 'l:bb': # Non unique bin_number (repeated for each channel)
                     ch_out[(crate, slot, lane)] = [bin for bin in xrange(1024)]
         return ch_out
 
@@ -2597,20 +2612,20 @@ class FPGAArray(object):
         # Apply QSFP shuffling
         qsfp_shuffle_out = OrderedDict()
         for ib in self.ib:
-                (crate, slot) = ib.get_id()
-                bypass = ib.BP_SHUFFLE.BYPASS_QSFP_SHUFFLE
-                number_of_qsfp_lanes = ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES
-                for rx_lane in range(number_of_qsfp_lanes):
-                    crate_offset = rx_lane * 2 // number_of_qsfp_lanes if not bypass else 0
-                    qsfp_shuffle_out[(crate, slot, rx_lane)] = cb2_out[(crate ^ crate_offset, slot, rx_lane)]
+            (crate, slot) = ib.get_id()
+            bypass = ib.BP_SHUFFLE.BYPASS_QSFP_SHUFFLE
+            number_of_qsfp_lanes = ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES
+            for rx_lane in range(number_of_qsfp_lanes):
+                crate_offset = rx_lane * 2 // number_of_qsfp_lanes if not bypass else 0
+                qsfp_shuffle_out[(crate, slot, rx_lane)] = cb2_out[(crate ^ crate_offset, slot, rx_lane)]
 
         # Apply CROSSBAR3
         cb3_out = OrderedDict()
         for ib in self.ib:
-                (crate, slot) = ib.get_id()
-                cb_in = {lane: qsfp_shuffle_out[(crate, slot, lane)] for lane in xrange(ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES)} # extract channels for this inceboard only
-                for lane, data in ib.CROSSBAR3.map(cb_in).iteritems():
-                    cb3_out[(crate, slot, lane)] = data
+            (crate, slot) = ib.get_id()
+            cb_in = {lane: qsfp_shuffle_out[(crate, slot, lane)] for lane in xrange(ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES)} # extract channels for this inceboard only
+            for lane, data in ib.CROSSBAR3.map(cb_in).iteritems():
+                cb3_out[(crate, slot, lane)] = data
 
         return cb3_out
 
