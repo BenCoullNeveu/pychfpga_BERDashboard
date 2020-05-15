@@ -1424,12 +1424,12 @@ class FPGAArray(object):
         # Use default mapping
         bad_links = bad_links or []
         bin_priority = bin_priority or range(1024)
-        if mode == 'shuffle512':
+        if mode == 'shuffle512' or mode == 'shuffle256':
             bin_map = {}
 
             cb3_map = self.shuffle512_cb3_remap(mode=mode,
                                                 bad_links=bad_links,
-                                                bin_priority=bin_priority,
+                                                freq_bins=bin_priority,
                                                 output_cb3_bins=True)
             # cb3_map describes only odd and even crate numbers. We expand the list to cover all crates explicitely.
             for ib in self.ib:
@@ -2490,16 +2490,16 @@ class FPGAArray(object):
         Nfreq = 1024 # Number of frequency bins
         Nslot = 16 # boards per crates
         Nlink = 8  # GPU links per board
-        if mode='shuffle512':
+        if mode == 'shuffle512':
             Ncrate = 2
             Nbix = 32 # Bins per CB3 input
             Nbins = 4 # Bins per CB3 output
-            bix_to_bin = lambda (crate, slot, bix): (Nslot * Ncrate * bix) + (Nslot * crate) + slot
-        elif mode='shuffle256':
+            bix_to_bin = lambda crate, slot, bix: (Nslot * Ncrate * bix) + (Nslot * crate) + slot
+        elif mode == 'shuffle256':
             Ncrate = 1
             Nbix = 64
             Nbins=8
-            bix_to_bin = lambda (crate, slot, bix): (Nslot * bix) + slot
+            bix_to_bin = lambda crate, slot, bix: (Nslot * bix) + slot
         else:
             raise ValueError('Invalid shuffle mode %s' % mode)
 
@@ -2519,7 +2519,7 @@ class FPGAArray(object):
                 available_bix = np.arange(Nbix)
                 available_bins = bix_to_bin(crate, slot, available_bix) # absolute bin number available at the input of CB3 on this (crate, slot)
                 available_priority = np.argsort(freq_bins_priority[available_bins]) # indices of available bins/bix, in priority order (first is most important)
-                available_bix = list(available_bix[available_priority]) # bin indices, sorted by importance
+                available_bix = list(available_bix[available_priority]) # bin indices, sorted by importance. Convert to a list so we can easily delete items.
                 # Indices of allowed freq_bins, sorted by importance
                 # available_bins_indices = np.sort(freq_bins_priority[available_bins])
                 # available_bins = list(available_bins[available_priority]) # absolute bins, sorted by importance
@@ -2530,23 +2530,21 @@ class FPGAArray(object):
                 for link in range(Nlink):
                     link_id = (crate, slot, link)
                     if link_id in bad_links: # Bad link: assign less important freq. bins
-                        bix = available_bix[-Nbix:] # take the bottom (lower priority) bix
-                        del available_bix[-Nbix:] # remove from the list
+                        bix = available_bix[-Nbins:] # take the bottom (lower priority) bix
+                        del available_bix[-Nbins:] # remove from the list
                         # freq_remap[link_id] = list(
                         #     available_bix[i_bottom - Nbins:i_bottom] if output_cb3_bins else
                         #     freq_bins[available_bins_indices[i_bottom - Nbins:i_bottom]])
                         # i_bottom -= Nbins
                     else: # Good link: assign important freq. bins
-                        bix = available_bix[:Nbix] # take the top bix (higher priority)
-                        del available_bix[:Nbix] # remove from the list
+                        bix = available_bix[:Nbins] # take the top bix (higher priority)
+                        del available_bix[:Nbins] # remove from the list
                         # freq_remap[link_id] = list(available_bix[i_top:i_top + Nbins] if
                         #                         output_cb3_bins else
                         #                         freq_bins[available_bins_indices[i_top:i_top + Nbins]])
                         # i_top += Nbins
-                    if output_cb3_bins:
-                        freq_remap[link_id] = bix
-                    else:
-                        freq_remap[link_id] = bix_to_bin(crate, slot, bix)
+                    bix = np.sort(bix) # order selected bins in increasing order. Now a numpy array again.  The bins are always transmitted that way.
+                    freq_remap[link_id] = list(bix if output_cb3_bins else bix_to_bin(crate, slot, bix))
                 if len(available_bix):
                     raise RuntimeError('Not all bins were processed. This should not happen')
         return freq_remap
@@ -2593,8 +2591,9 @@ class FPGAArray(object):
         qsfp_out = OrderedDict()
         for ic in self.ic:
             for slot, ib in ic.slot.items():
+                bypass = ib.BP_SHUFFLE.BYPASS_QSFP_SHUFFLE
                 for rx_lane in range(ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES):
-                    crate_offset = rx_lane * 2 // ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES
+                    crate_offset = rx_lane * 2 // ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES if not bypass else 0
                     qsfp_out[(ic.crate_number, slot, rx_lane)] = cb2_out[(ic.crate_number ^ crate_offset, slot, rx_lane)]
 
         # Apply CROSSBAR3
