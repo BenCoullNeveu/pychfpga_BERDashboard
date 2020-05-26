@@ -2851,6 +2851,11 @@ class chFPGA_controller(IceBoardExtHandler):
                 even bins sent to the even crate number. `cb2_bin_indices` is
                 not used in other modes.
 
+                The first list is always for the even crate and the second
+                list is for the odd crate. In `shuffle512`, The list is reordered automatically
+                to account for crate connectivity (i.e the lists for an odd
+                crate are swapped).
+
             -   cb3_bin_indices (list of list): List of bin indices that will be
                 selected for each bin selector of the third (and final)
                 crossbar.
@@ -3370,8 +3375,13 @@ class chFPGA_controller(IceBoardExtHandler):
                 cb2_bins = cb1_output_bins / number_of_cb2_bin_sel # 64/2 = 32
                 cb2_bin_spacing = number_of_cb2_bin_sel # 2
                 cb2_bin_select_map = [
-                    np.arange(cb2_bins) * cb2_bin_spacing + (i ^ (crate_number & 1))
+                    np.arange(cb2_bins) * cb2_bin_spacing + i
                     for i in range(number_of_cb2_bin_sel)]
+            # swap bin selection list on odd crates so the bins on the first
+            # list are sent to the other (even) crate
+            if crate_number & 1:
+                cb2_bin_select_map = cb2_bin_select_map[::-1]
+
             cb2_combine_data_flags = True # hardwired to True in crossbar 2
 
             # Output packet geometry

@@ -1216,6 +1216,44 @@ class FPGAArray(object):
             string +='   Crate SN%s, slot %2i: Iceboard SN%s at %s (ping =%s), Mezz1=%s, Mezz2=%s\n' % (i.crate.serial if i.crate else None, i.slot, i.serial, i.hostname, i.ping(), mezz[0], mezz[1])
         return string
 
+    def get_hwm(self):
+        """ Returns the current hardware map as a dict.
+
+        Returns:
+
+            hardware map dict in the format:
+
+                'crate': {'number':n, 'model':m, 'serial':s,
+                    'iceboards': [
+                    'slot':s, 'model':m, 'serial':s, 'mezzanines':[
+                        {'slot':s, 'model':m, 'serial':s}, ...]}, ...]
+        """
+        hwm = []
+        for ic in self.ic:
+            hwm.append(dict(
+                type='crate',
+                model=ic.part_number,
+                serial=str(ic.serial),
+                crate_number=ic.crate_number,
+                iceboards=[dict(
+                    slot=ib.slot,
+                    model=ib.part_number,
+                    serial=str(ib.serial)) for ib in ic.slot]
+                    )
+                )
+        for ib in self.ib:
+            hwm.append(dict(
+                type='iceboard',
+                model=ib.part_number,
+                serial=str(ib.serial),
+                mezzanines=[dict(
+                    slot=i,
+                    model=m.__ipmi_part_number__ if m else None,
+                    serial=str(m.serial) if m else None)
+                        for i, m in enumerate((ib.mezzanine.get(1,None), ib.mezzanine.get(2,None)))]
+                    )
+                )
+        return hwm
 
     def set_crate_numbers(self, crate_number_map, strict=True):
         """ Set the crate number of each crate based on the provided crate
@@ -1401,10 +1439,14 @@ class FPGAArray(object):
         else:
             raise ValueError('Unknown operational mode')
 
-    def get_corner_turn_bin_map(self, mode, bad_links=None, bin_priority=None):
+    def get_corner_turn_bin_map(self, mode, bad_links=None, bin_priority=None, remap_level=1, verbose=0):
         """ Get the bin selection map for every board of the array in order to route the bins toward the  desired output links
 
         Parameters:
+
+            mode (str): opertional mode. 'shuffle256' and 'shuffle512'
+                implement frequency-remaping. Other modes return de default
+                map.
 
             bad_links: List of corner_turn outputs [(crate, slot, link) , ...]
                 that can't process data. low-priotity frequencies will be
@@ -1414,6 +1456,10 @@ class FPGAArray(object):
                 of priority, with the useful bins at the beginning of the
                 list.
 
+            remap_level (int): Sets the aggressivness of the remapping by
+                selecting how many crossbar levels are involved. 0:no
+                remapping, 1: 3rd crossbar only, 2: crossbars 2 and 3, 3: all
+                crossbars.
 
         Returns:
             A dictionary that deescribes the corner-turn bin selection map for every board, in the format
@@ -1423,24 +1469,67 @@ class FPGAArray(object):
                 ``cb2_bins``: list of 2 lists describing the bins indices that are selected by each bin selector of the 2nd crossbar
                 ``cb3_bins``: list of 8 lists describing the bins indices that are selected by each bin selector of the 3rd crossbar
         """
-        # Use default mapping
+        # Process bad link
         bad_links = bad_links or []
-        bin_priority = bin_priority or range(1024)
-        if mode == 'shuffle512' or mode == 'shuffle256':
-            bin_map = {}
+        bad_links = [tuple(id) for id in bad_links]
+        if len(set(bad_links)) != len(bad_links):
+            raise RuntimeError('bad links tuples are not unique!')
+        bad_bad_links = [(crate, slot, lane) for (crate, slot, lane) in bad_links
+            if not (0 <= crate <= 1) or not (0 <= slot <= 15) or not (0 <= lane <= 7)]
+        if bad_bad_links:
+            raise RuntimeError('The following bad links tuples are invalid: %s' % bad_bad_links)
 
-            cb3_map = self.shuffle512_cb3_remap(mode=mode,
-                                                bad_links=bad_links,
-                                                freq_bins=bin_priority,
-                                                output_cb3_bins=True)
-            # cb3_map describes only odd and even crate numbers. We expand the list to cover all crates explicitely.
-            for ib in self.ib:
-                cb3_bins = [cb3_map.get((crate & 1, slot, lane), None)
-                    for crate, slot, lane in ib.GPU.get_lane_ids()]
-                bin_map[ib.get_id()] = {
-                    'cb1':None,
-                    'cb2':None,
-                    'cb3':cb3_bins}
+        # Process bin priority
+        bin_priority = bin_priority or range(1024)
+        if set(bin_priority) != set(range(1024)):
+            raise RuntimeError('Bin priority must contain every bin from 0 to 1023 exactly once')
+        bin_priority = np.argsort(bin_priority) # priority for each bin from 0 to 1023
+
+        if mode == 'shuffle512':
+            # start with the default bin map
+            bin_map = {(crate, slot):dict(
+                    cb1=np.arange(1024).reshape((16, 64), order='F'),
+                    cb2=np.arange(64).reshape((2, 32), order='F'),
+                    cb3=np.arange(32).reshape((8, 4), order='F'))
+                    for crate in range(2) for slot in range(16)}
+            if remap_level >= 3:
+                self.compute_cb1_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
+            if remap_level >= 2:
+                self.compute_cb2_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
+            if remap_level >= 1:
+                self.compute_cb3_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
+            # Apply crates 0 & 1 map to all pair of crates
+            bin_map = {(crate, slot, lane):bin_map[(crate & 1, slot, lane)]
+                        for ib in self.ib
+                        for (crate, slot, lane) in ib.GPU.get_lane_ids()}
+
+            # cb3_map = self.shuffle512_cb3_remap(mode=mode,
+            #                                     bad_links=bad_links,
+            #                                     freq_bins=bin_priority,
+            #                                     output_cb3_bins=True)
+            # # cb3_map describes only odd and even crate numbers. We expand the list to cover all crates explicitely.
+            # for ib in self.ib:
+            #     cb3_bins = [cb3_map.get((crate & 1, slot, lane), None)
+            #         for crate, slot, lane in ib.GPU.get_lane_ids()]
+            #     bin_map[ib.get_id()] = {
+            #         'cb1':None,
+            #         'cb2':None,
+            #         'cb3':cb3_bins}
+        elif mode == 'shuffle256':
+            # start with the default bin map
+            bin_map = {(crate, slot):dict(
+                    cb1=np.arange(1024).reshape((16, 64), order='F'),
+                    cb2=np.arange(64).repeat(2).reshape(2, 64, order='F'),
+                    cb3=np.arange(64).reshape((8, 8), order='F'))
+                    for crate in range(2) for slot in range(16)}
+            if remap_level >= 3:
+                self.compute_cb1_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
+            if remap_level >= 1:
+                self.compute_cb3_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
+            # Apply crates 0 & 1 map to all crates
+            bin_map = {(crate, slot, lane):bin_map[(crate & 1, slot, lane)]
+                        for ib in self.ib
+                        for (crate, slot, lane) in ib.GPU.get_lane_ids()}
         else: # other modes. Use defaults.
             bin_map = {ib.get_id(): {'cb1':None,'cb2':None, 'cb3':None}
                        for ib in self.ib}
@@ -1448,7 +1537,137 @@ class FPGAArray(object):
 
 
     @staticmethod
-    def shuffle512_cb3_remap(mode, bad_links, freq_bins, output_cb3_bins=False):
+    def compute_cb1_bin_map(bin_map, bad_links, bin_priority, verbose=1):
+        """ Compute a first crossbar bin map that assings bins to
+        each slot in order to maximize the allocation of low-priority (rfi) bins to bad gpu links.
+
+        Parameters:
+
+          bin_map (dict): Dict that contains the bin maps for all crossbars. In the format
+
+            {(crate, slot):'cb1':cb1_map, 'cb2':cb2_map, 'cb3':cb3_map},...}
+
+            `bin_map` is modified in place with the new optimized map.
+
+          bad_links (list of tuple): List of (crate,slot,lane) GPU links that are inoperative
+
+          bin_priority (ndarray): 1024-element vector indicating the priority of each bin.
+              Element 0 is the priority for bin 0. A lower value has a higher priority.
+
+        Returns:
+
+            Nothing. bin_map['cb1'] is modified in place with the new optimized map.
+
+        """
+        # Compute the number of unprocessable bins for each slot (both crates combined)
+        Nbad = np.zeros(16, dtype=int)
+        for (crate, slot, lane) in bad_links:
+            Nbad[slot] += 4
+
+        bins = np.arange(1024).reshape((8,128), order='F') # 8 crossbar-compatible bin pattern of 128 bins
+        pri = np.ma.array(bin_priority[bins], mask=bin_priority[bins]*0) # priority level of bins in the pattern
+
+        # bin_map = np.empty((16,64), dtype=int) # final bin assignments
+        s = set()
+        for j, slot in enumerate(np.argsort(Nbad)[::-1]):
+            nbad = Nbad[slot]
+            if verbose:
+                print '**** Interation #%i, Slot %i (has %i unprocessable bins)' % (j, slot, nbad)
+
+            Nbins = pri.count(axis=-1)
+            if verbose:
+                print 'Number of remaining bins=',Nbins
+            ix = pri.argsort(axis=-1) # index of bins in order of priority, skipping masked bins. Only the first Nbins[i] are valid.
+
+            worst_pri = [(pri[s, x[np.clip(Nbins[s]-nbad, a_min=0, a_max=Nbins[s]-1)]] if Nbins[s] else 0)
+                         for s,x in enumerate(ix)]
+            if verbose:
+                print 'Worst bin priority for all patterns are', worst_pri
+            wo = np.argmax(worst_pri) # 2 lost
+          #         wo = np.argmax(Nbins) # 14 lost
+          #         wo = slot//2 # 28 lost
+
+            if verbose:
+                print 'slot %i GPUs cannot process %i bins, using offset %i' % (slot, Nbad[slot], wo)
+            if not Nbins[wo]:
+                print '***** There are not enough frequencies left in the selected offset'
+                raise RuntimeError('***** There are no frequencies left in the selected pattern')
+            bix = ix[wo][range(64 - nbad) + range(Nbins[wo] - nbad, Nbins[wo])]
+            b = sorted(bins[wo, bix])
+            if any(pri[wo, bix].mask): # sanity check, cannot happen in theory
+                raise RuntimeError('Assigned a bin that was already assigned in another slot!')
+            pri[wo, bix] = np.ma.masked
+            # Apply bin selection for that slot to all crates in the array
+            # print 'Assignling %i bins:' % len(b), b
+            bin_map[(0, 0)]['cb1'][slot] = b
+            # Check the integrity of the result
+        for bmap in bin_map.values():
+            bmap['cb1'][:] = bin_map[(0,0)]['cb1']
+        if set(bin_map[(0, 0)]['cb1'].flatten()) != set(range(1024)):
+          raise RuntimeError('Invalid bin map')
+
+    @staticmethod
+    def compute_cb2_bin_map(bin_map, bad_links, bin_priority, verbose=1):
+        """
+        """
+        Nslots , _ = bin_map[(0,0)]['cb1'].shape
+        Ncrates , Nbins_out = bin_map[(0,0)]['cb2'].shape
+        # Compute number of unprocessable bins
+        Nbad = np.zeros((Ncrates, Nslots), dtype=int)
+        for (crate, slot, link) in bad_links:
+            Nbad[crate, slot] += 4
+        for slot in range(Nslots):
+            # CB1 map is the for all slots in both crates.  # cb1 has absolute
+            # bin numbers. Assumes that cb2 remap is such as cb1[0] goes to
+            # slot 0, etc.
+            bins = bin_map[(0, 0)]['cb1'][slot]
+            bix = list(bin_priority[bins].argsort()) # bin index order by bin_priority
+            for crate, bs_map in enumerate(bin_map[(0, slot)]['cb2']):
+                nbad = Nbad[(crate, slot)]
+                ngood = len(bs_map) - nbad
+                bs_map[:ngood] = bix[:ngood]
+                del bix[:ngood]
+                # print bs_map
+                # print 'good=', ngood, 'bad=', nbad
+                if nbad:
+                    bs_map[-nbad:] = bix[-nbad:]
+                    del bix[-nbad:]
+            bin_map[(1, slot)]['cb2'][:] = bin_map[(0,slot)]['cb2']
+            if set(bin_map[(0, slot)]['cb2'].flatten()) != set(range(Ncrates * Nbins_out)):
+                print 'Selected',bin_map[(0, slot)]['cb2']
+                raise RuntimeError('Invalid crossbar 2 bin selection')
+
+    @staticmethod
+    def compute_cb3_bin_map(bin_map, bad_links, bin_priority, verbose=1):
+        """
+        """
+        # Ncrates, _ = bin_map['cb2'].shape # (8,4) or (8,8)
+        Nlanes, Nbins = bin_map[(0, 0)]['cb3'].shape # (8,4) or (8,8)
+
+        # Distribute bins in each CB3 output lanes
+        for (crate, slot), bmap in bin_map.items():
+            cb2_bix = bmap['cb2'][crate] # Bin indices for crate
+            bins = bmap['cb1'][slot][cb2_bix]  # absolute bins for slot
+            bix = list(bin_priority[bins].argsort()) # bin index order by bin_priority
+            for lane in range(Nlanes):
+                if (crate, slot, lane) in bad_links:
+                    # bs_map[:] = bix[-Nbins:]
+                    bmap['cb3'][lane] = bix[-Nbins:]
+                    del bix[-Nbins:]
+                else:
+                    # bs_map[:] = bix[:Nbins]
+                    bmap['cb3'][lane] = bix[:Nbins]
+                    del bix[:Nbins]
+                # print '(%i,%i,%i)' % (crate, slot, lane), bmap['cb3'][lane], bin_map[(crate,slot)]['cb3'], bix
+                # print '   -> (%i,%i)' % (0, 0), bin_map[(0,0)]['cb3']
+            if set(bmap['cb3'].flatten()) != set(range(Nlanes * Nbins)):
+                print 'Selected',bmap['cb3']
+                raise RuntimeError('Invalid crossbar 3 bin selection')
+        # for (crate, slot), bmap in bin_map.items():
+        #     print '--_>(%i,%i)' % (crate, slot), bmap['cb3']
+
+    @staticmethod
+    def shuffle512_cb3_remap(mode, bin_map, bad_links, freq_bins, output_cb3_bins=False):
         """
         Generates a frequency map by assigning flagged/less important frequency bins to
         links connected to bad/down GPU nodes. The remapping is
