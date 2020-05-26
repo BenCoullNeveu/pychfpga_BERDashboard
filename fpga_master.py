@@ -1291,14 +1291,14 @@ class ChimeMaster(object):
 
     def get_frequency_map(self, format):
         if format == 's:b': # stream_id:bins
-            fmap = {self.fpgas.corner_turn_stream_ids[lane_id]:bins
-                for lane_id, bins in self.fpgas.corner_turn_frequency_bins.items()}
+            fmap = dict(fmap={self.fpgas.corner_turn_stream_ids[lane_id]:bins
+                for lane_id, bins in self.fpgas.corner_turn_frequency_bins.items()})
         elif format == 'l:b': #lane_tuple: bins
-            fmap = self.fpgas.corner_turn_frequency_bins
+            fmap = self.sanitize_for_json(dict(fmap=self.fpgas.corner_turn_frequency_bins))
         elif format == 'l:s': #lane_tuple: stream_id
-            fmap = self.fpgas.corner_turn_stream_ids
+            fmap = self.sanitize_for_json(dict(fmap=self.fpgas.corner_turn_stream_ids))
         elif format in ('l:cscb', 'l:cc', 'l:cb','l:bb'):
-            fmap = self.fpgas. get_frequency_map(format=format)
+            fmap = self.sanitize_for_json(dict(fmap=self.fpgas. get_frequency_map(format=format)))
 
         return fmap
 
@@ -1864,7 +1864,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('get-frequency-map')
     def get_frequency_map(self, handler,format='s:b'):
-        coroutine_return(sanitize_for_json(self.chime_master.get_frequency_map(format=format)))
+        coroutine_return(self.chime_master.get_frequency_map(format=format))
 
     @coroutine
     @endpoint('get-channelizer-output')
