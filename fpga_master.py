@@ -174,6 +174,12 @@ class ChimeMaster(object):
         self.config = None
         self.start_time = None
 
+        # Configuration manager
+        self.comet_manager = None
+        self.comet_dataset_hw = None
+        self.comet_dataset_fmap = None
+
+
         # Remote service provider objects
         self.raw_acq = {} # Raw FPGA data acquisitoin REST clients
         # self.kotekan = None # Kotekan REST clients
@@ -885,16 +891,39 @@ class ChimeMaster(object):
                       "not defined in config.".format(exc[0])
                 self.log.error('%r: %s' % (self, msg))
                 raise RuntimeError(msg)
-            comet_manager = comet.Manager(comet_host, comet_port)
+            self.comet_manager = comet.Manager(comet_host, comet_port)
             try:
-                comet_manager.register_start(self.startup_time, self.GIT_VERSION)
-                comet_manager.register_config(config)
+                # register start and config
+                self.comet_dataset_start = self.comet_manager.register_start(
+                    self.startup_time, self.GIT_VERSION, config, register_datasets=True)
+                # comet_manager.register_config(config)
             except comet.CometError as exc:
                 msg = 'Comet failed registering fpga_master start and initial config: {}'.format(exc)
                 self.log.error('%r: %s' % (self, msg))
                 raise RuntimeError(msg)
         else:
             self.log.warning("Config registration DISABLED. This is only OK for testing.")
+
+
+    def register_hardware(self):
+        """ Registers the hardware map and frequency map with the configuration manager (Comet)
+        """
+
+        if not self.comet_manager:
+            return
+
+        # register hardware setup
+        state_type_hw = "f_engine_hardware"
+        hardware_map = self.fpgas.get_hwm()
+        state_hw = self.comet_manager.register_state(hardware_map, state_type_hw)
+        self.comet_dataset_hw = self.comet_manager.register_dataset(
+            state_hw, base_ds=self.comet_dataset_start, state_type=state_type_hw)
+
+        # register frequency map
+        state_type_fmap = "f_engine_frequency_map"
+        state_fmap = self.comet_manager.register_state(<frequency_map>, state_type_fmap)
+        self.comet_dataset_fmap = comet.manager.register_dataset(
+            state_fmap, base_ds=self.comet_dataset_hw, state_type=state_type_fmap)
 
     @coroutine
     def start(self, **config):
@@ -1037,6 +1066,8 @@ class ChimeMaster(object):
         # created and initialized.
         self.fpgas = ca = FPGAArray(ioloop=IOLoop.current(), **fpga_array_params)  # Starts an independent ioloop while initializing. Web clients/server stop while
         yield ca.run.async()
+
+        self.register_hardware()
 
         if not ca.ib: # if there are no boards in the array
             if conf.debug.get('allow_empty_fpga_array', False):
@@ -1294,11 +1325,11 @@ class ChimeMaster(object):
             fmap = dict(fmap={self.fpgas.corner_turn_stream_ids[lane_id]:bins
                 for lane_id, bins in self.fpgas.corner_turn_frequency_bins.items()})
         elif format == 'l:b': #lane_tuple: bins
-            fmap = self.sanitize_for_json(dict(fmap=self.fpgas.corner_turn_frequency_bins))
+            fmap = sanitize_for_json(dict(fmap=self.fpgas.corner_turn_frequency_bins))
         elif format == 'l:s': #lane_tuple: stream_id
-            fmap = self.sanitize_for_json(dict(fmap=self.fpgas.corner_turn_stream_ids))
+            fmap = sanitize_for_json(dict(fmap=self.fpgas.corner_turn_stream_ids))
         elif format in ('l:cscb', 'l:cc', 'l:cb','l:bb'):
-            fmap = self.sanitize_for_json(dict(fmap=self.fpgas. get_frequency_map(format=format)))
+            fmap = sanitize_for_json(dict(fmap=self.fpgas. get_frequency_map(format=format)))
 
         return fmap
 
@@ -2091,6 +2122,15 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             coroutine_return(hwm)
         else:
             self.log.info('FPGA array not yet initialized. No info to show.')
+
+    @coroutine
+    @endpoint('dataset-id')
+    def get_hw_map(self, handler):
+        if self.chime_master and self.chime_master.comet_dataset_fmap:
+            coroutine_return({'id':self.chime_master.comet_dataset_fmap.id()})
+        else:
+            self.log.info('FPGA array not yet initialized. No info to show.')
+
 
     @coroutine
     @endpoint('load-gains')
