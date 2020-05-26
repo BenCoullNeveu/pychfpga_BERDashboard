@@ -3113,7 +3113,7 @@ class chFPGA_controller(IceBoardExtHandler):
             # Select the bins to be assigned to each bin selector output.
             # Here, we assume that the  list is in the order of the
             # destination slot.
-            if cb1_bin_indices:
+            if cb1_bin_indices is not None:
                 cb1_bin_select_map = cb1_bin_indices
                 cb1_bins = len(cb1_bin_indices[0])
             else:
@@ -3195,7 +3195,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_input_lanes_per_output_lane = cb2_lanes[0][1] - cb2_lanes[0][0] + 1 # 2 input lanes per output
 
             # Select the bins to be assigned to each bin selector output.
-            if cb2_bin_indices:
+            if cb2_bin_indices is not None:
                 cb2_bins = len(cb2_bin_indices[0])
                 cb2_bin_select_map = cb2_bin_indices
             else:
@@ -3246,7 +3246,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb3_combine_data_flags = False # hardwired to False in crossbar 3
 
             # Select the bins to be assigned to each bin selector output.
-            if cb3_bin_indices:
+            if cb3_bin_indices is not None:
                 cb3_bins = len(cb3_bin_indices[0])
                 cb3_bin_select_map = cb3_bin_indices
             else:
@@ -3282,7 +3282,7 @@ class chFPGA_controller(IceBoardExtHandler):
             # Select the bins to be assigned to each bin selector output.
             # Here, we assume that the  list is in the order of the
             # destination slot.
-            if cb1_bin_indices:
+            if cb1_bin_indices is not None:
                 cb1_bin_select_map = cb1_bin_indices
                 cb1_bins = len(cb1_bin_indices[0])
             else:
@@ -3367,7 +3367,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_lanes = [(0, 3), (0, 3)] # Every output of both bin sels get data from all the 4 sublanes they get.
             cb2_input_lanes_per_output_lane = cb2_lanes[0][1] - cb2_lanes[0][0] + 1 # 4 input lanes per output
             # Select the bins to be assigned to each bin selector output.
-            if cb2_bin_indices:
+            if cb2_bin_indices is not None:
                 cb2_bin_select_map = cb2_bin_indices
                 cb2_bins = len(cb2_bin_indices[0])
             else:
@@ -3433,7 +3433,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb3_input_lanes_per_output_lane = cb3_lanes[0][1] - cb3_lanes[0][0] + 1 # 8 input lanes per bin sel output
 
             # Select the bins to be assigned to each bin selector output.
-            if cb3_bin_indices:
+            if cb3_bin_indices is not None:
                 cb3_bins = len(cb3_bin_indices[0])
                 cb3_bin_select_map = cb3_bin_indices
             else:

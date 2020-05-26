@@ -562,16 +562,16 @@ class FPGAArray(object):
         parent_logger_name = __name__.rsplit('.', 1)[0] if '.' in __name__ else ''
         parent_logger = logging.getLogger(parent_logger_name)
         # Setup logging. If a handler already exists, its log level is simply updated
-        #for (handler_type, log_level) in ((logging.StreamHandler, stderr_log_level), (logging.handlers.SysLogHandler, syslog_log_level)):
-        #    if log_level:
-        #        log_handlers = [h for h in parent_logger.handlers if isinstance(h, handler_type)]
-        #        if log_handlers: # if a handler of that type already exist, just use it
-        #            log_handler = log_handlers[0]
-        #        else:  # otherwise create a new one
-        #            log_handler = handler_type()
-        #            parent_logger.addHandler(log_handler)
-        #        log_handler.setLevel(log_level.upper() if isinstance(log_level, str) else log_level)
-        #        parent_logger.setLevel(min(parent_logger.level, log_handler.level))  # make sure all messages from this handler are passed to the parent handler
+        for (handler_type, log_level) in ((logging.StreamHandler, stderr_log_level), (logging.handlers.SysLogHandler, syslog_log_level)):
+            if log_level:
+                log_handlers = [h for h in parent_logger.handlers if isinstance(h, handler_type)]
+                if log_handlers: # if a handler of that type already exist, just use it
+                    log_handler = log_handlers[0]
+                else:  # otherwise create a new one
+                    log_handler = handler_type()
+                    parent_logger.addHandler(log_handler)
+                log_handler.setLevel(log_level.upper() if isinstance(log_level, str) else log_level)
+                parent_logger.setLevel(min(parent_logger.level, log_handler.level))  # make sure all messages from this handler are passed to the parent handler
 
 
         # If no bitfile is provided, automaticaly select the bitfile in the
@@ -802,7 +802,7 @@ class FPGAArray(object):
             if ping and added_ib:
                 self.logger.info('%r: Pinging Iceboards with explicit hostnames in the hardware description string' % self)
                 # ping all boards concurrently
-                ping_results = yield {ib: ib.ping.async() for ib in added_ib}
+                ping_results = yield {ib: ib.ping.async(timeout=ping_timeout) for ib in added_ib}
                 # If some boards failed, raise an exception
                 if not all(ping_results.values()):
                     raise RuntimeError("%r: The following Iceboards could not be pigned: '%s'" % (
@@ -1238,7 +1238,7 @@ class FPGAArray(object):
                 iceboards=[dict(
                     slot=ib.slot,
                     model=ib.part_number,
-                    serial=str(ib.serial)) for ib in ic.slot]
+                    serial=str(ib.serial)) for ib in ic.slot.values()]
                     )
                 )
         for ib in self.ib:
@@ -1439,7 +1439,7 @@ class FPGAArray(object):
         else:
             raise ValueError('Unknown operational mode')
 
-    def get_corner_turn_bin_map(self, mode, bad_links=None, bin_priority=None, remap_level=1, verbose=0):
+    def get_corner_turn_bin_map(self, mode, bad_links=None, bin_priority=None, remap_level=0, verbose=0):
         """ Get the bin selection map for every board of the array in order to route the bins toward the  desired output links
 
         Parameters:
@@ -1499,9 +1499,8 @@ class FPGAArray(object):
             if remap_level >= 1:
                 self.compute_cb3_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
             # Apply crates 0 & 1 map to all pair of crates
-            bin_map = {(crate, slot, lane):bin_map[(crate & 1, slot, lane)]
-                        for ib in self.ib
-                        for (crate, slot, lane) in ib.GPU.get_lane_ids()}
+            bin_map = {(crate, slot):bin_map[(crate & 1, slot)]
+                        for (crate, slot) in self.ib.get_id()}
 
             # cb3_map = self.shuffle512_cb3_remap(mode=mode,
             #                                     bad_links=bad_links,
@@ -1527,9 +1526,8 @@ class FPGAArray(object):
             if remap_level >= 1:
                 self.compute_cb3_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
             # Apply crates 0 & 1 map to all crates
-            bin_map = {(crate, slot, lane):bin_map[(crate & 1, slot, lane)]
-                        for ib in self.ib
-                        for (crate, slot, lane) in ib.GPU.get_lane_ids()}
+            bin_map = {(crate, slot):bin_map[(crate & 1, slot)]
+                        for (crate, slot) in self.ib.get_id()}
         else: # other modes. Use defaults.
             bin_map = {ib.get_id(): {'cb1':None,'cb2':None, 'cb3':None}
                        for ib in self.ib}
