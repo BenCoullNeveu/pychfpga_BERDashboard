@@ -914,15 +914,16 @@ class ChimeMaster(object):
 
         # register hardware setup
         state_type_hw = "f_engine_hardware"
-        hardware_map = self.fpgas.get_hwm()
+        hardware_map = {'hwm':self.fpgas.get_hwm()}
         state_hw = self.comet_manager.register_state(hardware_map, state_type_hw)
         self.comet_dataset_hw = self.comet_manager.register_dataset(
             state_hw, base_ds=self.comet_dataset_start, state_type=state_type_hw)
 
         # register frequency map
         state_type_fmap = "f_engine_frequency_map"
-        state_fmap = self.comet_manager.register_state(<frequency_map>, state_type_fmap)
-        self.comet_dataset_fmap = comet.manager.register_dataset(
+        frequency_map = self.get_frequency_map()
+        state_fmap = self.comet_manager.register_state(frequency_map, state_type_fmap)
+        self.comet_dataset_fmap = self.comet_manager.register_dataset(
             state_fmap, base_ds=self.comet_dataset_hw, state_type=state_type_fmap)
 
     @coroutine
@@ -1320,7 +1321,7 @@ class ChimeMaster(object):
         coroutine_return({})
 
 
-    def get_frequency_map(self, format):
+    def get_frequency_map(self, format='s:b'):
         if format == 's:b': # stream_id:bins
             fmap = dict(fmap={self.fpgas.corner_turn_stream_ids[lane_id]:bins
                 for lane_id, bins in self.fpgas.corner_turn_frequency_bins.items()})
@@ -2125,9 +2126,9 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('dataset-id')
-    def get_hw_map(self, handler):
+    def dataset_id(self, handler):
         if self.chime_master and self.chime_master.comet_dataset_fmap:
-            coroutine_return({'id':self.chime_master.comet_dataset_fmap.id()})
+            coroutine_return({'id':self.chime_master.comet_dataset_fmap.id})
         else:
             self.log.info('FPGA array not yet initialized. No info to show.')
 
