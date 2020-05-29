@@ -177,12 +177,18 @@ class FUNCGEN_base(Module_base):
             return fn_names[0]
 
     def set_buffer(self, data, function_number=0, info='Arbitrary data'):
+
         data = np.array(data, np.uint8)
-        self.buffer_cache = data
 
         for page in range(4):
+            pslc = slice(page * 512, (page + 1) * 512)
             self.RAM_PAGE = page
-            self.write_ram(0, data[page * 512: (page + 1) * 512])
+            self.write_ram(0, data[pslc])
+
+            if self.buffer_cache is None:
+                self.buffer_cache = np.zeros(self.BUFFER_SIZE, np.uint8)
+            self.buffer_cache[pslc] = data[pslc]
+
         self.RAM_PAGE = 4
         self.write_ram(0, function_number)
         self.write_ram(1, info + chr(0))
