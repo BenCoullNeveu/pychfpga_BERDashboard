@@ -164,6 +164,7 @@ class FPGAArray(object):
                  integration_period=None,
                  corner_turn_bad_links=None,
                  corner_turn_bin_priority=None,
+                 corner_turn_remap_level=0,
 
                  stderr_log_level=None,
                  syslog_log_level=None,
@@ -349,6 +350,11 @@ class FPGAArray(object):
                 depending on the constraints of the corner turn engine
                 flexibility.
 
+            corner_turn_remap_level (int): Sets the aggressivness of the remapping by
+                selecting how many crossbar levels are involved. 0:no
+                remapping, 1: 3rd crossbar only, 2: crossbars 2 and 3, 3: all
+                crossbars.
+
             ----------Category: **Firmware corelator parameters (if implemented in the FPGA)**----------
 
             integration_period=None,
@@ -441,6 +447,7 @@ class FPGAArray(object):
              integration_period=integration_period,
              corner_turn_bad_links=corner_turn_bad_links,
              corner_turn_bin_priority=corner_turn_bin_priority,
+             corner_turn_remap_level=corner_turn_remap_level,
              stderr_log_level=stderr_log_level,
              syslog_log_level=syslog_log_level,
              udp_retries=udp_retries,
@@ -514,6 +521,7 @@ class FPGAArray(object):
              integration_period=None,
              corner_turn_bad_links=None,
              corner_turn_bin_priority=None,
+             corner_turn_remap_level=0,
 
              stderr_log_level=None,
              syslog_log_level=None,
@@ -1081,7 +1089,8 @@ class FPGAArray(object):
                     tx_power=tx_power,
                     integration_period=integration_period,
                     corner_turn_bad_links=corner_turn_bad_links,
-                    corner_turn_bin_priority=corner_turn_bin_priority)
+                    corner_turn_bin_priority=corner_turn_bin_priority,
+                    corner_turn_remap_level=corner_turn_remap_level)
 
             ########################
             # Initializing backplane hardware communication firmware
@@ -1313,6 +1322,7 @@ class FPGAArray(object):
                              integration_period=16384,
                              corner_turn_bad_links=None,
                              corner_turn_bin_priority=None,
+                             corner_turn_remap_level=0,
                              ):
         """ Set the operational mode of the array.
 
@@ -1369,6 +1379,11 @@ class FPGAArray(object):
                 depending on the constraints of the corner turn engine
                 flexibility.
 
+            corner_turn_remap_level (int): Sets the aggressivness of the remapping by
+                selecting how many crossbar levels are involved. 0:no
+                remapping, 1: 3rd crossbar only, 2: crossbars 2 and 3, 3: all
+                crossbars.
+
 
 
         Notes:
@@ -1417,7 +1432,8 @@ class FPGAArray(object):
                 send_flags=send_flags,
                 tx_power=tx_power,
                 bad_links=corner_turn_bad_links,
-                bin_priority=corner_turn_bin_priority)
+                bin_priority=corner_turn_bin_priority,
+                remap_level=corner_turn_remap_level)
             self.ib.BP_SHUFFLE.reset_stats()
             self.ib.CROSSBAR2.reset_stats()
             self.ib.CROSSBAR3.reset_stats()
@@ -1428,7 +1444,8 @@ class FPGAArray(object):
             bin_map = self.get_corner_turn_bin_map(
                 mode=mode,
                 bad_links=corner_turn_bad_links,
-                bin_priority=corner_turn_bin_priority)
+                bin_priority=corner_turn_bin_priority,
+                remap_level=corner_turn_remap_level)
             self.corner_turn_stream_ids = None
             self.corner_turn_frequency_bins = None
             for ib in self.ib:
@@ -1497,7 +1514,8 @@ class FPGAArray(object):
             if remap_level >= 2:
                 self.compute_cb2_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
             if remap_level >= 1:
-                self.compute_cb3_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
+                #self.compute_cb3_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
+                self.shuffle512_cb3_lane_remap(bin_map, bad_links, bin_priority)
             # Apply crates 0 & 1 map to all pair of crates
             bin_map = {(crate, slot):bin_map[(crate & 1, slot)]
                         for (crate, slot) in self.ib.get_id()}
@@ -1664,6 +1682,65 @@ class FPGAArray(object):
         # for (crate, slot), bmap in bin_map.items():
         #     print '--_>(%i,%i)' % (crate, slot), bmap['cb3']
 
+
+    @staticmethod
+    def shuffle512_cb3_lane_remap(bin_map, bad_links, bin_priority):
+        """
+        Generates a frequency map by assigning flagged/less important frequency bins to
+        links connected to bad/down GPU nodes. The remapping is
+        restricted to changes at the third crossbar for 'shuffle512' operation.
+        Also, this remapping is limited to swap frequency lists between links
+        (it does not alter the content of the frequency lists).
+
+        Parameters:
+        -----------
+        bin_map: dict
+            Dict that contains the bin maps for all crossbars. In the format
+            {(crate, slot):'cb1':cb1_map, 'cb2':cb2_map, 'cb3':cb3_map},...}
+            `bin_map` is modified in place with the new optimized map.
+        bad_links: list of (crate parity, slot, link) tuples
+            List of links connected to bad/down GPU nodes. Least important frequencies are
+            assigned to these links. Crate parity is either 0 (even) or 1 (odd). Slot
+            is an integer between 0 and 15, and link is an integer between 0 and 7
+        bin_priority: list or np.array
+            1024-long array with the frequency priority of each frequency bin.
+            bin_priority[i] is the priority of the ith frequency bin.
+            A lower value has a higher priority.
+        """
+
+        # Number of freq. bins, crates (per crate pair), slots (per crate), links (per board)
+        # (SHOULD BE ABLE TO GET THIS FROM FPGA ARRAY OBJECT)
+        Nfreq, Ncrate, Nslot, Nlink = 1024, 2, 16, 8
+        Nfreq_cs = Nfreq//(Ncrate*Nslot) # Freq. bins per (crate, slot)
+        Nfreq_link = Nfreq_cs // Nlink   # Freq. bins per (crate, slot, link)
+
+        # Standard CB3 bin assginment (each row is a link)
+        cb3_bins = np.arange(Nfreq_cs).reshape((Nlink, Nfreq_link), order='F')
+        for (crate, slot), bmap in bin_map.items():
+            # Standard absolute frequency assignment (each row is a link)
+            freq_bins_cs = np.arange(crate*Nslot+slot, Nfreq, Nfreq_cs).reshape(
+                (Nlink, Nfreq_link), order='F')
+            # Importance of each CB3 bin
+            cb3_bin_order = bin_priority[freq_bins_cs.ravel()].reshape((Nlink, Nfreq_link))
+            # Check which cb3_bins are RFI.
+            # Assumes freq_bins with order > 779 are RFI (expected from static RFI mask)
+            cb3_bin_rfi_mask = cb3_bin_order > 779
+            # Number of rfi bins per link
+            rfi_per_link = np.sum(cb3_bin_rfi_mask, axis=1)
+            # Indices that sort links by increasing number of RFI bins (links at the
+            # of the list have more RFI bins)
+            link_priority = np.argsort(rfi_per_link)
+            i_top, i_bottom = 0, Nlink
+            for link in range(Nlink):
+                stream_id = (crate, slot, link)
+                if stream_id in bad_links: # Bad link: assign less important freq. bins
+                    bmap['cb3'][link] = cb3_bins[link_priority[i_bottom-1]]
+                    i_bottom -= 1
+                else: # Good link: assign important freq. bins
+                    bmap['cb3'][link] = cb3_bins[link_priority[i_top]]
+                    i_top += 1
+
+
     @staticmethod
     def shuffle512_cb3_remap(mode, bin_map, bad_links, freq_bins, output_cb3_bins=False):
         """
@@ -1785,6 +1862,7 @@ class FPGAArray(object):
                      bin_map=None,
                      bad_links=None,
                      bin_priority=None,
+                     remap_level=0,
                      sync=True
                      ):
         """ Setup the crossbars and data shuffling in every board of the array.
@@ -1829,7 +1907,8 @@ class FPGAArray(object):
         bin_map = self.get_corner_turn_bin_map(
             mode=mode,
             bad_links=bad_links,
-            bin_priority=bin_priority)
+            bin_priority=bin_priority,
+            remap_level=remap_level)
 
         #####################
         # Set-up transmitters
