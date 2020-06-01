@@ -2860,12 +2860,14 @@ class FPGAArray(object):
                     ch_out[(crate, slot, lane)] = [bin for bin in xrange(1024)]
         return ch_out
 
+    @async
     def get_chan_output(self):
         ch_out = OrderedDict()
         for ic in self.ic:
             for ib in ic.slot.values():
                 for ant in ib.ANT.values():
                     ch_out[ant.get_id()] = ant.FUNCGEN.get_buffer()
+                yield async_moment
         return ch_out
 
 
