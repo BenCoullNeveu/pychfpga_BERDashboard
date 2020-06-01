@@ -2868,7 +2868,7 @@ class FPGAArray(object):
                 for ant in ib.ANT.values():
                     ch_out[ant.get_id()] = ant.FUNCGEN.get_buffer()
                 yield async_moment
-        return ch_out
+        async_return(ch_out)
 
 
     def get_shuffle_output(self, chan_map):
