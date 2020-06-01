@@ -1357,7 +1357,7 @@ class ChimeMaster(object):
 
             yield moment
 
-        return out_buffer
+        coroutine_return(out_buffer)
 
     def reset_fpga_stats(self):
         self.fpgas.reset_fpga_stats()
