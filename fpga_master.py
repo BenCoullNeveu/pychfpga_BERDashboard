@@ -1334,10 +1334,11 @@ class ChimeMaster(object):
 
         return fmap
 
+    @coroutine
     def get_channelizer_output(self):
 
         # Query each FPGA for its current buffer
-        fpga_buffer = self.fpgas.get_chan_output()
+        fpga_buffer = yield self.fpgas.get_chan_output.async()
 
         # Convert the input identifier and buffer
         # to a format that can be easily interpreted
@@ -1354,7 +1355,9 @@ class ChimeMaster(object):
             # from uint8 to float ranging from -8 to 7.
             out_buffer[input_sn] = [float((bf >> 4) - 8) for bf in buff]
 
-        return out_buffer
+            yield moment
+
+        coroutine_return(out_buffer)
 
     def reset_fpga_stats(self):
         self.fpgas.reset_fpga_stats()
@@ -1901,7 +1904,8 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('get-channelizer-output')
     def get_channelizer_output(self, handler):
-        coroutine_return(sanitize_for_json(self.chime_master.get_channelizer_output()))
+        output = yield self.chime_master.get_channelizer_output()
+        coroutine_return(sanitize_for_json(output))
 
     @coroutine
     @endpoint('reset-fpga-stats')
@@ -2207,6 +2211,9 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         """
         if not (self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas):
             coroutine_return('FPGA array not yet initialized.')
+
+        self.log.info('%r: received request to set funcgen function to %s with keyword arguments: %s' %
+                      (self, function, str(kwargs)))
 
         # max_trial must be greater than or equal to 1
         max_trial = max(max_trial, 1)
