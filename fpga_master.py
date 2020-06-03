@@ -174,6 +174,12 @@ class ChimeMaster(object):
         self.config = None
         self.start_time = None
 
+        # Configuration manager
+        self.comet_manager = None
+        self.comet_dataset_hw = None
+        self.comet_dataset_fmap = None
+
+
         # Remote service provider objects
         self.raw_acq = {} # Raw FPGA data acquisitoin REST clients
         # self.kotekan = None # Kotekan REST clients
@@ -496,17 +502,19 @@ class ChimeMaster(object):
                      weight=0.2,
                      initial_gains=[ ('*', [1.0, 22])]):
         """
+        Starts the background iteratove process of computing the optimal digital gains on the FPGA to acheive the target RMS.
+
         Parameters:
 
             targets: list of tuples (or dict) describing the (crate, board,
                 channel) (or {crate:c, board:b, channel:ch}) whose gains needs
-                to be recomputed. Missing elements, `None` or `"*"` is treated
+                to be recomputed. Missing elements, `None` or  ``"*"`` is treated
                 as a wildcard.
 
             capture_rate (int): Sets how fast the data is to be temporarily
                 transmitted and captured for the selected channel. This sets
                 the number of frames between captures, which is a power of 2
-                set by `Nframes=2**(capture_rate+1)`. Independently of this,
+                set by ``Nframes=2**(capture_rate+1)``. Independently of this,
                 the rate cannot be slower than the promary capture rate set at
                 FPGA initialization.
 
@@ -526,14 +534,14 @@ class ChimeMaster(object):
             number_of_gain_update_iterations: Number of incremental gain
                 updates that will be performed before the final gain solution.
 
-            weight (float). NUmber between 0 and 1. INdicates the weigh of the
+            weight (float). NUmber between 0 and 1. Indicates the weigh of the
                 new data in theevolving gain solution.
 
             initial_gains (list):  list of [(target, (glin, glog)),...] describing the initial
                 gains to be used to start computing new gains.
 
 
-            Examples:
+        Examples:
 
             chan_id = [(0,1), (1,3,4)] or [{crate:0, slot:1}, {crate:1, slot:3, channel:4}] # Select all channels of board in crate 0 slot 1, and channel 4 of crate 1 slot 3.
             chan_id = None # Selects all boards and channels in the array
@@ -714,12 +722,12 @@ class ChimeMaster(object):
 
             targets: list of tuples (or dict) describing the (crate, board,
                 channel) (or {crate:c, board:b, channel:ch}) whose gains needs
-                to be recomputed. Missing elements, `None` or `"*"` are treated
+                to be recomputed. Missing elements, `None` or ``"*"`` are treated
                 as a wildcard.  List will be iterated over and the channels matching
                 each element of the list will have their gains computed in parallel.
                 If not provided, then will default to  a list of the crates.
 
-            ** accepts all other parameters for `compute_gains` **
+            **accepts all other parameters for `compute_gains`**
 
         """
 
@@ -883,16 +891,40 @@ class ChimeMaster(object):
                       "not defined in config.".format(exc[0])
                 self.log.error('%r: %s' % (self, msg))
                 raise RuntimeError(msg)
-            comet_manager = comet.Manager(comet_host, comet_port)
+            self.comet_manager = comet.Manager(comet_host, comet_port)
             try:
-                comet_manager.register_start(self.startup_time, self.GIT_VERSION)
-                comet_manager.register_config(config)
+                # register start and config
+                self.comet_dataset_start = self.comet_manager.register_start(
+                    self.startup_time, self.GIT_VERSION, config, register_datasets=True)
+                # comet_manager.register_config(config)
             except comet.CometError as exc:
                 msg = 'Comet failed registering fpga_master start and initial config: {}'.format(exc)
                 self.log.error('%r: %s' % (self, msg))
                 raise RuntimeError(msg)
         else:
             self.log.warning("Config registration DISABLED. This is only OK for testing.")
+
+
+    def register_hardware(self):
+        """ Registers the hardware map and frequency map with the configuration manager (Comet)
+        """
+
+        if not self.comet_manager:
+            return
+
+        # register hardware setup
+        state_type_hw = "f_engine_hardware"
+        hardware_map = {'hwm':self.fpgas.get_hwm()}
+        state_hw = self.comet_manager.register_state(hardware_map, state_type_hw)
+        self.comet_dataset_hw = self.comet_manager.register_dataset(
+            state_hw, base_ds=self.comet_dataset_start, state_type=state_type_hw)
+
+        # register frequency map
+        state_type_fmap = "f_engine_frequency_map"
+        frequency_map = self.get_frequency_map()
+        state_fmap = self.comet_manager.register_state(frequency_map, state_type_fmap)
+        self.comet_dataset_fmap = self.comet_manager.register_dataset(
+            state_fmap, base_ds=self.comet_dataset_hw, state_type=state_type_fmap)
 
     @coroutine
     def start(self, **config):
@@ -1035,6 +1067,8 @@ class ChimeMaster(object):
         # created and initialized.
         self.fpgas = ca = FPGAArray(ioloop=IOLoop.current(), **fpga_array_params)  # Starts an independent ioloop while initializing. Web clients/server stop while
         yield ca.run.async()
+
+        self.register_hardware()
 
         if not ca.ib: # if there are no boards in the array
             if conf.debug.get('allow_empty_fpga_array', False):
@@ -1287,13 +1321,24 @@ class ChimeMaster(object):
         coroutine_return({})
 
 
-    def get_frequency_map(self):
-        return self.fpgas.get_frequency_map()
+    def get_frequency_map(self, format='s:b'):
+        if format == 's:b': # stream_id:bins
+            fmap = dict(fmap={self.fpgas.corner_turn_stream_ids[lane_id]:bins
+                for lane_id, bins in self.fpgas.corner_turn_frequency_bins.items()})
+        elif format == 'l:b': #lane_tuple: bins
+            fmap = sanitize_for_json(dict(fmap=self.fpgas.corner_turn_frequency_bins))
+        elif format == 'l:s': #lane_tuple: stream_id
+            fmap = sanitize_for_json(dict(fmap=self.fpgas.corner_turn_stream_ids))
+        elif format in ('l:cscb', 'l:cc', 'l:cb','l:bb'):
+            fmap = sanitize_for_json(dict(fmap=self.fpgas. get_frequency_map(format=format)))
 
+        return fmap
+
+    @coroutine
     def get_channelizer_output(self):
 
         # Query each FPGA for its current buffer
-        fpga_buffer = self.fpgas.get_chan_output()
+        fpga_buffer = yield self.fpgas.get_chan_output.async()
 
         # Convert the input identifier and buffer
         # to a format that can be easily interpreted
@@ -1310,7 +1355,9 @@ class ChimeMaster(object):
             # from uint8 to float ranging from -8 to 7.
             out_buffer[input_sn] = [float((bf >> 4) - 8) for bf in buff]
 
-        return out_buffer
+            yield moment
+
+        coroutine_return(out_buffer)
 
     def reset_fpga_stats(self):
         self.fpgas.reset_fpga_stats()
@@ -1671,10 +1718,10 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
             targets (list of tuple/dict): List of tuples describing the
                 (crate, slot, channels) for which gains shall be recomputed.
-                Missing tuple elements, "*" and None are considered to be a
+                Missing tuple elements, ``"*"`` and `None` are considered to be a
                 wildcard.
 
-            ** accepts all other parameters for `ChimeMaster.compute_gains` **
+            **accepts all other parameters for `ChimeMaster.compute_gains`**
 
         Example::
 
@@ -1697,10 +1744,10 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
             targets (list of tuple/dict): List of tuples describing the
                 (crate, slot, channels) for which gains shall be recomputed.
-                Missing tuple elements, "*" and None are considered to be a
+                Missing tuple elements, ``"*"`` and None are considered to be a
                 wildcard.
 
-            ** accepts all other parameters for `ChimeMaster.compute_gains` **
+            **accepts all other parameters for `ChimeMaster.compute_gains`**
 
         Example::
 
@@ -1722,10 +1769,10 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
             targets (list of tuple/dict): List of tuples describing the
                 (crate, slot, channels) for which gains shall be set.
-                Missing tuple elements, "*" and None are considered to be a
+                Missing tuple elements, ``"*"`` and None are considered to be a
                 wildcard.
 
-            ** accepts all other parameters for `ChimeMaster.compute_gains` **
+            **accepts all other parameters for `ChimeMaster.compute_gains`**
 
         Example::
 
@@ -1748,12 +1795,12 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
             targets: list of tuples (or dict) describing the (crate, board,
                 channel) (or {crate:c, board:b, channel:ch}) whose gains needs
-                to be recomputed. Missing elements, `None` or `"*"` are treated
+                to be recomputed. Missing elements, `None` or ``"*"`` are treated
                 as a wildcard.  List will be iterated over and the channels matching
                 each element of the list will have their gains computed in parallel.
                 If not provided, then will default to  a list of the crates.
 
-            ** accepts all other parameters for `ChimeMaster.compute_gains` **
+            **accepts all other parameters for `ChimeMaster.compute_gains`**
 
         Example::
 
@@ -1851,13 +1898,14 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('get-frequency-map')
-    def get_frequency_map(self, handler):
-        coroutine_return(sanitize_for_json(self.chime_master.get_frequency_map()))
+    def get_frequency_map(self, handler,format='s:b'):
+        coroutine_return(self.chime_master.get_frequency_map(format=format))
 
     @coroutine
     @endpoint('get-channelizer-output')
     def get_channelizer_output(self, handler):
-        coroutine_return(sanitize_for_json(self.chime_master.get_channelizer_output()))
+        output = yield self.chime_master.get_channelizer_output()
+        coroutine_return(sanitize_for_json(output))
 
     @coroutine
     @endpoint('reset-fpga-stats')
@@ -2081,6 +2129,15 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             self.log.info('FPGA array not yet initialized. No info to show.')
 
     @coroutine
+    @endpoint('dataset-id')
+    def dataset_id(self, handler):
+        if self.chime_master and self.chime_master.comet_dataset_fmap:
+            coroutine_return({'id':self.chime_master.comet_dataset_fmap.id})
+        else:
+            self.log.info('FPGA array not yet initialized. No info to show.')
+
+
+    @coroutine
     @endpoint('load-gains')
     def load_gains(self, handler, update_id=None, bank=0, when='now'):
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
@@ -2148,12 +2205,18 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('set-funcgen-function')
-    def set_funcgen_function(self, handler, function='ab', **kwargs):
+    def set_funcgen_function(self, handler, max_trial=5, function='ab', **kwargs):
         """
         Set the function generated by the function generators.
         """
         if not (self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas):
             coroutine_return('FPGA array not yet initialized.')
+
+        self.log.info('%r: received request to set funcgen function to %s with keyword arguments: %s' %
+                      (self, function, str(kwargs)))
+
+        # max_trial must be greater than or equal to 1
+        max_trial = max(max_trial, 1)
 
         # Convert unicode to native string using the tornado.escape module
         # to prevent problem writing buffer info
@@ -2162,9 +2225,35 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         for key, val in kwargs.iteritems():
             function_kwargs[native_str(key)] = native_str(val) if isinstance(val, basestring) else val
 
+        # Loop over FPGA boards
         for ib in self.chime_master.fpgas.ib:
-            ib.set_funcgen_function(function_name, **function_kwargs)
-            yield moment
+
+            trial = 0
+            while trial < max_trial:
+
+                try:
+                    ib.set_funcgen_function(function_name, **function_kwargs)
+
+                except Exception as e:
+                    trial += 1
+                    msg = ('%r: error setting funcgen for (crate, slot) = (%s, %s) [trial %d/%d]\n%r\n%s' %
+                           ((self,) + ib.get_id() + (trial, max_trial, e, traceback.format_exc())))
+                    self.log.warning(msg)
+                    if trial == max_trial:
+                        # We were unable to set the function generator for this board.
+                        # Print warning and continue on to the next board.
+                        # We might consider raising an error here once capo
+                        # is updated to properly recognize errors from fpga_master.
+                        self.log.warning('%r: failed to set funcgen for (crate, slot) = (%s, %s)' %
+                                         ((self,) + ib.get_id()))
+
+                else:
+                    # We successfully set the function generator for this board.
+                    # Break out of the while loop.
+                    break
+
+                finally:
+                    yield moment
 
         coroutine_return('Function generator function set to %s(%r)' % (function_name, function_kwargs))
 
