@@ -162,6 +162,9 @@ class FPGAArray(object):
                  frames_per_packet=2,
                  tx_power=None,
                  integration_period=None,
+                 corner_turn_bad_links=None,
+                 corner_turn_bin_priority=None,
+                 corner_turn_remap_level=0,
 
                  stderr_log_level=None,
                  syslog_log_level=None,
@@ -175,75 +178,35 @@ class FPGAArray(object):
 
         Parameters:
 
-            None: Hardware map creation
-            hwm (str, list or HardwareMap): Describe the contents of the hardware
-                map database, which lists the IceBoards, IceCrates and Mezzanines.
+            --------------------Category: **Hardware map creation**--------------------
+
+            hwm (str, list or HardwareMap): Describes the hardware
+                map, which lists the IceBoards, IceCrates and Mezzanines
                 that are present in the system and their relationship. The hardware
-                map creation depending on the type of the `hwm` parameter:
+                map creation depending on the type of the `hwm` parameter.
 
-                *str* or *list of str*: A string or list of strings that describes the hardware to be
-                    added to the hardware map in the format::
+                - *str* or *list of str* : A string or list of strings that describes the hardware to be
+                  added to the hardware map in the format:
 
-                        " [{Iceboard_descriptors} {Icecrate_descriptors} {mezzanine_descriptors}] "
+                  ``hwm := {Iceboard_descriptors | Icecrate_descriptors | mezzanine_descriptors} ...``
 
-                    where:
-                       Iceboard descriptors: "[MGK7]MB serial serial ..." or "hostname" or "ip_address"
-                       icecrate descriptors: "[MGK7]BP16 serial[:crate_number] serial[:crate_number]...",
+                  where
 
-                    Autodiscovery is used as needed to complete the hardware map
-                    (see notes below). See `parse_hw_string` for a description of
-                    the syntax
+                  ``Iceboard_descriptors := {[MGK7]MB serial [serial] ... | hostname | ip_address}``
 
-                    Example:
+                  ``Icecrate_descriptors := {[MGK7]BP16 serial[:crate_number] [serial[:crate_number]] ...}``,
 
-                    "MGK7BP16 025 026" or abbreviated form "BP16 25 26" Selects
-                        all iceboards on crates SN025 and SN026 with default crate
-                        numbers 0 and 1 respectively.
+                  Autodiscovery is used as needed to complete the hardware map
+                  (see notes below). See `parse_hw_string` for a description of
+                  the syntax
 
-                    "MGK7MB 0125 0330" or "MB 0125 0330", "MB 125 330", "MB
-                        10.10.10.225 10.10.10.111" or "MB iceboard0125.local
-                        iceboard0330.local" all select the Iceboards specified by
-                        serial/hostname/IP address.
+                - *list of dict*: list of dicts that describe the hardware map elements to create.
 
-                    .. note:
-                        If an IceBoard is specified by IP address (e.g. '10.10.10.7'),
-                        then the board can be added directly in the hardware map. This
-                        does *not* rely on the system mDNS client or the Python
-                        ``pybonjour`` package.
-
-                        If an IceBoard is specified by its mDNS hostname (e.g.
-                        'iceboard0007.local'), the operating system will automatically
-                        resolve the IP address using mDNS, assuming that a mDNS client
-                        (Bonjour on Windows or Mac, avahi on Linux) is running on this
-                        computer. The ``pybonjour`` Python package is *not* needed.
-
-                        In both cases, the crate, slot and serial number information will
-                        be automatically obtained directly through the IceBoard's ARM
-                        processor if that information not already present in the hardware
-                        map.
-
-                        If an IceBoard is specified by its serial number (e.g. '0007', or
-                        just a numeric 7 as a convenient shortcut), the board will use the
-                        ``pybonjour`` package to actively query mDNS and find boards that
-                        match the serial number.
-
-
-                    .. note:
-                        Selecting boards by IceCrate serial number *always*
-                        require the ``pybonjour`` package and the system mDNS
-                        client to automatically probe the network and discover the
-                        specified Iceboards that advertised themseles along with
-                        their associated crate number.
-
-
-                *list of dict*: list of dicts that describe the hardware map elements to create.
-
-                *HardwareMap*: Fully formed hardware map, provided directly as a
-                    HardwareMap database object. If a fully-formed hardware map is
-                    provided, it will additionally be vetted by removing the
-                    Iceboards that fail the `ping` test and do not meet the
-                    ``subarray`` criteria.
-
+                - *HardwareMap*: Fully formed hardware map, provided directly as a
+                  HardwareMap database object. If a fully-formed hardware map is
+                  provided, it will additionally be vetted by removing the
+                  Iceboards that fail the `ping` test and do not meet the
+                  ``subarray`` criteria.
 
             crate_map (dict): Maps crate numbers to (model, serial). Not
                 needed if the crate numbers are already specified in the
@@ -252,8 +215,12 @@ class FPGAArray(object):
                 string.
 
             iceboards (list of str) : Iceboard to add to the hardware map,
-                specified by IP address, hostname, or serial number. Equivalent to
-                adding `hwm` string "MGK7MB iceboard[0] iceboard[1] ...".iceboard
+                specified as an IP address, hostname, or serial number. The
+                boards specified here are added to the hardware map specified
+                in `hwm` parameter. When a serial number is used, the IceBoard
+                model MGK7MB is implied. For example, specifying ``iceboards =
+                "003 007"`` is equivalent to adding ``"MGK7MB 003 007"`` to
+                the `hwm` parameter.
 
             exclude_iceboards (list of str) : Serial numbers of Iceboards to be
                 excluded in case of autodiscovered boards. Can be useful to specify a
@@ -262,12 +229,15 @@ class FPGAArray(object):
             icecrates (list of str): Adds all the iceboards from the crates that have the
                 serial numbers specified in the provided list of strings.
 
-                Examples:
+                Examples
+
                     ``icecrates='003'`` or ``icecrates=['003']`` will discover and select all boards from crate SN003
+
                     ``icecrates=['003', '004']`` will select boards from crates SN003 and SN004.
+
                     ``icecrates=[]`` will select all boards on the network
 
-            None: Hardware map filtering
+            ----------Category: **Hardware map filtering**----------
 
             subarrays : List of integers describing the subarrays to include in
                 the default IceBoard set. If None, all
@@ -281,25 +251,116 @@ class FPGAArray(object):
                 explicitely fails. If ``ping`` is false, the presence of boards is not
                 checked.
 
-            None: Configuration & initialization
+            ----------Category: **Configuration & initialization**----------
 
-            bitfile : String. Filename of the bitfile used to program the FPGAs
+            bitfile (str): Filename of the bitfile used to program the FPGAs
 
-            prog : If ``prog=1``, the FPGAs in the selected Iceboards will be
+            prog (int): If ``prog=1``, the FPGAs in the selected Iceboards will be
                 configured only if they are not already configured with the same
                 firmware. If ``prog=2``, they will always be reconfigured. If
                 ``prog`` is 0, None or is not specified, the FPGAs are never configured.
 
-            open : If ``open=1``, establish communication with the boards and
-               initialize the firmware and software. If ``open`` is None or not
-               specified, the software and firmwar eis not initialized.
+            open (int): If ``open=1``, establish communication with the boards and
+               initialize the firmware and software. If ``open`` is `None` or is not
+               specified, the software and firmware is not initialized.
 
-            if_ip : string corresponding to the IP address of adapter through
+            if_ip (str): string corresponding to the IP address of adapter through
                 which the connection to the FPGA will be established. If not
                 specified, the system will assume that the FPGA is reached trough
                 the same interface that reaches the ARM processor.
 
-            None: Logging
+
+            udp_retries (int): Number of retries performed when UDP command
+                packets sent to the FPGA do not receive a response.
+
+            fpga_ip_addr_fn (str): Specifies how the FPGA IP address is
+                determined. The valid modes are shown below, and should be
+                types exactly without additional spaces. In those modes,
+                ``a.b.c.d`` corresponds to the IP address of the IceBoard ARM
+                processor.
+
+                   - '(a,b,3,d)': Uses the IP address of the ARM but replaces the third byte by ``3``
+                   - '(a,b,c+1,d)': Uses the IP address of the ARM but adds 1 to the third byte
+
+
+            sync_method (str): Method used to synchronize (to sync) the data acquisition on an array of boards:
+
+                'distributed_time',
+
+            sync_source (str): Source of the signal that is used to synchronize each board
+
+                'bp_trig',
+
+            sync_master=None,
+
+            sync_master_time_source=None,
+
+            max_sync_time_difference (int): Maximum time difference, in nanoseconds, between the time of frame 0 of each board in an array.
+
+
+            ----------Category: **Corner-turn engine parameters**----------
+
+            mode (str): Operational mode of the Corner-turn engine. The following modes are supported:
+
+                    - 'chan8': Corner-turn engine is mostly bypassed and raw 8-bit data from 8
+                      channelizers is sent directly to the 8 CT-Engine outputs.
+
+                    - 'chan4': Corner-turn engine is mostly bypassed and raw 8-bit data from 16
+                      channelizers is sent directly to the 8 CT-Engine outputs.
+
+                    - 'shuffle16': A corner-turn operation is applied only within the 16 channelizer
+                      outputs of this board.
+
+                    - 'shuffle256': The corner-turn operation is applies between 16 channelizers within
+                      a board and between the 16 boards within a crate using the backplane PCB links.
+
+                    - 'shuffle512': The corner-turn operation is applies between 16 channelizers within
+                      a board, between the 16 boards within a crate using the backplane PCB links,
+                      and between 2 crates using the backplane QSFP links.
+
+                    - 'corr16': The corner-turn engine is configured to feed the
+                      internal firmware correlator (only if the firmware was
+                      compiled with it).
+
+
+            frames_per_packet (int): Number of frames that are grouped in each
+                packets at the output of the corner turn engine. Default is 2.
+                Packets contents is ordered so that the data from both frames
+                shows in a single block, followed by the scaler flages for
+                both frames, etc. Is limited by the amount of buffering
+                available in the FPGA's corner turn engine stages. Contiguous
+                data blocks help the receiver node make more efficient memory
+                transfers.
+
+            tx_power (dict): Initial training and final TX power levels to be
+                assigned to the data links used by the corner turn engine.
+                These include the backplane PCB links between boards in a
+                crate, backplane QSFP links between crates, or iceboard QSFP
+                links that offload  the output of the corner turn engine.
+
+
+            corner_turn_bad_links (list of tuples): List of corner turn engine
+                outputs links [(crate, slot, links), ...] that should
+                preferably NOT be assigned any frequency bins if possible.
+
+            corner_turn_bin_priority (list of int): List of frequency bins
+                that are to be assigned to the corner turn output, in order of
+                priority (most desirable frequency first). The lowest priority
+                bins will be assigned to the bad links as much as possible,
+                depending on the constraints of the corner turn engine
+                flexibility.
+
+            corner_turn_remap_level (int): Sets the aggressivness of the remapping by
+                selecting how many crossbar levels are involved. 0:no
+                remapping, 1: 3rd crossbar only, 2: crossbars 2 and 3, 3: all
+                crossbars.
+
+            ----------Category: **Firmware corelator parameters (if implemented in the FPGA)**----------
+
+            integration_period=None,
+
+
+            ----------Category: **Logging parameters**----------
 
             If logging is not set up by the top level application, you can
             optionally specify the folowing arguments to create syslog and stderr
@@ -310,6 +371,53 @@ class FPGAArray(object):
             syslog_log_level: sets up a SYSLOG handler
 
             stderr_log_level: sets up a handler that prints on stderr
+
+
+        Example:
+
+            **Hardware map specifications**
+
+            ``hwm="MGK7BP16 025 026"`` or abbreviated form ``hwm="BP16 25 26"`` selects
+            all iceboards on crates SN025 and SN026 with default crate
+            numbers 0 and 1 respectively.
+
+            ``hwm="MGK7MB 0125 0330"`` or ``hwm="MB 0125 0330"``, ``hwm="MB 125 330"``, ``hwm="MB
+            10.10.10.225 10.10.10.111"`` or ``hwm="MB iceboard0125.local
+            iceboard0330.local"`` all select the Iceboards specified by
+            serial/hostname/IP address.
+
+            Note:
+
+                If an IceBoard is specified by IP address (e.g. '10.10.10.7'),
+                then the board can be added directly in the hardware map. This
+                does *not* rely on the system mDNS client or the Python
+                ``pybonjour`` package.
+
+                If an IceBoard is specified by its mDNS hostname (e.g.
+                'iceboard0007.local'), the operating system will automatically
+                resolve the IP address using mDNS, assuming that a mDNS client
+                (Bonjour on Windows or Mac, avahi on Linux) is running on this
+                computer. The ``pybonjour`` Python package is *not* needed.
+
+                In both cases, the crate, slot and serial number information will
+                be automatically obtained directly through the IceBoard's ARM
+                processor if that information not already present in the hardware
+                map.
+
+                If an IceBoard is specified by its serial number (e.g. '0007', or
+                just a numeric 7 as a convenient shortcut), the board will use the
+                ``pybonjour`` package to actively query mDNS and find boards that
+                match the serial number.
+
+
+            Note:
+
+                Selecting boards by IceCrate serial number *always*
+                require the ``pybonjour`` package and the system mDNS
+                client to automatically probe the network and discover the
+                specified Iceboards that advertised themseles along with
+                their associated crate number.
+
         """
         init = functools.partial(
              self.init.async,
@@ -337,6 +445,9 @@ class FPGAArray(object):
              frames_per_packet=frames_per_packet,
              tx_power=tx_power,
              integration_period=integration_period,
+             corner_turn_bad_links=corner_turn_bad_links,
+             corner_turn_bin_priority=corner_turn_bin_priority,
+             corner_turn_remap_level=corner_turn_remap_level,
              stderr_log_level=stderr_log_level,
              syslog_log_level=syslog_log_level,
              udp_retries=udp_retries,
@@ -408,6 +519,9 @@ class FPGAArray(object):
              frames_per_packet=2,
              tx_power=None,
              integration_period=None,
+             corner_turn_bad_links=None,
+             corner_turn_bin_priority=None,
+             corner_turn_remap_level=0,
 
              stderr_log_level=None,
              syslog_log_level=None,
@@ -456,16 +570,16 @@ class FPGAArray(object):
         parent_logger_name = __name__.rsplit('.', 1)[0] if '.' in __name__ else ''
         parent_logger = logging.getLogger(parent_logger_name)
         # Setup logging. If a handler already exists, its log level is simply updated
-        #for (handler_type, log_level) in ((logging.StreamHandler, stderr_log_level), (logging.handlers.SysLogHandler, syslog_log_level)):
-        #    if log_level:
-        #        log_handlers = [h for h in parent_logger.handlers if isinstance(h, handler_type)]
-        #        if log_handlers: # if a handler of that type already exist, just use it
-        #            log_handler = log_handlers[0]
-        #        else:  # otherwise create a new one
-        #            log_handler = handler_type()
-        #            parent_logger.addHandler(log_handler)
-        #        log_handler.setLevel(log_level.upper() if isinstance(log_level, str) else log_level)
-        #        parent_logger.setLevel(min(parent_logger.level, log_handler.level))  # make sure all messages from this handler are passed to the parent handler
+        for (handler_type, log_level) in ((logging.StreamHandler, stderr_log_level), (logging.handlers.SysLogHandler, syslog_log_level)):
+            if log_level:
+                log_handlers = [h for h in parent_logger.handlers if isinstance(h, handler_type)]
+                if log_handlers: # if a handler of that type already exist, just use it
+                    log_handler = log_handlers[0]
+                else:  # otherwise create a new one
+                    log_handler = handler_type()
+                    parent_logger.addHandler(log_handler)
+                log_handler.setLevel(log_level.upper() if isinstance(log_level, str) else log_level)
+                parent_logger.setLevel(min(parent_logger.level, log_handler.level))  # make sure all messages from this handler are passed to the parent handler
 
 
         # If no bitfile is provided, automaticaly select the bitfile in the
@@ -696,7 +810,7 @@ class FPGAArray(object):
             if ping and added_ib:
                 self.logger.info('%r: Pinging Iceboards with explicit hostnames in the hardware description string' % self)
                 # ping all boards concurrently
-                ping_results = yield {ib: ib.ping.async() for ib in added_ib}
+                ping_results = yield {ib: ib.ping.async(timeout=ping_timeout) for ib in added_ib}
                 # If some boards failed, raise an exception
                 if not all(ping_results.values()):
                     raise RuntimeError("%r: The following Iceboards could not be pigned: '%s'" % (
@@ -973,7 +1087,10 @@ class FPGAArray(object):
                     mode=mode,
                     frames_per_packet=frames_per_packet,
                     tx_power=tx_power,
-                    integration_period=integration_period)
+                    integration_period=integration_period,
+                    corner_turn_bad_links=corner_turn_bad_links,
+                    corner_turn_bin_priority=corner_turn_bin_priority,
+                    corner_turn_remap_level=corner_turn_remap_level)
 
             ########################
             # Initializing backplane hardware communication firmware
@@ -1108,6 +1225,44 @@ class FPGAArray(object):
             string +='   Crate SN%s, slot %2i: Iceboard SN%s at %s (ping =%s), Mezz1=%s, Mezz2=%s\n' % (i.crate.serial if i.crate else None, i.slot, i.serial, i.hostname, i.ping(), mezz[0], mezz[1])
         return string
 
+    def get_hwm(self):
+        """ Returns the current hardware map as a dict.
+
+        Returns:
+
+            hardware map dict in the format:
+
+                'crate': {'number':n, 'model':m, 'serial':s,
+                    'iceboards': [
+                    'slot':s, 'model':m, 'serial':s, 'mezzanines':[
+                        {'slot':s, 'model':m, 'serial':s}, ...]}, ...]
+        """
+        hwm = []
+        for ic in self.ic:
+            hwm.append(dict(
+                type='crate',
+                model=ic.part_number,
+                serial=str(ic.serial),
+                crate_number=ic.crate_number,
+                iceboards=[dict(
+                    slot=ib.slot,
+                    model=ib.part_number,
+                    serial=str(ib.serial)) for ib in ic.slot.values()]
+                    )
+                )
+        for ib in self.ib:
+            hwm.append(dict(
+                type='iceboard',
+                model=ib.part_number,
+                serial=str(ib.serial),
+                mezzanines=[dict(
+                    slot=i,
+                    model=m.__ipmi_part_number__ if m else None,
+                    serial=str(m.serial) if m else None)
+                        for i, m in enumerate((ib.mezzanine.get(1,None), ib.mezzanine.get(2,None)))]
+                    )
+                )
+        return hwm
 
     def set_crate_numbers(self, crate_number_map, strict=True):
         """ Set the crate number of each crate based on the provided crate
@@ -1164,7 +1319,10 @@ class FPGAArray(object):
                              send_flags = True,
                              chan8_channel_map=range(8),
                              tx_power=None,
-                             integration_period=16384
+                             integration_period=16384,
+                             corner_turn_bad_links=None,
+                             corner_turn_bin_priority=None,
+                             corner_turn_remap_level=0,
                              ):
         """ Set the operational mode of the array.
 
@@ -1173,8 +1331,11 @@ class FPGAArray(object):
 
             mode (str): operational mode string.
 
-                - 'raw_time': Each boards stream raw 8-bit time samples from channels
-                    0-7 to the corresponding GPU ports.
+                - 'chan8': Corner-turn engine is mostly bypassed and raw 8-bit data from 8
+                  channelizers is sent directly to the 8 CT-Engine outputs.
+
+                - 'chan4': Corner-turn engine is mostly bypassed and raw 8-bit data from 16
+                  channelizers is sent directly to the 8 CT-Engine outputs.
 
                 - 'shuffle16': Acquire, channelize and shuffle data within each Iceboard individually and
                   send the data through the IceBoard QSFP+ ports. There is no data shuffling between boards.
@@ -1191,6 +1352,9 @@ class FPGAArray(object):
                   is based on the crate number: Crate N and N+1 form a pair, whereas N
                   is a even number.
 
+                - 'corr16': The corner-turn engine is configured to feed the
+                  internal firmware correlator (only if the firmware was compiled with it).
+
             frames_per_packet (int): Number of frames to combine in a single
                 packet. Is limited by the amount of buffering space inside the
                 FPGA.
@@ -1203,6 +1367,22 @@ class FPGAArray(object):
             integration_period (int): (for ``corr16`` mode only):
                 Sets the integration period (in frames) of the firmware
                 correlator.
+
+            corner_turn_bad_links (list of tuples): List of corner turn engine
+                outputs links [(crate, slot, links), ...] that should
+                preferably NOT be assigned any frequency bins if possible.
+
+            corner_turn_bin_priority (list of int): List of frequency bins
+                that are to be assigned to the corner turn output, in order of
+                priority (most desirable frequency first). The lowest priority
+                bins will be assigned to the bad links as much as possible,
+                depending on the constraints of the corner turn engine
+                flexibility.
+
+            corner_turn_remap_level (int): Sets the aggressivness of the remapping by
+                selecting how many crossbar levels are involved. 0:no
+                remapping, 1: 3rd crossbar only, 2: crossbars 2 and 3, 3: all
+                crossbars.
 
 
 
@@ -1217,7 +1397,6 @@ class FPGAArray(object):
         # use defaults that were set during initialization unless overriden
         mode = mode or self.mode
         tx_power = tx_power or self.tx_power
-
         self.logger.info('%r: Setting operational mode to %s' % (self, mode))
         self.logger.info('%r: Using tx_power=%r' % (self, tx_power))
         # To make sure that the data acquisition and transmission will be done at the same rate, refuse to operate if there
@@ -1232,7 +1411,7 @@ class FPGAArray(object):
         if mode == 'raw_time':
             self.ib.set_fft_bypass(True)
             self.ib.set_scaler_bypass(True)
-            self.init_corner_turn(
+            self.corner_turn_stream_ids = self.init_corner_turn(
                 mode='chan8',
                 frames_per_packet=frames_per_packet,
                 send_flags=send_flags,
@@ -1246,23 +1425,501 @@ class FPGAArray(object):
             self.ib.CROSSBAR3.SOF_WINDOW_STOP = 110
             self.ib.CROSSBAR3.TIMEOUT_PERIOD = 0
             self.ib.BP_SHUFFLE.reset_rx_equalizers()
+
             self.init_corner_turn(
                 mode=mode,
                 frames_per_packet=frames_per_packet,
                 send_flags=send_flags,
-                tx_power=tx_power)
+                tx_power=tx_power,
+                bad_links=corner_turn_bad_links,
+                bin_priority=corner_turn_bin_priority,
+                remap_level=corner_turn_remap_level)
             self.ib.BP_SHUFFLE.reset_stats()
             self.ib.CROSSBAR2.reset_stats()
             self.ib.CROSSBAR3.reset_stats()
+
         elif mode =='corr16':
             if not all(self.ib.CORR):
                 raise RuntimeError('All IceBoards must have a firmware correlator engine')
-            self.ib.init_crossbars(mode, frames_per_packet=1)
+            bin_map = self.get_corner_turn_bin_map(
+                mode=mode,
+                bad_links=corner_turn_bad_links,
+                bin_priority=corner_turn_bin_priority,
+                remap_level=corner_turn_remap_level)
+            self.corner_turn_stream_ids = None
+            self.corner_turn_frequency_bins = None
+            for ib in self.ib:
+                ib.init_crossbars(mode, frames_per_packet=1, bin_map=bin_map[ib.get_id()])
             self.ib.set_offset_binary_encoding(False)  # The firmware correlator engine expects 1's complement encoding
             if integration_period:
                 self.ib.start_correlator(integration_period=integration_period)
         else:
             raise ValueError('Unknown operational mode')
+
+    def get_corner_turn_bin_map(self, mode, bad_links=None, bin_priority=None, remap_level=0, verbose=0):
+        """ Get the bin selection map for every board of the array in order to route the bins toward the  desired output links
+
+        Parameters:
+
+            mode (str): opertional mode. 'shuffle256' and 'shuffle512'
+                implement frequency-remaping. Other modes return de default
+                map.
+
+            bad_links: List of corner_turn outputs [(crate, slot, link) , ...]
+                that can't process data. low-priotity frequencies will be
+                assigned to those bins.
+
+            bin_priority: list of all frequency bins (from 0 to 1023) in order
+                of priority, with the useful bins at the beginning of the
+                list.
+
+            remap_level (int): Sets the aggressivness of the remapping by
+                selecting how many crossbar levels are involved. 0:no
+                remapping, 1: 3rd crossbar only, 2: crossbars 2 and 3, 3: all
+                crossbars.
+
+        Returns:
+            A dictionary that deescribes the corner-turn bin selection map for every board, in the format
+                { (crate, slot):{'cb1':cb1_bins, 'cb2':cb2_bins, 'cb3':cb3_bins}, ... }
+            where
+                ``cb1_bins``: list of 16 lists describing the bins indices that are selected by each bin selector of the 1st crossbar
+                ``cb2_bins``: list of 2 lists describing the bins indices that are selected by each bin selector of the 2nd crossbar
+                ``cb3_bins``: list of 8 lists describing the bins indices that are selected by each bin selector of the 3rd crossbar
+        """
+        # Process bad link
+        bad_links = bad_links or []
+        bad_links = [tuple(id) for id in bad_links]
+        if len(set(bad_links)) != len(bad_links):
+            raise RuntimeError('bad links tuples are not unique!')
+        bad_bad_links = [(crate, slot, lane) for (crate, slot, lane) in bad_links
+            if not (0 <= crate <= 1) or not (0 <= slot <= 15) or not (0 <= lane <= 7)]
+        if bad_bad_links:
+            raise RuntimeError('The following bad links tuples are invalid: %s' % bad_bad_links)
+
+        # Process bin priority
+        bin_priority = bin_priority or range(1024)
+        if set(bin_priority) != set(range(1024)):
+            raise RuntimeError('Bin priority must contain every bin from 0 to 1023 exactly once')
+        bin_priority = np.argsort(bin_priority) # priority for each bin from 0 to 1023
+
+        if mode == 'shuffle512':
+            # start with the default bin map
+            bin_map = {(crate, slot):dict(
+                    cb1=np.arange(1024).reshape((16, 64), order='F'),
+                    cb2=np.arange(64).reshape((2, 32), order='F'),
+                    cb3=np.arange(32).reshape((8, 4), order='F'))
+                    for crate in range(2) for slot in range(16)}
+            #if remap_level >= 3:
+            #    self.compute_cb1_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
+            #if remap_level >= 2:
+            #    self.compute_cb2_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
+            if remap_level >= 1:
+                #self.compute_cb3_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
+                self.shuffle512_cb3_freq_remap(bin_map, bad_links, bin_priority)
+            # Apply crates 0 & 1 map to all pair of crates
+            bin_map = {(crate, slot):bin_map[(crate & 1, slot)]
+                        for (crate, slot) in self.ib.get_id()}
+
+            # cb3_map = self.shuffle512_cb3_remap(mode=mode,
+            #                                     bad_links=bad_links,
+            #                                     freq_bins=bin_priority,
+            #                                     output_cb3_bins=True)
+            # # cb3_map describes only odd and even crate numbers. We expand the list to cover all crates explicitely.
+            # for ib in self.ib:
+            #     cb3_bins = [cb3_map.get((crate & 1, slot, lane), None)
+            #         for crate, slot, lane in ib.GPU.get_lane_ids()]
+            #     bin_map[ib.get_id()] = {
+            #         'cb1':None,
+            #         'cb2':None,
+            #         'cb3':cb3_bins}
+        elif mode == 'shuffle256':
+            # start with the default bin map
+            bin_map = {(crate, slot):dict(
+                    cb1=np.arange(1024).reshape((16, 64), order='F'),
+                    cb2=np.arange(64).repeat(2).reshape(2, 64, order='F'),
+                    cb3=np.arange(64).reshape((8, 8), order='F'))
+                    for crate in range(2) for slot in range(16)}
+            if remap_level >= 3:
+                self.compute_cb1_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
+            if remap_level >= 1:
+                self.compute_cb3_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
+            # Apply crates 0 & 1 map to all crates
+            bin_map = {(crate, slot):bin_map[(crate & 1, slot)]
+                        for (crate, slot) in self.ib.get_id()}
+        else: # other modes. Use defaults.
+            bin_map = {ib.get_id(): {'cb1':None,'cb2':None, 'cb3':None}
+                       for ib in self.ib}
+        return bin_map
+
+
+    @staticmethod
+    def compute_cb1_bin_map(bin_map, bad_links, bin_priority, verbose=1):
+        """ Compute a first crossbar bin map that assings bins to
+        each slot in order to maximize the allocation of low-priority (rfi) bins to bad gpu links.
+
+        Parameters:
+
+          bin_map (dict): Dict that contains the bin maps for all crossbars. In the format
+
+            {(crate, slot):'cb1':cb1_map, 'cb2':cb2_map, 'cb3':cb3_map},...}
+
+            `bin_map` is modified in place with the new optimized map.
+
+          bad_links (list of tuple): List of (crate,slot,lane) GPU links that are inoperative
+
+          bin_priority (ndarray): 1024-element vector indicating the priority of each bin.
+              Element 0 is the priority for bin 0. A lower value has a higher priority.
+
+        Returns:
+
+            Nothing. bin_map['cb1'] is modified in place with the new optimized map.
+
+        """
+        # Compute the number of unprocessable bins for each slot (both crates combined)
+        Nbad = np.zeros(16, dtype=int)
+        for (crate, slot, lane) in bad_links:
+            Nbad[slot] += 4
+
+        bins = np.arange(1024).reshape((8,128), order='F') # 8 crossbar-compatible bin pattern of 128 bins
+        pri = np.ma.array(bin_priority[bins], mask=bin_priority[bins]*0) # priority level of bins in the pattern
+
+        # bin_map = np.empty((16,64), dtype=int) # final bin assignments
+        s = set()
+        for j, slot in enumerate(np.argsort(Nbad)[::-1]):
+            nbad = Nbad[slot]
+            if verbose:
+                print '**** Interation #%i, Slot %i (has %i unprocessable bins)' % (j, slot, nbad)
+
+            Nbins = pri.count(axis=-1)
+            if verbose:
+                print 'Number of remaining bins=',Nbins
+            ix = pri.argsort(axis=-1) # index of bins in order of priority, skipping masked bins. Only the first Nbins[i] are valid.
+
+            worst_pri = [(pri[s, x[np.clip(Nbins[s]-nbad, a_min=0, a_max=Nbins[s]-1)]] if Nbins[s] else 0)
+                         for s,x in enumerate(ix)]
+            if verbose:
+                print 'Worst bin priority for all patterns are', worst_pri
+            wo = np.argmax(worst_pri) # 2 lost
+          #         wo = np.argmax(Nbins) # 14 lost
+          #         wo = slot//2 # 28 lost
+
+            if verbose:
+                print 'slot %i GPUs cannot process %i bins, using offset %i' % (slot, Nbad[slot], wo)
+            if not Nbins[wo]:
+                print '***** There are not enough frequencies left in the selected offset'
+                raise RuntimeError('***** There are no frequencies left in the selected pattern')
+            bix = ix[wo][range(64 - nbad) + range(Nbins[wo] - nbad, Nbins[wo])]
+            b = sorted(bins[wo, bix])
+            if any(pri[wo, bix].mask): # sanity check, cannot happen in theory
+                raise RuntimeError('Assigned a bin that was already assigned in another slot!')
+            pri[wo, bix] = np.ma.masked
+            # Apply bin selection for that slot to all crates in the array
+            # print 'Assignling %i bins:' % len(b), b
+            bin_map[(0, 0)]['cb1'][slot] = b
+            # Check the integrity of the result
+        for bmap in bin_map.values():
+            bmap['cb1'][:] = bin_map[(0,0)]['cb1']
+        if set(bin_map[(0, 0)]['cb1'].flatten()) != set(range(1024)):
+          raise RuntimeError('Invalid bin map')
+
+    @staticmethod
+    def compute_cb2_bin_map(bin_map, bad_links, bin_priority, verbose=1):
+        """
+        """
+        Nslots , _ = bin_map[(0,0)]['cb1'].shape
+        Ncrates , Nbins_out = bin_map[(0,0)]['cb2'].shape
+        # Compute number of unprocessable bins
+        Nbad = np.zeros((Ncrates, Nslots), dtype=int)
+        for (crate, slot, link) in bad_links:
+            Nbad[crate, slot] += 4
+        for slot in range(Nslots):
+            # CB1 map is the for all slots in both crates.  # cb1 has absolute
+            # bin numbers. Assumes that cb2 remap is such as cb1[0] goes to
+            # slot 0, etc.
+            bins = bin_map[(0, 0)]['cb1'][slot]
+            bix = list(bin_priority[bins].argsort()) # bin index order by bin_priority
+            for crate, bs_map in enumerate(bin_map[(0, slot)]['cb2']):
+                nbad = Nbad[(crate, slot)]
+                ngood = len(bs_map) - nbad
+                bs_map[:ngood] = bix[:ngood]
+                del bix[:ngood]
+                # print bs_map
+                # print 'good=', ngood, 'bad=', nbad
+                if nbad:
+                    bs_map[-nbad:] = bix[-nbad:]
+                    del bix[-nbad:]
+            bin_map[(1, slot)]['cb2'][:] = bin_map[(0,slot)]['cb2']
+            if set(bin_map[(0, slot)]['cb2'].flatten()) != set(range(Ncrates * Nbins_out)):
+                print 'Selected',bin_map[(0, slot)]['cb2']
+                raise RuntimeError('Invalid crossbar 2 bin selection')
+
+    @staticmethod
+    def compute_cb3_bin_map(bin_map, bad_links, bin_priority, verbose=1):
+        """
+        """
+        # Ncrates, _ = bin_map['cb2'].shape # (8,4) or (8,8)
+        Nlanes, Nbins = bin_map[(0, 0)]['cb3'].shape # (8,4) or (8,8)
+
+        # Distribute bins in each CB3 output lanes
+        for (crate, slot), bmap in bin_map.items():
+            cb2_bix = bmap['cb2'][crate] # Bin indices for crate
+            bins = bmap['cb1'][slot][cb2_bix]  # absolute bins for slot
+            bix = list(bin_priority[bins].argsort()) # bin index order by bin_priority
+            for lane in range(Nlanes):
+                if (crate, slot, lane) in bad_links:
+                    # bs_map[:] = bix[-Nbins:]
+                    bmap['cb3'][lane] = bix[-Nbins:]
+                    del bix[-Nbins:]
+                else:
+                    # bs_map[:] = bix[:Nbins]
+                    bmap['cb3'][lane] = bix[:Nbins]
+                    del bix[:Nbins]
+                # print '(%i,%i,%i)' % (crate, slot, lane), bmap['cb3'][lane], bin_map[(crate,slot)]['cb3'], bix
+                # print '   -> (%i,%i)' % (0, 0), bin_map[(0,0)]['cb3']
+            if set(bmap['cb3'].flatten()) != set(range(Nlanes * Nbins)):
+                print 'Selected',bmap['cb3']
+                raise RuntimeError('Invalid crossbar 3 bin selection')
+        # for (crate, slot), bmap in bin_map.items():
+        #     print '--_>(%i,%i)' % (crate, slot), bmap['cb3']
+
+
+    @staticmethod
+    def shuffle512_cb3_freq_remap(bin_map, bad_links, bin_priority):
+        """
+        Generates a frequency map by assigning flagged/less important frequency bins to
+        links connected to bad/down GPU nodes. The remapping is
+        restricted to changes at the third crossbar for 'shuffle512' operation.
+
+        Parameters:
+        -----------
+        bin_map: dict
+            Dict that contains the bin maps for all crossbars. In the format
+            {(crate, slot):'cb1':cb1_map, 'cb2':cb2_map, 'cb3':cb3_map},...}
+            `bin_map` is modified in place with the new optimized map.
+        bad_links: list of (crate parity, slot, link) tuples
+            List of links connected to bad/down GPU nodes. Least important frequencies are
+            assigned to these links. Crate parity is either 0 (even) or 1 (odd). Slot
+            is an integer between 0 and 15, and link is an integer between 0 and 7
+        bin_priority: list or np.array
+            1024-long array with the frequency priority of each frequency bin.
+            bin_priority[i] is the priority of the ith frequency bin.
+            A lower value has a higher priority.
+        """
+        import itertools
+
+        # Number of freq. bins, crates (per crate pair), slots (per crate), links (per board) 
+        # (SHOULD BE ABLE TO GET THIS FROM FPGA ARRAY OBJECT)
+        Nfreq, Ncrate, Nslot, Nlink = 1024, 2, 16, 8 
+        Nfreq_cs = Nfreq//(Ncrate*Nslot) # Freq. bins per (crate, slot)
+        Nfreq_link = Nfreq_cs // Nlink   # Freq. bins per (crate, slot, link)
+
+        # Order links by how easy it is to assign RFI bins to them (easier for middle links
+        # according to FIFO constraints) links at the top of the list will have more RFI bins
+        link_rfi_assign_order = np.array([3, 4, 2, 5, 1, 6, 0, 7])
+        for (crate, slot), bmap in bin_map.items():
+                # Standard CB3 bin assginment (each row is a link)
+                cb3_bins = np.arange(Nfreq_cs).reshape((Nlink, Nfreq_link), order='F')
+                # Standard absolute frequency assignment (each row is a link)
+                freq_bins_cs = np.arange(crate*Nslot+slot, Nfreq, Nfreq_cs).reshape(
+                    (Nlink, Nfreq_link), order='F')
+                # Importance of each CB3 bin
+                cb3_bin_order = bin_priority[freq_bins_cs.ravel()].reshape((Nlink, Nfreq_link))
+                # Start clustering RFI bins on nodes according to link_rfi_assign_order
+                # Assumes that there are no overflows in cb3 FIFOs as long as the 
+                # separation between cb3 bins (in range(31)) for a given lane is at least 4
+                for gpu in range(Nfreq_link):
+                    # Sort all links of given gpu by lowest priority (RFI first)
+                    link_priority = np.argsort(cb3_bin_order[:, gpu])[::-1]
+                    # Go over all permutations of links until we find one
+                    # that meets the requirement of at least 4 cb3 bin separation.
+                    # By the way itertools.permutations works, it will start
+                    # with the permutations that cluster RFI bins on the links
+                    # according to link_rfi_assign_order
+                    for lp in itertools.permutations(link_priority):
+                        if np.all(abs(np.array(lp)-link_rfi_assign_order)<=4):
+                            # The permutation is allowed. done
+                            break
+                    cb3_bins[link_rfi_assign_order, gpu] = cb3_bins[lp, gpu]
+                    freq_bins_cs[link_rfi_assign_order, gpu] = freq_bins_cs[lp, gpu]
+
+                i_top, i_bottom = 0, Nlink
+                for link in range(Nlink):
+                    stream_id = (crate, slot, link)
+                    if stream_id in bad_links: # Bad link: assign less important freq. bins
+                        bmap['cb3'][link] = cb3_bins[link_rfi_assign_order[i_top]]
+                        i_top += 1
+                    else: # Good link: assign important freq. bins
+                        bmap['cb3'][link] = cb3_bins[link_rfi_assign_order[i_bottom-1]]
+                        i_bottom -= 1
+
+    @staticmethod
+    def shuffle512_cb3_lane_remap(bin_map, bad_links, bin_priority):
+        """
+        Generates a frequency map by assigning flagged/less important frequency bins to
+        links connected to bad/down GPU nodes. The remapping is
+        restricted to changes at the third crossbar for 'shuffle512' operation.
+        Also, this remapping is limited to swap frequency lists between links
+        (it does not alter the content of the frequency lists).
+
+        Parameters:
+        -----------
+        bin_map: dict
+            Dict that contains the bin maps for all crossbars. In the format
+            {(crate, slot):'cb1':cb1_map, 'cb2':cb2_map, 'cb3':cb3_map},...}
+            `bin_map` is modified in place with the new optimized map.
+        bad_links: list of (crate parity, slot, link) tuples
+            List of links connected to bad/down GPU nodes. Least important frequencies are
+            assigned to these links. Crate parity is either 0 (even) or 1 (odd). Slot
+            is an integer between 0 and 15, and link is an integer between 0 and 7
+        bin_priority: list or np.array
+            1024-long array with the frequency priority of each frequency bin.
+            bin_priority[i] is the priority of the ith frequency bin.
+            A lower value has a higher priority.
+        """
+
+        # Number of freq. bins, crates (per crate pair), slots (per crate), links (per board)
+        # (SHOULD BE ABLE TO GET THIS FROM FPGA ARRAY OBJECT)
+        Nfreq, Ncrate, Nslot, Nlink = 1024, 2, 16, 8
+        Nfreq_cs = Nfreq//(Ncrate*Nslot) # Freq. bins per (crate, slot)
+        Nfreq_link = Nfreq_cs // Nlink   # Freq. bins per (crate, slot, link)
+
+        # Standard CB3 bin assginment (each row is a link)
+        cb3_bins = np.arange(Nfreq_cs).reshape((Nlink, Nfreq_link), order='F')
+        for (crate, slot), bmap in bin_map.items():
+            # Standard absolute frequency assignment (each row is a link)
+            freq_bins_cs = np.arange(crate*Nslot+slot, Nfreq, Nfreq_cs).reshape(
+                (Nlink, Nfreq_link), order='F')
+            # Importance of each CB3 bin
+            cb3_bin_order = bin_priority[freq_bins_cs.ravel()].reshape((Nlink, Nfreq_link))
+            # Check which cb3_bins are RFI.
+            # Assumes freq_bins with order > 779 are RFI (expected from static RFI mask)
+            cb3_bin_rfi_mask = cb3_bin_order > 779
+            # Number of rfi bins per link
+            rfi_per_link = np.sum(cb3_bin_rfi_mask, axis=1)
+            # Indices that sort links by increasing number of RFI bins (links at the
+            # of the list have more RFI bins)
+            link_priority = np.argsort(rfi_per_link)
+            i_top, i_bottom = 0, Nlink
+            for link in range(Nlink):
+                stream_id = (crate, slot, link)
+                if stream_id in bad_links: # Bad link: assign less important freq. bins
+                    bmap['cb3'][link] = cb3_bins[link_priority[i_bottom-1]]
+                    i_bottom -= 1
+                else: # Good link: assign important freq. bins
+                    bmap['cb3'][link] = cb3_bins[link_priority[i_top]]
+                    i_top += 1
+
+
+    @staticmethod
+    def shuffle512_cb3_remap(mode, bin_map, bad_links, freq_bins, output_cb3_bins=False):
+        """
+        Generates a frequency map by assigning flagged/less important frequency bins to
+        links connected to bad/down GPU nodes. The remapping is
+        restricted to changes at the third crossbar for 'shuffle512' and 'shuffle256' operation.
+
+        Parameters:
+
+        mode (str): operational mode of the corner turn engine. Either
+            `'shuffle512'` or '`shuffle256'`.
+
+        bad_links (list of tuples): list of [crate parity, slot, link] lists
+            List of links connected to bad/down GPU nodes. Least important frequencies are
+            assigned to these links. Crate parity is either 0 (even) or 1 (odd). Slot
+            is an integer between 0 and 15, and link is an integer between 0 and 7
+
+        freq_bins (list of int): list or np.array
+            1024-long array with frequency bins ordered by importance (important bins first).
+            Frequency bins are assigned to good/up links/nodes when available based on their
+            importance.
+
+        output_cb3_bins: bool (optional)
+
+            If False, the frequency assignment is given as a relative bin
+            index that address the 32 bins at the input of the 3rd crossbar
+            (in the range 0-31).
+
+            If True, the frequency assignment is given as frequency bins (in the range
+            0-1023)
+
+
+        Returns
+
+        freq_map: dict
+            Describes the frequency bin assignment for each link. Its items have the form
+
+            {..., (crate parity, slot, link): [freq. bin 0, ..., freq. bin 3], ...} if
+            output_cb3_bins=False, or
+
+            {..., (crate parity, slot, link): [cb3 bin 0, ..., cb3 bin 3], ...} if
+            output_cb3_bins=True.
+        """
+
+        freq_bins = np.array(freq_bins) # Make sure freq_bins is an np.array
+        freq_bins_priority = np.argsort(freq_bins) # indices that sort freq_bins in ascending order
+        bad_links = [tuple(link) for link in bad_links]
+
+
+        Nfreq = 1024 # Number of frequency bins
+        Nslot = 16 # boards per crates
+        Nlink = 8  # GPU links per board
+        if mode == 'shuffle512':
+            Ncrate = 2
+            Nbix = 32 # Bins per CB3 input
+            Nbins = 4 # Bins per CB3 output
+            bix_to_bin = lambda crate, slot, bix: (Nslot * Ncrate * bix) + (Nslot * crate) + slot
+        elif mode == 'shuffle256':
+            Ncrate = 1
+            Nbix = 64
+            Nbins=8
+            bix_to_bin = lambda crate, slot, bix: (Nslot * bix) + slot
+        else:
+            raise ValueError('Invalid shuffle mode %s' % mode)
+
+        # Number of freq. bins, crates (per crate pair), slots (per crate), links (per board)
+        # (SHOULD BE ABLE TO GET THIS FROM FPGA ARRAY OBJECT)
+        # Nfreq_cs = Nfreq // (Ncrate * Nslot) # Freq. bins per (crate, slot) = 32 (4 per lane) (Now Nbix)
+        # Nbins = Nfreq_cs // Nlink   # Freq. bins per (crate, slot, link) = 4 per lane (now Nbins)
+
+        freq_remap = {}
+        for slot in range(Nslot):
+            for crate in range(Ncrate):
+                # Freq bins that can be assigned to (crate parity, slot) under standard map
+                # cb3 output, shuffle512: bin = 16*2*8*bix + 16*2*lane + 16*crate + slot, bix=0..3
+                # cb3 output, shuffle256: bin = 16*8*bix + 16*lane  + slot, bix=0...7, bix=0..7
+
+                # available_bins = np.arange(crate * Nslot + slot, Nfreq, Nfreq_cs)
+                available_bix = np.arange(Nbix)
+                available_bins = bix_to_bin(crate, slot, available_bix) # absolute bin number available at the input of CB3 on this (crate, slot)
+                available_priority = np.argsort(freq_bins_priority[available_bins]) # indices of available bins/bix, in priority order (first is most important)
+                available_bix = list(available_bix[available_priority]) # bin indices, sorted by importance. Convert to a list so we can easily delete items.
+                # Indices of allowed freq_bins, sorted by importance
+                # available_bins_indices = np.sort(freq_bins_priority[available_bins])
+                # available_bins = list(available_bins[available_priority]) # absolute bins, sorted by importance
+
+                # i_top = 0
+                # i_bottom = Nbix
+                # Assign bix, lane per lane
+                for link in range(Nlink):
+                    link_id = (crate, slot, link)
+                    if link_id in bad_links: # Bad link: assign less important freq. bins
+                        bix = available_bix[-Nbins:] # take the bottom (lower priority) bix
+                        del available_bix[-Nbins:] # remove from the list
+                        # freq_remap[link_id] = list(
+                        #     available_bix[i_bottom - Nbins:i_bottom] if output_cb3_bins else
+                        #     freq_bins[available_bins_indices[i_bottom - Nbins:i_bottom]])
+                        # i_bottom -= Nbins
+                    else: # Good link: assign important freq. bins
+                        bix = available_bix[:Nbins] # take the top bix (higher priority)
+                        del available_bix[:Nbins] # remove from the list
+                        # freq_remap[link_id] = list(available_bix[i_top:i_top + Nbins] if
+                        #                         output_cb3_bins else
+                        #                         freq_bins[available_bins_indices[i_top:i_top + Nbins]])
+                        # i_top += Nbins
+                    bix = np.sort(bix) # order selected bins in increasing order. Now a numpy array again.  The bins are always transmitted that way.
+                    freq_remap[link_id] = list(bix if output_cb3_bins else bix_to_bin(crate, slot, bix))
+                if len(available_bix):
+                    raise RuntimeError('Not all bins were processed. This should not happen')
+        return freq_remap
 
     def init_corner_turn(self,
                      mode,
@@ -1271,6 +1928,10 @@ class FPGAArray(object):
                      send_flags=True,
                      chan8_channel_map=range(16),
                      tx_power=None,
+                     bin_map=None,
+                     bad_links=None,
+                     bin_priority=None,
+                     remap_level=0,
                      sync=True
                      ):
         """ Setup the crossbars and data shuffling in every board of the array.
@@ -1312,9 +1973,16 @@ class FPGAArray(object):
 
         self.logger.info('%r: Configuring crate-wide data shuffling with frames_per_packet=%i' % (self, frames_per_packet))
 
+        bin_map = self.get_corner_turn_bin_map(
+            mode=mode,
+            bad_links=bad_links,
+            bin_priority=bin_priority,
+            remap_level=remap_level)
+
         #####################
         # Set-up transmitters
         #####################
+        self.corner_turn_stream_ids = {}
         for i, ib in enumerate(self.ib):
             self.logger.info('%r: **** Initializing transmitters for IceBoard %r (SN%s) ****' % (self, ib, ib.serial))
             ib.set_corr_reset(0) # Put the corner_turn engine in reset
@@ -1326,12 +1994,21 @@ class FPGAArray(object):
 
             # Initialize the crossbars to select and send data in a specific format
             # ib.init_crossbars(dsmap, frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb1_bypass=cb1_bypass, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass, remap=remap, bp_bypass=bp_bypass)
-            ib.init_crossbars(
+            stream_ids = ib.init_crossbars(
                 mode,
                 dsmap=dsmap,
                 frames_per_packet=frames_per_packet,
                 send_flags=send_flags,
-                chan8_channel_map=chan8_channel_map)
+                chan8_channel_map=chan8_channel_map,
+                bin_map=bin_map[ib.get_id()])
+
+            for lane, stream_id in enumerate(stream_ids):
+                self.corner_turn_stream_ids[ib.get_id(lane)] = stream_id
+
+        # Check if stream IDs are unique
+        if len(self.corner_turn_stream_ids) != len(set(self.corner_turn_stream_ids.values())):
+            raise self.logger.warn('%r: Stream IDs are not unique across the array')
+
         if ib.crate:
 
             #####################
@@ -1380,6 +2057,11 @@ class FPGAArray(object):
                     else:
                         self.logger.debug('%r: In %r, %s has no corresponding transmitter' % (self, ib.crate.handler, rx))
 
+        # Get the exhaustive frequency map that is implemented by the current corner
+        freq_map = self.get_frequency_map(format='l:bb')
+        # Retain only one bin number  for each bin
+        self.corner_turn_frequency_bins = {lane_id: sorted(set(data['data']))
+            for lane_id, data in freq_map.iteritems()}
 
         # sync boards
         #soft_sync(c, sync_board)
@@ -2172,31 +2854,6 @@ class FPGAArray(object):
 
 
 
-    def get_chan_identity_map(self):
-        """ Return an identity map that describes the origin of each of the 1024 samples contained in the channelizer output packets.
-        The map is a dict:
-            {channelizer_id: [sample_id0, ... sample_id1023]}
-        where channelizer_id is represented by the tuple (crate_number, slot_number, channel_number) and
-        each sample_id is the tuple (crate_number, slot, channel, bin_number)
-
-        This map can be propagated through the shuffle map (see
-        `apply_shuffle_map` method) to obtain the contents of the output of
-        the corner-turn engine.
-        """
-        ch_out = OrderedDict()
-        for ic in self.ic:
-            for slot, ib in ic.slot.items():
-                for ch, ant in enumerate(ib.ANT):
-                        ch_out[(ic.crate_number, slot, ch)] = [(ic.crate_number, slot, ch, bin_number) for bin_number in range(1024)]
-        return ch_out
-
-    def get_chan_output(self):
-        ch_out = OrderedDict()
-        for ic in self.ic:
-            for ib in ic.slot.values():
-                for ant in ib.ANT.values():
-                    ch_out[ant.get_id()] = ant.FUNCGEN.get_buffer()
-        return ch_out
 
     @async
     def reset_corr(self, delay=0.1):
@@ -2239,13 +2896,49 @@ class FPGAArray(object):
 
 
 
-    def get_frequency_map(self):
+    def get_frequency_map(self, format='cscb'):
         """ Returns a map describing the content (crate, slot, channel, bin) of every packet at the output of the corner turn engine.
 
         This map is obtained by passing the channelizer identity map through the shuffle map.
         """
 
-        return self.get_shuffle_output(self.get_chan_identity_map())
+        return self.get_shuffle_output(self.get_chan_identity_map(format=format))
+
+    def get_chan_identity_map(self, format='cslb'):
+        """ Return an identity map that describes the origin of each of the 1024 samples contained in the channelizer output packets.
+        The map is a dict:
+            {channelizer_id: [sample_id0, ... sample_id1023]}
+        where channelizer_id is represented by the tuple (crate_number, slot_number, channel_number) and
+        each sample_id is the tuple (crate_number, slot, channel, bin_number)
+
+        This map can be propagated through the shuffle map (see
+        `apply_shuffle_map` method) to obtain the contents of the output of
+        the corner-turn engine.
+        """
+        ch_out = OrderedDict()
+        for ib in self.ib:
+            for (crate, slot, lane) in ib.get_channel_ids():
+
+                if format == 'l:cscb': # Unique (crate, slot, local_channel)
+                    ch_out[(crate, slot, lane)] = [(crate, slot, lane, bin) for bin in xrange(1024)]
+                elif format == 'l:cc': # Non-unique global channel numbers (repeated for each bin)
+                    ch_out[(crate, slot, lane)] = [crate*256 + slot*16 + lane for bin in xrange(1024)]
+                elif format == 'l:cb': # Unique (global channel, lane) tuple
+                    ch_out[(crate, slot, lane)] = [(crate*256 + slot*16 + lane, bin) for bin in xrange(1024)]
+                elif format == 'l:bb': # Non unique bin_number (repeated for each channel)
+                    ch_out[(crate, slot, lane)] = [bin for bin in xrange(1024)]
+        return ch_out
+
+    @async
+    def get_chan_output(self):
+        ch_out = OrderedDict()
+        for ic in self.ic:
+            for ib in ic.slot.values():
+                for ant in ib.ANT.values():
+                    ch_out[ant.get_id()] = ant.FUNCGEN.get_buffer()
+                yield async_moment
+        async_return(ch_out)
+
 
     def get_shuffle_output(self, chan_map):
         """
@@ -2262,43 +2955,44 @@ class FPGAArray(object):
         # Channels are converted to (crate_number, slot, input_number)
         # Output lane id is converted to (crate_number, slot, lane)
 
-        cb0_out = OrderedDict()
-        for ic in self.ic:
-            for slot, ib in ic.slot.items():
-                ch_in = {ch: chan_map[(ic.crate_number, slot, ch)] for ch, ant in enumerate(ib.ANT)} # extract channels for this inceboard only
-                for lane, data in ib.CROSSBAR.map(ch_in).items():
-                    cb0_out[(ic.crate_number, slot, lane)] = data
+        cb1_out = OrderedDict()
+        for ib in self.ib:
+                cb1_in = {ch: chan_map[(crate, slot, ch)] for (crate, slot, ch) in ib.get_channel_ids()} # extract channels for this inceboard only
+                for lane, data in ib.CROSSBAR.map(cb1_in).items():
+                    cb1_out[ib.get_id(lane)] = data
 
         # Apply pcb shuffling
-        bp_out = OrderedDict()
+        pcb_shuffle_out = OrderedDict()
         for ic in self.ic:
             pcb_link_map = ic.get_pcb_link_map()
             for (rx_slot, rx_lane), (tx_slot, tx_lane) in pcb_link_map.items():
-                bp_out[(ic.crate_number, rx_slot, rx_lane)] = cb0_out[(ic.crate_number, tx_slot, tx_lane)]
+                pcb_shuffle_out[(ic.crate_number, rx_slot-1, rx_lane)] = cb1_out[(ic.crate_number, tx_slot-1, tx_lane)]
 
         # Apply CROSSBAR2
         cb2_out = OrderedDict()
-        for ic in self.ic:
-            for slot, ib in ic.slot.items():
-                cb_in = {lane: bp_out[(ic.crate_number, slot, lane)] for lane in range(ib.BP_SHUFFLE.NUMBER_OF_PCB_LANES)} # extract channels for this inceboard only
-                for lane, data in ib.CROSSBAR2.map(cb_in).items():
-                    cb2_out[(ic.crate_number, slot, lane)] = data
+        for ib in self.ib:
+            (crate, slot) = ib.get_id()
+            cb2_in = {lane: pcb_shuffle_out[(crate, slot, lane)] for lane in xrange(ib.BP_SHUFFLE.NUMBER_OF_PCB_LANES)} # extract channels for this inceboard only
+            for lane, data in ib.CROSSBAR2.map(cb2_in).iteritems():
+                cb2_out[(crate, slot, lane)] = data
 
         # Apply QSFP shuffling
-        qsfp_out = OrderedDict()
-        for ic in self.ic:
-            for slot, ib in ic.slot.items():
-                for rx_lane in range(ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES):
-                    crate_offset = rx_lane * 2 // ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES
-                    qsfp_out[(ic.crate_number, slot, rx_lane)] = cb2_out[(ic.crate_number ^ crate_offset, slot, rx_lane)]
+        qsfp_shuffle_out = OrderedDict()
+        for ib in self.ib:
+            (crate, slot) = ib.get_id()
+            bypass = ib.BP_SHUFFLE.BYPASS_QSFP_SHUFFLE
+            number_of_qsfp_lanes = ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES
+            for rx_lane in range(number_of_qsfp_lanes):
+                crate_offset = rx_lane * 2 // number_of_qsfp_lanes if not bypass else 0
+                qsfp_shuffle_out[(crate, slot, rx_lane)] = cb2_out[(crate ^ crate_offset, slot, rx_lane)]
 
         # Apply CROSSBAR3
         cb3_out = OrderedDict()
-        for ic in self.ic:
-            for slot, ib in ic.slot.items():
-                cb_in = {lane: qsfp_out[(ic.crate_number, slot, lane)] for lane in range(ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES)} # extract channels for this inceboard only
-                for lane, data in ib.CROSSBAR3.map(cb_in).items():
-                    cb3_out[(ic.crate_number, slot, lane)] = data
+        for ib in self.ib:
+            (crate, slot) = ib.get_id()
+            cb_in = {lane: qsfp_shuffle_out[(crate, slot, lane)] for lane in xrange(ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES)} # extract channels for this inceboard only
+            for lane, data in ib.CROSSBAR3.map(cb_in).iteritems():
+                cb3_out[(crate, slot, lane)] = data
 
         return cb3_out
 
