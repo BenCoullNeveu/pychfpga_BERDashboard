@@ -1509,13 +1509,13 @@ class FPGAArray(object):
                     cb2=np.arange(64).reshape((2, 32), order='F'),
                     cb3=np.arange(32).reshape((8, 4), order='F'))
                     for crate in range(2) for slot in range(16)}
-            if remap_level >= 3:
-                self.compute_cb1_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
-            if remap_level >= 2:
-                self.compute_cb2_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
+            #if remap_level >= 3:
+            #    self.compute_cb1_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
+            #if remap_level >= 2:
+            #    self.compute_cb2_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
             if remap_level >= 1:
                 #self.compute_cb3_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
-                self.shuffle512_cb3_lane_remap(bin_map, bad_links, bin_priority)
+                self.shuffle512_cb3_freq_remap(bin_map, bad_links, bin_priority)
             # Apply crates 0 & 1 map to all pair of crates
             bin_map = {(crate, slot):bin_map[(crate & 1, slot)]
                         for (crate, slot) in self.ib.get_id()}
@@ -1682,6 +1682,75 @@ class FPGAArray(object):
         # for (crate, slot), bmap in bin_map.items():
         #     print '--_>(%i,%i)' % (crate, slot), bmap['cb3']
 
+
+    @staticmethod
+    def shuffle512_cb3_freq_remap(bin_map, bad_links, bin_priority):
+        """
+        Generates a frequency map by assigning flagged/less important frequency bins to
+        links connected to bad/down GPU nodes. The remapping is
+        restricted to changes at the third crossbar for 'shuffle512' operation.
+
+        Parameters:
+        -----------
+        bin_map: dict
+            Dict that contains the bin maps for all crossbars. In the format
+            {(crate, slot):'cb1':cb1_map, 'cb2':cb2_map, 'cb3':cb3_map},...}
+            `bin_map` is modified in place with the new optimized map.
+        bad_links: list of (crate parity, slot, link) tuples
+            List of links connected to bad/down GPU nodes. Least important frequencies are
+            assigned to these links. Crate parity is either 0 (even) or 1 (odd). Slot
+            is an integer between 0 and 15, and link is an integer between 0 and 7
+        bin_priority: list or np.array
+            1024-long array with the frequency priority of each frequency bin.
+            bin_priority[i] is the priority of the ith frequency bin.
+            A lower value has a higher priority.
+        """
+        import itertools
+
+        # Number of freq. bins, crates (per crate pair), slots (per crate), links (per board) 
+        # (SHOULD BE ABLE TO GET THIS FROM FPGA ARRAY OBJECT)
+        Nfreq, Ncrate, Nslot, Nlink = 1024, 2, 16, 8 
+        Nfreq_cs = Nfreq//(Ncrate*Nslot) # Freq. bins per (crate, slot)
+        Nfreq_link = Nfreq_cs // Nlink   # Freq. bins per (crate, slot, link)
+
+        # Order links by how easy it is to assign RFI bins to them (easier for middle links
+        # according to FIFO constraints) links at the top of the list will have more RFI bins
+        link_rfi_assign_order = np.array([3, 4, 2, 5, 1, 6, 0, 7])
+        for (crate, slot), bmap in bin_map.items():
+                # Standard CB3 bin assginment (each row is a link)
+                cb3_bins = np.arange(Nfreq_cs).reshape((Nlink, Nfreq_link), order='F')
+                # Standard absolute frequency assignment (each row is a link)
+                freq_bins_cs = np.arange(crate*Nslot+slot, Nfreq, Nfreq_cs).reshape(
+                    (Nlink, Nfreq_link), order='F')
+                # Importance of each CB3 bin
+                cb3_bin_order = bin_priority[freq_bins_cs.ravel()].reshape((Nlink, Nfreq_link))
+                # Start clustering RFI bins on nodes according to link_rfi_assign_order
+                # Assumes that there are no overflows in cb3 FIFOs as long as the 
+                # separation between cb3 bins (in range(31)) for a given lane is at least 4
+                for gpu in range(Nfreq_link):
+                    # Sort all links of given gpu by lowest priority (RFI first)
+                    link_priority = np.argsort(cb3_bin_order[:, gpu])[::-1]
+                    # Go over all permutations of links until we find one
+                    # that meets the requirement of at least 4 cb3 bin separation.
+                    # By the way itertools.permutations works, it will start
+                    # with the permutations that cluster RFI bins on the links
+                    # according to link_rfi_assign_order
+                    for lp in itertools.permutations(link_priority):
+                        if np.all(abs(np.array(lp)-link_rfi_assign_order)<=4):
+                            # The permutation is allowed. done
+                            break
+                    cb3_bins[link_rfi_assign_order, gpu] = cb3_bins[lp, gpu]
+                    freq_bins_cs[link_rfi_assign_order, gpu] = freq_bins_cs[lp, gpu]
+
+                i_top, i_bottom = 0, Nlink
+                for link in range(Nlink):
+                    stream_id = (crate, slot, link)
+                    if stream_id in bad_links: # Bad link: assign less important freq. bins
+                        bmap['cb3'][link] = cb3_bins[link_rfi_assign_order[i_top]]
+                        i_top += 1
+                    else: # Good link: assign important freq. bins
+                        bmap['cb3'][link] = cb3_bins[link_rfi_assign_order[i_bottom-1]]
+                        i_bottom -= 1
 
     @staticmethod
     def shuffle512_cb3_lane_remap(bin_map, bad_links, bin_priority):
