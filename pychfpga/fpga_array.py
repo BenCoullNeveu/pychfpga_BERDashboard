@@ -555,6 +555,8 @@ class FPGAArray(object):
         self.tx_power = tx_power
         self.mode = mode
 
+        discover_slot = True
+        discover_crate = True
         ###########################################
         # setup pychfpga.fpga_array logging
         ###########################################
@@ -875,14 +877,14 @@ class FPGAArray(object):
             yield futures # [ib.discover_serial.async() for ib in ib_without_serial]
             self.logger.info('%r: Finished Auto-Discovering serial number for IceBoards. Took %f seconds.' % (self, time.time() - t0))
 
-        if 0:
+        if discover_slot:
             ib_without_slot = self.hwm.query(IceBoardPlus)
             if ib_without_slot.count():
                 self.logger.info('%r: Auto-Discovering & validating the slot numbers for %i IceBoards with known hostnames...' % (self, ib_without_slot.count()))
                 t0 = time.time()
                 yield [ib.discover_slot.async() for ib in ib_without_slot]
                 self.logger.info('%r: Finished Auto-Discovering slot numbers for IceBoards. Took %f seconds.' % (self, time.time() - t0))
-        if 0:
+        if discover_crate:
             ib_without_crate = self.hwm.query(IceBoardPlus).filter(or_(IceBoardPlus.crate == None, IceBoardPlus.slot == None))
             if ib_without_crate.count():
                 t0 = time.time()
