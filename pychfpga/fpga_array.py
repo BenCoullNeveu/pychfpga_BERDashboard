@@ -217,10 +217,12 @@ class FPGAArray(object):
                 crate number is not specified in the hardware description
                 string.
 
-            virtual_slot_map (dict): Maps board model/serial number string to
+            virtual_slot_map (dict): Maps board model/serial number or hostname string to
                 a virtual slot number.
 
-                Example: {"MGK7MB_SN123": 5, ...}
+                Examples:
+                     {"MGK7MB_SN123": 5, ...}
+                     {"10.10.10.220": 3, ...}
 
             iceboards (list of str) : Iceboard to add to the hardware map,
                 specified as an IP address, hostname, or serial number. The
@@ -929,14 +931,17 @@ class FPGAArray(object):
         # Assign virtual slot numbers
         ###########################################################################
         # Reassign slot numbers of boards with specific model/serial numbers. This is mostly useful for standalone boards.
-        print('Virtual slot map is:', virtual_slot_map)
         if virtual_slot_map:
             for ib in self.hwm.query(IceBoardPlus):
                 sid = ib.get_string_id()
-                print('sid=',sid)
                 if sid in virtual_slot_map:
                     slot = virtual_slot_map[sid]
-                    print('%r: Reassigning slot number %i to board %s (was %s)' % (self, slot, sid, ib.slot))
+                elif ib.hostname in virtual_slot_map:
+                    slot = virtual_slot_map[ib.hostname]
+                else:
+                    slot = None
+                if slot:
+                    self.logger.info('%r: Reassigning slot number %i to board %s/%s (was %s)' % (self, slot, sid, ib.hostname, ib.slot))
                     ib.slot = slot
             self.hwm.flush()
             self.hwm.commit()
