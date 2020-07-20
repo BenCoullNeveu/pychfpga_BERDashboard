@@ -4148,23 +4148,24 @@ class chFPGA_controller(IceBoardExtHandler):
         Returns:
             A (crate_id, slot_or_board_id) tuple, where:
 
-             - crate_id is:
+             - crate_id is the first of the following:
                 - ``numeric_crate_number`` (int) if there is a crate and the crate number is known
-                - ``default_crate`` if there is no crate, or there is a crate but no crate_number  and default_crate is not None
-                - ``crate_model_serial_string`` (str) model and serial number string if there is a crate but there is neither a crate number or default_crate
-                - `None` if there is no crate and default_crate is None
+                - `default_crate` if `default_crate` is not `None`
+                - ``crate_model_serial_string`` (str) model and serial number string if those exist
+                - `None` if none  of the above is true
 
-             - slot_or_board_id
-                - ``zero_based_slot_number`` (int) zero-based slot number if there is no valid slot number (i.e. self.slot is not 0 or None), whether or not there is a crate.
-                - `default_slot` if there is no valid slot number and  default_slot is not None
-                - ``board_model_serial_string`` (str) if there is no crate nor slot number and default_slot is None.
-                - ``None`` if there is a crate but no slot number and default_slot is None.
+             - slot_or_board_id is the first of the following:
+                - ``zero_based_slot_number`` (int) zero-based slot number if there is a valid slot number (i.e. bool(self.slot) is True), whether or not there is a crate;
+                - `default_slot` if  `default_slot` is not None;
+                - ``board_model_serial_string`` (str) if the board has a valid model and serial number;
+                - ``hostname`` (str) hostname if the board has a known hostname;
+                - ``None`` if none of the above is true.
         Notes:
             - A board is always represented by a 2-element tuple. A crate is always represented by a one-element tuple, and a channel/lane is a 3-element tuple.
             - The user is responsible for handling all possible types of crate (int, str, None) or slot (int, str) tuple elements
             - crate can be None, but slot can never be None: it will be replaced by the string ID of the board so the tuple always refer to a specific board.
             - If the crate provides a numeric slot number, the user must rely on external information to infer which board serial number correspond to the specified ID
-            - If the crate provides a numetic crate number, the user must rely on external information to infer which crate serial number correspond to thespecified ID
+            - If the crate provides a numeric crate number, the user must rely on external information to infer which crate serial number correspond to thespecified ID
             - the id must be unique, even if we have multiple stand-alone boards. There should at least a non-None crate or slot field (i.e. no (None, None) tuple)
         Examples:
 

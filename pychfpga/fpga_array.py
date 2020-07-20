@@ -134,6 +134,7 @@ class FPGAArray(object):
                  hwm=None,
                  iceboards=[], icecrates=[], mezzanines=[], exclude_iceboards=[],
                  crate_map={},
+                 virtual_slot_map={},
                  ignore_missing_boards=False,
 
                  subarrays=None,
@@ -215,6 +216,11 @@ class FPGAArray(object):
                 hardware map. Useful if the crates are auto-discovered and the
                 crate number is not specified in the hardware description
                 string.
+
+            virtual_slot_map (dict): Maps board model/serial number string to
+                a virtual slot number.
+
+                Example: {"MGK7MB_SN123": 5, ...}
 
             iceboards (list of str) : Iceboard to add to the hardware map,
                 specified as an IP address, hostname, or serial number. The
@@ -429,6 +435,7 @@ class FPGAArray(object):
              mezzanines=mezzanines,
              exclude_iceboards=exclude_iceboards,
              crate_map=crate_map,
+             virtual_slot_map=virtual_slot_map,
              ignore_missing_boards=ignore_missing_boards,
              subarrays=subarrays, ping=ping,
              mdns_timeout=mdns_timeout,
@@ -498,6 +505,7 @@ class FPGAArray(object):
              hwm=None,
              iceboards=[], icecrates=[], mezzanines=[], exclude_iceboards=[],
              crate_map={},
+             virtual_slot_map={},
              ignore_missing_boards=False,
 
              subarrays=None, ping=True,
@@ -837,11 +845,12 @@ class FPGAArray(object):
         ########################################################
         # Establish Tuber communication (ARM only)
         ########################################################
-        # All the boards in the hardware map should have a hostname now.
-        # Let's initialize ARM/Tuber
-        # communication becore we start using Tuber methods. We want to cache the Tuber methods
-        # asynchnously now instead of letting Tuber do it asynchrunously on the first Tuber command
-        # it gets.
+        # All the boards in the hardware map should have a hostname now. Let's
+        # initialize ARM/Tuber. We start by forcing Tuber to asynchronously
+        # request and cache the Tuber methods. This validates the connection
+        # and makes the timing of future requests faster and more predictable
+        # in timing
+        #
         ibs = self.hwm.query(IceBoardPlus)
         if ibs.count():
             self.logger.info('%r: Establishing communication with the %i motherboard ARM processors over the HTTP/Tuber protocol and acquiring list of remote functions' % (self, ibs.count()))
@@ -866,25 +875,27 @@ class FPGAArray(object):
             yield futures # [ib.discover_serial.async() for ib in ib_without_serial]
             self.logger.info('%r: Finished Auto-Discovering serial number for IceBoards. Took %f seconds.' % (self, time.time() - t0))
 
-        ib_without_slot = self.hwm.query(IceBoardPlus)
-        if ib_without_slot.count():
-            self.logger.info('%r: Auto-Discovering & validating the slot numbers for %i IceBoards with known hostnames...' % (self, ib_without_slot.count()))
-            t0 = time.time()
-            yield [ib.discover_slot.async() for ib in ib_without_slot]
-            self.logger.info('%r: Finished Auto-Discovering slot numbers for IceBoards. Took %f seconds.' % (self, time.time() - t0))
-
-        ib_without_crate = self.hwm.query(IceBoardPlus).filter(or_(IceBoardPlus.crate == None, IceBoardPlus.slot == None))
-        if ib_without_crate.count():
-            t0 = time.time()
-            self.logger.info('%r: Auto-Discovering crate information for IceBoards with known hostnames: %s' %
-                (self, ', '.join(ib_without_crate.hostname)))
-            yield [ib.discover_crate.async() for ib in ib_without_crate]
-            self.logger.info('%r: Finished Auto-Discovering crate serial numbers. Took %f seconds.' % (self, time.time() - t0))
+        if 0:
+            ib_without_slot = self.hwm.query(IceBoardPlus)
+            if ib_without_slot.count():
+                self.logger.info('%r: Auto-Discovering & validating the slot numbers for %i IceBoards with known hostnames...' % (self, ib_without_slot.count()))
+                t0 = time.time()
+                yield [ib.discover_slot.async() for ib in ib_without_slot]
+                self.logger.info('%r: Finished Auto-Discovering slot numbers for IceBoards. Took %f seconds.' % (self, time.time() - t0))
+        if 0:
+            ib_without_crate = self.hwm.query(IceBoardPlus).filter(or_(IceBoardPlus.crate == None, IceBoardPlus.slot == None))
+            if ib_without_crate.count():
+                t0 = time.time()
+                self.logger.info('%r: Auto-Discovering crate information for IceBoards with known hostnames: %s' %
+                    (self, ', '.join(ib_without_crate.hostname)))
+                yield [ib.discover_crate.async() for ib in ib_without_crate]
+                self.logger.info('%r: Finished Auto-Discovering crate serial numbers. Took %f seconds.' % (self, time.time() - t0))
 
         ###########################################################################
         # mDNS discovery of boards and crates specified by model/serial number only
         ###########################################################################
-
+        # We add the boards/crates that are specified by serial number
+        # The serial and slot numbers will be set based on the data returned by the MDNS TXT fields
         if hw_table.iceboards or hw_table.icecrates :
             self.logger.info('%r: Discovering IceBoards and Icecrates specified by serial number using mDNS' % self)
             self.logger.info('%r:     IceBoards to find: %s' % (self, hw_table.iceboards))
@@ -896,6 +907,9 @@ class FPGAArray(object):
                           iceboards=hw_table.iceboards,
                           timeout=mdns_timeout)
 
+        ###########################################################################
+        # Exclude boards
+        ###########################################################################
         # Remove iceboards to be excluded (by serial number)
         if exclude_iceboards:
             self.logger.info('%r: Removing IceBoards based on exclusion list: %s' % (self, exclude_iceboards))
@@ -907,6 +921,23 @@ class FPGAArray(object):
                 if serial in exclude_iceboards or ib.serial in exclude_iceboards:
                     self.hwm.delete(ib)
             self.hwm.flush()
+
+
+        ###########################################################################
+        # Assign virtual slot numbers
+        ###########################################################################
+        # Reassign slot numbers of boards with specific model/serial numbers. This is mostly useful for standalone boards.
+        print('Virtual slot map is:', virtual_slot_map)
+        if virtual_slot_map:
+            for ib in self.hwm.query(IceBoardPlus):
+                sid = ib.get_string_id()
+                print('sid=',sid)
+                if sid in virtual_slot_map:
+                    slot = virtual_slot_map[sid]
+                    print('%r: Reassigning slot number %i to board %s (was %s)' % (self, slot, sid, ib.slot))
+                    ib.slot = slot
+            self.hwm.flush()
+            self.hwm.commit()
 
         self.logger.info('%r: Hardware map is complete' % self)
 
@@ -1713,9 +1744,9 @@ class FPGAArray(object):
         """
         import itertools
 
-        # Number of freq. bins, crates (per crate pair), slots (per crate), links (per board) 
+        # Number of freq. bins, crates (per crate pair), slots (per crate), links (per board)
         # (SHOULD BE ABLE TO GET THIS FROM FPGA ARRAY OBJECT)
-        Nfreq, Ncrate, Nslot, Nlink = 1024, 2, 16, 8 
+        Nfreq, Ncrate, Nslot, Nlink = 1024, 2, 16, 8
         Nfreq_cs = Nfreq//(Ncrate*Nslot) # Freq. bins per (crate, slot)
         Nfreq_link = Nfreq_cs // Nlink   # Freq. bins per (crate, slot, link)
 
@@ -1731,7 +1762,7 @@ class FPGAArray(object):
                 # Importance of each CB3 bin
                 cb3_bin_order = bin_priority[freq_bins_cs.ravel()].reshape((Nlink, Nfreq_link))
                 # Start clustering RFI bins on nodes according to link_rfi_assign_order
-                # Assumes that there are no overflows in cb3 FIFOs as long as the 
+                # Assumes that there are no overflows in cb3 FIFOs as long as the
                 # separation between cb3 bins (in range(31)) for a given lane is at least 4
                 for gpu in range(Nfreq_link):
                     # Sort all links of given gpu by lowest priority (RFI first)
@@ -3896,9 +3927,9 @@ class FPGAArray(object):
         orphan_iceboards = [ib for ib in iceboards if not ib.crate or not ib.crate.serial]
         corner_label = 'Standalone\nICEBoards'
         # col_labels = ['-'] * len(orphan_iceboards)
-        col_labels = ['\nSN%s' % ib.serial for ib in orphan_iceboards]
-        for i, ib in enumerate(orphan_iceboards):
-           col_labels[i] += '\n%s' % ib.hostname
+        col_labels = ['\nSN%s\n%s\nVirt. slot %s' % (ib.serial, ib.hostname, ib.slot) for ib in orphan_iceboards]
+        # for i, ib in enumerate(orphan_iceboards):
+        #    col_labels[i] += '\n%s' % ib.hostname
         table = []
         for ib in orphan_iceboards:
             # cell = 'SN' + ib.serial + '\n' if add_serial else ''
