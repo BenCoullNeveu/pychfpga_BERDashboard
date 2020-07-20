@@ -2976,7 +2976,7 @@ class FPGAArray(object):
         for ic in self.ic:
             pcb_link_map = ic.get_pcb_link_map()
             for (rx_slot, rx_lane), (tx_slot, tx_lane) in pcb_link_map.items():
-                pcb_shuffle_out[(ic.crate_number, rx_slot-1, rx_lane)] = cb1_out[(ic.crate_number, tx_slot-1, tx_lane)]
+                pcb_shuffle_out[(ic.crate_number, rx_slot-1, rx_lane)] = cb1_out[(ic.crate_number, tx_slot-1, tx_lane)] if (ic.crate_number, tx_slot-1, tx_lane) in cb1_out else dict(data=[None]*1024)
 
         # Apply CROSSBAR2
         cb2_out = OrderedDict()
@@ -2994,7 +2994,9 @@ class FPGAArray(object):
             number_of_qsfp_lanes = ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES
             for rx_lane in range(number_of_qsfp_lanes):
                 crate_offset = rx_lane * 2 // number_of_qsfp_lanes if not bypass else 0
-                qsfp_shuffle_out[(crate, slot, rx_lane)] = cb2_out[(crate ^ crate_offset, slot, rx_lane)]
+                qsfp_shuffle_out[(crate, slot, rx_lane)] = cb2_out.get(
+                        (crate ^ crate_offset, slot, rx_lane),
+                        dict(data=[None] * 1024))
 
         # Apply CROSSBAR3
         cb3_out = OrderedDict()
