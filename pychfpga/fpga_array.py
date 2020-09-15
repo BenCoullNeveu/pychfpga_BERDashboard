@@ -154,7 +154,7 @@ class FPGAArray(object):
                  # data_width=4,
 
                  sync_method='distributed_time',
-                 sync_source='bp_trig',
+                 sync_source=None,
                  sync_master=None,
                  sync_master_time_source=None,
                  max_sync_time_difference=100,
@@ -2175,7 +2175,7 @@ class FPGAArray(object):
                     ib.set_funcgen_function('ab', a=(slot-1)<<4, b=ch<<4, channels=[ch])
                 ib.set_data_source('funcgen')
 
-    def set_sync_method(self, method='distributed_time', source='bp_time', master=None, master_time_source=None):
+    def set_sync_method(self, method='distributed_time', source=None, master=None, master_time_source=None):
         """ Sets the global syncing method, and setup the boards accordingly.
 
         Parameters:
@@ -2273,6 +2273,7 @@ class FPGAArray(object):
         self.sync_method = method
 
         if method == 'distributed_time':
+            source = source or 'bp_time'
             self.ib.set_sync_source('irigb')
             self.ib.set_irigb_source(source)
             if source in ['bp_time', 'bp_trig']:
@@ -2290,12 +2291,14 @@ class FPGAArray(object):
                 #self.ib.set_bp_gpio_int_output_source(None)  # Make sure no other board is driving the backplane line
                 #master.set_bp_gpio_int_output_source(master_time_source)
         elif method == 'centralized_time_trigger':
+            source = source or 'bp_time'
             if not master or not master_time_source:
                 raise ValueError('In the centralized time trigger mode, the master board and its time source must be specified')
             self.ib.set_sync_source(source)
             master.set_irigb_source(master_time_source)
             master.set_user_output_source('irigb_trig')
         elif method == 'centralized_soft_trigger':
+            source = source or 'bp_time'
             if not master:
                 raise ValueError('In the centralized soft trigger mode, a master board must be specified')
             if master_time_source:
@@ -2307,7 +2310,15 @@ class FPGAArray(object):
                 raise ValueError('In the local soft trigger mode, a master board should NOT specified')
             if master_time_source:
                 raise ValueError('In the local soft trigger mode, a master_time_source should NOT be specified')
+            self.ib.set_sync_source('local')
             self.ib.sync()
+        elif method == 'external':
+            source = source or 'sma_a' # if no source is specified
+            if master:
+                raise ValueError('In the local soft trigger mode, a master board should NOT specified')
+            if master_time_source:
+                raise ValueError('In the local soft trigger mode, a master_time_source should NOT be specified')
+            self.ib.set_sync_source(source)
         else:
             raise ValueError("Unknown syncing method '%s'" % method)
 
@@ -2374,9 +2385,16 @@ class FPGAArray(object):
                             raise RuntimeError('Timout while waiting for the IRIG-B-based SYNC to complete')
                 elif self.sync_method == 'local_soft_trigger':
                     self.ib.sync()
+                elif self.sync_method == 'external':
+                    # Wait until one of the board sees a trig. We assume all of them will have trigerred by the time that is checked later.
+                    t0 = time.time()
+                    while all([ib.REFCLK.SYNC_CTR == sync_ctr_before[i] for i, ib in enumerate(self.ib)]):
+                        if time.time() - t0 > 5 + 1:
+                            raise RuntimeError('Timout while waiting for the external sync signal')
                 else:
                     raise ValueError("Unknown syncing method '%s'" % self.sync_method)
 
+                # Check if all boards of the array have sync'ed by looking at the sync counter
                 if check:
                     sync_ctr_after = self.ib.REFCLK.SYNC_CTR
                     bad_ib = [ib for i,ib in enumerate(self.ib) if (sync_ctr_after[i] - sync_ctr_before[i]) & 0xf != 1]
@@ -2394,7 +2412,7 @@ class FPGAArray(object):
                             ts[i].isoformat(),
                             ts[i].nano,
                             ts[i].nano - sync_time[i].nano)
-                        for i ,ib in enumerate(self.ib))))
+                         for i ,ib in enumerate(self.ib))))
                     self.logger.info('%r: The maximum Frame 0 time difference is %i ns' % (self, delta_ts) )
                     if delta_ts > self.max_sync_time_difference:
                         raise RuntimeError('The Frame 0 time difference of %i exceeds the maximum limit of %i' % (delta_ts, self.max_sync_time_difference))
