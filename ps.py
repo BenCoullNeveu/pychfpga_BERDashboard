@@ -371,8 +371,8 @@ class AgilentN5700(SocketContext):
 
 
             protectionstatus={'uvl':uvlmeas, 'ovp':ovpmeas, 'ocp':ocpmeas, 'ilim':ilimmeas}
-            if clear == 1 and problem == 0:
-                problem = 'dont trust anything'
+            #if clear == 1 and problem == 0:
+            #    problem = 'dont trust anything'
 
             return problem, protectionstatus, failmode
 
