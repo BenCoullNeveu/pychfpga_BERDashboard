@@ -1553,13 +1553,13 @@ class FPGAArray(object):
                     cb2=np.arange(64).reshape((2, 32), order='F'),
                     cb3=np.arange(32).reshape((8, 4), order='F'))
                     for crate in range(2) for slot in range(16)}
-            #if remap_level >= 3:
-            #    self.compute_cb1_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
-            #if remap_level >= 2:
-            #    self.compute_cb2_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
+            if remap_level >= 3:
+                self.compute_cb1_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
+            if remap_level >= 2:
+                self.compute_cb2_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
             if remap_level >= 1:
-                #self.compute_cb3_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
-                self.shuffle512_cb3_freq_remap(bin_map, bad_links, bin_priority)
+                self.compute_cb3_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
+                #self.shuffle512_cb3_freq_remap(bin_map, bad_links, bin_priority)
             # Apply crates 0 & 1 map to all pair of crates
             bin_map = {(crate, slot):bin_map[(crate & 1, slot)]
                         for (crate, slot) in self.ib.get_id()}
@@ -4068,6 +4068,7 @@ class FPGAArray(object):
                     metrics.add('fpga_frame_number_delta', fn - fn0, crate=crate, slot=slot)
                     metrics.add('fpga_time_error', ts.nano - (self.sync_timestamps[i].nano + fn*2560), crate=crate, slot=slot)
                     metrics.add('fpga_sync_time_delta', self.sync_timestamps[i].nano - self.sync_timestamps[0].nano, crate=crate, slot=slot)
+                    metrics.add('fpga_sync_time_integer_second_offset', (self.sync_timestamps[i].nano % 1000000000) - 1000000000, crate=crate, slot=slot)
                 except RuntimeError:
                     self.logger.error('%r: Timeout while capturing frame time' % ib)
 

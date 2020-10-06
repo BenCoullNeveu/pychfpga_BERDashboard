@@ -809,7 +809,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
 
     def set_channelizer(self,
-                        adc_mode=None, adc_sampling_mode=None, adc_bandwidth=2,
+                        adc_mode=None, adc_sampling_mode=None, adc_bandwidth=None,
                         adcdaq_mode=None,
                         data_source=None, function=None, a=1, b=0, freq_test_bins=None,
                         fft_bypass=None, fft_shift=None,
@@ -821,7 +821,7 @@ class chFPGA_controller(IceBoardExtHandler):
                   ADC --> ADCDAQ --> FUNCGEN --> --> FFT --> SCALER
         """
         # Set the ADC chip operational mode (data, ramp, pulse)
-        if adc_mode is not None or adc_sampling_mode is not None:
+        if adc_mode is not None or adc_sampling_mode is not None or adc_bandwidth is not None:
             self.set_adc_mode(mode=adc_mode, sampling_mode=adc_sampling_mode, bandwidth=adc_bandwidth, sync=False)
 
         # Set the FPGA's ADC data acquisition module operational mode
@@ -1000,6 +1000,11 @@ class chFPGA_controller(IceBoardExtHandler):
             'ramp': Ramp mode (ADC output contains repeating 0-255 pattern. Note that ADCDAQ inverts bit 7 during acquisition to convert offset binary to 2's complement binary)
             'pulse': Strobe mode (ADC output contains one 0xFF followed by ten 0x00. It repeats with a pariod of 11. Same comment as above)
         """
+        if sampling_mode is None:
+            sampling_mode = 0
+        if bandwidth is None:
+            bandwidth = 2
+
         if isinstance(mode, list):
             if channels:
                 raise RuntimeError('channels cannot be specified when multiple modes are provided')
