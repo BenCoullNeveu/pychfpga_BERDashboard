@@ -1459,7 +1459,7 @@ class FPGAArray(object):
                 mode='chan8',
                 frames_per_packet=frames_per_packet,
                 send_flags=send_flags,
-                chan8_channel_map=np.hstack((chan8_channel_map, [16]*8)),
+                chan8_channel_map=np.hstack((chan8_channel_map, chan8_channel_map)),
                 tx_power=tx_power)
 
         elif mode in ['shuffle256', 'shuffle512', 'shuffle16']:
@@ -1811,6 +1811,7 @@ class FPGAArray(object):
                 if nbad:
                     bs_map[-nbad:] = bix[-nbad:]
                     del bix[-nbad:]
+                bs_map[:] = sorted(bs_map)
             bin_map[(1, slot)]['cb2'][:] = bin_map[(0,slot)]['cb2']
             if set(bin_map[(0, slot)]['cb2'].flatten()) != set(range(Ncrates * Nbins_out)):
                 print 'Selected',bin_map[(0, slot)]['cb2']
@@ -1853,11 +1854,11 @@ class FPGAArray(object):
             for lane in range(Nlanes):
                 if (crate, slot, lane) in bad_links:
                     # bs_map[:] = bix[-Nbins:]
-                    bmap['cb3'][lane] = bix[-Nbins:]
+                    bmap['cb3'][lane] = sorted(bix[-Nbins:])
                     del bix[-Nbins:]
                 else:
                     # bs_map[:] = bix[:Nbins]
-                    bmap['cb3'][lane] = bix[:Nbins]
+                    bmap['cb3'][lane] = sorted(bix[:Nbins])
                     del bix[:Nbins]
                 # print '(%i,%i,%i)' % (crate, slot, lane), bmap['cb3'][lane], bin_map[(crate,slot)]['cb3'], bix
                 # print '   -> (%i,%i)' % (0, 0), bin_map[(0,0)]['cb3']
