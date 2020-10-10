@@ -2246,8 +2246,20 @@ class FPGAArray(object):
         # Get the exhaustive frequency map that is implemented by the current corner
         freq_map = self.get_frequency_map(format='l:bb')
         # Retain only one bin number  for each bin
-        self.corner_turn_frequency_bins = {lane_id: sorted(set(data['data']))
+        self.corner_turn_frequency_bins = {lane_id: sorted(set(data['data']) - set([None]))
             for lane_id, data in freq_map.iteritems()}
+
+        # Double check that the frequency map that we obtained matches our target bin map.
+        errors = 0
+        for (crate, slot, lane), actual_bins in self.corner_turn_frequency_bins.items():
+              bs = bin_map[(crate, slot)]
+              expected_bins = bs['cb1'][slot][bs['cb2'][crate]][bs['cb3'][lane]]
+              if not all(np.equal(expected_bins, actual_bins)):
+                  print('Link %r do not match: Expected bins: %r, got bins %r' % ((crate, slot, link), expected_bins, actual_bins))
+                  errors += 1
+
+        if errors:
+          raise RuntimeError('Actual frequency mapping does not match the expected one')
 
         # sync boards
         #soft_sync(c, sync_board)
@@ -3194,7 +3206,7 @@ class FPGAArray(object):
                 crate_offset = rx_lane * 2 // number_of_qsfp_lanes if not bypass else 0
                 qsfp_shuffle_out[(crate, slot, rx_lane)] = cb2_out.get(
                         (crate ^ crate_offset, slot, rx_lane),
-                        dict(data=[None] * 1024))
+                        dict(data=[None] * 2048))
 
         # Apply CROSSBAR3
         cb3_out = OrderedDict()
