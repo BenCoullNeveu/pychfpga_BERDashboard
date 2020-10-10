@@ -1618,57 +1618,176 @@ class FPGAArray(object):
 
             Nothing. bin_map['cb1'] is modified in place with the new optimized map.
 
+        Description:
+
+        In the 'shuffle512' and 'shuffle256' mode of the corner-turn engine,
+        each of the 16 bin selector (BIN_SEL) of the first crossbar (crossbar 1) selects
+        64 bins. These bins are then sent to specific slots. This is the only
+        crossbar that can assign bins to slots; other subsequent crossbars
+        operate within the same slot.
+
+        The crossbar 1 bin selector has a constraint: bins that are selected
+        by a bin selector must be separated by at least 8 bins. This limits
+        the bin assignment possibilities. We cannot simply assign the N worst
+        bins to the M worst GPU links, so we have to find the best compromise
+        in a deterministic way.
+
+        The algorithms is as follows:
+
+          - We create 8 patterns of 128 bins separated by 8 bins. A pattern will be used by exactly two slots (each slot using 64 bins)
+          - We process each slot one by one, starting with the slots that has the worst number of unprocessable bins
+          - For each slot, we find the pattern that offers the worst N bins, where N is the number of unprocessable bins for that slot
+          - We select assign the worst N bins from that pattern to the slot
+          - we select the remaining 64-N best bins from that pattern to the slot
+          - The resulting 64 selected bins are masked so they cannot be used anymore in that pattern
+          - We repeat for each slot
+
+        The crossbar 1 bin map does not attempt to route bad bins to specific
+        crates or to specific GPU links. It just assigns the optimal number of
+        bad bins that matches the total number of bad GPUs on that slot. It is
+        the job of the following crossbars to route the bad bins to the
+        correct crate and GPU. The downstream crossbars can do this routing
+        perfectly since there are no restrictions on the bin assignments (no
+        minimum bin spacing).
+
+        This algorithm is somewhat restrictive and forgoes some of the
+        flexibility we have in selecting bins.  Indeed, the bins do not have
+        to be on a grid of 8: they can have *any* spacing greater or equal to 8.
+        But all the algorithms we tried that took advantage of this flexibility would
+        generally make excellent bin choices for the first slots, and the
+        bins that remained for the last couple of slots wound no longer meets
+        the spacing requirements; the algorithm would then fail.
+
+        The algorithm we present here is restricted to 8 fixed grids, but it
+        is deterministic and cannot fail. If we have a bad combination of bad
+        links and bid priority, it will only provide less optimal solutions.
+        Empirical data shows it is more than enough to salvage otherwise lost
+        bins if the number of bad links is reasonable.
+
         """
         # Compute the number of unprocessable bins for each slot (both crates combined)
         Nbad = np.zeros(16, dtype=int)
         for (crate, slot, lane) in bad_links:
             Nbad[slot] += 4
 
+        # Create a 8x128 array of bin numbers that represents 8 patterns of 128 bins that are spaced
+        # by 8 bins. All patterns are exclusive, i.e. each bin is represented only once in the whole array
         bins = np.arange(1024).reshape((8,128), order='F') # 8 crossbar-compatible bin pattern of 128 bins
-        pri = np.ma.array(bin_priority[bins], mask=bin_priority[bins]*0) # priority level of bins in the pattern
+
+        # Create an equivalenet matrix, now listing the priority level of each of the bins in the pattern array.
+        # This is a masked array so we can mark which bins have been used.
+        pri = np.ma.array(bin_priority[bins], mask=bin_priority[bins] * 0) # priority level of bins in the pattern
 
         # bin_map = np.empty((16,64), dtype=int) # final bin assignments
         s = set()
+        # Process each slot, starting with the one that has the worst number of unprocessable bins
         for j, slot in enumerate(np.argsort(Nbad)[::-1]):
+            # We start by assigning the worst bins. We'll fill up the best bins after.
             nbad = Nbad[slot]
             if verbose:
                 print '**** Interation #%i, Slot %i (has %i unprocessable bins)' % (j, slot, nbad)
 
+            # Compute the number of remaining bins for each pattern (count() ignores masked entries)
+            # It should normally be 128, 64 or 0
             Nbins = pri.count(axis=-1)
             if verbose:
-                print 'Number of remaining bins=',Nbins
-            ix = pri.argsort(axis=-1) # index of bins in order of priority, skipping masked bins. Only the first Nbins[i] are valid.
+                print 'Number of remaining bins=', Nbins
 
+            # Find the index of the available bins for each pattern, in order of bin priority.
+            # ix[i] is the index of elements of pri[i], with the highest priority (lower value) appearing first.
+            # Masked bins end up at the end of the sorted list, so
+            # only the first Nbins[i] bins are valid for pattern i.
+            ix = pri.argsort(axis=-1)
+
+            # Find the  best priority level we we end up with if we have to take the `nbad` worst bins for each pattern.
+            # That corresponds to taking the `nbad`-th element before last. We will start eating into good (or higher priority) bins
+            # if we are running out of bad (lower priority) bins in that pattern.
+            # Since we are selecting bins that well end up on bad GPUs, we want these `nbad` bins to contain as little good bins as possible.
             worst_pri = [(pri[s, x[np.clip(Nbins[s]-nbad, a_min=0, a_max=Nbins[s]-1)]] if Nbins[s] else 0)
                          for s,x in enumerate(ix)]
             if verbose:
                 print 'Worst bin priority for all patterns are', worst_pri
-            wo = np.argmax(worst_pri) # 2 lost
-          #         wo = np.argmax(Nbins) # 14 lost
-          #         wo = slot//2 # 28 lost
+
+            # Find the pattern number that contained the worst nbad bins
+            wo = np.argmax(worst_pri) # 2 lost bins in typical data
+            # We tried alternate pattern selection methods below, not of which were as good:
+            # wo = np.argmax(Nbins) # Select the pattern with the most remaining bins: 14 lost bins with typical data
+            # wo = slot//2 # Select the pattern based on slot number: 28 lost bins with typical data
 
             if verbose:
-                print 'slot %i GPUs cannot process %i bins, using offset %i' % (slot, Nbad[slot], wo)
+                print 'slot %i GPUs cannot process %i bins, using pattern #%i' % (slot, Nbad[slot], wo)
+
+            # Algorithmic check: check that there are bins available in this pattern.
+            # This should always be true with this deterministic algorithm.
             if not Nbins[wo]:
                 print '***** There are not enough frequencies left in the selected offset'
                 raise RuntimeError('***** There are no frequencies left in the selected pattern')
+
+            # Create a list indices containing the worst nbad bins and best 64-nbad bins for the selected pattern
+            # pri[wo, bix] is the priority level of the selected bins in the chosen pattern
+            # bins[wo,bix] is the number of the selected bins in the chosen pattern
             bix = ix[wo][range(64 - nbad) + range(Nbins[wo] - nbad, Nbins[wo])]
+            # get the corresponding bin numbers. Sort them.
             b = sorted(bins[wo, bix])
+
+            # Another algorithmic check: should never happen with our algorithm
             if any(pri[wo, bix].mask): # sanity check, cannot happen in theory
                 raise RuntimeError('Assigned a bin that was already assigned in another slot!')
+
+            # Mask used pattern entries so they won't be used in the next slot
             pri[wo, bix] = np.ma.masked
-            # Apply bin selection for that slot to all crates in the array
-            # print 'Assignling %i bins:' % len(b), b
+
+            # Store the map for each bin_selector. Here, we assume that  bin
+            # selector 0 selects bins for slot 0 etc. The init_crossbar()
+            # method will reorder those to take into account the backplane
+            # connectivity. We store this map for board (0,0), but it will be
+            # the same for all boards.
             bin_map[(0, 0)]['cb1'][slot] = b
-            # Check the integrity of the result
+            # print 'Assignling %i bins:' % len(b), b
+
+        # Finished computing the bin map for one slot of one crate
+        # Apply the bin selection to all slots of all crates in the array
         for bmap in bin_map.values():
             bmap['cb1'][:] = bin_map[(0,0)]['cb1']
+
+        # Check the integrity of the result. Should always be good.
         if set(bin_map[(0, 0)]['cb1'].flatten()) != set(range(1024)):
           raise RuntimeError('Invalid bin map')
 
     @staticmethod
     def compute_cb2_bin_map(bin_map, bad_links, bin_priority, verbose=1):
-        """
+        """ Compute crossbar 2 frequency mapping that routes the optimal
+        number of best and worst bins to crates knowing how many can be
+        processed by the GPU nodes connected to that crate.
+
+        Parameters:
+
+          bin_map (dict): Dict that contains the bin maps for all crossbars. In the format
+
+            {(crate, slot):'cb1':cb1_map, 'cb2':cb2_map, 'cb3':cb3_map},...}
+
+            `bin_map` is modified in place with the new optimized map.
+
+          bad_links (list of tuple): List of (crate,slot,lane) GPU links that are inoperative
+
+          bin_priority (ndarray): 1024-element vector indicating the priority of each bin.
+              Element 0 is the priority for bin 0. A lower value has a higher priority.
+
+        Returns:
+          None. `bin_map` is modified in-place.
+
+        Algorithm:
+
+        This mapper decides on which crate (0 or 1) will be routed the bins
+        selected for the current slot by the previous crossbar. We have full
+        flexibility here: any bin can go on any crate.
+
+        For each slot, we look at how many unprocessable (`nbad`) bins there
+        are in each crate. We assign `nbad` worst available bins to that
+        crate, and the rest is filled with the best available bins. Used bins
+        are removed from the available bins. We repeat for the other crate.
+
+
         """
         Nslots , _ = bin_map[(0,0)]['cb1'].shape
         Ncrates , Nbins_out = bin_map[(0,0)]['cb2'].shape
@@ -1699,7 +1818,29 @@ class FPGAArray(object):
 
     @staticmethod
     def compute_cb3_bin_map(bin_map, bad_links, bin_priority, verbose=1):
-        """
+        """ Compute the Crossbar 3 frequency map that optimally routes the
+        bins to each GPU link by sending the worst bins to the GPUs that are
+        inoperative and the remaining bins to the others.
+
+
+        Parameters:
+
+          bin_map (dict): Dict that contains the bin maps for all crossbars. In the format
+
+            {(crate, slot):'cb1':cb1_map, 'cb2':cb2_map, 'cb3':cb3_map},...}
+
+            `bin_map` is modified in place with the new optimized map.
+
+          bad_links (list of tuple): List of (crate,slot,lane) GPU links that are inoperative
+
+          bin_priority (ndarray): 1024-element vector indicating the priority of each bin.
+              Element 0 is the priority for bin 0. A lower value has a higher priority.
+
+        Returns:
+          None. `bin_map` is modified in-place.
+
+        The algorithm is identical to the crossbar2 bin mapper.
+
         """
         # Ncrates, _ = bin_map['cb2'].shape # (8,4) or (8,8)
         Nlanes, Nbins = bin_map[(0, 0)]['cb3'].shape # (8,4) or (8,8)
