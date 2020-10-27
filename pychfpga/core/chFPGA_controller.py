@@ -2932,6 +2932,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb1_bypass = True
             cb1_four_bit = False
             cb1_combine_data_flags = 0
+            cb1_bin_select_map = [[]] * number_of_cb1_bin_sel
 
             #################################
             # Backplane PCB (intra-crate) shuffle
@@ -2944,6 +2945,7 @@ class chFPGA_controller(IceBoardExtHandler):
             # Bypassed. Lanes are reordered to select which of the 8 channelizers we want to forward.
             cb2_lane_map = chan8_channel_map # Here we could select which 8 inputs we want to stream to the GPU
             cb2_bypass = True
+            cb2_bin_select_map = [[]] * number_of_cb2_bin_sel
 
             #################################
             # Backplane QSFP (crate) shuffle
@@ -2956,7 +2958,14 @@ class chFPGA_controller(IceBoardExtHandler):
             # Bypassed. No channel reordering.
             cb3_lane_map = range(8)
             cb3_bypass = True
-            crate_number = self.crate.crate_number if self.crate else 0
+            crate_number = self.crate.crate_number or 0 if self.crate else 0
+            cb3_bin_select_map = [[]] * number_of_cb3_bin_sel
+
+            cb3_output_bins = 0 # debug
+            cb3_output_words_per_bin = 0 # debug
+            cb3_output_data_flags_words_per_bin = 0 # debug
+            cb3_output_frame_flags_words_per_frame = 0 # debug
+
             stream_type = 0
 
         elif mode == 'chan4': # get the high nibble of every bytes from two lanes in a single word. Allows Get (4+4) bit data from all channelizers
@@ -2970,6 +2979,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb1_bypass = True
             cb1_four_bit = True
             cb1_combine_data_flags = 0
+            cb1_bin_select_map = []
 
             #################################
             # Backplane PCB (intra-crate) shuffle
@@ -2982,6 +2992,7 @@ class chFPGA_controller(IceBoardExtHandler):
             # Bypassed. No channel reordering. Data from input lanes 8-15 is redundant and is not forwarded.
             cb2_lane_map = range(16) # All information
             cb2_bypass = True
+            cb2_bin_select_map = []
 
             #################################
             # Backplane QSFP (crate) shuffle
@@ -2993,6 +3004,7 @@ class chFPGA_controller(IceBoardExtHandler):
             #############################
             # Bypassed. No channel reordering.
             cb3_lane_map = range(8)
+            cb3_bin_select_map = []
             cb3_bypass = True
             crate_number = self.crate.crate_number if self.crate else 0
             stream_type = 0
