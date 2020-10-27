@@ -1505,7 +1505,7 @@ class FPGAArray(object):
 
         Parameters:
 
-            mode (str): opertional mode. 'shuffle256' and 'shuffle512'
+            mode (str): opertional mode. 'shuffle256' , 'shuffle512' and 'shuffle16'
                 implement frequency-remaping. Other modes return de default
                 map.
 
@@ -1530,6 +1530,7 @@ class FPGAArray(object):
                 ``cb2_bins``: list of 2 lists describing the bins indices that are selected by each bin selector of the 2nd crossbar
                 ``cb3_bins``: list of 8 lists describing the bins indices that are selected by each bin selector of the 3rd crossbar
         """
+
         # Process bad link
         bad_links = bad_links or []
         bad_links = [tuple(id) for id in bad_links]
@@ -1590,6 +1591,15 @@ class FPGAArray(object):
             # Apply crates 0 & 1 map to all crates
             bin_map = {(crate, slot):bin_map[(crate & 1, slot)]
                         for (crate, slot) in self.ib.get_id()}
+        # elif mode == 'shuffle16':
+        #     # use only the default bin map: we have no flexibility. All we can do is to remap the outputs.
+        #     bin_map = dict(
+        #             cb1=np.arange(1024).reshape((16, 64), order='F'),
+        #             cb2=np.arange(64).repeat(2).reshape(2, 64, order='F'), # bypassed
+        #             cb3=np.arange(64).reshape((8, 8), order='F')) # bypassed
+        #     # Assign the same bin map to all boards in the array
+        #     bin_map = {(crate, slot):bin_map
+        #                 for (crate, slot) in self.ib.get_id()}
         else: # other modes. Use defaults.
             bin_map = {ib.get_id(): {'cb1':None,'cb2':None, 'cb3':None}
                        for ib in self.ib}
@@ -2250,19 +2260,27 @@ class FPGAArray(object):
             for lane_id, data in freq_map.iteritems()}
 
         # Double check that the frequency map that we obtained matches our target bin map.
-        errors = 0
-        for (crate, slot, lane), actual_bins in self.corner_turn_frequency_bins.items():
-              bs = bin_map[(crate, slot)]
-              expected_bins = bs['cb1'][slot][bs['cb2'][crate]][bs['cb3'][lane]]
-              if not all(np.equal(expected_bins, actual_bins)):
-                  print('Link %r do not match: Expected bins: %r, got bins %r' % ((crate, slot, link), expected_bins, actual_bins))
-                  errors += 1
+        if mode == 'shuffle256' or mode == 'shuffle512':
+            errors = 0
+            for (crate, slot, lane), actual_bins in self.corner_turn_frequency_bins.items():
+                  bs = bin_map[(crate, slot)]
+                  expected_bins = bs['cb1'][slot][bs['cb2'][crate]][bs['cb3'][lane]]
+                  if not all(np.equal(expected_bins, actual_bins)):
+                      print('Link %r do not match: Expected bins: %r, got bins %r' % ((crate, slot, link), expected_bins, actual_bins))
+                      errors += 1
 
-        if errors:
-          raise RuntimeError('Actual frequency mapping does not match the expected one')
+            if errors:
+              raise RuntimeError('Actual frequency mapping does not match the expected one')
 
         # sync boards
         #soft_sync(c, sync_board)
+
+        self.logger.info('%r: Resetting the GPU transmitters.' % self)
+        self.ib.GPU.CORE_RESET = 1
+        time.sleep(.1)
+        self.ib.GPU.CORE_RESET = 0
+        time.sleep(.1)
+
         self.logger.info('%r: Shuffling initialization completed.' % self)
         if sync:
             self.sync()
@@ -3116,7 +3134,7 @@ class FPGAArray(object):
 
 
 
-    def get_frequency_map(self, format='cscb'):
+    def get_frequency_map(self, format='l:cscb'):
         """ Returns a map describing the content (crate, slot, channel, bin) of every packet at the output of the corner turn engine.
 
         This map is obtained by passing the channelizer identity map through the shuffle map.
@@ -3124,7 +3142,7 @@ class FPGAArray(object):
 
         return self.get_shuffle_output(self.get_chan_identity_map(format=format))
 
-    def get_chan_identity_map(self, format='cslb'):
+    def get_chan_identity_map(self, format='l:cscb'):
         """ Return an identity map that describes the origin of each of the 1024 samples contained in the channelizer output packets.
         The map is a dict:
             {channelizer_id: [sample_id0, ... sample_id1023]}
@@ -3186,7 +3204,8 @@ class FPGAArray(object):
         for ic in self.ic:
             pcb_link_map = ic.get_pcb_link_map()
             for (rx_slot, rx_lane), (tx_slot, tx_lane) in pcb_link_map.items():
-                pcb_shuffle_out[(ic.crate_number, rx_slot-1, rx_lane)] = cb1_out[(ic.crate_number, tx_slot-1, tx_lane)] if (ic.crate_number, tx_slot-1, tx_lane) in cb1_out else dict(data=[None]*1024)
+                (crate, ) = ic.get_id()
+                pcb_shuffle_out[(crate, rx_slot-1, rx_lane)] = cb1_out[(crate, tx_slot-1, tx_lane)] if (crate, tx_slot-1, tx_lane) in cb1_out else dict(data=[None]*1024)
 
         # Apply CROSSBAR2
         cb2_out = OrderedDict()
@@ -3203,10 +3222,13 @@ class FPGAArray(object):
             bypass = ib.BP_SHUFFLE.BYPASS_QSFP_SHUFFLE
             number_of_qsfp_lanes = ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES
             for rx_lane in range(number_of_qsfp_lanes):
-                crate_offset = rx_lane * 2 // number_of_qsfp_lanes if not bypass else 0
-                qsfp_shuffle_out[(crate, slot, rx_lane)] = cb2_out.get(
-                        (crate ^ crate_offset, slot, rx_lane),
-                        dict(data=[None] * 2048))
+                if bypass:
+                  qsfp_shuffle_out[(crate, slot, rx_lane)] = cb2_out[(crate, slot, rx_lane)]
+                else:
+                  crate_offset = rx_lane * 2 // number_of_qsfp_lanes
+                  qsfp_shuffle_out[(crate, slot, rx_lane)] = cb2_out.get(
+                          (crate ^ crate_offset, slot, rx_lane),
+                          dict(data=[None] * 2048))
 
         # Apply CROSSBAR3
         cb3_out = OrderedDict()
