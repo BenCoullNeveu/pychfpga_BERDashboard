@@ -75,9 +75,9 @@ class Parallelizable(object):
         # IOLoop that runs until the coroutine has returned its value.
         # """
         old_loop = tornado.ioloop.IOLoop.current()
+        io_loop = tornado.ioloop.IOLoop()
+        io_loop.make_current()
         try:
-            io_loop = tornado.ioloop.IOLoop()
-            io_loop.make_current()
             future = self.__call_async__(*args, **kwargs)
             io_loop.run_sync(tornado.gen.coroutine(lambda: (yield future)))
             return future.result()
