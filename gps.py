@@ -64,7 +64,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
             '68': self.get_mux2_output_source,
             '69': self.get_tracking_channel_status,
             '70': None,  # Serial time message format
-            '71': None,  # Serial time code format
+            '71': self.get_serial_time_code_format,  # Serial time code format
             '72': None,  # Reserved
             '73': None,  # ETT Parameters
             '74': None,  # POP Parameters
@@ -221,6 +221,20 @@ class SpectrumInstrumentsTM4D(SocketContext):
 
         Parameters:
             mode (int): 0= output all messages, 1=Output events and acknowledges only.
+        """
+        if mode not in [0,1]:
+            raise ValueError('%r: broadcast mode must be  0 (all messages) or 1 (events or acknowledge only)' % self)
+
+        self.command('12', mode)
+
+    def set_serial_time_code_format(self, format):
+        """ Sets the serial time code format.
+
+        Parameters:
+            format (int):
+                0= IRIG-B002/B122 (no year)
+                1= NASA-36
+                2= IRIG-B007/B127 (BCD year and SBS)
         """
         if mode not in [0,1]:
             raise ValueError('%r: broadcast mode must be  0 (all messages) or 1 (events or acknowledge only)' % self)
@@ -524,6 +538,22 @@ class SpectrumInstrumentsTM4D(SocketContext):
 
         return satellite_status_map, receiver_status
 
+
+    def get_serial_time_code_format(self, reply=None, metrics=None):
+        """Return the current serial time code format.
+
+        Returns:
+            int: timing mode:
+                0: IRIG-B002/B122 (no BCD year)
+                1: NASA-36
+                3: IRIG-B007/B127 (with BCD year & SBS)
+        """
+        (mode, ) = self.query('71', reply)
+        time_code_format = int(mode)
+        self.add_metric(metrics, 'gps_serial_time_code_format', value=time_code_format)
+        return time_code_format
+
+
     def get_speed_and_heading(self, reply=None, metrics=None):
         """Return the current speed and heading
 
@@ -630,7 +660,10 @@ class SpectrumInstrumentsTM4D(SocketContext):
     def get_leap_seconds(self, reply=None, metrics=None):
         """
         Return the number of Leap Seconds that have been introduced to UTC Time since the beginning
-        of GPS Time
+        of GPS Time.
+
+        The method also receives whether the unit is using GPS or UTC time,
+        but the value is not returned (but is added to the metrics).
 
         Returns:
             valid (bool): leap seconds info is valid
@@ -742,6 +775,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
             self.set_mask_angle(0)
             self.set_time_format(1) # UTC time
             self.set_timing_mode(1) # Static. Position is set below.
+            self.set_serial_time_code_format(2) # IRIG-B007, including BCD year and SBS
             self.set_position(lat, lon, alt)
             self.set_pps_output_source(1) # FILPPS only when fully locked
             self.set_multiplexer_output_source(6, 0) # Mux1=IRIGB, Mux2= 10 MHz
