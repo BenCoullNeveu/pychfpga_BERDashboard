@@ -133,13 +133,15 @@ class SHUFFLE_BIN_SEL_base(Module_base):
         bin selector output stream.
         """
 
-        if self.BYPASS:
-            raise RuntimeError('%.32s: CHAN_BIN_SEL cannot yet provide maps in BYPASS mode')
 
         N = self.NUMBER_OF_INPUTS / self.NUMBER_OF_OUTPUTS;  # number of input lanes per output
         ch_per_bin = self.NUMBER_OF_WORDS_PER_BIN * 4  # fixme - only 4-bit mode
         bs_out = OrderedDict()
         bins = self.get_selected_bins()
+        bypass = self.BYPASS
+        # if self.BYPASS:
+        #     raise RuntimeError('%r: CHAN_BIN_SEL cannot yet provide maps in BYPASS mode', self)
+
 
         # Prepare the header info that does not change as a function of lane
         # to minimize FPGA access
@@ -164,15 +166,19 @@ class SHUFFLE_BIN_SEL_base(Module_base):
             header = None
 
         for sublane in range(self.NUMBER_OF_OUTPUTS):
-            channels = range(N * sublane + self.FIRST_LANE, N * sublane + self.LAST_LANE + 1)
-            d = [input_data[ch]['data'][ch_per_bin * bin_number: ch_per_bin * (bin_number + 1)] for bin_number in bins for ch in channels]
+            if bypass:
+                data = input_data[self.instance_number * self.NUMBER_OF_OUTPUTS + sublane]['data']
+            else:
+                channels = range(N * sublane + self.FIRST_LANE, N * sublane + self.LAST_LANE + 1)
+                d = [input_data[ch]['data'][ch_per_bin * bin_number: ch_per_bin * (bin_number + 1)] for bin_number in bins for ch in channels]
+                data = [i for di in d for i in di] # flatten the list of lists,
             if header:
                 header = static_header.copy()
                 header['stream_id'] = static_stream_id + sublane
 
             bs_out[sublane] = dict(
                 header=header,
-                data=[i for di in d for i in di], # flatten the list of lists,
+                data=data,
                 data_flags=None,
                 frame_flags=None,
                 packet_flags=None
