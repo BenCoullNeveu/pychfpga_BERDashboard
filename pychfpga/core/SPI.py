@@ -14,7 +14,7 @@ import numpy as np
 import time
 import logging
 
-from Module import Module_base, BitField
+from .Module import Module_base, BitField
 
 __reload__=True
 
@@ -87,7 +87,7 @@ class SPI_base(Module_base):
         while not self.READY: 
             time.sleep(0.1)
             if verbose:
-                print '.',
+                print('.', end=' ')
         data=self.read(self.get_addr('RX_DATA')-3, length=word_length, type=np.uint8)
         read_length=np.dtype(type).itemsize
         data=data[-read_length:]
