@@ -9,7 +9,7 @@ import sys
 import time
 import datetime
 import calendar
-import Queue
+import queue
 
 # External private packages
 from wtl import log
@@ -795,7 +795,7 @@ class GPSAsyncRESTServer(AsyncRESTServer):
         """
         self.gps = {}
         super(GPSAsyncRESTServer, self).__init__(address=address, port=port, heartbeat_string='Gs')
-        self.metrics_queue = Queue.Queue(1000)
+        self.metrics_queue = queue.Queue(1000)
         self.metrics = Metrics(latest_only=True)
         self.add_periodic_callback(self._get_metrics, 1000)
         self.startup_time = datetime.datetime.utcnow()
@@ -906,7 +906,7 @@ class GPSAsyncRESTServer(AsyncRESTServer):
     @endpoint('list-names')
     def listNames(self, handler):
         self.log.info('%.32r: Received list names request' % self)
-        coroutine_return(self.gps.keys())
+        coroutine_return(list(self.gps.keys()))
 
 
 

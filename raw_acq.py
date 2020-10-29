@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """ Raw data acquisition REST Server and Client with Python UDP packet receiver
 """
-from __future__ import absolute_import, division, print_function
+
 
 # Python Standard Library packages
 import os
@@ -304,7 +304,7 @@ class RawAcqReceiver(object):
             # if port name is a string, set the port to zero so the system
             # will assign a random port number. If port_name is a number, ask
             # the system to open the socket at that port.
-            port = 0 if isinstance(port_name, basestring) else port_name
+            port = 0 if isinstance(port_name, str) else port_name
             self.log.info("%r: Creating socket for port ID '%s' on (%s:%s)" % (self, port_name, if_ip, port))
             sock = self.get_udp_socket((if_ip, port))
             self.sockets.append(sock)
@@ -684,7 +684,7 @@ class RawPacketProcessor(object):
 
         # Raw data-specific parameters
         self.stream_ids = np.array(stream_ids, dtype=np.uint16) # list of stream ids that we expect to receive
-        self.chan_ids = zip(*[v.tolist() for v in self.unpack_stream_id(self.stream_ids)]) # make sure all tuple elements are native int
+        self.chan_ids = list(zip(*[v.tolist() for v in self.unpack_stream_id(self.stream_ids)])) # make sure all tuple elements are native int
 
         self.NCHAN = len(stream_ids)
 
@@ -1156,10 +1156,10 @@ class RawPacketProcessor(object):
                 rms (float): the RMS value for that channel, averged over the number of frames that was specified at initialization
         """
         with self.adc_rms_rlock:
-            result = zip(
+            result = list(zip(
                 self.chan_ids,
                 self.adc_rms_timestamp.tolist(),
-                self.adc_rms.tolist())
+                self.adc_rms.tolist()))
         coroutine_return(result)
 
 
@@ -2245,7 +2245,7 @@ class HDF5CorrWriter(object):
 
         # Compute the index arrays that will build the product vector form the raw correlator data for the desired inputs
         (i, j) = np.triu_indices(self.n_inputs)
-        self.prod_axis = np.array(zip(i,j), dtype=self.prod_dtype)
+        self.prod_axis = np.array(list(zip(i,j)), dtype=self.prod_dtype)
         self.raw_to_vector_map = CORR.get_raw_to_matrix_map()[..., i, j]
         self.n_prod = len(i)
 

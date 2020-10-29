@@ -34,7 +34,7 @@ class AgilentN5700(SocketContext):
 
         super(AgilentN5700, self).__init__(hostname=hostname, port=port, timeout=timeout, close_socket=True)
         self.log = log.get_logger(self)
-        print "Initializing direct LAN Connection at %s:%i" % (hostname, port)
+        print("Initializing direct LAN Connection at %s:%i" % (hostname, port))
         self.locked = True
         self.verbose = verbose
         self.instrument_name = None
@@ -325,7 +325,7 @@ class AgilentN5700(SocketContext):
                 failmode=int(self.query_float('STAT:QUES:COND?'))
             else: #If you really want the register that clears itself set History=True
                 failmode=int(self.query_float('STAT:QUES?'))  #Will spot if previously things went wrong or if currently things are wrong
-                print "Not that reliable and it clears itself after!"
+                print("Not that reliable and it clears itself after!")
 
             problem = False
             if failmode != 0:
@@ -422,7 +422,7 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
         # print('*********************_parse_names',ps_names)
         if not ps_names:
             return []
-        if isinstance(ps_names, (str, unicode)):
+        if isinstance(ps_names, str):
             ps_names = ps_names.replace(' ', ',').split(',')
         ps_names = [name.strip() for name in ps_names]
         # Expand aliases
@@ -537,7 +537,7 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
         # ps_names = self._parse_names(ps_names)
         # self.log.info('%.32r: Received status request for %r' % (self, ps_names))
         stati = dict(is_started=bool(self.power_supplies),
-                     ps_names=self.power_supplies.keys())
+                     ps_names=list(self.power_supplies.keys()))
         for ps_name, ps in self.power_supplies.items():
             stati[ps_name] = ps.status()
             self.log.info('%.32r: Status of %s is %s' % (self, ps_name, stati[ps_name]))
@@ -569,7 +569,7 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
             list of str: names of the supplies, as defined in the configuration
         """
         self.log.info('%.32r: Received list names request' % self)
-        coroutine_return(self.power_supplies.keys())
+        coroutine_return(list(self.power_supplies.keys()))
 
     @coroutine
     @endpoint('power-on')
@@ -738,7 +738,7 @@ class PowerSupplyAsyncRESTClient(AsyncRESTClient):
             config = config.as_dict()
 
         server_info = NameSpace((yield self.status()))
-        ps_names = config['units'].keys()
+        ps_names = list(config['units'].keys())
 
 
         if not server_info.is_started:
