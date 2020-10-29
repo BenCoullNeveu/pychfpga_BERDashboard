@@ -55,7 +55,7 @@ class ADC_PLL_base(object):
         fmin = 2200  # MHz. Minimum VCO frequency
         fmax = 4400  # MHz. Minimum VCO frequency
 
-        fdiv = int(2**np.ceil(np.log2(float(fmin)/fout))) #110925 JFC - Compute any factor for the output divider fdiv.
+        fdiv = int(2**np.ceil(np.log2(fmin / fout))) #110925 JFC - Compute any factor for the output divider fdiv.
         if fdiv > 16:
             raise Exception('Output frequency is too low')
 
@@ -70,7 +70,7 @@ class ADC_PLL_base(object):
         # REGISTER 4
         FB_select = 0  # 0=feedback from output divided (needed to ensure absolute phase reproducibility), 1=feedback from VCO directly
         RF_div = int(np.log2(fdiv))  # Output divider: 0=/1, 1=/2, 2=/4, 3=/8, 4=/16
-        band_sel_div = int(fref*8) #1-255. R counter output / band_sel_div < 125 kHz.
+        band_sel_div = int(fref * 8) #1-255. R counter output / band_sel_div < 125 kHz.
         vco_power_down = 0  # 0-1
         mute_until_lock_detect = 0  # 0-1
         AUX_sel = 0  #  0=use output divider output, 1=use VCO output directly,
@@ -107,28 +107,31 @@ class ADC_PLL_base(object):
 
         # REGISTER 0
         if FB_select:  # if feedback is from VCO directly
-            int_div = int(fdiv*fout/fref/2*(rdiv2+1))  #23-65535
+            int_div = int(fdiv * fout / fref / 2 * (rdiv2 + 1))  #23-65535
         else: # if feedback is from the output of the output divider
-            int_div = int(fout/fref*(rdiv2+1))  #23-65535
+            int_div = int(fout / fref * (rdiv2 + 1))  #23-65535
         fractional_mode = True
 
         int_div -= 1 * fractional_mode
         frac_div = modulus*fractional_mode  #0-4095 Non-zero for frationnal mode
-        fvco = (int_div+float(frac_div)/modulus)*fref/(rdiv2+1) if FB_select else (int_div+float(frac_div)/modulus)*fref/(rdiv2+1)*fdiv
+        if FB_select:
+            fvco = (int_div + frac_div / modulus) * fref / (rdiv2 + 1)
+        else:
+            fvco = (int_div + frac_div / modulus) * fref / (rdiv2 + 1) * fdiv
 
         if int_div < 23 or int_div > 65535:
             raise Exception('Integer division factor is out of range (it_div=%i, range is 23-65535)' % int_div)
 
         if verbose:
             self.logger.debug('%r:  Reference divide-by-2 enabled: %s' % (self.adc_board, bool(rdiv2)))
-            self.logger.debug('%r:  PFB frequency: %.0f MHz' % (self.adc_board, fref/(1+rdiv2)))
+            self.logger.debug('%r:  PFB frequency: %.0f MHz' % (self.adc_board, fref / (1 + rdiv2)))
             self.logger.debug('%r:  Integer multiplication factor: %i' % (self.adc_board, int_div))
             self.logger.debug('%r:  Fractional multiplication factor/modulus: %i/%i' % (self.adc_board, frac_div, modulus))
-            self.logger.debug('%r:  Total multiplication factor: %i' % (self.adc_board, int_div + float(frac_div) / modulus))
+            self.logger.debug('%r:  Total multiplication factor: %i' % (self.adc_board, int_div + frac_div / modulus))
             self.logger.debug('%r:  Feedback includes output dividor: %s' %  (self.adc_board, not FB_select))
             self.logger.debug('%r:  VCO Frequency: %.3f MHz (%.0f MHz min, %.0f MHz max)' % (self.adc_board, fvco, fmin, fmax))
             self.logger.debug('%r:  Output division factor: %i' % (self.adc_board, fdiv))
-            self.logger.debug('%r:  Programmed output frequency: %.3f' % (self.adc_board, float(fvco) / fdiv))
+            self.logger.debug('%r:  Programmed output frequency: %.3f' % (self.adc_board, fvco / fdiv))
 
         # Override variable names if any is specified in the function call
         for (varname, value) in list(args.items()):
