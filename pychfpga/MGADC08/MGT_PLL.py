@@ -65,9 +65,9 @@ class MGT_PLL_base(object):
         self.verbose = verbose
 
         if self.verbose:
-            print ' --- MGT PLL Set-up ---'
-            print ' Using reference frequency of %.0f MHz' % fref
-            print ' Target MGT refernece frequency: %.0f MHz' % fout
+            print(' --- MGT PLL Set-up ---')
+            print(' Using reference frequency of %.0f MHz' % fref)
+            print(' Target MGT refernece frequency: %.0f MHz' % fout)
 
         # VCO frequency limits
         fvco_min = 3350  # MHz
@@ -85,8 +85,8 @@ class MGT_PLL_base(object):
         N_min = 64
         N_max = 255
         # List all possible values of P0 and P1
-        P0_list = range(4, 11+1)
-        P1_list = range(1, 63+1)
+        P0_list = list(range(4, 11+1))
+        P1_list = list(range(1, 63+1))
         # set reference frequency doubler to true if can't get freq in range
         if (fref*N_max < fvco_min ):
             REFERENCE_FREQUENCY_DOUBLER = 1
@@ -119,10 +119,10 @@ class MGT_PLL_base(object):
         valid_params = sorted(valid_params, key=lambda k: k.fout_err)  # put combinations that yield integer cooefficients first
 
         if self.verbose > 1:
-            print ' Target Output Division Factor (ODF) is from %i to %i' % (ODF_min, ODF_max)
-            print ' Possible P0/P1 combinations'
+            print(' Target Output Division Factor (ODF) is from %i to %i' % (ODF_min, ODF_max))
+            print(' Possible P0/P1 combinations')
             for params in valid_params:
-                print '   P0=%i, P1=%i, ODF=%i, N=%.3f, Freq err=%.9f' % (params.P0, params.P1, params.P0*params.P1, params.N_int, params.fout_err)
+                print('   P0=%i, P1=%i, ODF=%i, N=%.3f, Freq err=%.9f' % (params.P0, params.P1, params.P0*params.P1, params.N_int, params.fout_err))
 
         # Select first entry in the list as our operating parameters.
         params = valid_params[sel]
@@ -138,11 +138,11 @@ class MGT_PLL_base(object):
 #       N=int(float(fvco)/fref) # integer frequency multiplication factor N. Should be in the range 64-255. We round down, and will add a fractional part if needed to get closer to the target frequency.
 
         if verbose > 1:
-            print ' Choosing P0=%i, P1=%i, ODF=%i' % (P0, P1, P0*P1)
-            print ' fvco=%.3f MHz (must be between %.0f and %.0f MHz)' % (fvco, fvco_min, fvco_max)
-            print ' Integer multiplier N=%i (integer vco_freq=N*fref=%.0f MHz, integer fout=%.3f MHz, integer fout error=%.6f MHz)' % (N_int, N_int*fref, N_int*fref/(P0*P1), N_int*fref/(P0*P1)-fout)
-            print ' Fractional multiplier FRAC=%i, MODULUS=%i (vco_freq=N*fref=%.0f MHz, fout=%.3f MHz)' % (FRAC, MODULUS, N_real*fref, fout_real)
-            print
+            print(' Choosing P0=%i, P1=%i, ODF=%i' % (P0, P1, P0*P1))
+            print(' fvco=%.3f MHz (must be between %.0f and %.0f MHz)' % (fvco, fvco_min, fvco_max))
+            print(' Integer multiplier N=%i (integer vco_freq=N*fref=%.0f MHz, integer fout=%.3f MHz, integer fout error=%.6f MHz)' % (N_int, N_int*fref, N_int*fref/(P0*P1), N_int*fref/(P0*P1)-fout))
+            print(' Fractional multiplier FRAC=%i, MODULUS=%i (vco_freq=N*fref=%.0f MHz, fout=%.3f MHz)' % (FRAC, MODULUS, N_real*fref, fout_real))
+            print()
 
         # --- Define PLL parameters ---
 
@@ -246,14 +246,14 @@ class MGT_PLL_base(object):
                 fout_meas0 = fpga.FreqCtr.read_frequency('FMC%s_MGT_PLL_REFCLK0' % ('A', 'B')[self.mezz.mezzanine-1], gate_time=gate_time)/1e6
                 fout_meas1 = fpga.FreqCtr.read_frequency('FMC%s_MGT_PLL_REFCLK1' % ('A', 'B')[self.mezz.mezzanine-1], gate_time=gate_time)/1e6
                 fout_meas_resolution = 2.0 / gate_time / 1e6
-                print 'MGT refclk frequency:'
-                print 'Requested:  %10.6f MHz' % (fout)
-                print 'Configured: %10.6f MHz' % (fout_real)
-                print 'Measured:  0: %10.6f MHz,  1: %10.6f MHz, Resolution = %.6f MHz' % (fout_meas0, fout_meas1, fout_meas_resolution)
-                print 'Difference: %10.6f MHz (%.0f PPM)'  % (fout_meas0-fout_real, abs(fout_real-fout_meas0)/fout_real*1e6)
-                print 'Locked:     ', self.mezz.IOExpander.PLL2_LOCK
-                print 'MGT line frequency (fout*16): %.3f Mb/s (not measured)' % (fout_real*16)
-                print 'MGT data clock (fout*16/40): %.3f MHz (not measured)' % (fout_real*16/40)
+                print('MGT refclk frequency:')
+                print('Requested:  %10.6f MHz' % (fout))
+                print('Configured: %10.6f MHz' % (fout_real))
+                print('Measured:  0: %10.6f MHz,  1: %10.6f MHz, Resolution = %.6f MHz' % (fout_meas0, fout_meas1, fout_meas_resolution))
+                print('Difference: %10.6f MHz (%.0f PPM)'  % (fout_meas0-fout_real, abs(fout_real-fout_meas0)/fout_real*1e6))
+                print('Locked:     ', self.mezz.IOExpander.PLL2_LOCK)
+                print('MGT line frequency (fout*16): %.3f Mb/s (not measured)' % (fout_real*16))
+                print('MGT data clock (fout*16/40): %.3f MHz (not measured)' % (fout_real*16/40))
 
             time.sleep(0.050)  #
             if self.is_locked():

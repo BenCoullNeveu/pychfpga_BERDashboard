@@ -190,7 +190,7 @@ class ADC_base(object):
         data = brd.spi_read_write(brd.SPI_ADC0_TEMP_ADDR + adc_number, [0, 0], type=np.dtype('>u2'))
         temp = (data>>3)/16.0
         if self.verbose or verbose:
-            print 'ADC%i Temperature is %.2f C (raw data=0x%04x)' % (adc_number, temp, data)
+            print('ADC%i Temperature is %.2f C (raw data=0x%04x)' % (adc_number, temp, data))
         return temp #110918 JFC
 
     # Class functions (applies to all ADCs)

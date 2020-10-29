@@ -83,7 +83,7 @@ class IOExpander_base(object):
         self.logger = logging.getLogger(__name__)
 
         # Automatically generate properties for each of the IOExpander bits
-        for bit_name in self.BITS.keys():
+        for bit_name in list(self.BITS.keys()):
             #print '  Defining property "%s" with port=, bit=' % (bit_name)
             # Use function closures to create the callback function with arguments that won't be rebinded
             fget = lambda s, _bit_name = bit_name : s.read_gpio_bit(_bit_name) # Pass bit_name as a default argument to 'close' that variable (i.e. bind it now). Otherwise the function will use the value at call time (which is the last value assigned to that variable)
@@ -100,7 +100,7 @@ class IOExpander_base(object):
 #            print 'setting ',name
             object.__setattr__(self, name, value)
         else:
-            print "Class '%s' is locked: cannot assign new attribute '%s'" % (self, name)
+            print("Class '%s' is locked: cannot assign new attribute '%s'" % (self, name))
             raise AttributeError("This instance of class '%s' is locked: cannot assign new attribute '%s'" % (self.__class__.__name__, name)) # 120623 JFC
 
     def _unlock(self):
@@ -166,7 +166,7 @@ class IOExpander_base(object):
         direction = [0xFF, 0xFF] # direction are 'read' by default
         val = [0x00, 0x00] # values are '0' by default
         if not bypass:
-            for (bit_name, bit_def) in self.BITS.iteritems():
+            for (bit_name, bit_def) in self.BITS.items():
                 port = bit_def.port
                 bit = bit_def.bit
                 direction[port] &= ~(1 << bit) # clear bit

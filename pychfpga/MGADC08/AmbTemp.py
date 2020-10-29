@@ -35,7 +35,7 @@ class AmbTemp_base(object):
         data = np.int16(data << 2) >> 2  # sign-extend bit 13 to bits 14 and 15 to obtain a 16-bit signed value
         temp = data / 32.0
         if self.verbose:
-            print 'FMC Board Temperature is %.2f C' % (temp)
+            print('FMC Board Temperature is %.2f C' % (temp))
         return temp
 
     temperature = property(get_temperature)

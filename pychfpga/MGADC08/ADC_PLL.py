@@ -131,7 +131,7 @@ class ADC_PLL_base(object):
             self.logger.debug('%r:  Programmed output frequency: %.3f' % (self.adc_board, float(fvco) / fdiv))
 
         # Override variable names if any is specified in the function call
-        for (varname, value) in args.items():
+        for (varname, value) in list(args.items()):
             if varname in locals():
                 if verbose:
                     self.logger.debug('%r: Setting %s = %i' % (self.adc_board, varname, value))

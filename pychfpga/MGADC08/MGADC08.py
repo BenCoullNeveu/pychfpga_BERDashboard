@@ -25,11 +25,11 @@ from pychfpga.core.icecore import FMCMezzanineHandler
 from pychfpga.core.icecore.hw.ipmi_fru import FRU, Board, Product, MultiDict
 
 # Import mezzanine-specific modules
-import ADC
-import IOExpander
-import ADC_PLL
-import AmbTemp
-import MGT_PLL
+from . import ADC
+from . import IOExpander
+from . import ADC_PLL
+from . import AmbTemp
+from . import MGT_PLL
 
 class MGADC08_base(FMCMezzanine):
     """ Implements the object that exposes the MGADC08 FMC ADC board hardware ressources"""
@@ -193,12 +193,12 @@ class MGADC08_Handler(FMCMezzanineHandler):
 
     def set_refclk_source(self, source):
         if source not in self.REFCLK_SOURCES:
-            raise ValueError("Invalid Reference clock source name '%s'. Valid sources are: %s" % (source, ', '.join(self.REFCLK_SOURCES.keys())))
+            raise ValueError("Invalid Reference clock source name '%s'. Valid sources are: %s" % (source, ', '.join(list(self.REFCLK_SOURCES.keys()))))
         self.IOExpander.REFCLK_INPUT_SEL = self.REFCLK_SOURCES[source]
 
     def get_refclk_source(self):
         source = self.IOExpander.REFCLK_INPUT_SEL
-        return [k for k,v in self.REFCLK_SOURCES.items() if v == source][0]
+        return [k for k,v in list(self.REFCLK_SOURCES.items()) if v == source][0]
 
     def is_adc_pll_locked(self):
         """ Check is the Mezzanine's ADC PLL is locked *By looking at the PLL_LOCK line on the FMC connector*.
@@ -283,9 +283,9 @@ class MGADC08_Handler(FMCMezzanineHandler):
             except:
                 number_of_tries += 1
                 if number_of_tries > 100:
-                    print "something wrong with eeprom reading"
+                    print("something wrong with eeprom reading")
                     raise
-                print 'e',
+                print('e', end=' ')
                 time.sleep(0.01)
         #125 is the ASCII character for the } which is used in the dictionary. The 1000 characters is used to make sure this doesn't go indefinitely
         #Converts each address in EEPROM to a character and put it together in a string
@@ -298,14 +298,14 @@ class MGADC08_Handler(FMCMezzanineHandler):
                     try:
                         ascii = self.eeprom.read(i)
                         keep_trying = False
-                        print '.',
+                        print('.', end=' ')
                     except:
                         number_of_tries +=1
                         if number_of_tries > 100:
-                            print "something is wrong with eeprom read"
+                            print("something is wrong with eeprom read")
                             raise
                         time.sleep(0.01)
-                        print 'e',
+                        print('e', end=' ')
                 char = chr(ascii)
                 string = string + char
             elif ascii == 125:
@@ -313,7 +313,7 @@ class MGADC08_Handler(FMCMezzanineHandler):
                 break
         dictbyte = ''
         if dictionary_is_present == True:
-            print "Now reading checksum"
+            print("Now reading checksum")
             for i in range(4): #reads 4 bytes after dictionary
                 keep_trying = True
                 number_of_tries = 0
@@ -321,14 +321,14 @@ class MGADC08_Handler(FMCMezzanineHandler):
                     try:
                         asciibyte = self.eeprom.read(len(string)+1+i)
                         keep_trying = False
-                        print '.',
+                        print('.', end=' ')
                     except:
                         number_of_tries +=1
                         if number_of_tries > 100:
-                            print 'Something is wrong with eeprom read'
+                            print('Something is wrong with eeprom read')
                             raise
                         time.sleep(0.01)
-                        print 'e',
+                        print('e', end=' ')
                 byte_char = chr(asciibyte)
                 dictbyte = dictbyte + byte_char
             crccheck = struct.unpack('i',dictbyte)
@@ -336,9 +336,9 @@ class MGADC08_Handler(FMCMezzanineHandler):
             #print 'The dictionary stored on EEPROM is:      ' + str(string)
             #print 'The CRC library check is:     ' + str(crccheck)
             exec_string = "dict_out = " + string[1:]
-            exec exec_string
+            exec(exec_string)
         elif dictionary_is_present == False:
-            print 'No dictionary found on EEPROM. Did the board pass the quality control test?'
+            print('No dictionary found on EEPROM. Did the board pass the quality control test?')
         self._board_info = dict_out
 
 
@@ -349,16 +349,16 @@ class MGADC08_Handler(FMCMezzanineHandler):
             """
             # Get dicitonary from user if none supplied
             if dict == None:
-                ser_num = raw_input("Enter the serial number of the board (e.g. 0001):      ")
-                rev_num = raw_input("Enter the revision number of the board (e.g. 0): ")
-                fab_run = raw_input("Enter the fabrication run of the board (e.g. 1): ")
-                head_ver = raw_input("Enter the header version (e.g. 1): ")
-                delay_tab = raw_input("Enter the delay table of the board: ")
-                model = raw_input("Enter the model of the ADC (e.g. MGADC08):      ")
-                stat = raw_input("Enter the status of the board (0 = Working, 1 = In QC , 2 = Has problems but works, 3 = Failed): ")
-                board_date = raw_input("Enter the date the last test was done (DD/MM/YYYY): ")
-                site = raw_input("Enter the URL to find all the tests associated with this board: ")
-                comments = raw_input("Enter any additional comments you may have about the board. If none, please put 'None': ")
+                ser_num = input("Enter the serial number of the board (e.g. 0001):      ")
+                rev_num = input("Enter the revision number of the board (e.g. 0): ")
+                fab_run = input("Enter the fabrication run of the board (e.g. 1): ")
+                head_ver = input("Enter the header version (e.g. 1): ")
+                delay_tab = input("Enter the delay table of the board: ")
+                model = input("Enter the model of the ADC (e.g. MGADC08):      ")
+                stat = input("Enter the status of the board (0 = Working, 1 = In QC , 2 = Has problems but works, 3 = Failed): ")
+                board_date = input("Enter the date the last test was done (DD/MM/YYYY): ")
+                site = input("Enter the URL to find all the tests associated with this board: ")
+                comments = input("Enter any additional comments you may have about the board. If none, please put 'None': ")
                 dict = {'Serial #': ser_num, \
                         'Rev #': rev_num, \
                         'Fabrication Run': fab_run, \
@@ -385,10 +385,10 @@ class MGADC08_Handler(FMCMezzanineHandler):
                             try:
                                 self.eeprom.write(i+1, ord(chars[i]))
                             except Exception as e:
-                                print self.logger.info('%r: error writing to EEPROM, will retry: %s' % (self, e.message))
+                                print(self.logger.info('%r: error writing to EEPROM, will retry: %s' % (self, e.message)))
                                 pass
                     except Exception as e:
-                        print self.logger.info('%r: error reading from EEPROM, will retry: %s' % (self, e.message))
+                        print(self.logger.info('%r: error reading from EEPROM, will retry: %s' % (self, e.message)))
                         pass
             # Write 13 at the end of EEPROM
             thirteen = False
@@ -397,13 +397,13 @@ class MGADC08_Handler(FMCMezzanineHandler):
                     self.eeprom.write(0,13)
                     thirteen = True
                 except Exception as e:
-                    print self.logger.info('%r: error writing 13 to EEPROM, will retry: %s' (self, e.message))
+                    print(self.logger.info('%r: error writing 13 to EEPROM, will retry: %s' (self, e.message)))
                     pass
             # Figure out the CRC and write to EEPROM
             crcheck = zlib.crc32(nstring)
             dictbyte = struct.pack('l', crcheck)
             asciibyte = struct.unpack('BBBB', dictbyte)
-            print 'the crcheck is:' + str(crcheck)
+            print('the crcheck is:' + str(crcheck))
             #for i in range(len(asciibyte)):
             i=0
             while (i < len(asciibyte)):
