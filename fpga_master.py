@@ -414,7 +414,7 @@ class ChimeMaster(object):
         capture_source = capture_source or conf.capture_source
         capture_rate = capture_rate or conf.baseline_capture_rate
         tmux_factor = tmux_factor or conf.tmux_factor
-        capture_period = 1.0 / float(capture_rate)
+        capture_period = 1 / capture_rate #Py3: guaranteed to be a float
 
         for server_name, ibs in self.raw_acq_ibs.items():
             # Compute a transmission delay for each board to prevent them from sending their data all at the same time
@@ -590,7 +590,7 @@ class ChimeMaster(object):
             initial_gains = [(cid, gains) for cid, gains in self.fpgas.get_gains(bank=0).items() if cid in all_channel_ids]
 
         # compute an approxitame amount of time to wait for the data, which is 1/2 of the time it should date to accumulate
-        wait_time = min(2.56e-6 * 2**(capture_rate + 1) * number_of_fft_averages / 2, 1)
+        wait_time = min(2.56e-6 * 2**(capture_rate + 1) * number_of_fft_averages / 2, 1.0)
 
         @coroutine
         def iterate_gains(server, channel_ids, stream_ids):
@@ -661,7 +661,7 @@ class ChimeMaster(object):
                         value=gc.iteration_number[bix])
                     self.gain_calc_metrics.add('fpga_gain_calc_percent_complete',
                         stream_id=sid, channel_id=cid,
-                        value=gc.iteration_number[bix].astype(np.float32) / number_of_gain_update_iterations * 100.0)
+                        value=gc.iteration_number[bix] / number_of_gain_update_iterations * 100.0)
                 # if gc.is_done() or (iteration > 2 * number_of_gain_update_iterations):
                 if gc.is_done():
                     break
@@ -1254,8 +1254,8 @@ class ChimeMaster(object):
         gpu_integration_period = self.config.gpu.gpu_integration_period
 
         current_frame_number = ib.get_frame_number()
-        next_gain_switch_frame = (1 + (current_frame_number + gain_switch_delay)//gpu_integration_period)*gpu_integration_period
-        time_until_switch = (next_gain_switch_frame - current_frame_number)*self.SECONDS_PER_FRAME
+        next_gain_switch_frame = (1 + (current_frame_number + gain_switch_delay) // gpu_integration_period) * gpu_integration_period
+        time_until_switch = (next_gain_switch_frame - current_frame_number) * self.SECONDS_PER_FRAME
         return (next_frame_number, time_until_switch)
 
     @coroutine
@@ -1436,15 +1436,15 @@ class ChimeMaster(object):
             frames_per_gpu_integration = samples_per_data_set*num_gpu_frames
             # Get current frame number
             current_frame_number = self.fpgas.ib[0].get_frame_number()
-            self.log.info('The current FPGA frame number is %i' %current_frame_number)
-            current_gpu_frame = int(current_frame_number/frames_per_gpu_integration)
+            self.log.info('The current FPGA frame number is %i' % current_frame_number)
+            current_gpu_frame = current_frame_number // frames_per_gpu_integration
             # Figure out frame number at which gains are switched
             frame_period_seconds = 2.56e-6 # Frame period in seconds = 2048/800e6. Should be read from config
-            delta_t_frames = int(np.ceil(delta_t_seconds/frame_period_seconds)) # Number of frames to switch gains
+            delta_t_frames = int(np.ceil(delta_t_seconds / frame_period_seconds)) # Number of frames to switch gains
             # The gain_switch_frame_number must be a multiple of frames_per_gpu_integration to switch at start of integration
-            gain_switch_gpu_frame = int((current_frame_number + delta_t_frames)/frames_per_gpu_integration)
+            gain_switch_gpu_frame = (current_frame_number + delta_t_frames) // frames_per_gpu_integration
             # I assume that setting the gain_switch_frame_number for all boards takes ~1 integration period, so make sure there's enough time
-            if (gain_switch_gpu_frame-current_gpu_frame)<2:
+            if (gain_switch_gpu_frame-current_gpu_frame) < 2:
                 # If gain_switch_gpu_frame-current_gpu_frame == 0 the gain_switch_frame_number already passed
                 # If gain_switch_gpu_frame-current_gpu_frame == 1 the gain_switch_frame_number is the start of next gpu integration
                 # which may not be enough time to set gain_switch_frame_number for all the boards
@@ -1464,7 +1464,7 @@ class ChimeMaster(object):
 
         # Create frequency axis
         freq = self.SAMPLING_FREQUENCY - np.fft.fftfreq(self.SAMPLES_PER_FRAME, 1.0 / self.SAMPLING_FREQUENCY)
-        freq = 1e-6 * freq[0:self.SAMPLES_PER_FRAME//2]
+        freq = 1e-6 * freq[0:self.SAMPLES_PER_FRAME // 2]
         freq = np.array(list(zip(freq, [np.median(np.abs(np.diff(freq)))] * freq.size)),
                         dtype=[('centre', '<f8'), ('width', '<f8')])
 

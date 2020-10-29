@@ -1416,8 +1416,8 @@ class RawPacketProcessor(object):
             metrics.add('raw_acq_disk_size', value=s.f_blocks * s.f_bsize)
             metrics.add('raw_acq_disk_used', value=(s.f_blocks - s.f_bfree) * s.f_bsize)
             metrics.add('raw_acq_disk_free', value=s.f_bfree * s.f_bsize)
-            metrics.add('raw_acq_disk_percent_used', value=float(s.f_blocks - s.f_bfree)/s.f_blocks)
-            metrics.add('raw_acq_disk_percent_free', value=float(s.f_bfree)/s.f_blocks)
+            metrics.add('raw_acq_disk_percent_used', value=(s.f_blocks - s.f_bfree) / s.f_blocks)
+            metrics.add('raw_acq_disk_percent_free', value=s.f_bfree / s.f_blocks)
             yield moment
 
         # HDF5 file writing stats
@@ -2008,12 +2008,12 @@ class CorrPacketProcessor(object):
 
             print('Received %i packets' % (packets))
             print('Got %.1f%% of the packets, and between %.1f%% and %.1f%% of the correlator frames' % (
-                    float(packets)/(self.NCORR * self.NCMAC * self.software_integration_period) * 100,
-                    np.min(self.count)/float(self.software_integration_period) * 100,
-                    np.max(self.count)/float(self.software_integration_period) * 100))
+                    packets / (self.NCORR * self.NCMAC * self.software_integration_period) * 100,
+                    np.min(self.count) / self.software_integration_period * 100,
+                    np.max(self.count) / self.software_integration_period * 100))
 
-            self.sat_cplx.real = self.sat[..., 0] / 32.
-            self.sat_cplx.imag = self.sat[..., 1] / 16.
+            self.sat_cplx.real = self.sat[..., 0] / 32.0 # real sat flag is masked with 0x20
+            self.sat_cplx.imag = self.sat[..., 1] / 16.0 # imag sat flag is masked with 0x10
             self.data.real = self.acc_re
             self.data.imag = self.acc_im
             print( self.current_integ, self.software_integration_period, self.firmware_integration_period)
@@ -2109,7 +2109,7 @@ class CorrPacketProcessor(object):
                 n,
                 ','.join('%i (%i/%i)' % (ts, ts % self.software_integration_period, self.software_integration_period) for ts in timestamps),
                 dt * 1000,
-                (float(dt) / (self.NCORR * self.NCMAC) * 1000),
+                dt / (self.NCORR * self.NCMAC) * 1000,
                 dt1 * 1000,
                 dt2 * 1000))
 

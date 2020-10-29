@@ -285,7 +285,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         Parameters:
             source (int): 0=LOW at power-on/GPSPPS on Time Valid/FILPPS on lock, 1= LOW at power-on/FILPPS on lock, 2= LOW on power-up/GPSPPS on valid time and Lock, 3=GPSPPS always
         """
-        if source not in [0,1,2,3]:
+        if source not in [0, 1, 2, 3]:
             raise ValueError('%r: PPS source 0=LOW at power-on/GPSPPS on Time Valid/FILPPS on lock, 1= LOW at power-on/FILPPS on lock, 2= LOW on power-up/GPSPPS on valid time and Lock, 3=GPSPPS always' % self)
 
         self.command('24', source)
@@ -297,9 +297,9 @@ class SpectrumInstrumentsTM4D(SocketContext):
             fmt (int): 0: GPS time, 1: UTC time
 
         """
-        if fmt not in [0,1]:
+        if fmt not in [0, 1]:
             raise ValueError('%r: format can be 0=GPS or 1=UTC' % self)
-        self.command('26',fmt)
+        self.command('26', fmt)
 
 
     # Get commands
