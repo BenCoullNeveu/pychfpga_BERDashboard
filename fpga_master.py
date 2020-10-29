@@ -6,7 +6,7 @@ Module that provide the classes used to run the top-level ChimeMaster object use
 
 """
 
-from __future__ import absolute_import, division, print_function
+
 
 # Python Standard Library packages
 import collections
@@ -63,7 +63,7 @@ def convert_types(val):
         """ Flatten arbitrarily deep nested lists. (inspired from stack overflow)"""
         result = []
         for el in x:
-            if hasattr(el, "__iter__") and not isinstance(el, basestring):
+            if hasattr(el, "__iter__") and not isinstance(el, str):
                 result.extend(flatten(el))
             else:
                 result.append(el)
@@ -96,11 +96,9 @@ def convert_types(val):
             else:
                 val = list(int(x) for x in val)
     else:
-        if isinstance(val, long):
+        if isinstance(val, bool):
             val = int(val)
-        elif isinstance(val, bool):
-            val = int(val)
-        elif isinstance(val, unicode):
+        elif isinstance(val, str):
             val = str(val)
         elif isinstance(val, int):
             pass
@@ -127,7 +125,7 @@ def sanitize_for_json(obj):
 
     """
     if isinstance(obj, collections.Mapping) or hasattr(obj, 'items'):
-        if not all(isinstance(k,str) for k in obj.keys()):
+        if not all(isinstance(k, str) for k in obj.keys()):
             return [(k, sanitize_for_json(v)) for k, v in obj.items()]
         else:
             return {str(k): sanitize_for_json(v) for k, v in obj.items()}
@@ -142,7 +140,7 @@ def reap_cached_sockets():
     logger = log.get_logger(__name__, 'reap_cached_sockets()')
     if hasattr(__main__, '__opened_sockets__'):
         for port, socket in __main__.__opened_sockets__.items():
-            logger.debug("closing cached socket on port %d" % port)
+            logger.debug("Closing cached socket on port %d" % port)
             socket.close()
         del __main__.__opened_sockets__
 
@@ -449,13 +447,13 @@ class ChimeMaster(object):
 
         """
 
-        if isinstance(source, basestring):
+        if isinstance(source, str):
             source = str(source) # make sure we don't have unicode
 
         conf = self.config.fpga.raw_data_capture
         capture_source = source or conf.capture_source
 
-        ib_chans = self.fpgas.get_iceboards(chan_ids, lane_type='chan').items()
+        ib_chans = self.fpgas.get_iceboards(chan_ids, lane_type='chan').items() # Py3: This is now a dictview
 
         for (ib, channels) in ib_chans:
             ib.set_data_capture(channels=channels, sub_period=capture_rate, source=capture_source)
@@ -484,11 +482,11 @@ class ChimeMaster(object):
 
         """
         if isinstance(gains, dict):
-            gains = gains.items()
+            gains = gains.items() # Py3: This is a dictview
 
         for target, gain in gains: # format: [ (target, (glin, glog)), ...]
             ib_chans = self.fpgas.get_iceboards([target], lane_type='chan').items()  # Returns [(ib, [chan, ...]), ...]
-            self.fpgas.set_gains({ib.get_id(chan):gain for ib,chans in ib_chans for chan in chans}, bank=0, when='now')
+            self.fpgas.set_gains({ib.get_id(chan):gain for ib, chans in ib_chans for chan in chans}, bank=0, when='now')
 
     @coroutine
     def compute_gains(self,
@@ -615,7 +613,7 @@ class ChimeMaster(object):
 
             while True:
                 self.log.info('%r: *** Gain calculator : Acquiring data block %i' % (self, iteration))
-                required_sids = [sid for sid, requested in fft_rms_requested.items() if not requested]
+                required_sids = [sid for (sid, requested) in fft_rms_requested.items() if not requested]
                 yield server.start_fft_rms(
                     stream_ids=required_sids,
                     target_gain_bank=bank,
@@ -1467,7 +1465,7 @@ class ChimeMaster(object):
         # Create frequency axis
         freq = self.SAMPLING_FREQUENCY - np.fft.fftfreq(self.SAMPLES_PER_FRAME, 1.0 / self.SAMPLING_FREQUENCY)
         freq = 1e-6 * freq[0:self.SAMPLES_PER_FRAME//2]
-        freq = np.array(zip(freq, [np.median(np.abs(np.diff(freq)))] * freq.size),
+        freq = np.array(list(zip(freq, [np.median(np.abs(np.diff(freq)))] * freq.size)),
                         dtype=[('centre', '<f8'), ('width', '<f8')])
 
         # Create input axis
@@ -1491,9 +1489,9 @@ class ChimeMaster(object):
 
         crate, slot, chan = chan_id
         args_sn = {'corr_sn': self.config.corr_sn,
-                   'crate': crate if not isinstance(crate, basestring) else 0,
-                   'slot': slot + 1 if not isinstance(slot, basestring) else 1,
-                   'slot_zero_based': slot if not isinstance(slot, basestring) else 0,
+                   'crate': crate if not isinstance(crate, str) else 0,
+                   'slot': slot + 1 if not isinstance(slot, str) else 1,
+                   'slot_zero_based': slot if not isinstance(slot, str) else 0,
                    'chan': chan,
                    'input': self.config.input_number_map[chan]}
 
@@ -1601,17 +1599,18 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     def start(self, handler, **config):
         # print('%r: Received start command' % self)
         self.log.info('%r: Received start command' % self)
-        def encode_utf8(x):
-            """Convert unicode strings to utf-8 strings for the target object and any objects in lists or dictionaries"""
-            if type(x) is unicode:
-                return x.encode('utf8')
-            elif type(x) is dict:
-                return {encode_utf8(k):encode_utf8(v) for k,v in x.items()}
-            elif type(x) is list:
-                return map(encode_utf8, x)
-            else:
-                return x
-        config = encode_utf8(config)  # convert all strings in the config dict into utf8
+    # Py3: We should not have to encode the string anymore. Everything, including dict keys, are now Py3 str (unicode)
+#        def encode_utf8(x):
+#            """Convert unicode strings to utf-8 strings for the target object and any objects in lists or dictionaries"""
+#            if type(x) is str:
+#                return x.encode('utf8')
+#            elif type(x) is dict:
+#                return {encode_utf8(k):encode_utf8(v) for k,v in x.items()}
+#            elif type(x) is list:
+#                return map(encode_utf8, x)
+#            else:
+#                return x
+#        config = encode_utf8(config)  # convert all strings in the config dict into utf8
         def done(future):
             # print('Done')
             try:
@@ -2222,8 +2221,8 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         # to prevent problem writing buffer info
         function_name = native_str(function)
         function_kwargs = {}
-        for key, val in kwargs.iteritems():
-            function_kwargs[native_str(key)] = native_str(val) if isinstance(val, basestring) else val
+        for key, val in kwargs.items():
+            function_kwargs[native_str(key)] = native_str(val) if isinstance(val, str) else val
 
         # Loop over FPGA boards
         for ib in self.chime_master.fpgas.ib:
