@@ -22,6 +22,7 @@ from . import FUNCGEN
 from numpy import NaN as npNaN
 # import INJECT
 
+
 class ANT_channel(object):
     """ Implements the interface to one of the channelizer"""
 
@@ -39,11 +40,26 @@ class ANT_channel(object):
         self.fpga = fpga_instance
         self.logger = logging.getLogger(__name__)
 
-        self.ADCDAQ  = ADCDAQ.ADCDAQ_base(fpga_instance,   base_address + self.ADCDAQ_OFFSET_ADDR*submodule_address_increment,  instance_number)
-        self.FFT     = FFT.FFT_base(fpga_instance,         base_address + self.FFT_OFFSET_ADDR*submodule_address_increment,     instance_number)
-        self.SCALER  = SCALER.SCALER_base(fpga_instance,   base_address + self.SCALER_OFFSET_ADDR*submodule_address_increment,  instance_number)
-        self.PROBER  = PROBER.PROBER_base(fpga_instance,   base_address + self.PROBER_OFFSET_ADDR*submodule_address_increment,  instance_number)
-        self.FUNCGEN = FUNCGEN.FUNCGEN_base(fpga_instance, base_address + self.FUNCGEN_OFFSET_ADDR*submodule_address_increment, instance_number)
+        self.ADCDAQ = ADCDAQ.ADCDAQ_base(
+            fpga_instance,
+            base_address + self.ADCDAQ_OFFSET_ADDR * submodule_address_increment,
+            instance_number)
+        self.FFT = FFT.FFT_base(
+            fpga_instance,
+            base_address + self.FFT_OFFSET_ADDR * submodule_address_increment,
+            instance_number)
+        self.SCALER = SCALER.SCALER_base(
+            fpga_instance,
+            base_address + self.SCALER_OFFSET_ADDR * submodule_address_increment,
+            instance_number)
+        self.PROBER = PROBER.PROBER_base(
+            fpga_instance,
+            base_address + self.PROBER_OFFSET_ADDR * submodule_address_increment,
+            instance_number)
+        self.FUNCGEN = FUNCGEN.FUNCGEN_base(
+            fpga_instance,
+            base_address + self.FUNCGEN_OFFSET_ADDR * submodule_address_increment,
+            instance_number)
         self.frame_length = self.fpga.FRAME_LENGTH
 
     def __repr__(self):
