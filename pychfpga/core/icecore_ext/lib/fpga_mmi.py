@@ -9,7 +9,7 @@ commands sent directly to the FPGA Ethernet port.
 """
 import logging
 import numpy as np
-import udp as udp
+from . import udp as udp
 from ..iceboard_ext import IceBoardExtHandler
 
 
@@ -165,8 +165,8 @@ class FpgaMmi:
         ip_setup_string = struct.pack(
             '>H4s4sHQ', 0x1234, socket.inet_aton(ip_addr),
             socket.inet_aton(ip_addr), port_number, serial_number)
-        trig1 = chr(0x0C | broadcast_group)
-        trig2 = chr(0x8C | broadcast_group)
+        trig1 = bytes([0x0C | broadcast_group])
+        trig2 = bytes([0x8C | broadcast_group])
 
         # Configure the FPGA through a UDP broadcast packet containing the
         # target FPGA serial number
@@ -243,7 +243,7 @@ class FpgaMmi:
 
         Parameters:
 
-            cmd (str): command bytes to send
+            cmd (bytes): command bytes to send
 
             expected_reply_length (int): Number of bytes we expect in the reply, excluding the
                 1-byte header. This is used to validate the reply and retry if necessary.
@@ -257,7 +257,7 @@ class FpgaMmi:
 
         Returns:
 
-            str: The content of the reply packet without the header.
+            bytes: The content of the reply packet without the header.
 
         Exceptions:
 
@@ -278,7 +278,7 @@ class FpgaMmi:
                 self.recv_counter += 1
                 # self.logger.warning('read command: Got 0x%02x, expected 0x%02x' % (ord(data[0]), self.send_counter & 0xff))
                 # Check if the sequence number returned by the FPGA corresponds to ours so we know we got the answer to the right command.
-                seq = ord(data[0]) # received sequence number
+                seq = data[0] # received sequence number
                 if seq != self.send_counter & 0xff:
                     if resync:
                         self.send_counter = seq
@@ -296,7 +296,7 @@ class FpgaMmi:
                 elif len(data) != expected_reply_length + 1:
                         error = "FPGA Read command to returned %i bytes (0x%s). %i were expected." % (
                             len(data),
-                            ' '.join('%02X' % ord(b) for b in data),
+                            ' '.join('%02X' % b for b in data),
                             expected_reply_length + 1)
 
                 has_timed_out = False
@@ -367,18 +367,18 @@ class FpgaMmi:
         while offset < byte_length:
             log2_length = min((byte_length - offset).bit_length() - 1, 3)  # compute the log2 of the number of bytes to read, limited to 3 (i.e. 8 bytes)
             read_length = 1 << log2_length  # number of bytes to read in this iteration
-            s = (chr((opcode << 5) | (log2_length << 3) +
-                     ((addr >> 16) & 0x07)) +
-                 chr((addr >> 8) & 0xFF) +
-                 chr(addr & 0xFF))
+            command_bytes = bytes([
+                    (opcode << 5) | (log2_length << 3) + ((addr >> 16) & 0x07), # byte 0: opcode, length, MSB of address
+                    (addr >> 8) & 0xFF, # byte 2: address
+                    addr & 0xFF]) # Byte 3: address
 
-            data = self._send_command(s, read_length, retry, resync)
+            data = self._send_command(command_bytes, read_length, retry, resync)
             if retry is not None and retry < 0:
                 self.logger.warning('%r: FPGA_MMI retry = %i' % (self, retry))
                 return
             if offset + read_length > byte_length:
                 raise IOError('%r: mmi.read(): Received too many bytes' % self)
-            dout[offset: offset + read_length] = np.fromstring(data, dtype=np.uint8)  # store received byte
+            dout[offset: offset + read_length] = np.frombuffer(data, dtype=np.uint8)  # store received byte
             addr += read_length
             offset += read_length
 
@@ -402,7 +402,7 @@ class FpgaMmi:
         wide.
         """
 
-        byte_length = np.dtype(type).itemsize  # number of bytes contained in the destinaion vector type
+        byte_length = np.dtype(type).itemsize  # number of bytes contained in the destination vector type
         log2_length = byte_length.bit_length()-1  # compute the log2 of the number of bytes to read, limited to 3 (i.e. 8 bytes)
         read_length = 1 << log2_length  # number of bytes to read in this iteration
         # dout = np.zeros(byte_length, np.int8) # initialize result vector as a byte array
@@ -416,11 +416,12 @@ class FpgaMmi:
         else:
             opcode = self.OPCODE_READ_CONTROL
 
-        s = (chr((opcode << 5) | (log2_length << 3) + ((addr >> 16) & 0x07)) +
-             chr((addr >> 8) & 0xFF) +
-             chr(addr & 0xFF))
+        command_bytes = bytes([
+             (opcode << 5) | (log2_length << 3) + ((addr >> 16) & 0x07),
+             (addr >> 8) & 0xFF,
+             addr & 0xFF])
 
-        self.udp.send(s)
+        self.udp.send(command_bytes)
         self.send_counter += 1
         self.recv_counter += 1  # We expect only one packet back
         self.udp.set_timeout(timeout)
@@ -437,24 +438,22 @@ class FpgaMmi:
                     "%r: FPGA Read command returned %i bytes. %i were expected." %
                     (self, len(data), read_length + 1))
 
-            dout.append(np.fromstring(data[1:], dtype=type)[0])  # store received byte
+            dout.append(np.frombuffer(data[1:], dtype=type)[0])  # store received byte
         return dout
 
-    def _to_string(self, data):
-        if isinstance(data, str):
+    def _to_bytes(self, data):
+        if isinstance(data, bytes):
             return data
-        elif isinstance(data, (list, np.ndarray)):
-            return ''.join([chr(c) for c in data])
-        if isinstance(data, int):
-            return chr(data)
-        elif isinstance(data, np.uint32):
-            return np.array(data, '>u4').tostring()  # store as big endian (most significant byte first)
-        elif isinstance(data, np.uint16):
-            return np.array(data, '>u2').tostring()  # store as big endian (most significant byte first)
-        elif isinstance(data, np.uint8):
-            return np.array(data, '>u1').tostring()  # store as big endian (most significant byte first)
+        elif isinstance(data, list):
+            return bytes(data)
+        elif isinstance(data, np.ndarray):
+            return bytes(iter(data))
+        elif isinstance(data, int):
+            return bytes([data])
+        elif isinstance(data, (np.uint32, np.uint16, bp.uint8)):
+            return data.newbyteorder('>').tobytes()  # store as big endian (most significant byte first)
         else:
-            return chr(data)
+            return bytes([data])
 
     def write(self, addr, data, mask=None, retry=None, resync=False):
         """
@@ -481,20 +480,20 @@ class FpgaMmi:
         else:
             opcode = self.OPCODE_WRITE_CONTROL_MASK
 
-        command_string = (
-            chr((opcode << 5) | ((addr >> 16) & 0x07)) +
-            chr((addr >> 8) & 0xFF) +
-            chr(addr & 0xFF))
+        command_bytes = bytes((
+            (opcode << 5) | ((addr >> 16) & 0x07),
+            (addr >> 8) & 0xFF,
+            addr & 0xFF))
 
-        data_string = self._to_string(data)
-        length = len(data_string)
+        data_bytes = self._to_bytes(data)
+        length = len(data_bytes)
 
         # If there is a mask, interleave the data with the masks
         if mask is not None:
-            mask_string = self._to_string(mask)
-            data_string = ''.join(
-                [d+m for (d, m) in zip(data_string, mask_string)])
-        self._send_command(command_string + data_string, 0, retry, resync)
+            mask_bytes = self._to_bytes(mask)
+            data_bytes = b''.join(
+                [bytes((d, m)) for (d, m) in zip(data_bytes, mask_bytes)])
+        self._send_command(command_bytes + data_bytes, 0, retry, resync)
         return length
 
 

@@ -74,12 +74,12 @@ class Udp(object):
 
         # Bind the UDP port to the specified interface .
         #
-        # By binding the socket, we set the source port and source address (intrface address) of
+        # By binding the socket, we set the source port and source address (interface address) of
         # outgoing packets, and we allow the socket to receive packets with in the same
-        # interfaceand port number. the desired values. The FPGA will send replies back to
+        # interface and port number. the desired values. The FPGA will send replies back to
         # this/port
         #
-        # We need to specify the interface explicitely because the packet might be sent over the wrong (default) interface (which happened when the 10GbE was connected to the FPGA).
+        # We need to specify the interface explicitly because the packet might be sent over the wrong (default) interface (which happened when the 10GbE was connected to the FPGA).
         self.sock.bind((self.if_ip_addr, self.local_port_number))
         # store the socket in the main module so it will live persistently until the Python session is closed.
         __main__.__opened_sockets__[self.local_port_number] = self.sock
@@ -103,6 +103,10 @@ class Udp(object):
     def send(self, data):
         """
         Sends a string to the socket.
+
+        Parameters:
+
+            data (bytes): bytes to send
         """
         # print 'writing', data, 'to', self.address
         self.sock.sendto(data, self.address)
@@ -110,6 +114,11 @@ class Udp(object):
     def recv(self):
         """
         Reads a string from the socket.
+
+        Parameters:
+
+        Returns:
+            data (bytes)
         """
         data = self.sock.recv(self.BUFFER_LENGTH)
         return data
