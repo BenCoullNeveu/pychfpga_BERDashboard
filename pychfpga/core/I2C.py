@@ -1,6 +1,4 @@
 #!/usr/bin/python
-# Disable pylint Line too long (=C0301)
-# pylint: disable=C0301
 
 """
 I2C.py module
@@ -18,9 +16,8 @@ import logging
 
 import numpy as np
 from pychfpga.common.util import hex
-from Module import Module_base, BitField, CONTROL, STATUS
+from .Module import Module_base, BitField, CONTROL, STATUS
 
-# __reload__ = True
 
 class I2C_base(Module_base):
     """ Object defining the interface to the FPGA's firmware-implemented I2C interface.
@@ -55,7 +52,6 @@ class I2C_base(Module_base):
     DONE_CTR        = BitField(STATUS, 0x07, 0, width=4, doc='Counts the number of DONE events')
 
 
-
     def __init__(self, fpga, base_address):
         super(I2C_base, self).__init__(fpga, base_address)
         self.current_port = None
@@ -65,7 +61,7 @@ class I2C_base(Module_base):
         """
         Selects on which FPGA I2C port the subsequents I2C transactions will be made.
         """
-        if port_number<0 or port_number>1:
+        if port_number < 0 or port_number > 1:
             self.logger.error('%r: write_read: port number is out of range' % self)
             raise ValueError()
         self.current_port = port_number
@@ -78,9 +74,10 @@ class I2C_base(Module_base):
 
             addr (int): I2C address
 
-            data (list of int): list of bytes to write before the read operation. If ``None``, no write is performed. 
+            data (list of int): list of bytes to write before the read operation. If ``None``, no write is performed.
 
-            read_length (int): Number of bytes to read. Can be 0-4 after the a preceding write operation, or 0-3 without a write operation. 
+            read_length (int): Number of bytes to read. Can be 0-4 after the a
+                preceding write operation, or 0-3 without a write operation.
 
             verbose (int): verbosity level
 
@@ -97,34 +94,36 @@ class I2C_base(Module_base):
 
             IOError: Is raised if the I2C transaction fails after the specified number of retrials
 
-            
-        When data=None, reads 'read_length' (0-3) bytes from the I2C device at specified I2C address in a single I2C transaction,
-        or, if data is an non-empty array of 1-3 data bytes, writes the data to the specified I2C address,
-        send a restart condition and reads 'read_length' (0-4) bytes.
+
+        When data=None, reads 'read_length' (0-3) bytes from the I2C device at
+        specified I2C address in a single I2C transaction, or, if data is an
+        non-empty array of 1-3 data bytes, writes the data to the specified
+        I2C address, send a restart condition and reads 'read_length' (0-4)
+        bytes.
 
         """
-        #verbose=1
 
         if addr < 0 or addr > 0xFF:
             self.logger.error('%r: write_read: I2C address is out of range' % self)
             raise ValueError()
 
-        if read_length<0 or read_length>4:
+        if read_length < 0 or read_length > 4:
             self.logger.error('%r: write_read: read_length is out of range' % self)
             raise ValueError()
 
         if data is None:
             write_length = 0
         else:
-            write_length=len(data)
+            write_length = len(data)
             if write_length > 3:
                 self.logger.error('%r: write_read: write length is out of range' % self)
                 raise ValueError()
 
-        #if verbose:
-        # self.logger.debug('write_read:  writing %i byte(s) and reading %i byte(s) at FPGA port %i at address 0x%02x with the following data: %s' % (write_length, read_length, self.current_port, addr, hex(data)))
+        # if verbose:
+        # self.logger.debug('write_read:  writing %i byte(s) and reading %i byte(s) at FPGA port %i at address 0x%02x with the following data: %s' % (
+        #   write_length, read_length, self.current_port, addr, hex(data)))
 
-        #error = 0
+        # error = 0
         error_msg = ''
 
         start_ctr = self.START_CTR
@@ -135,19 +134,19 @@ class I2C_base(Module_base):
 
         trial = 0
         while True:
-            self.write_control(0x05, self.current_port << 4) # disables RESET, set port number
+            self.write_control(0x05, self.current_port << 4)  # disables RESET, set port number
 
             idle = self.IDLE
             if data is None:  # if we do not write any date, we perform a single transaction with BYTES1=read_length and BYTES2=0
                 self.write_control(0x00, [(addr << 1) + 0x01])  # write I2C address with read flag to the transmit buffer
-                expected_ack = 2**(read_length + 1) - 1;
+                expected_ack = 2 ** (read_length + 1) - 1;
                 self.write_control(0x04,[0x00 + read_length])  # Prepare to start transaction by clearing the START bit
-                self.write_control(0x04,[0x80 + read_length])  # start transaction by creating a 0-to-1 trsnsition on the START bit. Do this as a separate transmission to make sure that the firmware registered the zero
-            else:  # if we write and optionnally read
+                self.write_control(0x04,[0x80 + read_length])  # start transaction by creating a 0-to-1 transition on the START bit. Do this as a separate transmission to make sure that the firmware registered the zero
+            else:  # if we write and optionally read
                 self.write_control(0x00, [(addr << 1) + 0x00] + data)  # write address with write flag and data in transmit buffer (4 bytes max)
-                expected_ack= 2**(read_length + write_length + 1 + (read_length != 0)) - 1
+                expected_ack = 2 ** (read_length + write_length + 1 + (read_length != 0)) - 1
                 self.write_control(0x04, [0x00 + (read_length << 4) + write_length])  # Prepare to start transaction by clearing the START bit
-                self.write_control(0x04, [0x80 + (read_length << 4) + write_length])  # start transaction by creating a 0-to-1 trsnsition on the START bit. Do this as a separate transmission to make sure that the firmware registered the zero
+                self.write_control(0x04, [0x80 + (read_length << 4) + write_length])  # start transaction by creating a 0-to-1 transition on the START bit. Do this as a separate transmission to make sure that the firmware registered the zero
             self.wait_for_bit('DONE')
 
             # Increment the transaction counters to track how many start and done events we *should* have
@@ -166,20 +165,35 @@ class I2C_base(Module_base):
                 break
             trial += 1
             if trial > retry:
-                error_msg += '%r: write_read: communication error: did not receive correct ACK bits. Received 0x%02x, expected 0x%02x\n. ' % (self, ack, expected_ack)
+                error_msg += '%r: write_read: communication error: did not receive correct ACK bits. ' \
+                             'Received 0x%02x, expected 0x%02x\n. ' % (self, ack, expected_ack)
                 break
             else:
-                self.logger.warn('write_read: communication error: did not receive correct ACK bits. Received 0x%02x, expected 0x%02x\n. Start ctr: %i => %i, Done ctr: %i => %i, Idle: %i => %i, Collisiotn=%i, timeout=%i. Retrying...' % (ack, expected_ack, start_ctr, self.START_CTR, done_ctr, self.DONE_CTR, idle, self.IDLE, self.COLLISION, self.TIMEOUT))
+                self.logger.warn('write_read: communication error: did not receive correct ACK bits. '
+                                 'Received 0x%02x, expected 0x%02x\n. Start ctr: %i => %i, Done ctr: %i => %i, '
+                                 'Idle: %i => %i, Collisiotn=%i, timeout=%i. Retrying...' % (
+                                        ack,
+                                        expected_ack,
+                                        start_ctr,
+                                        self.START_CTR,
+                                        done_ctr,
+                                        self.DONE_CTR,
+                                        idle,
+                                        self.IDLE,
+                                        self.COLLISION,
+                                        self.TIMEOUT))
 
         # Che
         if self.START_CTR != start_ctr:
-            error_msg +='%r: write_read: communication error: start_ctr do not match. Read %i, expected %i\n' % (self, self.START_CTR, start_ctr)
+            error_msg += '%r: write_read: communication error: start_ctr do not match. ' \
+                         'Read %i, expected %i\n' % (self, self.START_CTR, start_ctr)
         if self.DONE_CTR != done_ctr:
-            error_msg += '%r: write_read: communication error: done_ctr do not match. Read %i, expected %i\n' % (self, self.DONE_CTR, done_ctr)
+            error_msg += '%r: write_read: communication error: done_ctr do not match. ' \
+                         'Read %i, expected %i\n' % (self, self.DONE_CTR, done_ctr)
 
-        #print 'I2C communication: ACK byte is 0x%02x' % ack
+        # print 'I2C communication: ACK byte is 0x%02x' % ack
         read_data = read_data[-read_length:]
-        #data.dtype=np.dtype(type)
+        # data.dtype=np.dtype(type)
         if error_msg:
             error_msg = ('%r: write_read:  The following errors occured while '
                          'writing %i bytes and reading %i bytes on FPGA I2C '
@@ -222,9 +236,7 @@ class I2C_base(Module_base):
         # print 'SCK = %i, SDA= %i' %(bool(s[4]&0x02), bool(s[4]&0x01))
         # print 'ACK bits:', bin(s[5])
 
-
-
-    def init(self, verbose = 0):
+    def init(self, verbose=0):
         '''
         For KC705 Board, set the switch to FMC EEPROM by default
         '''
