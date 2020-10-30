@@ -14,7 +14,7 @@ SRCSEL.py module
     2012-10-17 JFC: Fixed default source setting when there is no FMC
 """
 
-from Module import Module_base, BitField
+from .Module import Module_base, BitField
 
 class SRCSEL_base(Module_base):
     """ Implements interface to the FR_DIST within a procecessor pipeline"""
@@ -65,7 +65,7 @@ class SRCSEL_base(Module_base):
         Gets the data source currently selected by the the SOURCE selector.
         """
         data_source_number = self.DATA_SOURCE # make sure we read this only once
-        return [key for (key,value) in self.DATA_SOURCE_NAMES.items() if value == data_source_number][0]
+        return [key for (key,value) in list(self.DATA_SOURCE_NAMES.items()) if value == data_source_number][0]
 
 
     def init(self):
@@ -78,12 +78,12 @@ class SRCSEL_base(Module_base):
 
     def status(self):
         """ Displays the status of the antenna processing chain data source module """
-        print '-------------- ANT[%i].SRCSEL STATUS --------------' % self.instance_number
-        print ' Data source number: %i' % self.DATA_SOURCE
-        print ' Reset states:'
-        print '    RST: %s' % bool(self.RST)
-        print '    SOFT_RESET: %s' % bool(self.SOFT_RESET)
-        print '    ANT_RESET: %s' % bool(self.ANT_RESET)
-        print ' Counter status:'
-        print '    WORD_CTR: %i' % self.WORD_CTR
-        print '    FRAME_CTR: %i' % self.FRAME_CTR
+        print('-------------- ANT[%i].SRCSEL STATUS --------------' % self.instance_number)
+        print(' Data source number: %i' % self.DATA_SOURCE)
+        print(' Reset states:')
+        print('    RST: %s' % bool(self.RST))
+        print('    SOFT_RESET: %s' % bool(self.SOFT_RESET))
+        print('    ANT_RESET: %s' % bool(self.ANT_RESET))
+        print(' Counter status:')
+        print('    WORD_CTR: %i' % self.WORD_CTR)
+        print('    FRAME_CTR: %i' % self.FRAME_CTR)
