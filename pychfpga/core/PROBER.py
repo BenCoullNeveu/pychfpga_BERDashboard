@@ -13,7 +13,7 @@ import logging
 import numpy as np
 
 
-from Module import Module_base, BitField
+from .Module import Module_base, BitField
 
 
 class PROBER_base(Module_base):
@@ -126,10 +126,10 @@ class PROBER_base(Module_base):
         if burst_period >= 2**24:
             raise RuntimeError('Capture period of %i frames is too long. Maximum value is %.3f s' % (burst_period, 2**24 - 1))
 
-        delay_increment = 65536/125e6 # 0x10000 / 125 MHz
+        delay_increment = 65536 / 125e6 # 0x10000 / 125 MHz
         delay_in_seconds = delay_increment * send_delay # Data transmission of new frames is held off by this amount
         period_in_seconds = self.fpga.FRAME_PERIOD * burst_period
-        min_period = int(delay_in_seconds / self.fpga.FRAME_PERIOD/frames_per_burst)
+        min_period = int(delay_in_seconds / self.fpga.FRAME_PERIOD / frames_per_burst)
         min_period_in_seconds = min_period * self.fpga.FRAME_PERIOD
         buffered_packets = frames_per_burst * np.ceil(delay_in_seconds / period_in_seconds)
         if buffered_packets > self.DATA_BUFFER_CAPACITY:
@@ -205,8 +205,8 @@ class PROBER_base(Module_base):
 
     def status(self):
         """ Displays the status of the data capture module"""
-        print '-------------- ANT[%i] data capture --------------' % self.instance_number
-        print ' Capture frame(s) every %s frames' % (self.BURST_LENGTH, self.get_burst_period()),
+        print('-------------- ANT[%i] data capture --------------' % self.instance_number)
+        print(' Capture frame(s) every %s frames' % (self.BURST_LENGTH, self.get_burst_period()), end=' ')
         # if self.BURST_NUMBER:
         #     print 'for %i bursts' % self.BURST_NUMBER
         # else:
