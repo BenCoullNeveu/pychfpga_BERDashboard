@@ -1,6 +1,4 @@
 #!/usr/bin/python
-# Disable pylint Line too long (=C0301)
-# pylint: disable=C0301
 
 """
 CHAN_CROSSBAR.py module
@@ -14,10 +12,11 @@ data that contains some selected frequency bins from all input channels.
 import logging
 
 from wtl.metrics import Metrics
-from Module import Module_base, BitField
+from .Module import Module_base, BitField
 from .icecore import async, async_return, async_sleep, async_moment
 
-import chan_bin_sel
+from . import chan_bin_sel
+
 
 class ChanCrossbar(Module_base):
     """ Object that allows access to a channelizer crossbar"""
@@ -29,7 +28,7 @@ class ChanCrossbar(Module_base):
     LANE_MONITOR_RESET = BitField(CONTROL, 0, 4, doc='')
     LANE_MONITOR_SEL   = BitField(CONTROL, 0, 0, width=4, doc='')
 
-    LANE_MONITOR_SOURCE   = BitField(CONTROL, 1, 0, width=4, doc='')
+    LANE_MONITOR_SOURCE= BitField(CONTROL, 1, 0, width=4, doc='')
     # SOF_WINDOW_START   = BitField(CONTROL, 1, 0, width=8, doc='')
     # SOF_WINDOW_STOP    = BitField(CONTROL, 2, 0, width=8, doc='')
 
@@ -65,7 +64,7 @@ class ChanCrossbar(Module_base):
 
         # Default bin selector configuration. To be overriden by system-level configuration method.
         # By default we send 64 bins for each of the 16 output lanes. Bins are interleaved.
-        number_of_bins_per_crossbar_output = 64
+        # number_of_bins_per_crossbar_output = 64
         # Do not initialize the bin selection map now to same time. This will be done anyway when we initialize the shuffling system.
         # for (i, bs) in enumerate(self.BIN_SEL):
         #     bin_list = np.arange(number_of_bins_per_crossbar_output) * 16 + i
@@ -79,7 +78,7 @@ class ChanCrossbar(Module_base):
             width=8: data is 8 bits Real + 8 bits Imaginary
         """
 
-        if width==4:
+        if width == 4:
             is_four_bits = 1
         elif width == 8:
             is_four_bits = 0
@@ -98,7 +97,8 @@ class ChanCrossbar(Module_base):
         if not self.BIN_SEL:
             return None
 
-        four_bits = {bs.FOUR_BITS for bs in self.BIN_SEL}  # use a set to uniquely record all the possible encountered states
+        # use a set to uniquely record all the possible encountered states
+        four_bits = {bs.FOUR_BITS for bs in self.BIN_SEL}
 
         if four_bits == {0}:
             return 8
@@ -120,57 +120,6 @@ class ChanCrossbar(Module_base):
         """
         return self.BIN_SEL[0].GROUP_FRAMES
 
-
-#     def configure(self, number_of_bins_per_crossbar_output= 8):
-#         """
-#         Configure the channel selection.
-#         This should be done once the data width has been selected.
-#         """
-#         # data_width = self.get_data_width()
-#         # # Compute the minimum word spacing to allow the channel_selector time to forwared the data.
-#         # # In 8-bit mode, 2*N bins come every clock from the channelizers, and it takes N clocks to send them away (2 per output word). So the bin spacing is N.
-#         # # In 4-bit mode, 2*N bins come every clock from the channelizers, and it takes N/2 clocks to send them away ( 4 per output word). So bin spacing is N/2.
-#         # bin_step = self.fpga.NUMBER_OF_CROSSBAR_INPUTS * data_width / 8
-#         # number_of_bins_per_frame = self.fpga.FRAME_LENGTH / 2 # The FFT generates 2048 bins, but half of them are discarded
-#         # #number_of_bins_per_frame = 2 # The FFT generates 2048 bins, but half of them are discarded
-#         # if number_of_bins_per_crossbar_output is None:
-#         #     number_of_bins_per_crossbar_output =  int (number_of_bins_per_frame / bin_step) # Number of channels that one channel selector can handle
-
-#         # if bin_step > self.fpga.NUMBER_OF_CROSSBAR_OUTPUTS:
-#         #     self.logger.warning('   Only a fraction of the frequency bins can be mapped to the crossbar outputs because the total number of bits entering the crossbar exceeds the number of bits at its outputs.')
-
-#         # # Check if the set-up is acceptable for the FPGA correlator (if present in the FPGA), and make corrections if needed
-#         # if self.fpga.NUMBER_OF_CORRELATORS:
-#         #     if data_width == 4:
-#         #         self.logger.warning('The FPGA correlator will not operate properly in 4-bit mode ')
-
-#         #     max_correlator_frame_length_in_words = 511 # maximum number of words that the correlator can handle in a frame. This is limited by the ACCumulator buffer depth
-#         #     max_number_of_words_per_correlator = int( max_correlator_frame_length_in_words / self.fpga.NUMBER_OF_ANTENNAS_TO_CORRELATE ) # maximum number of words that can be selected
-#         #     if number_of_bins_per_crossbar_output > 2*max_number_of_words_per_correlator:
-#         #         self.logger.warning('   The number of frequency bins in each crossbar output was reduced from %i to %i due to the correlator accumulator memory limitation' % (number_of_bins_per_crossbar_output, max_number_of_words_per_correlator))
-#         #         number_of_bins_per_crossbar_output = 2*max_number_of_words_per_correlator
-
-#         # # Apply GPU Link limitations
-#         # if self.fpga.NUMBER_OF_GPU_LINKS:
-#         #     max_number_of_words_per_input_frame = 4095 // self.get_frame_grouping() * 8 / data_width / self.fpga.NUMBER_OF_CROSSBAR_INPUTS
-#         #     if number_of_bins_per_crossbar_output > 2*max_number_of_words_per_input_frame:
-#         #         self.logger.warning('   The number of frequency bins in each crossbar output was reduced from %i to %i due to the GPU link buffer size limitations' % (number_of_bins_per_crossbar_output, max_number_of_words_per_input_frame))
-#         #         number_of_bins_per_crossbar_output = 2*max_number_of_words_per_input_frame
-
-# #         for (i, xbar) in enumerate(self.CROSSBAR):
-# #             bin_list = np.arange(number_of_bins_per_crossbar_output)* bin_step + i
-# #             # xbar.CH_DIST.select_words(word_list) # enable tranmission 8 words, 16 freq channels by default
-# # #            bin_list = [0,8]
-# #             xbar.CH_DIST.select_bins(bin_list) # enable tranmission 8 words, 16 freq channels by default
-#         for (i, bs) in enumerate(self.BIN_SEL):
-#             if self.crossbar_level==1:
-#                 bin_list = np.arange(number_of_bins_per_crossbar_output)* 2 + i
-#             else:
-#                 bin_list = np.arange(number_of_bins_per_crossbar_output) * 8 + i
-#             # xbar.CH_DIST.select_words(word_list) # enable tranmission 8 words, 16 freq channels by default
-# #            bin_list = [0,8]
-#             bs.select_bins(bin_list) # enable tranmission 8 words, 16 freq channels by default
-
     def status(self):
         """ Displays the status of all bin selectors"""
         for bs in self.BIN_SEL:
@@ -179,7 +128,7 @@ class ChanCrossbar(Module_base):
     CB1_LANE_MONITOR_TABLE = {
         'RESET': 0,
         'MISSING_FRAME': 4,
-        'ALIGN_FIFO_OVERFLOW' : 6,
+        'ALIGN_FIFO_OVERFLOW': 6,
         }
 
     def get_lane_monitor(self, name):
@@ -205,10 +154,10 @@ class ChanCrossbar(Module_base):
         if reset:
             self.reset_stats()
 
-        lane_range = range(self.NUMBER_OF_CROSSBAR_INPUTS)
+        lane_range = list(range(self.NUMBER_OF_CROSSBAR_INPUTS))
 
-        print '%20s: %s' % ('Monitor point', ' '.join('  L%2i ' % v for v in lane_range))
-        print '%20s: %s' % ('--------------------', ' '+' '.join('------' for v in lane_range))
+        print('%20s: %s' % ('Monitor point', ' '.join('  L%2i ' % v for v in lane_range)))
+        print('%20s: %s' % ('--------------------', ' '+' '.join('------' for v in lane_range)))
         input_frame_ctr = []
         align_frame_ctr = []
         reset_mon = []
@@ -220,10 +169,11 @@ class ChanCrossbar(Module_base):
             input_frame_ctr.append(self.INPUT_FRAME_CTR)
             align_frame_ctr.append(self.ALIGN_FRAME_CTR)
 
-        print '%20s: %s' % ('RESET', ' '.join('%6s' % ('-', 'ERR!')[bool(v)] for v in reset_mon))
-        print '%20s: %s' % ('ALIGN_FIFO_OVERFLOW', ' '.join('%6s' % ('-', 'ERR!')[bool(v)] for v in align_fifo_overflow))
-        print '%20s: %s' % ('INPUT FRAME CTR', ' '.join('%6i' % v for v in input_frame_ctr))
-        print '%20s: %s' % ('ALIGN FRAME CTR', ' '.join('%6i' % v for v in align_frame_ctr))
+        print('%20s: %s' % ('RESET', ' '.join('%6s' % ('-', 'ERR!')[bool(v)] for v in reset_mon)))
+        print('%20s: %s' % ('ALIGN_FIFO_OVERFLOW',
+                            ' '.join('%6s' % ('-', 'ERR!')[bool(v)] for v in align_fifo_overflow)))
+        print('%20s: %s' % ('INPUT FRAME CTR', ' '.join('%6i' % v for v in input_frame_ctr)))
+        print('%20s: %s' % ('ALIGN FRAME CTR', ' '.join('%6i' % v for v in align_frame_ctr)))
         # print '%20s: %s' % ('ALIGN GLOBAL FRAME CTR', '(common to all lanes) %6i' % self.ALIGN_GLOBAL_FRAME_CTR)
 
     @async
@@ -265,7 +215,7 @@ class ChanCrossbar(Module_base):
         # fmap = {output_lane:bs.get_map() for output_lane, bs in enumerate(self.BIN_SEL)}
         # return fmap
 
-    def get_sim_output(chan_outputs):
+    def get_sim_output(self, chan_outputs):
         """ Compute the channelizer crossbar output packets.
         """
         return [bs.get_sim_output(chan_outputs) for bs in self.BIN_SEL]
