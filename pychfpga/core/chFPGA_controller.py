@@ -27,7 +27,7 @@ import numpy as np
 import yaml
 import tornado.gen
 
-# Local imoprts
+# Local imports
 
 from .icecore import async, async_return, async_sleep, async_moment
 from .icecore.session import load_session as load_yaml
@@ -163,14 +163,34 @@ class chFPGA_controller(IceBoardExtHandler):
         Creates an empty IceBoard/chFPGA handler object, but do not interact with the board yet.
 
         Parameters:
-            parent_getter (func): Function that returns the dynamically return the parent object from which the following parameters will be fetched. Is ``None`` if there is no parent.
-            hostname (str): hostname or IP address of the ICEBoard ARM processor (mandatory)
-            serial (str): Serial number of the board. Can be provided by the ARM.
-            part_number (str): Part number of the IceBoard. Can be obtained from the ARM.
-            crate (IceCrateHandler): = object that handle the backplane on which the board is connected. ``None`` if the board is not connected to a backplane.
-            slot (int): Slot number in which the board is installed ona backplane. None if there is no backplane.
-            mezzanine (dict): Map {mezzanine_number: Mezzanine Handler, ...} describing the installed mezzanines. Can be obtained from the ARM.
-            tuber_objname (str): name of the set of software functions that will be provided by the ARM processor through the Tuber interface.
+
+            parent_getter (func): Function that returns the dynamically return
+                the parent object from which the following parameters will be
+                fetched. Is ``None`` if there is no parent.
+
+            hostname (str): hostname or IP address of the ICEBoard ARM
+                processor (mandatory)
+
+            serial (str): Serial number of the board. Can be provided by the
+                ARM.
+
+            part_number (str): Part number of the IceBoard. Can be obtained
+                from the ARM.
+
+            crate (IceCrateHandler): = object that handle the backplane on
+                which the board is connected. ``None`` if the board is not
+                connected to a backplane.
+
+            slot (int): Slot number in which the board is installed ona
+                backplane. None if there is no backplane.
+
+            mezzanine (dict): Map {mezzanine_number: Mezzanine Handler, ...}
+                describing the installed mezzanines. Can be obtained from the
+                ARM.
+
+            tuber_objname (str): name of the set of software functions that
+                will be provided by the ARM processor through the Tuber
+                interface.
 
         The `__init__` function stores the parameters as instance attributes
         of the same name. However, if a `parent_getter` function is provided
@@ -228,12 +248,16 @@ class chFPGA_controller(IceBoardExtHandler):
 
         Parameters:
 
-            init (int): initialization level: 1: read config and initialize the FPGA with the `init()` method; 0: only read
-                        the FPGA config; -1: Don<t read the FPGA and do not create the Python
-                        objects.
-            verbose (int): verbosity level, which is passed to the `init()` method.
+            init (int): initialization level: 1: read config and initialize
+               the FPGA with the `init()` method; 0: only read the FPGA
+               config; -1: Don<t read the FPGA and do not create the Python
+               objects.
 
-            kwargs: All remaining parameters are passed to `init()` method if the `init` parameter is 1.
+            verbose (int): verbosity level, which is passed to the `init()`
+                method.
+
+            kwargs: All remaining parameters are passed to `init()` method if
+                the `init` parameter is 1.
         """
 
         yield super(chFPGA_controller, self).open.async()  # Open UDP communication link
@@ -344,7 +368,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 self,
                 self._CHAN_BASE_ADDR,
                 self._CHAN_ADDR_INCREMENT,
-                self._CHAN_SUBMODULE_ADDR_INCREMENT) # Antenna processors (ADCDAQ, FUNCGEN,  FFT, SCALER) for each input
+                self._CHAN_SUBMODULE_ADDR_INCREMENT)  # Antenna processors (ADCDAQ, FUNCGEN,  FFT, SCALER) for each input
             self.ANT_FMC_NUMBER = [i // 8 for i in range(self.NUMBER_OF_ANTENNAS)]
 
             yield async_moment
@@ -459,7 +483,6 @@ class chFPGA_controller(IceBoardExtHandler):
                 mezz.close()
         super(chFPGA_controller, self).close()  # Make sure we close underlying sytems (sockets, etc)
 
-
     @async
     def init(
             self,
@@ -470,7 +493,7 @@ class chFPGA_controller(IceBoardExtHandler):
             data_width=4,
             group_frames=4,
             enable_gpu_link=1,
-            create_receiver= False,
+            create_receiver=False,
             verbose=0,
             **kwargs):
         """
@@ -640,12 +663,6 @@ class chFPGA_controller(IceBoardExtHandler):
             self.GPU.set_enable(enable_gpu_link)
             self._logger.debug('%r: GPU link is currently %s' % (self, ['Disabled', 'Enabled'][bool(enable_gpu_link)]))
 
-        # MGT is disabled
-        #self._logger.debug('  - MGT_PLL')
-        #self.MGT_PLL.init(fref=fref)
-        #self._logger.debug('  - MGT')
-        #self.MGT.init() # MGT_PLL must be initialized first
-
         self._logger.debug("%r: Done with initializations." % self)
 
         yield async_moment
@@ -737,7 +754,7 @@ class chFPGA_controller(IceBoardExtHandler):
             config.antenna_fft_bypass = self.get_FFT_bypass()
             config.antenna_fft_shift_schedule = self.get_FFT_shift()
             config.antenna_scaler_gain = self.get_gains()
-            config.antenna_adc_data_acquisition_delay_tables  = self.ANT.get_adc_delays()
+            config.antenna_adc_data_acquisition_delay_tables = self.ANT.get_adc_delays()
             config.FPGA_board_frequency = self.FreqCtr.read_frequency('CLK200', gate_time=0.05)
             config.CTRL_clock_frequency = self.FreqCtr.read_frequency('CTRL_CLK', gate_time=0.05)
             config.ant_clock = self.FreqCtr.read_frequency('ANT_CLK', gate_time=0.05)
@@ -752,7 +769,7 @@ class chFPGA_controller(IceBoardExtHandler):
             config.mgt_word_clock = self.FreqCtr.read_frequency('GPU_TXCLK', gate_time=0.05)
             # todo: fix ADC range below (?)
             config.adc_clocks = [self.FreqCtr.read_frequency(('ADC_CLK' + str(i)), gate_time=0.05) for i in range(8)]
-        	# config.motherboard_serial = self.GPIO.FPGA_SERIAL_NUMBER
+            # config.motherboard_serial = self.GPIO.FPGA_SERIAL_NUMBER
             # Add FFT shift, scaler gain, corr integration/capture period etc.
             # config.freq_flags = self.freq_flags  # JFC: what is that?
         async_return(config)
@@ -786,13 +803,13 @@ class chFPGA_controller(IceBoardExtHandler):
             self.REFCLK.local_sync()
         else:
             self.REFCLK.remote_sync()
-        self.set_adc_mask(0xff) # restore full ADC data
+        self.set_adc_mask(0xff)  # restore full ADC data
 
     def pulse_ant_reset(self):
         """ Resets the stats of all antenna processor modules and clear the processing pipeline.
         Memory-mapped registers are not affected.
         """
-        self.GPIO.pulse_ant_reset() # resets all
+        self.GPIO.pulse_ant_reset()  # resets all
 
     def reset(self):
         """ Resets the channelizers, corner-turn and correlator engines.
@@ -850,11 +867,11 @@ class chFPGA_controller(IceBoardExtHandler):
             self.set_data_source(data_source, channels=channels)  # does a channelizer reset
 
         if function is not None:
-            if function == 'freq_test': #Configure funcgen so the visibility data has a unique real number for 108 freq bins. The other freq bins are zeros
-                N = min(len(freq_test_bins), 108) # N has to be less that 108 for this to work
-                if N == 0: # Send same number (1+0j) for all frequencies
-                    v = (9*np.ones(2048, dtype=np.uint8)) << 4 # with the offset encoding, 9s here result in 1s in the complex visibility data
-                    v[1::2] = (8 * np.ones(1024, dtype=np.uint8)) << 4 # with the offset encoding, 8s here result in 0s in the complex visibility data
+            if function == 'freq_test':  # Configure funcgen so the visibility data has a unique real number for 108 freq bins. The other freq bins are zeros
+                N = min(len(freq_test_bins), 108)  # N has to be less that 108 for this to work
+                if N == 0:  # Send same number (1+0j) for all frequencies
+                    v = (9*np.ones(2048, dtype=np.uint8)) << 4  # with the offset encoding, 9s here result in 1s in the complex visibility data
+                    v[1::2] = (8 * np.ones(1024, dtype=np.uint8)) << 4  # with the offset encoding, 8s here result in 0s in the complex visibility data
                 else:
                     freq_pattern_real = np.array([ 1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  2,  2,
                                                    2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  3,  3,  3,  3,  3,
@@ -879,7 +896,7 @@ class chFPGA_controller(IceBoardExtHandler):
                     v[1::2] = v_imag
                 self.set_funcgen_function('arb', channels=channels, data=v)  # If FFT and scaler are bypassed, then the visibility data has a unique real number for the 108 freq bins in freq_test_bins. The rest are zeros.
             else:
-                self.set_funcgen_function(function=function, channels=channels)  #self.set_funcgen_function(function=function, a=a, b=b, channels=channels)
+                self.set_funcgen_function(function=function, channels=channels)
 
         # Set FFT bypass and shift schedule
         if fft_bypass is not None:
@@ -957,7 +974,9 @@ class chFPGA_controller(IceBoardExtHandler):
                 ant.FUNCGEN.set_function(source, **kwargs)
             self.set_ant_reset(0)  # Reset is needed to resyncronize the system with the new data
         else:
-            raise ValueError("Invalid data source or function name '%s'. Valid data sources are %s:" % (source, ', '.join(data_sources + function_names)))
+            raise ValueError("Invalid data source or function name '%s'. Valid data sources are %s:" % (
+                    source,
+                    ', '.join(data_sources + function_names)))
 
     def get_data_source(self):
         """
@@ -989,7 +1008,7 @@ class chFPGA_controller(IceBoardExtHandler):
         """
 
         if isinstance(channel, int):
-            #channel = [channel]
+            # channel = [channel]
             mezz_number = (channel // 8) + 1
             return self.mezzanine.get(mezz_number, None)
         else:
@@ -1065,7 +1084,8 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         Gets the current operating mode of all the ADCs as a string.
 
-        If all ADCs operate in the same mode, a single mode string is returned. Otherwise a list of mode strings is returned.
+        If all ADCs operate in the same mode, a single mode string is
+        returned. Otherwise a list of mode strings is returned.
         """
 
         if channels is None:
@@ -1101,7 +1121,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
         for ch in channels:
             ant = self.ANT[ch]
-            ant.ADCDAQ.set_ADCDAQ_mode(mode) # set the period so we are ready to capture data correctly after the SYNC resets the CAPTURE logic
+            ant.ADCDAQ.set_ADCDAQ_mode(mode)
 
     set_ADCDAQ_mode = set_adcdaq_mode
 
@@ -1213,7 +1233,7 @@ class chFPGA_controller(IceBoardExtHandler):
         if isinstance(stream_ids, list):
             stream_ids = dict(enumerate(stream_ids))
         elif isinstance(stream_ids, int):
-            stream_ids = {ch:(stream_ids * 16 + ch) for ch in self.ANT.keys()}
+            stream_ids = {ch: (stream_ids * 16 + ch) for ch in self.ANT.keys()}
         elif not isinstance(stream_ids, dict):
             raise TypeError('parameter must be a list, a dict or an integer')
 
@@ -1316,7 +1336,9 @@ class chFPGA_controller(IceBoardExtHandler):
             self._logger.info(
                 '%r: Data rates are:\n' % (self) +
                 '    1 board, 1 channel: %.3f Mbits/s\n' % (frames_per_second * packet_size_in_bits / 1e6) +
-                '    1 board, %i channels: %.3f Mbit/s\n' % (len(channels), len(channels) * frames_per_second * packet_size_in_bits / 1e6) +
+                '    1 board, %i channels: %.3f Mbit/s\n' % (
+                    len(channels),
+                    len(channels) * frames_per_second * packet_size_in_bits / 1e6) +
                 '    1 crate: %.3f Mbits/s' % (16 * 16 * frames_per_second * packet_size_in_bits / 1e6)
                 )
 
@@ -1324,8 +1346,8 @@ class chFPGA_controller(IceBoardExtHandler):
         # of malformed packets and unstable communications
         reset_state = self.get_ant_reset()
 
-        self.set_trig(0)  # disable data transmission if continuous mode is currentlly selected
-        self.set_ant_reset(1)  # no nonger supported by firmware
+        self.set_trig(0)  # disable data transmission if continuous mode is currently selected
+        self.set_ant_reset(1)  # no longer supported by firmware
 
         # Do not limit the transfer rate
         self.GPIO.HOST_FRAME_READ_RATE = 5
@@ -1381,7 +1403,6 @@ class chFPGA_controller(IceBoardExtHandler):
         for ant in self.get_channelizers(channels):
             ant.PROBER.set_data_source(source)
             ant.PROBER.SUB_PERIOD = sub_period
-
 
     def set_fft_bypass(self, bypass_mode, channels=None):
         """
@@ -1451,8 +1472,15 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         Sets the global trigger to the specified value.
 
-        In injection mode, the injection buffers are read only when trigger=True. This allows the buffers from all the antennas to be read simultaneously. In this case, the CAPTURE flag if the injected frames is always set.
-        In other modes, the trigger status is passed to the CAPTURE flag of the data frames on a frame-by-frame basis (the CAPTURE flag is set at the begining of the frame ans syats constant until the end of the frame so no partial frames will be captured downstream.)
+        In injection mode, the injection buffers are read only when
+        trigger=True. This allows the buffers from all the antennas to be read
+        simultaneously. In this case, the CAPTURE flag if the injected frames
+        is always set.
+
+        In other modes, the trigger status is passed to the CAPTURE flag of
+        the data frames on a frame-by-frame basis (the CAPTURE flag is set at
+        the begining of the frame ans syats constant until the end of the
+        frame so no partial frames will be captured downstream.)
 
         History:
             120918 JFC: Added this function
@@ -1609,8 +1637,8 @@ class chFPGA_controller(IceBoardExtHandler):
             with open(fullpath, 'rb') as yamlfile:
                 file_data = load_yaml(yamlfile)
         except IOError:
-                print('%s not found' % fullpath)
-                return None
+            print('%s not found' % fullpath)
+            return None
         if file_data is None:
             return None
         if not isinstance(file_data, list):
@@ -1619,7 +1647,7 @@ class chFPGA_controller(IceBoardExtHandler):
         latest_delay_table = None
         latest_date = None
         for entry in file_data:
-            if any(key not in entry for key in ('__tag__' , '__mezzanines__', '__date__', 'delay_table')):
+            if any(key not in entry for key in ('__tag__', '__mezzanines__', '__date__', 'delay_table')):
                 continue
             mezzanines = {i: m.get_id() for i, m in self.mezzanine.items()}
             if entry['__tag__'] == tag and entry['__mezzanines__'] == mezzanines:
@@ -1639,8 +1667,8 @@ class chFPGA_controller(IceBoardExtHandler):
             with open(fullpath, 'rb') as yamlfile:
                 file_data = load_yaml(yamlfile)
         except IOError:
-                print('%s not found' % fullpath)
-                file_data = []
+            print('%s not found' % fullpath)
+            file_data = []
 
         if file_data is None:
             file_data = []
@@ -1824,7 +1852,7 @@ class chFPGA_controller(IceBoardExtHandler):
                         bit_string += '.#'[d[delay]]
                 s = 'Bit %i: %s Delay = %2i   (rise @ %2i, fall @ %2i)' % (bit, bit_string, computed_delay[bit], re + 1, fe + 2)
                 if verbose:
-                        print(s)
+                    print(s)
                 # self._logger.info(s)
 
             new_delays[ch] = {'tap_delays': computed_delay.tolist(), 'sample_delay': int((offset + 3) % 11), 'clock_delay': 0}
@@ -1899,12 +1927,12 @@ class chFPGA_controller(IceBoardExtHandler):
 
         try:
             mezz1_serial = self.mezzanine[1].serial
-        except:
+        except KeyError:
             mezz1_serial = None
 
         try:
             mezz2_serial = self.mezzanine[2].serial
-        except:
+        except KeyError:
             mezz2_serial = None
 
         if loadfromdict is None:
@@ -1915,8 +1943,9 @@ class chFPGA_controller(IceBoardExtHandler):
 
             opt_sync_delay = self.REFCLK.compute_sync_delay(channels=channels)
 
-            #I have seen compute_sync_delay pick a solution in the middle of one of its groups
-            #that results in bad eye diagrams so this bit of code tries to address that
+            # I have seen compute_sync_delay pick a solution in the middle of
+            # one of its groups that results in bad eye diagrams so this bit
+            # of code tries to address that
             trycounter = 0
             goodsolution = 0
             ofset_sync_delay = opt_sync_delay
@@ -1957,7 +1986,7 @@ class chFPGA_controller(IceBoardExtHandler):
             tunedloc['boards'] = {'Mezz': [mezz1_serial,mezz2_serial], "MB" : self.serial}
 
             return tunedloc
-        else: #We have chosen to load the delay table from a dictionary
+        else:  # We have chosen to load the delay table from a dictionary
 
             try:
                 d1 = loadfromdict['delaytable']
