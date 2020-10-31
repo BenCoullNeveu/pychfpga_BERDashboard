@@ -1,7 +1,4 @@
 #!/usr/bin/python
-# Disable pylint Line too long (=C0301)
-# pylint: disable=C0301
-# pylint: disable=C0321
 
 """
 This module defines the `chFPGA_controller` class, which provides a Python interface to operate an
@@ -10,9 +7,6 @@ IceBoard and its chFPGA firmware.
 .. Notes:
 ..     Created 2011-01-10. See GIT for commit history.
 """
-
-from __future__ import absolute_import
-
 
 # Python STandard Library packages
 import logging
@@ -51,7 +45,6 @@ from . import GPIO
 from . import SYSMON
 from . import FreqCtr
 from . import REFCLK
-# import MGT
 
 # FPGA Channelizer
 from . import ANT
@@ -64,7 +57,6 @@ from . import shuffle
 from . import GPU
 
 
-# -- chFPGA --
 class chFPGA_config(object):
     """
     Simple namespace that holds chFPGA configuration information stored within its attributes. Is returned
@@ -73,18 +65,6 @@ class chFPGA_config(object):
     def __str__(self):
         return '\n'.join(['%s = %s' % (key, repr(value)) for (key,value) in sorted(vars(self).items())])
 
-
-# class chFPGAException(Exception):
-#     _logger = logging.getLogger('chFPGAException')
-
-#     def __init__(self, message):
-#         super(self.__class__, self).__init__(message)
-#         self._logger.exception(message)
-
-# def copy_docstring(fn, source_fn):
-#     """ Function decorator to use the doctrings from an other funciton """
-#     fn.__doc__ = source_fn.__doc__
-#     return fn
 
 class chFPGA_controller(IceBoardExtHandler):
     """
@@ -293,14 +273,14 @@ class chFPGA_controller(IceBoardExtHandler):
 
             # Get frame size info
             self._LOG2_FRAME_LENGTH = self.GPIO.LOG2_FRAME_LENGTH
-            self.FRAME_LENGTH = 2**self._LOG2_FRAME_LENGTH # 2**11 = 2048 time samples per frame
-            self.NUMBER_OF_FREQUENCY_BINS = self.FRAME_LENGTH/2 # 1024 frequency bins per frame
+            self.FRAME_LENGTH = 2**self._LOG2_FRAME_LENGTH  # 2**11 = 2048 time samples per frame
+            self.NUMBER_OF_FREQUENCY_BINS = self.FRAME_LENGTH // 2  # 1024 frequency bins per frame
 
             # Identify the number of channelizers and their properties
             self.CHANNELIZERS_CLOCK_SOURCE = self.GPIO.CHANNELIZERS_CLOCK_SOURCE
             self.NUMBER_OF_ANTENNAS = self.GPIO.NUMBER_OF_CHANNELIZERS
             self.NUMBER_OF_ANTENNAS_WITH_FFT = self.GPIO.NUMBER_OF_CHANNELIZERS_WITH_FFT
-            self.LIST_OF_ANTENNAS_WITH_FFT = range(self.NUMBER_OF_ANTENNAS_WITH_FFT)
+            self.LIST_OF_ANTENNAS_WITH_FFT = list(range(self.NUMBER_OF_ANTENNAS_WITH_FFT))
 
             # if self.NUMBER_OF_ANTENNAS == 0:
             #     self.NUMBER_OF_ANTENNAS = 16
@@ -318,7 +298,7 @@ class chFPGA_controller(IceBoardExtHandler):
             # Get (optional) embedded firmware correlator configuration info and their properties
             self.NUMBER_OF_CORRELATORS_MAX = self.GPIO.NUMBER_OF_CORRELATORS
             self.NUMBER_OF_CORRELATORS = self.GPIO.NUMBER_OF_CORRELATORS
-            self.LIST_OF_IMPLEMENTED_CORRELATORS = range(self.NUMBER_OF_CORRELATORS)
+            self.LIST_OF_IMPLEMENTED_CORRELATORS = list(range(self.NUMBER_OF_CORRELATORS))
             self.NUMBER_OF_ANTENNAS_TO_CORRELATE = self.GPIO.NUMBER_OF_CHANNELIZERS_TO_CORRELATE
 
             # ANT_BASE_PORT = 1
@@ -328,7 +308,7 @@ class chFPGA_controller(IceBoardExtHandler):
             # self.ANT_PORT =  range(ANT_BASE_PORT, ANT_BASE_PORT + self.NUMBER_OF_ANTENNAS) # Antennas are ports 0-7
             # self.CORR_PORT = range(CORR_BASE_PORT, CORR_BASE_PORT +  self.NUMBER_OF_CORRELATORS)
             # self.GPU_PORT = range(GPU_BASE_PORT, GPU_BASE_PORT +  1)
-            self.default_channels = range(self.NUMBER_OF_ANTENNAS)
+            self.default_channels = list(range(self.NUMBER_OF_ANTENNAS))
             #self.LIST_OF_ANTENNAS_WITH_FFT = [i for i in range(8) if bool(self.GPIO.IMPLEMENT_FFT & 2**i)]
 
 
@@ -357,7 +337,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
             self._logger.debug('%r: === Instantiating CHAN' % self)
             self.ANT = ANT.ANT_base(self, self._CHAN_BASE_ADDR, self._CHAN_ADDR_INCREMENT, self._CHAN_SUBMODULE_ADDR_INCREMENT) # Antenna processors (ADCDAQ, FUNCGEN,  FFT, SCALER) for each input
-            self.ANT_FMC_NUMBER = [i//8 for i in range(self.NUMBER_OF_ANTENNAS)]
+            self.ANT_FMC_NUMBER = [i // 8 for i in range(self.NUMBER_OF_ANTENNAS)]
 
             yield async_moment
             self._logger.debug('%r: === Instantiating 1st CROSSBAR' % self)
@@ -501,7 +481,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
         self._sampling_frequency = sampling_frequency
         self._reference_frequency = reference_frequency
-        self.FRAME_PERIOD = float(self.FRAME_LENGTH)/self._sampling_frequency
+        self.FRAME_PERIOD = float(self.FRAME_LENGTH) / self._sampling_frequency
         self.FRAME_RATE = 1 / self.FRAME_PERIOD
 
         self._logger.info('%r: --- Initializing FPGA subsystems' % self)
@@ -649,7 +629,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
     def get_channels(self):
         """ Return a list of available channel numbers """
-        return self.ANT.keys()
+        return list(self.ANT.keys())
 
 
     def get_channelizers(self, channels=None):
@@ -665,7 +645,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
         """
         if channels is None:
-            return self.ANT.values()
+            return list(self.ANT.values())
         else:
             return [self.ANT[ch] for ch in channels]
 
@@ -1255,7 +1235,7 @@ class chFPGA_controller(IceBoardExtHandler):
             raise ValueError("You must specify either 'period' or 'burst_period_in_frames' ")
 
         if period is not None:
-            burst_period_in_frames = max(float(period)/self.FRAME_PERIOD, 1)
+            burst_period_in_frames = max(float(period) / self.FRAME_PERIOD, 1)
 
 
         burst_period_in_frames = int(burst_period_in_frames)
@@ -1553,8 +1533,8 @@ class chFPGA_controller(IceBoardExtHandler):
             if delay_table is None:
                 self.logger.warning('%r: Provided delay table failed checks' % self)
         if compute_delays >= 2 or (compute_delays >= 1 and not delay_table):
-            for trial in xrange(retry):
-                delay_table = self.compute_adc_delays(channels=range(16), verbose=verbose, adc_sampling_freq=800e6, compute_sync_delays=True, check_sync_delays=check_sync_delays, check_adc_delays=check_adc_delays, set_delays=False)
+            for trial in range(retry):
+                delay_table = self.compute_adc_delays(channels=list(range(16)), verbose=verbose, adc_sampling_freq=800e6, compute_sync_delays=True, check_sync_delays=check_sync_delays, check_adc_delays=check_adc_delays, set_delays=False)
                 delay_table_updated = True
                 if delay_table and delay_table.get('valid', True):
                     break
@@ -1577,7 +1557,7 @@ class chFPGA_controller(IceBoardExtHandler):
             with open(fullpath, 'rb') as yamlfile:
                 file_data = load_yaml(yamlfile)
         except IOError:
-                print '%s not found' % fullpath
+                print('%s not found' % fullpath)
                 return None
         if file_data is None:
             return None
@@ -1602,12 +1582,12 @@ class chFPGA_controller(IceBoardExtHandler):
             raise ValueError('Please specify a valid delay table')
         filename = '%s.yaml' % self.get_string_id()
         fullpath = os.path.join(os.path.dirname(__file__), '..', 'adc_delay_tables', filename)
-        print 'Loading YAML file %s' % filename
+        print('Loading YAML file %s' % filename)
         try:
             with open(fullpath, 'rb') as yamlfile:
                 file_data = load_yaml(yamlfile)
         except IOError:
-                print '%s not found' % fullpath
+                print('%s not found' % fullpath)
                 file_data = []
 
         if file_data is None:
@@ -1619,7 +1599,7 @@ class chFPGA_controller(IceBoardExtHandler):
         date = datetime.utcnow().isoformat()
 
         new_entry = dict(__date__=date, __tag__=tag, __mezzanines__=mezzanines, delay_table=delay_table)
-        print 'new entry: ', new_entry
+        print('new entry: ', new_entry)
         file_data.append(new_entry)
         s = yaml.safe_dump(file_data, default_flow_style=None) # make sure we raise en exception here before we start writing the file, otherwise we will lose the whole file.
         with open(fullpath, 'wb') as yamlfile:
@@ -1654,10 +1634,10 @@ class chFPGA_controller(IceBoardExtHandler):
         self.set_adc_mode('ramp')
         word_errors=[]
         if verbose:
-            print 'ADC Delay checks for %r' % (self)
-        for trial in xrange(trials):
+            print('ADC Delay checks for %r' % (self))
+        for trial in range(trials):
             if verbose:
-                print 'Trial #%2i' % (trial + 1),
+                print('Trial #%2i' % (trial + 1), end=' ')
             self.sync()  # This automatically clears the error counter
             time.sleep(delay)
             for (i, ant) in self.ANT.items():
@@ -1668,12 +1648,12 @@ class chFPGA_controller(IceBoardExtHandler):
                 # ant.ADCDAQ.RAMP_ERR_CLEAR = 0
                 # ant.ADCDAQ.RAMP_ERR_CLEAR = 1
                 if verbose:
-                    print '%2i (%08X) ' % (e, be),
-            print
+                    print('%2i (%08X) ' % (e, be), end=' ')
+            print()
         self.set_adc_mode(old_adc_mode)
         return sum(word_errors)
 
-    def capture_adc_eye_diagram(self, channels=range(16)):
+    def capture_adc_eye_diagram(self, channels=list(range(16))):
         """
         Measures the eye diagram of the ADC digital data lines using the ADCDAQ capture feature.
 
@@ -1724,7 +1704,7 @@ class chFPGA_controller(IceBoardExtHandler):
         self.set_adc_mode(old_adc_mode, channels=channels)
         return data
 
-    def compute_adc_delays(self, channels=range(16), verbose=True, adc_sampling_freq=800e6, compute_sync_delays=True, check_sync_delays=True, check_adc_delays=True, set_delays=True):
+    def compute_adc_delays(self, channels=list(range(16)), verbose=True, adc_sampling_freq=800e6, compute_sync_delays=True, check_sync_delays=True, check_adc_delays=True, set_delays=True):
         """
         Measures the eye diagram of the ADC digital data lines and computes the optimum delays to ensure reliable data acquisition.
 
@@ -1739,13 +1719,13 @@ class chFPGA_controller(IceBoardExtHandler):
         pulse_period = int((1 / adc_sampling_freq) / tap_delay) # 800 MHz period in tap delays (16 taps)
 
         if compute_sync_delays:
-            sync_delays = self.REFCLK.compute_sync_delays(adc_clock_freq=adc_sampling_freq/2, set_sync_delays=True, verbose=verbose)
+            sync_delays = self.REFCLK.compute_sync_delays(adc_clock_freq=adc_sampling_freq / 2, set_sync_delays=True, verbose=verbose)
         else:
             sync_delays = self.REFCLK.get_sync_delays()
         new_delays['sync_delays'] = sync_delays
 
         if check_sync_delays:
-            sync_invalid = self.REFCLK.check_sync_delays(trials=10, adc_clock_freq=adc_sampling_freq/2,  verbose=verbose)
+            sync_invalid = self.REFCLK.check_sync_delays(trials=10, adc_clock_freq=adc_sampling_freq / 2,  verbose=verbose)
         else:
             sync_invalid = None
 
@@ -1756,7 +1736,7 @@ class chFPGA_controller(IceBoardExtHandler):
             # first, find the offset for which the smallest number of '1' bits for every bit is as high as possible
             q = np.array([ ((data[i] & (1 << bit)) !=0).sum(axis=0) for bit in range(8)]).min(axis = 0)  # smallest number of '1' for each possuble bit, for each offset
             offset = q.argmax() # offset that has the largest number of '1's
-            print 'CH%02i: offset=%2i : %s' % (ch, offset, q)
+            print('CH%02i: offset=%2i : %s' % (ch, offset, q))
 
             n = data[i, :, offset]  # extract the samples for the current channel and selected offset, byt keep all 32 delays
 
@@ -1789,7 +1769,7 @@ class chFPGA_controller(IceBoardExtHandler):
                         bit_string += '.#'[d[delay]]
                 s = 'Bit %i: %s Delay = %2i   (rise @ %2i, fall @ %2i)' % (bit, bit_string, computed_delay[bit], re+1, fe+2)
                 if verbose:
-                        print s
+                        print(s)
                 # self._logger.info(s)
 
             new_delays[ch] = {'tap_delays': computed_delay.tolist(), 'sample_delay': int((offset + 3) % 11), 'clock_delay': 0}
@@ -1808,7 +1788,7 @@ class chFPGA_controller(IceBoardExtHandler):
         return new_delays
 
 
-    def compute_adc_delay_offsets(self, channels=range(16)):
+    def compute_adc_delay_offsets(self, channels=list(range(16))):
         """
         Measures the eye diagram of the ADC digital data lines and computes
         the permisable offset to ensure reliable data acquisition.
@@ -1861,7 +1841,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
         return delaytable, stuckbits, bitposgood, problem
 
-    def tune_adc_delays(self, loadfromdict = None, channels=range(16), retries=20):
+    def tune_adc_delays(self, loadfromdict = None, channels=list(range(16)), retries=20):
 
         try:
             mezz1_serial = self.mezzanine[1].serial
@@ -1902,7 +1882,7 @@ class chFPGA_controller(IceBoardExtHandler):
                         ofset_sync_delay[0] = (ofset_sync_delay[0] + increment[0]) % 32
                     if ofset_sync_delay[1] != -1:
                         ofset_sync_delay[1] = (ofset_sync_delay[1] + increment[1]) % 32
-                    print 'Initial offset calculation resulted in bad eye diagrams - adjusting offset too {0}'.format(self.REFCLK.get_refclk_delay())
+                    print('Initial offset calculation resulted in bad eye diagrams - adjusting offset too {0}'.format(self.REFCLK.get_refclk_delay()))
                 trycounter += 1
 
 
@@ -2027,7 +2007,7 @@ class chFPGA_controller(IceBoardExtHandler):
             sync (bool): If True (default), a local sync() will be performed.
         """
         if crossbar_outputs is None:
-            crossbar_outputs = range(self.NUMBER_OF_CROSSBAR_OUTPUTS)
+            crossbar_outputs = list(range(self.NUMBER_OF_CROSSBAR_OUTPUTS))
 
         if not isinstance(crossbar_outputs, list):
             raise ValueError("'crossbar_outputs' must be a list")
@@ -2232,7 +2212,7 @@ class chFPGA_controller(IceBoardExtHandler):
         if isinstance(gain, list):
             pass
         elif isinstance(gain, dict):
-            gain = gain.items()
+            gain = list(gain.items())
         else:  # if anything else including None, a scalar, a gain tuple etc.
             gain = [ (channels, gain) ]
 
@@ -2648,18 +2628,18 @@ class chFPGA_controller(IceBoardExtHandler):
         t0 = time.time()
         errors = 0
         trials = 0
-        for i in xrange(n):
+        for i in range(n):
             try:
                 trials += 1
                 self.get_fpga_cookie()
             except IOError:
                 errors += 1
-                print 'error on transaction #%i' % i
+                print('error on transaction #%i' % i)
             except KeyboardInterrupt:
                 break
         t1 = time.time()
         self.fpga.set_timeout(old_timeout)
-        print '%i read operations performed in %.2f s (%.0f read/s) with %i errors (%0.3f%% errors)' % (trials, t1 - t0, float(n)/(t1 - t0), errors, float(errors)/float(trials)*100)
+        print('%i read operations performed in %.2f s (%.0f read/s) with %i errors (%0.3f%% errors)' % (trials, t1 - t0, float(n) / (t1 - t0), errors, float(errors) / float(trials)*100))
 
     def get_temperatures(self):
         """ Return the core temperature of the fpga and the ADC chips.
@@ -2699,7 +2679,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
                        cb1_lanes=16,
                        cb1_bins=64,
-                       dsmap=range(16),
+                       dsmap=list(range(16)),
                        cb1_bypass=False,
                        cb1_combine_data_flags=0,
 
@@ -2712,7 +2692,7 @@ class chFPGA_controller(IceBoardExtHandler):
                        crate_shuffle_bypass=1,
 
                        remap=True,
-                       chan8_channel_map=range(16),
+                       chan8_channel_map=list(range(16)),
                        send_flags=True):
         """ Initializes the Corner Turn engine in the specified operation mode.
 
@@ -2912,7 +2892,7 @@ class chFPGA_controller(IceBoardExtHandler):
         if frames_per_packet < 1 or frames_per_packet > 4:
             raise ValueError('Number of frames per packet must be between 1 and 4')
         if cb1_lanes in (4, 8, 12, 16):
-            cb1_lanes = [(0, cb1_lanes/4-1)] * number_of_cb1_bin_sel
+            cb1_lanes = [(0, cb1_lanes // 4 - 1)] * number_of_cb1_bin_sel
         else:
             raise ValueError('Crossbar 1 number of input lanes must be 4,8,12 or 16')
 
@@ -2956,7 +2936,7 @@ class chFPGA_controller(IceBoardExtHandler):
             # 3rd Crossbar
             #############################
             # Bypassed. No channel reordering.
-            cb3_lane_map = range(8)
+            cb3_lane_map = list(range(8))
             cb3_bypass = True
             crate_number = self.crate.crate_number or 0 if self.crate else 0
             cb3_bin_select_map = [[]] * number_of_cb3_bin_sel
@@ -2990,7 +2970,7 @@ class chFPGA_controller(IceBoardExtHandler):
             # 2nd Crossbar
             #############################
             # Bypassed. No channel reordering. Data from input lanes 8-15 is redundant and is not forwarded.
-            cb2_lane_map = range(16) # All information
+            cb2_lane_map = list(range(16)) # All information
             cb2_bypass = True
             cb2_bin_select_map = []
 
@@ -3003,7 +2983,7 @@ class chFPGA_controller(IceBoardExtHandler):
             # 3rd Crossbar
             #############################
             # Bypassed. No channel reordering.
-            cb3_lane_map = range(8)
+            cb3_lane_map = list(range(8))
             cb3_bin_select_map = []
             cb3_bypass = True
             crate_number = self.crate.crate_number if self.crate else 0
@@ -3060,7 +3040,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 cb1_bins = len(cb1_bin_indices[0])
             else:  # Use default
                 cb1_bins = 128
-                cb1_bin_spacing = 1024 / cb1_bins  # = 8 bins, or 4 clocks
+                cb1_bin_spacing = 1024 // cb1_bins  # = 8 bins, or 4 clocks
                 cb1_bin_select_map = [
                     np.arange(cb1_bins) * cb1_bin_spacing + (i % cb1_bin_spacing)
                     for i in range(number_of_cb1_bin_sel)]
@@ -3082,7 +3062,7 @@ class chFPGA_controller(IceBoardExtHandler):
             #############################
             # Bypassed. No channel reordering.
 
-            cb2_lane_map = range(16)
+            cb2_lane_map = list(range(16))
             cb2_bypass = True
             cb2_input_words_per_bin = cb1_output_words_per_bin
             cb2_input_data_flags_words_per_bin = cb1_output_data_flags_words_per_bin
@@ -3112,7 +3092,7 @@ class chFPGA_controller(IceBoardExtHandler):
             #############################
             # Bypassed. No channel reordering.
 
-            cb3_lane_map = range(8)
+            cb3_lane_map = list(range(8))
             cb3_bypass = True
             cb3_output_words_per_bin = cb2_input_words_per_bin
             cb3_output_bins = cb2_input_bins
@@ -3140,7 +3120,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 cb1_bins = len(cb1_bin_indices[0])
             else:
                 cb1_bins = 64
-                cb1_bin_spacing = 1024 / cb1_bins
+                cb1_bin_spacing = 1024 // cb1_bins
                 cb1_bin_select_map = [
                     np.arange(cb1_bins) * cb1_bin_spacing + i
                     for i in range(number_of_cb1_bin_sel)]
@@ -3150,7 +3130,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb1_bin_select_map = [
                 cb1_bin_select_map[dsmap[get_dest_slot_for_src_lane(i) - 1]]
                 for i in range(16)]
-            cb1_output_words_per_bin = 16 / 4
+            cb1_output_words_per_bin = 16 // 4
             cb1_output_bins = cb1_bins
 
             #################################
@@ -3232,7 +3212,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
             cb2_output_data_flags_words_per_bin = (
                 cb2_input_data_flags_words_per_bin * cb2_input_lanes_per_output_lane
-                / (2 if cb2_combine_data_flags else 1))
+                // (2 if cb2_combine_data_flags else 1))
 
             cb2_output_frame_flags_words_per_frame = (
                 cb2_input_frame_flags_words_per_frame * cb2_input_lanes_per_output_lane)
@@ -3284,7 +3264,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb3_output_bins = cb3_bins
             cb3_output_data_flags_words_per_bin = (
                 cb3_input_data_flags_words_per_bin * cb3_input_lanes_per_output_lane
-                / (2 if cb3_combine_data_flags else 1))
+                // (2 if cb3_combine_data_flags else 1))
             cb3_output_frame_flags_words_per_frame = (
                 cb3_input_frame_flags_words_per_frame * cb3_input_lanes_per_output_lane)
 
@@ -3309,7 +3289,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 cb1_bins = len(cb1_bin_indices[0])
             else:
                 cb1_bins = 64
-                cb1_bin_spacing = 1024 / cb1_bins
+                cb1_bin_spacing = 1024 // cb1_bins
                 cb1_bin_select_map = [
                     np.arange(cb1_bins) * cb1_bin_spacing + i
                     for i in range(number_of_cb1_bin_sel)]
@@ -3321,7 +3301,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 for i in range(16)]
 
             # Output packet geometry
-            cb1_output_words_per_bin = 16 / 4
+            cb1_output_words_per_bin = 16 // 4
             cb1_output_bins = cb1_bins
 
             #################################
@@ -3394,7 +3374,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 cb2_bins = len(cb2_bin_indices[0])
             else:
                 # Default: we select half the bins (from all input lanes)
-                cb2_bins = cb1_output_bins / number_of_cb2_bin_sel # 64/2 = 32
+                cb2_bins = cb1_output_bins // number_of_cb2_bin_sel # 64/2 = 32
                 cb2_bin_spacing = number_of_cb2_bin_sel # 2
                 cb2_bin_select_map = [
                     np.arange(cb2_bins) * cb2_bin_spacing + i
@@ -3411,7 +3391,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_output_words_per_bin = cb2_input_words_per_bin * cb2_input_lanes_per_output_lane
             cb2_output_bins = cb2_bins
             cb2_output_data_flags_words_per_bin = (
-                cb2_input_data_flags_words_per_bin * cb2_input_lanes_per_output_lane /
+                cb2_input_data_flags_words_per_bin * cb2_input_lanes_per_output_lane //
                 (2 if cb2_combine_data_flags else 1))
             cb2_output_frame_flags_words_per_frame = (
                 cb2_input_frame_flags_words_per_frame * cb2_input_lanes_per_output_lane)
@@ -3460,7 +3440,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 cb3_bin_select_map = cb3_bin_indices
             else:
                 # Default: we select 1/8th of the incoming bins from all the input lanes
-                cb3_bins = cb2_output_bins / number_of_cb3_bin_sel # 32/8 = 4
+                cb3_bins = cb2_output_bins // number_of_cb3_bin_sel # 32/8 = 4
                 cb3_bin_spacing = number_of_cb3_bin_sel # = 8
                 cb3_bin_select_map = [
                     np.arange(cb3_bins) * cb3_bin_spacing + i
@@ -3472,7 +3452,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb3_output_bins = cb3_bins
             cb3_output_data_flags_words_per_bin = (
                 cb3_input_data_flags_words_per_bin * cb3_input_lanes_per_output_lane
-                / (2 if cb3_combine_data_flags else 1))
+                // (2 if cb3_combine_data_flags else 1))
             cb3_output_frame_flags_words_per_frame = (
                 cb3_input_frame_flags_words_per_frame * cb3_input_lanes_per_output_lane )
 
@@ -3498,7 +3478,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 cb1_bins = len(cb1_bin_indices[0])
             else:
                 cb1_bins = 128
-                cb1_bin_spacing = 1024 / cb1_bins  # = 8 = 4 clocks
+                cb1_bin_spacing = 1024 // cb1_bins  # = 8 = 4 clocks
                 cb1_bin_select_map = [
                     np.arange(cb1_bins) * cb1_bin_spacing + (i % cb1_bin_spacing)
                     for i in range(number_of_cb1_bin_sel)]
@@ -3539,7 +3519,7 @@ class chFPGA_controller(IceBoardExtHandler):
             if cb1_bin_indices:
                 cb1_bin_select_map = cb1_bin_indices
             else:
-                cb1_bin_spacing = 1024 / cb1_bins
+                cb1_bin_spacing = 1024 // cb1_bins
                 cb1_bin_select_map = [
                     (np.arange(cb1_bins) * cb1_bin_spacing + i) % 1024
                     for i in range(number_of_cb1_bin_sel)]
@@ -3557,7 +3537,7 @@ class chFPGA_controller(IceBoardExtHandler):
             if bp_shuffle_bypass and self.slot is not None:
                 cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
             else:
-                cb2_lane_map = range(16)
+                cb2_lane_map = list(range(16))
 
             cb2_input_frame_flags_words_per_frame = 1
             cb2_input_data_flags_words_per_bin = 1
@@ -3583,7 +3563,7 @@ class chFPGA_controller(IceBoardExtHandler):
             #############################
             # Not supported in this mode
             cb3_bypass = True
-            cb3_lane_map = range(8)
+            cb3_lane_map = list(range(8))
 
             cb1_output_words_per_bin = cb1_lanes[0][1] - cb1_lanes[0][0] + 1
             cb1_output_bins = cb1_bins
@@ -3714,7 +3694,7 @@ class chFPGA_controller(IceBoardExtHandler):
             ethernet_packet_size = (ethernet_packet_overhead_bytes + payload_size + 7) // 8 * 8
             # eth_data_rate = 156.25e6 * 66 * 32/33
             # bp_data_rate = 156.25e6* 50 * 32/33
-            packet_rate = 800e6/2048/frames_per_packet
+            packet_rate = 800e6 / 2048 / frames_per_packet
             ethernet_data_rate = (packet_rate * ethernet_packet_size) * 8
             self._logger.info('%r: %s Ethernet packet size: %i bytes, %0.1f Gbit/s (%i frames_per_packet, %i bins, %i data words/bin, %g data flags_words/bin, %i frame_flags_words/frame)' % (self, crossbar_name, ethernet_packet_size, ethernet_data_rate / 1e9,  frames_per_packet, bins, data_words_per_bin, data_flags_words_per_bin, frame_flags_words_per_frame))
             # self._logger.info('%r: %s config: frames_per_packet=%i, cb1_lanes=%s, cb1_bypass=%s, cb1_combine=%s, cb1_bins=%i, cb1_words_per_bin=%i' % (self, frames_per_packet, cb1_lanes, bool(cb1_bypass), bool(cb1_combine_data_flags), cb1_bins, cb1_output_words_per_bin ))
@@ -3886,9 +3866,9 @@ class chFPGA_controller(IceBoardExtHandler):
 
 
         for x in cb1_gen(self):
-            print x
+            print(x)
         for x in bp_gen(self):
-            print x
+            print(x)
 
 
     @async
@@ -4107,7 +4087,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 ####################################
 
                 metrics.add('fpga_backplane_fantray_tachometer', value=(yield self.get_fantray_tachometer.async()))
-                metrics.add('fpga_backplane_fantray_duty_cycle', value=(yield self.get_fantray_duty_cycle.async())/255.)
+                metrics.add('fpga_backplane_fantray_duty_cycle', value=(yield self.get_fantray_duty_cycle.async()) / 255.)
 
                 ####################################
                 # Backplane QSFPs present
@@ -4329,8 +4309,8 @@ class chFPGA_controller(IceBoardExtHandler):
         if capture_period is None:
             capture_period = integration_period
 
-        capture_period_in_frames = int(capture_period*1.0/self.FRAME_PERIOD)
-        integration_period_in_frames = int(integration_period*1.0/self.FRAME_PERIOD)
+        capture_period_in_frames = int(capture_period / self.FRAME_PERIOD)
+        integration_period_in_frames = int(integration_period / self.FRAME_PERIOD)
 
         self.set_ant_reset(1)
         self.set_corr_reset(1)
@@ -4467,8 +4447,8 @@ class chFPGA_controller(IceBoardExtHandler):
 
     def test_correlator(self, test_name='rand_complex', integration_period=8192, trials=100, verbose=0):
         if test_name=='rand_complex':
-            for data_set_number in xrange(trials):
-                print 'Trial #%i' % data_set_number
+            for data_set_number in range(trials):
+                print('Trial #%i' % data_set_number)
                 data=np.floor(np.random.rand(16,1024)*4-2) + 1j*np.floor(np.random.rand(16,1024)*4-2)
                 trial = 0
                 while True:
@@ -4477,14 +4457,14 @@ class chFPGA_controller(IceBoardExtHandler):
                         break
                     trial += 1
                     if trial < 10:
-                        print 'Frames did not match! Retrying after rewriting the test data again...'
+                        print('Frames did not match! Retrying after rewriting the test data again...')
                     else:
-                        print 'Cannot make frames match!'
+                        print('Cannot make frames match!')
                         return match, data, p, f
 
 
         elif test_name=='rand_complex_C':
-            for data_set_number in xrange(trials):
+            for data_set_number in range(trials):
 
                 data=(np.floor(np.random.rand(16,1024)*4-2) + 1j*np.floor(np.random.rand(16,1024)*4-2))
 
@@ -4503,23 +4483,23 @@ class chFPGA_controller(IceBoardExtHandler):
                     match = np.all(p==f)
                     if match:
                         if data_set_number % 10 == 0 and data_set_number > 0:
-                            print '[{3:s}]: Test #{0:d}/{1:d}; trial {2:d}'.format(data_set_number, trials, trial, datetime.now().strftime("%H:%M:%S.%f"))
-                            print "\t{0:d}".format(timestamp)
+                            print('[{3:s}]: Test #{0:d}/{1:d}; trial {2:d}'.format(data_set_number, trials, trial, datetime.now().strftime("%H:%M:%S.%f")))
+                            print("\t{0:d}".format(timestamp))
                         break
                     trial += 1
                     if trial < 10:
-                        print 'Trial {0:d} frames did not match! Retrying after rewriting the test data again...'.format(trial)
+                        print('Trial {0:d} frames did not match! Retrying after rewriting the test data again...'.format(trial))
                         if(verbose):
-                            print "Difference: "
-                            print p - f
+                            print("Difference: ")
+                            print(p - f)
                     else:
-                        print 'Cannot make frames match!'
+                        print('Cannot make frames match!')
                         return match, data, p, f
 
         else:
             raise ValueError('Unknown test name %s' % test_name)
 
-        print '*** TEST PASSED! ***'
+        print('*** TEST PASSED! ***')
         return True, None, None, None
 
 
@@ -4581,12 +4561,12 @@ class chFPGA_controller(IceBoardExtHandler):
             data = fh.read(100)  # read a few bytes to make sure this is really a bz2 file
             if not data.startswith(image_header):
                 raise RuntimeError('The image does not seem to contain a compressed SDcard image')
-        print '%r: Sending file...' % self
+        print('%r: Sending file...' % self)
         yield self.arm_scp.async(image_filename, '/tmp/image.bz2')
-        print '%r: Writing SD card' % self
+        print('%r: Writing SD card' % self)
         yield self.arm_exec.async('bzcat /tmp/image.bz2 >/dev/mmcblk0')
         self.logger.info('%r: Command completed. Waiting %i seconds to ensure cache is flushed' % (self, delay))
-        print '%r: Waiting %i seconds' % (self, delay)
+        print('%r: Waiting %i seconds' % (self, delay))
         yield tornado.gen.sleep(delay)
         async_return(True)
 
@@ -4603,20 +4583,20 @@ class chFPGA_controller(IceBoardExtHandler):
         else:
             filename_sd_card = '/usr/lib/iceboard/' + os.path.basename(filename)
 
-        print '%r: Remounting the SD card file system as readwrite' % self
+        print('%r: Remounting the SD card file system as readwrite' % self)
         yield self.arm_exec.async('mount / -o remount,rw')
 
-        print '%r: Making /usr/lib/iceboard folder if needed' % self
+        print('%r: Making /usr/lib/iceboard folder if needed' % self)
         yield self.arm_exec.async('mkdir -p /usr/lib/iceboard')
 
-        print '%r: Sending file to /usr/lib/iceboard/' % self
+        print('%r: Sending file to /usr/lib/iceboard/' % self)
         yield self.arm_scp.async(filename, filename_sd_card)
 
         self.logger.info('%r: Command completed. Waiting %i seconds to ensure cache is flushed' % (self, delay))
-        print '%r: Waiting %i seconds' % (self, delay)
+        print('%r: Waiting %i seconds' % (self, delay))
         yield tornado.gen.sleep(delay)
 
-        print '%r: Remounting the SD card file system as readonly' % self
+        print('%r: Remounting the SD card file system as readonly' % self)
         yield self.arm_exec.async('mount / -o remount,ro')
         async_return(True)
 
@@ -4628,17 +4608,17 @@ class chFPGA_controller(IceBoardExtHandler):
         Remounts the file system back to read only
         """
 
-        print '%r: Remounting the SD card file system as readwrite' % self
+        print('%r: Remounting the SD card file system as readwrite' % self)
         yield self.arm_exec.async('mount / -o remount,rw')
 
         remove_file = 'rm /usr/lib/iceboard/' + os.path.basename(filename)
-        print '%r: Removing the requested file' % self
+        print('%r: Removing the requested file' % self)
         yield self.arm_exec.async(remove_file)
 
         self.logger.info('%r: Command completed. Waiting %i seconds to ensure cache is flushed' % (self, delay))
-        print '%r: Waiting %i seconds' % (self, delay)
+        print('%r: Waiting %i seconds' % (self, delay))
         yield tornado.gen.sleep(delay)
 
-        print '%r: Remounting the SD card file system as readonly' % self
+        print('%r: Remounting the SD card file system as readonly' % self)
         yield self.arm_exec.async('mount / -o remount,ro')
         sync_return(True)
