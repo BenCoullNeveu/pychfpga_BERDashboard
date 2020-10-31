@@ -1,10 +1,8 @@
 #!/usr/bin/python
-# Disable pylint Line too long (=C0301)
-# pylint: disable=C0301
 
 """
-shuffle.py module
-    Implements interface to the backplane or intercrate shuffle module
+xglink.py module
+    Implements the interface to the generic multigigabit/s packet transmitter/receiver array.
 
 History:
     2013-10-29 : JFC : Created
@@ -15,7 +13,7 @@ import collections
 import numpy as np
 import matplotlib.pyplot as plt
 
-from Module import Module_base, BitField
+from .Module import Module_base, BitField
 from .icecore import async, async_return, async_sleep, async_moment
 from wtl.metrics import Metrics
 
@@ -24,11 +22,11 @@ CONTROL = BitField.CONTROL
 STATUS = BitField.STATUS
 DRP = BitField.DRP
 
+
 class QPLL(Module_base):
     """ Implements interface to one of the COMMON """
 
-    QPLL_LOCK          = BitField(STATUS, 0, 0, doc='Indicates if the QPLL is locked')
-
+    QPLL_LOCK                = BitField(STATUS, 0, 0, doc='Indicates if the QPLL is locked')
     QPLL_PD                  = BitField(CONTROL, 0,0, doc="power down qpll.  needs 500ns after reset.")
 
     QPLL_INIT_CFG            = BitField(DRP, 0x0030, 0, width=16, doc="0-65535")
@@ -54,10 +52,6 @@ class QPLL(Module_base):
     COMMON_CFG0              = BitField(DRP, 0x0043, 0, width=16, doc="COMMON_CFG[15:0 ] 0-65535")
     COMMON_CFG1              = BitField(DRP, 0x0044, 0, width=16, doc="COMMON_CFG[31:16] 0-65535")
 
-
-# Add DRP registers here...
-
-
     def __init__(self, fpga_instance, base_address, instance_number):
         # self.fpga = fpga
         self.logger = logging.getLogger(__name__)
@@ -66,7 +60,6 @@ class QPLL(Module_base):
     def init(self):
         """ Initializes the antenna modules"""
         # self.logger.info('Initializing BP Shuffle QPLL #%i' % self.instance_number)
-
 
     def status(self):
         """ Displays the status of the antenna modules"""
@@ -219,17 +212,16 @@ class GTX(Module_base):
         """ Initializes the GTX CHANNEL block"""
         # self.logger.info('Initializing GTX_CHANNEL  #%i' % self.instance_number)
         self.configure()
-        if self.RX_PRESENT: # Call only if there is a RX link, otherwise it will kill the GPU links
+        if self.RX_PRESENT:  # Call only if there is a RX link, otherwise it will kill the GPU links
             self.reset_rx_equalizer()
 
     def status(self):
         """ Displays the status of the GTX_CHANNEL"""
         self.logger.info('--- GPU GTX CHANNEL %i ' % self.instance_number)
 
-
     def get_rxdata(self):
-        self.CAPTURE_ENABLE=1
-        self.CAPTURE_ENABLE=0
+        self.CAPTURE_ENABLE = 1
+        self.CAPTURE_ENABLE = 0
         return self.RXDATA
 
     def configure(self):
@@ -242,7 +234,7 @@ class GTX(Module_base):
         self.RXPRBSSEL = 0
         self.RXLPMEN = 0  # Use low power mode, not the DFE
         self.TXDIFFCTRL = 13
-        self.TXPRECURSOR = 4  #DFE cannot compensate pre-cursor (but that seems to give the best result anyway!)
+        self.TXPRECURSOR = 4  # DFE cannot compensate pre-cursor (but that seems to give the best result anyway!)
         self.TXPOSTCURSOR = 0b00000
         self.RXMONITORSEL = 1 # 1=AGC, 2=UL, 3=VP loop
         self.RX_DEBUG_CFG = 0x14  # 0x14= Vpeak, 0x2C=AGC
@@ -260,15 +252,21 @@ class GTX(Module_base):
         'number_of_words' words are sampled randomly, so not all words in a packet may appear in the set.
         The values are resturned as a 8-digit hex value string.
         """
-        return set(['%08x' % self.get_rxdata() for x in xrange(number_of_words)])
+        return set(['%08x' % self.get_rxdata() for x in range(number_of_words)])
 
-    def get_eye_diagram(self, horiz_offset=range(-32, 32, 4), vert_offset=range(-127, 127, 16), max_scaler = 12, ut_sign=0, prescale_step=6):
+    def get_eye_diagram(
+            self,
+            horiz_offset=list(range(-32, 32, 4)),
+            vert_offset=list(range(-127, 127, 16)),
+            max_scaler = 12,
+            ut_sign=0,
+            prescale_step=6):
         """
         Return a (M x N) matrix of BER values for M horizontal and N vertical offsets.
         Horiz_offset : -32 to 32
         Vert offset: : -127 to 127
         """
-        prescale_step=4
+        prescale_step = 4
         self.PMA_RSV2_5 = 1
         self.ES_EYE_SCAN_EN = 1
         self.ES_ERRDET_EN = 1
@@ -305,30 +303,37 @@ class GTX(Module_base):
             processed_ih = []
             dir = 1
             while True:
-                #print ih, len(horiz_offset)
+                # print ih, len(horiz_offset)
                 h_offset = horiz_offset[ih]
                 self.ES_VERT_OFFSET = (abs(v_offset) & 0x7F) | (0x80 * (v_offset < 0)) | (0x100 * bool(ut_sign))
                 self.ES_HORZ_OFFSET = h_offset & 0xFFF
                 progress = (iv * nh + len(set(processed_ih))) / float(nh * nv - 1) * 100
-                print '%3.0f%% Vert offset %2i/%2i= %3i, Horiz offset %3i/%3i= %3i: ' % (progress, iv, nv-1, v_offset, ih, nh-1, h_offset),
+                print('%3.0f%% Vert offset %2i/%2i= %3i, Horiz offset %3i/%3i= %3i: ' % (
+                        progress,
+                        iv,
+                        nv-1,
+                        v_offset,
+                        ih,
+                        nh-1,
+                        h_offset), end=' ')
 
                 while True:
                     self.ES_PRESCALE = prescale
                     self.ES_CONTROL = 0
                     self.ES_CONTROL = 1
                     while self.ES_CONTROL_STATUS != 5:
-                        #print '.',
+                        # print '.',
                         time.sleep(.2)
                     error_count = self.ES_ERROR_COUNT
                     sample_count = self.ES_SAMPLE_COUNT
 
-                    print '(Prescale=%i => %i err / %i samples) ' % (prescale, error_count, sample_count),
+                    print('(Prescale=%i => %i err / %i samples) ' % (prescale, error_count, sample_count), end=' ')
                     if sample_count < 100:
                         if prescale == 0:
                             break
                         else:
                             prescale = max(0, prescale-prescale_step)
-                    elif error_count < 100 :
+                    elif error_count < 100:
                         if prescale == max_scaler:
                             break
                         else:
@@ -338,19 +343,19 @@ class GTX(Module_base):
                 if sample_count == 0:
                     sample_count = 1
 
-                sample_count *= 2**(1+prescale)
+                sample_count *= 2 ** (1 + prescale)
                 e = float(error_count) / float(sample_count)
-                print ' --- Got %i samples, %i errors, BER=%1.1e' % (sample_count, error_count, e)
+                print(' --- Got %i samples, %i errors, BER=%1.1e' % (sample_count, error_count, e))
                 ber[ih, iv] = e
                 processed_ih.append(ih)
-                if dir==-1 and (ih == old_ih or ih == 0):
+                if dir == -1 and (ih == old_ih or ih == 0):
                     break
                 elif dir == 1 and ih == len(horiz_offset)-1:
                     break
 
                 if error_count == 0:
                     if dir == 1:
-                        print 'Swapping direction!'
+                        print('Swapping direction!')
                         old_ih = ih
                         dir = -1
                         ih = len(horiz_offset)-1
@@ -369,12 +374,21 @@ class GTX(Module_base):
     def plot_eye_diagram(self, eye_diag=None, **kwargs):
         if eye_diag is None:
             eye_diag = self.get_eye_diagram(**kwargs)
-        extent = (min(eye_diag.horiz_offsets), max(eye_diag.horiz_offsets), min(eye_diag.vert_offsets), max(eye_diag.vert_offsets))
+        extent = (
+            min(eye_diag.horiz_offsets),
+            max(eye_diag.horiz_offsets),
+            min(eye_diag.vert_offsets),
+            max(eye_diag.vert_offsets))
         plt.imshow(np.log10(eye_diag.ber_map+1e-12), origin='lower', extent=extent, aspect=0.1, vmin=-12, vmax=1)
         plt.xlabel('Horizontal sampling offset')
         plt.ylabel('Vertical sampling offset')
         iceboard = eye_diag.gtx.fpga
-        plt.title('Eye diagram for IceBoard SN%s (Icecrate %s SN%s Slot %i) Lane %i' % (iceboard.serial, iceboard.crate.__class__.__name__, iceboard.crate.serial, iceboard.slot, eye_diag.gtx.instance_number+1))
+        plt.title('Eye diagram for IceBoard SN%s (Icecrate %s SN%s Slot %i) Lane %i' % (
+            iceboard.serial,
+            iceboard.crate.__class__.__name__,
+            iceboard.crate.serial,
+            iceboard.slot,
+            eye_diag.gtx.instance_number + 1))
 
 
 class XGLinkCore(Module_base):
@@ -398,7 +412,6 @@ class XGLinkCore(Module_base):
     RESET_PULSE     = BitField(STATUS, 1, 5, doc='debug')
     RESET_DONE      = BitField(STATUS, 1, 4, doc='debug')
     QPLL_RESET_MON  = BitField(STATUS, 1, 3, doc='debug')
-
 
     def __init__(self, fpga_instance, base_address, address_increment,verbose=1):
         # self.fpga = fpga
@@ -440,19 +453,19 @@ class XGLinkCore(Module_base):
     def status(self):
         """ Displays the status of the QPLLs and GTXes"""
 
-        print 'Common Bitfields'
+        print('Common Bitfields')
         for (name, value) in self.read_all_fields():
-            print '    %s = %i, 0x%X, %s' % (name, value, value, bin(value))
+            print('    %s = %i, 0x%X, %s' % (name, value, value, bin(value)))
 
         for (i, qpll) in enumerate(self.qpll):
-            print 'QPLL[%i] Bitfields' % i
+            print('QPLL[%i] Bitfields' % i)
             for (name, value) in qpll.read_all_fields():
-                print '    %s = %i, 0x%X, %s' % (name, value, value, bin(value))
+                print('    %s = %i, 0x%X, %s' % (name, value, value, bin(value)))
 
         for (i, gtx) in enumerate(self.gtx):
-            print 'GTX[%i] Bitfields' % i
+            print('GTX[%i] Bitfields' % i)
             for (name, value) in gtx.read_all_fields():
-                print '    %s = %i, 0x%X, %s' % (name, value, value, bin(value))
+                print('    %s = %i, 0x%X, %s' % (name, value, value, bin(value)))
 
 
 class XGLinkArray(XGLinkCore):
@@ -471,13 +484,18 @@ class XGLinkArray(XGLinkCore):
 
     Parameters:
 
-        fpga_instance (chFPGA_controller instance): Instance of the FPGA board, which is used to access various system parameters and the UDP MMI.
+        fpga_instance (chFPGA_controller instance): Instance of the FPGA
+            board, which is used to access various system parameters and the
+            UDP MMI.
 
-        base_address (int): UDP MMI Address where the first register of the XGLinkArray is located
+        base_address (int): UDP MMI Address where the first register of the
+            XGLinkArray is located
 
-        address_increment (int): Address spacing between various subsystems (common register block, QPLLs, GTXes)
+        address_increment (int): Address spacing between various subsystems
+            (common register block, QPLLs, GTXes)
 
-        lane_groups (list of tuples): Defines the lane groups that are supported by the XGLinkArray subsystem. Is in the format::
+        lane_groups (list of tuples): Defines the lane groups that are
+            supported by the XGLinkArray subsystem. Is in the format::
 
             [ (link_type, number_if_direct_lanes, number_of_gtx_links), ...]
 
@@ -494,7 +512,7 @@ class XGLinkArray(XGLinkCore):
     RESET_STATS     = BitField(CONTROL, 4 + 0, 2, doc='')
     LANE_SEL        = BitField(CONTROL, 4 + 0, 3, width=5, doc='')
 
-    BYPASS_PCB_SHUFFLE = BitField(CONTROL, 4 + 1, 0, doc='')
+    BYPASS_PCB_SHUFFLE  = BitField(CONTROL, 4 + 1, 0, doc='')
     BYPASS_QSFP_SHUFFLE = BitField(CONTROL, 4 + 1, 1, doc='')
 
     # FIFO_RESET      = BitField(CONTROL, 4+1, 0, doc='Resets the RX FIFO')
@@ -511,8 +529,6 @@ class XGLinkArray(XGLinkCore):
     # RX_CTR              = BitField(STATUS, 2+5, 0, width=8, doc='Free runing counter on the local RX clock. Is cleared when RESET_STATS=1.')
     RX_FRAME_CTR        = BitField(STATUS, 2 + 7, 0, width=8, doc='Number of frames received since reset. Is cleared when RESET_STATS=1.')
     # DELAY_CAPTURE       = BitField(STATUS, 2+10, 0, width=16, doc="")
-
-
 
     RX_LANE_MONITOR_TABLE = {
         'RX_FIFO_OVERFLOW': 'RX_FIFO_OVERFLOW',
@@ -534,12 +550,12 @@ class XGLinkArray(XGLinkCore):
         # self.LANE_GROUPS[0] = self.LANE_GROUPS['pcb'] = (0, self.NUMBER_OF_PCB_DIRECT_LANES, self.NUMBER_OF_PCB_LINKS)
         # self.LANE_GROUPS[1] = self.LANE_GROUPS['qsfp'] = (self.NUMBER_OF_PCB_LANES, self.NUMBER_OF_QSFP_DIRECT_LANES, self.NUMBER_OF_QSFP_LINKS)
 
-        #lane_list = []
+        # lane_list = []
         phys_lane = 0
         gtx_ix = 0
 
-        self.gtx_map = {None: []} # list of GTX instance for each group. The None group lists them all.
-        self.phys_lane_map = {None: []} # list of the physical lane limbers for each group
+        self.gtx_map = {None: []}  # list of GTX instance for each group. The None group lists them all.
+        self.phys_lane_map = {None: []}  # list of the physical lane limbers for each group
 
         for group, n_direct_lanes, n_links in lane_groups:
             self.gtx_map[group] = []
@@ -566,7 +582,6 @@ class XGLinkArray(XGLinkCore):
         # for group, lane, phys_lane, gtx_ix, gtx in self.lane_list:
         #     self.lane_map.setdefault(group, {})[lane] = (phys_lane, gtx_ix, gtx)
 
-
     def is_gtx(self, obj):
         """ Test whether an object is a GTX instance.
 
@@ -579,7 +594,6 @@ class XGLinkArray(XGLinkCore):
             A bool.
         """
         return isinstance(obj, GTX)
-
 
     def get_physical_lane_numbers(self, lane_group=None):
         """ Returns a list of physical lane numbers that correspond to the specified group.
@@ -615,9 +629,9 @@ class XGLinkArray(XGLinkCore):
         if lane_group not in self.gtx_map:
             raise ValueError('Invalid lane group name %s' % lane_group)
         if lane_group is None:
-            raise ValueError('Logical lane numbers cannot be obtained for lane group "None": the lane numbers are not unique')
-        return range(len(self.gtx_map[lane_group]))
-
+            raise ValueError('Logical lane numbers cannot be obtained for lane group "None": '
+                             'the lane numbers are not unique')
+        return list(range(len(self.gtx_map[lane_group])))
 
     def get_gtx(self, lane=None, lane_group=None):
         """ Returns a single or a list of GTX instances that correspond to the specified group and lanes.
@@ -629,7 +643,8 @@ class XGLinkArray(XGLinkCore):
                 If group is None, lanes from both groups are queries and physical lane number is
                 expected instead of the logical lane number.
 
-            lane_group (str): Name of the lane group in which the GTX belongs ('pcb' or 'qsfp'). If None, all GTXes are returned.
+            lane_group (str): Name of the lane group in which the GTX belongs
+                ('pcb' or 'qsfp'). If None, all GTXes are returned.
 
         Returns:
 
@@ -644,8 +659,6 @@ class XGLinkArray(XGLinkCore):
             return gtx_map[lane]
         else:
             return [gtx_map[l] for l in lane]
-
-
 
     def set_tx_power(self,  power, lane_group=None):
         """ Sets the power level of the GTXes in the specified lane group.
@@ -668,8 +681,11 @@ class XGLinkArray(XGLinkCore):
         gtx_map = self.gtx_map[lane_group]
 
         if isinstance(power, int):
-            power = [(i, power) for i,gtx in enumerate(gtx_map) if gtx] # exclude internal links (no GTX)
-        elif isinstance(power, (tuple, list)) and isinstance(power[0], int) and isinstance(power[1], int) and len(power) == 2:
+            power = [(i, power) for i, gtx in enumerate(gtx_map) if gtx]  # exclude internal links (no GTX)
+        elif (isinstance(power, (tuple, list))
+                and isinstance(power[0], int)
+                and isinstance(power[1], int)
+                and len(power) == 2):
             power = [power]
         for lane, pwr in power:
             gtx = gtx_map[lane]
@@ -677,7 +693,6 @@ class XGLinkArray(XGLinkCore):
                 self.logger.warning('There is no GTX at the specified lane %i of group %s (it is a direct internal link)' % (lane, lane_group))
             else:
                 gtx.TXDIFFCTRL = pwr
-
 
     @async
     def get_rx_lane_monitor(self, names, lane_group=None):
@@ -698,11 +713,12 @@ class XGLinkArray(XGLinkCore):
         # Get the physical lane number of target lanes
         phys_lanes = self.get_physical_lane_numbers(lane_group)
 
-        # Build a list of Birfields to access for each lane
+        # Build a list of Bitfields to access for each lane
         bitfields = []
         for name in names:
             if name not in self.RX_LANE_MONITOR_TABLE:
-                raise ValueError('Invalid lane monitor name. valid names are %s' % ','.join(self.RX_LANE_MONITOR_TABLE.keys()))
+                raise ValueError('Invalid lane monitor name. valid names are %s' %
+                        ','.join(self.RX_LANE_MONITOR_TABLE.keys()))
             bitfields.append(self.get_bitfield(self.RX_LANE_MONITOR_TABLE[name]))
 
         # get monitoring results
@@ -719,7 +735,6 @@ class XGLinkArray(XGLinkCore):
         self.RESET_STATS = 1
         self.RESET_STATS = 0
 
-
     def get_rx_error_count(self, lane_group=None):
         return self.get_rx_lane_monitor('ERROR_CTR', lane_group)
 
@@ -735,8 +750,11 @@ class XGLinkArray(XGLinkCore):
             type='GAUGE')
 
         for link_type, link_group in [('pcb_gtx', 'pcb'), ('qsfp_gtx', 'qsfp')]:
-            yield async_moment # let the ioloop process data
-            err, min_len, max_len, frame_det, rx_fifo, tx_fifo = yield self.get_rx_lane_monitor.async(['ERROR_CTR', 'MIN_FRAME_LENGTH', 'MAX_FRAME_LENGTH', 'FRAME_DETECT', 'RX_FIFO_OVERFLOW', 'TX_FIFO_OVERFLOW'],  link_group)
+            yield async_moment  # let the ioloop process data
+            err, min_len, max_len, frame_det, rx_fifo, tx_fifo = yield self.get_rx_lane_monitor.async(
+                ['ERROR_CTR', 'MIN_FRAME_LENGTH', 'MAX_FRAME_LENGTH',
+                 'FRAME_DETECT', 'RX_FIFO_OVERFLOW', 'TX_FIFO_OVERFLOW'],
+                link_group)
             for lane in range(len(err)):
                 metrics.add('fpga_bp_link_errors', value=err[lane], link_type=link_type, lane=lane)
                 metrics.add('fpga_bp_link_min_length', value=min_len[lane], link_type=link_type, lane=lane)
@@ -744,10 +762,11 @@ class XGLinkArray(XGLinkCore):
                 metrics.add('fpga_bp_link_frame_detect', value=frame_det[lane], link_type=link_type, lane=lane)
                 metrics.add('fpga_bp_link_rx_fifo_overflow', value=rx_fifo[lane], link_type=link_type, lane=lane)
                 metrics.add('fpga_bp_link_tx_fifo_overflow', value=tx_fifo[lane], link_type=link_type, lane=lane)
-                metrics.add('fpga_bp_link_error_overflow', value=err[lane]==255, link_type=link_type, lane=lane)
-                metrics.add('fpga_bp_link_length_mismatch', value=min_len[lane]!=max_len[lane], link_type=link_type, lane=lane)
+                metrics.add('fpga_bp_link_error_overflow', value=(err[lane] == 255), link_type=link_type, lane=lane)
+                metrics.add('fpga_bp_link_length_mismatch', value=(min_len[lane] != max_len[lane]),
+                            link_type=link_type, lane=lane)
         for gtx_number, gtx in enumerate(self.gtx):
-            yield async_moment # let the ioloop process data
+            yield async_moment  # let the ioloop process data
             #gtx_number = lane + link_group*self.NUMBER_OF_PCB_LANES
             metrics.add('fpga_bp_link_tx_power', value=gtx.TXDIFFCTRL, gtx=gtx_number)
             metrics.add('fpga_bp_link_rx_power', value=gtx.DMONITOROUT & 0x7F, gtx=gtx_number)
@@ -764,7 +783,10 @@ class XGLinkArray(XGLinkCore):
         corresponding lane.
         """
         status = []
-        err, min_len, max_len, frame_det, rx_fifo, tx_fifo = self.get_rx_lane_monitor(['ERROR_CTR', 'MIN_FRAME_LENGTH', 'MAX_FRAME_LENGTH', 'FRAME_DETECT', 'RX_FIFO_OVERFLOW', 'TX_FIFO_OVERFLOW'],  link_group)
+        err, min_len, max_len, frame_det, rx_fifo, tx_fifo = self.get_rx_lane_monitor(
+            ['ERROR_CTR', 'MIN_FRAME_LENGTH', 'MAX_FRAME_LENGTH',
+             'FRAME_DETECT', 'RX_FIFO_OVERFLOW', 'TX_FIFO_OVERFLOW'],
+            link_group)
         for lane in range(len(err)):
             lane_status = {}
             if err[lane]:
@@ -778,7 +800,6 @@ class XGLinkArray(XGLinkCore):
             status.append(lane_status)
         return status
 
-
     def print_rx_lane_monitor(self, reset=False):
         """
         """
@@ -789,16 +810,18 @@ class XGLinkArray(XGLinkCore):
         active_slots = set(self.fpga.crate.slot.keys())
         matching_gtx_ids = [self.fpga.crate.get_matching_tx(gtx_id) for gtx_id in gtx_ids]
 
-        print '%20s: %s' % ('XGLINK_Array Lane #', ' '.join('  L%2i ' % v for v in range(self.NUMBER_OF_LANES)))
-        print '%20s: %s' % ('--------------------', ' '+' '.join('------' for v in range(self.NUMBER_OF_LANES)))
-        print '%20s: %s' % ('GTX ID', ''.join('%7s' % ('(%i,%i)' % id_) for id_ in gtx_ids))
-        print '%20s: %s' % ('Matching GTX ID', ''.join('%7s' % ('(%i,%i)' % matching_id) for matching_id in matching_gtx_ids))
-        print '%20s: %s' % ('Matching GTX present', ' '.join(('%6s' % ('-N/A-', 'ok ')[matching_id[0] in active_slots]) for matching_id in matching_gtx_ids))
+        print('%20s: %s' % ('XGLINK_Array Lane #', ' '.join('  L%2i ' % v for v in range(self.NUMBER_OF_LANES))))
+        print('%20s: %s' % ('--------------------', ' '+' '.join('------' for v in range(self.NUMBER_OF_LANES))))
+        print('%20s: %s' % ('GTX ID', ''.join('%7s' % ('(%i,%i)' % id_) for id_ in gtx_ids)))
+        print('%20s: %s' % ('Matching GTX ID',
+                            ''.join('%7s' % ('(%i,%i)' % matching_id) for matching_id in matching_gtx_ids)))
+        print('%20s: %s' % ('Matching GTX present',
+                            ' '.join(('%6s' % ('-N/A-', 'ok ')[matching_id[0] in active_slots])
+                                     for matching_id in matching_gtx_ids)))
         for name in self.RX_LANE_MONITOR_TABLE:
-            print '%20s: %s' % (name, ' '.join('%6i' % v for v in self.get_rx_lane_monitor(name)))
-        print '%20s: %6s %s' % ('DMONITOR', 'N/A', ' '.join('%6i' % (g.DMONITOROUT & 0x7f) for g in self.gtx))
-        print '%20s: %6s %s' % ('BLOCK_LOCK', 'N/A', ' '.join('%6i' % g.BLOCK_LOCK for g in self.gtx))
+            print('%20s: %s' % (name, ' '.join('%6i' % v for v in self.get_rx_lane_monitor(name))))
+        print('%20s: %6s %s' % ('DMONITOR', 'N/A', ' '.join('%6i' % (g.DMONITOROUT & 0x7f) for g in self.gtx)))
+        print('%20s: %6s %s' % ('BLOCK_LOCK', 'N/A', ' '.join('%6i' % g.BLOCK_LOCK for g in self.gtx)))
 
         if self.RESET_MON:
-            print 'WARNING: BP_SHUFFLE reset is active (areset=1)!'
-
+            print('WARNING: BP_SHUFFLE reset is active (areset=1)!')
