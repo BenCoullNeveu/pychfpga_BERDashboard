@@ -1248,12 +1248,18 @@ class ChimeMaster(object):
 
     def get_next_gain_switch_frame(self):
         """ Get the frame number of first frame of the next integration period and the remaining time before this frame occurs.
+
+        JFC: Method is non functional (missing next_frame_number variable). Method might be obsolete. See switch_gains() below.
         """
         ib = self.fpgas.ib[0]
-        gain_switch_delay = self.config.fpga.gain_switch_delay # how much extra time do we need to set-up the gains before switching
+        # Get how much extra time do we need to set-up the gains before
+        # switching, expressed in NUMBER_OF_FRAMES
+        gain_switch_delay = self.config.fpga.gain_switch_delay
+        # get integration period, expressed in NUMBER OF FRAMES
         gpu_integration_period = self.config.gpu.gpu_integration_period
 
         current_frame_number = ib.get_frame_number()
+        #
         next_gain_switch_frame = (1 + (current_frame_number + gain_switch_delay) // gpu_integration_period) * gpu_integration_period
         time_until_switch = (next_gain_switch_frame - current_frame_number) * self.SECONDS_PER_FRAME
         return (next_frame_number, time_until_switch)
@@ -1261,6 +1267,8 @@ class ChimeMaster(object):
     @coroutine
     def switch_gains(self, gain_map):
         """ Start using the specified gain map for the next available integration period and inform CHRX of the new gains.
+
+        JFC: Method MAY BE OBSOLETE
         """
         if self.state != 'on':
             coroutine_return(dict(error='not started'))
@@ -1433,16 +1441,16 @@ class ChimeMaster(object):
             # Figure out integration period in frames. Currently just by checking the kotekan config file
             samples_per_data_set = 32768
             num_gpu_frames = 128
-            frames_per_gpu_integration = samples_per_data_set*num_gpu_frames
+            frames_per_gpu_integration = samples_per_data_set * num_gpu_frames
             # Get current frame number
             current_frame_number = self.fpgas.ib[0].get_frame_number()
             self.log.info('The current FPGA frame number is %i' % current_frame_number)
-            current_gpu_frame = current_frame_number // frames_per_gpu_integration
+            current_gpu_frame = int(current_frame_number // frames_per_gpu_integration)
             # Figure out frame number at which gains are switched
             frame_period_seconds = 2.56e-6 # Frame period in seconds = 2048/800e6. Should be read from config
             delta_t_frames = int(np.ceil(delta_t_seconds / frame_period_seconds)) # Number of frames to switch gains
             # The gain_switch_frame_number must be a multiple of frames_per_gpu_integration to switch at start of integration
-            gain_switch_gpu_frame = (current_frame_number + delta_t_frames) // frames_per_gpu_integration
+            gain_switch_gpu_frame = int((current_frame_number + delta_t_frames) // frames_per_gpu_integration)
             # I assume that setting the gain_switch_frame_number for all boards takes ~1 integration period, so make sure there's enough time
             if (gain_switch_gpu_frame-current_gpu_frame) < 2:
                 # If gain_switch_gpu_frame-current_gpu_frame == 0 the gain_switch_frame_number already passed
@@ -1464,7 +1472,7 @@ class ChimeMaster(object):
 
         # Create frequency axis
         freq = self.SAMPLING_FREQUENCY - np.fft.fftfreq(self.SAMPLES_PER_FRAME, 1.0 / self.SAMPLING_FREQUENCY)
-        freq = 1e-6 * freq[0:self.SAMPLES_PER_FRAME // 2]
+        freq = 1e-6 * freq[0: self.SAMPLES_PER_FRAME // 2]
         freq = np.array(list(zip(freq, [np.median(np.abs(np.diff(freq)))] * freq.size)),
                         dtype=[('centre', '<f8'), ('width', '<f8')])
 
