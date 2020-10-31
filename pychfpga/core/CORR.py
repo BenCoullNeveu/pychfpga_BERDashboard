@@ -66,9 +66,6 @@ class CORR_core(Module_base):
 
     def init(self):
         """ Inisializes all modules of a correlator block."""
-        # self.CH_DIST.init()
-        # self.ACC.init()
-        # self.SOFT_RESET = self.instance_number!=0
         self.INTEGRATION_PERIOD = 16384-1
 
     def status(self):
