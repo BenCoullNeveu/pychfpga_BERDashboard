@@ -50,7 +50,7 @@ from . import REFCLK
 from . import ANT
 
 # FPGA Correlator, corner-turn and GPU link objects
-from . import CORR # 16-channel correlator (if implemented)
+from . import CORR  # 16-channel correlator (if implemented)
 from . import chan_crossbar  # Channelizer Crossbar
 from . import shuffle_crossbar  # Shuffle Crossbar
 from . import shuffle
@@ -63,7 +63,7 @@ class chFPGA_config(object):
     by `chFPGA_controller.get_config()`.
     """
     def __str__(self):
-        return '\n'.join(['%s = %s' % (key, repr(value)) for (key,value) in sorted(vars(self).items())])
+        return '\n'.join(['%s = %s' % (key, repr(value)) for (key, value) in sorted(vars(self).items())])
 
 
 class chFPGA_controller(IceBoardExtHandler):
@@ -149,15 +149,16 @@ class chFPGA_controller(IceBoardExtHandler):
         _PLATFORM_ID_MGK7MB_REV2: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev2', None),
     }
 
-    def __init__(self,
-                 parent_getter=None,
-                 hostname=None,
-                 serial=None,
-                 part_number=None,
-                 crate=None,
-                 slot=None,
-                 mezzanine={},
-                 tuber_objname='IceBoard'):
+    def __init__(
+            self,
+            parent_getter=None,
+            hostname=None,
+            serial=None,
+            part_number=None,
+            crate=None,
+            slot=None,
+            mezzanine={},
+            tuber_objname='IceBoard'):
         """
         Creates an empty IceBoard/chFPGA handler object, but do not interact with the board yet.
 
@@ -196,8 +197,7 @@ class chFPGA_controller(IceBoardExtHandler):
             slot=slot,
             mezzanine=mezzanine,
             tuber_objname=tuber_objname,
-            local_port_number=None # 0: always select randomly,  `None`:use crate/slot if available else randomly
-
+            local_port_number=None  # 0: always select randomly,  `None`:use crate/slot if available else randomly
             )
 
         # Initialize basic instance attributes, but don;t do anything that involve talking to the IceBoard.
@@ -206,24 +206,23 @@ class chFPGA_controller(IceBoardExtHandler):
         self._logger.debug("%r: Creating chFPGA_controller object" % (self))
 
         self._sampling_frequency = None  # Set in init()
-        self._reference_frequency = None # set in init()
+        self._reference_frequency = None  # set in init()
         self.FRAME_PERIOD = None
         self._FMC_present = []  # indicates if the FMC board is present. If not, the modules will act accordingly.
-        # self._adc_board = []
         self._last_init_time = None
         self.recv = None
 
     @async
     def open(self, init=1, verbose=0, **kwargs):
         """
-        Opens communication with the FPGA, retreives the firmware configuration information and
+        Opens communication with the FPGA, retrieves the firmware configuration information and
         create the Python objects needed to operate the firmware. If `init` =1, the :meth:`init`
         method will be called to initialize the FPGA. Otherwise, this is a read-only operation, i.e.
         the state of the FPGA is unchanged.
 
 
         The parameters that control FPGA communications are the default set at
-        object creation. To pass specific parameters, explicitely call
+        object creation. To pass specific parameters, explicitly call
         open_core() with the desired parameters before calling open().
 
 
@@ -241,22 +240,26 @@ class chFPGA_controller(IceBoardExtHandler):
 
         self.logger.debug('%r: Instantiating chFPGA firmware handlers objects' % (self))
 
-        # self.read = self.mmi.read
-        # self.write = self.mmi.write
-
-        if init < 0: # If init<0, we do not perform any communication with the FPGA, so we don't read the firmware configuration
-            self._logger.warn('%r: Upon user request (init < 0), communication with the FPGA are inhibited. Initialization sequence stops here. Use this for debug only.' % self)
+        # If init<0, we do not perform any communication with the FPGA, so we don't read the firmware configuration
+        if init < 0:
+            self._logger.warn('%r: Upon user request (init < 0), communication with the FPGA are inhibited. '
+                              'Initialization sequence stops here. Use this for debug only.' % self)
             return
         self._logger.info('%r:    ---> Hello! This is chFPGA! <---' % self)
 
         try:  # catch initialization errors so we can free the socket for future instantiation
 
             # Create handware handling objects
-            #  NOTE: Does not initialize them yet because some modules are interdependent - we need to wait until all of them are instantiated.
-            #  NOTE: The instantiation does not initiate communicattion with the hardware yet. this is done in the INIT phase.
+            #
+            #  NOTE: Does not initialize them yet because some modules are
+            #  interdependent - we need to wait until all of them are
+            #  instantiated.
+            #
+            #  NOTE: The instantiation does not initiate communicattion with
+            #  the hardware yet. this is done in the INIT phase.
 
             # ---------------------------------------------------------------------
-            # -- Create basic FPGA ressource handlers objects
+            # -- Create basic FPGA resource handlers objects
             # ---------------------------------------------------------------------
 
             self._logger.debug('%r: === Instantiating GPIO' % self)
@@ -293,34 +296,35 @@ class chFPGA_controller(IceBoardExtHandler):
             # Get GPU link configuration info
             self.NUMBER_OF_GPU_LINKS = self.GPIO.NUMBER_OF_GPU_LINKS
 
-
-
             # Get (optional) embedded firmware correlator configuration info and their properties
             self.NUMBER_OF_CORRELATORS_MAX = self.GPIO.NUMBER_OF_CORRELATORS
             self.NUMBER_OF_CORRELATORS = self.GPIO.NUMBER_OF_CORRELATORS
             self.LIST_OF_IMPLEMENTED_CORRELATORS = list(range(self.NUMBER_OF_CORRELATORS))
             self.NUMBER_OF_ANTENNAS_TO_CORRELATE = self.GPIO.NUMBER_OF_CHANNELIZERS_TO_CORRELATE
 
-            # ANT_BASE_PORT = 1
-            # CORR_BASE_PORT = ANT_BASE_PORT + self.NUMBER_OF_ANTENNAS
-            # GPU_BASE_PORT = CORR_BASE_PORT + self.NUMBER_OF_CORRELATORS
-
-            # self.ANT_PORT =  range(ANT_BASE_PORT, ANT_BASE_PORT + self.NUMBER_OF_ANTENNAS) # Antennas are ports 0-7
-            # self.CORR_PORT = range(CORR_BASE_PORT, CORR_BASE_PORT +  self.NUMBER_OF_CORRELATORS)
-            # self.GPU_PORT = range(GPU_BASE_PORT, GPU_BASE_PORT +  1)
             self.default_channels = list(range(self.NUMBER_OF_ANTENNAS))
-            #self.LIST_OF_ANTENNAS_WITH_FFT = [i for i in range(8) if bool(self.GPIO.IMPLEMENT_FFT & 2**i)]
-
 
             self._logger.debug('%r: Hardware platform: %s' % (self, self._PLATFORM_ID_LIST[self.PLATFORM_ID][0]))
             self._logger.debug('%r: Firmware timestamp: %s' % (self, self.get_version()))
-            self._logger.debug('%r: Number of channelizers: %i' %  (self, self.NUMBER_OF_ANTENNAS))
-            self._logger.debug('%r: Number of channelizers with FFT: %i (antennas %s)' % (self, len(self.LIST_OF_ANTENNAS_WITH_FFT), str(self.LIST_OF_ANTENNAS_WITH_FFT)))
-            self._logger.debug('%r: Crossbar configuration: %i inputs x %i outputs' % (self, self.NUMBER_OF_CROSSBAR_INPUTS, self.NUMBER_OF_CROSSBAR_OUTPUTS))
-            self._logger.debug('%r: Number of correlators: %i (correlators %s)' % (self, len(self.LIST_OF_IMPLEMENTED_CORRELATORS),str(self.LIST_OF_IMPLEMENTED_CORRELATORS)))
-            self._logger.debug('%r: Number of channelizers supported by the correlators: %i ' % (self, self.NUMBER_OF_ANTENNAS_TO_CORRELATE))
+            self._logger.debug('%r: Number of channelizers: %i' % (self, self.NUMBER_OF_ANTENNAS))
+            self._logger.debug('%r: Number of channelizers with FFT: %i (antennas %s)' % (
+                self,
+                len(self.LIST_OF_ANTENNAS_WITH_FFT),
+                str(self.LIST_OF_ANTENNAS_WITH_FFT)))
+            self._logger.debug('%r: Crossbar configuration: %i inputs x %i outputs' % (
+                self,
+                self.NUMBER_OF_CROSSBAR_INPUTS,
+                self.NUMBER_OF_CROSSBAR_OUTPUTS))
+            self._logger.debug('%r: Number of correlators: %i (correlators %s)' % (
+                self,
+                len(self.LIST_OF_IMPLEMENTED_CORRELATORS),
+                str(self.LIST_OF_IMPLEMENTED_CORRELATORS)))
+            self._logger.debug('%r: Number of channelizers supported by the correlators: %i ' % (
+                self,
+                self.NUMBER_OF_ANTENNAS_TO_CORRELATE))
 
             yield async_moment
+
             self._logger.debug('%r: === Instantiating FPGA ressources' % self)
 
             self._logger.debug('%r: === Instantiating SYSMON' % self)
@@ -336,27 +340,47 @@ class chFPGA_controller(IceBoardExtHandler):
             self.REFCLK = REFCLK.REFCLK_base(self, self._SYSTEM_REFCLK_BASE_ADDR)
 
             self._logger.debug('%r: === Instantiating CHAN' % self)
-            self.ANT = ANT.ANT_base(self, self._CHAN_BASE_ADDR, self._CHAN_ADDR_INCREMENT, self._CHAN_SUBMODULE_ADDR_INCREMENT) # Antenna processors (ADCDAQ, FUNCGEN,  FFT, SCALER) for each input
+            self.ANT = ANT.ANT_base(
+                self,
+                self._CHAN_BASE_ADDR,
+                self._CHAN_ADDR_INCREMENT,
+                self._CHAN_SUBMODULE_ADDR_INCREMENT) # Antenna processors (ADCDAQ, FUNCGEN,  FFT, SCALER) for each input
             self.ANT_FMC_NUMBER = [i // 8 for i in range(self.NUMBER_OF_ANTENNAS)]
 
             yield async_moment
             self._logger.debug('%r: === Instantiating 1st CROSSBAR' % self)
-            self.CROSSBAR = chan_crossbar.ChanCrossbar(self, self._CROSSBAR1_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT) # CROSSBAR block
+            self.CROSSBAR = chan_crossbar.ChanCrossbar(
+                self,
+                self._CROSSBAR1_BASE_ADDR,
+                self._CROSSBAR_ADDR_INCREMENT) # CROSSBAR block
 
             if self.NUMBER_OF_BP_SHUFFLE_LANES:
                 self._logger.debug('%r: === Instantiating Backplane shuffle subsystem' % self)
-                self.BP_SHUFFLE = shuffle.Shuffle(self, self._BP_SHUFFLE_BASE_ADDR, self._BP_SHUFFLE_ADDR_INCREMENT)
+                self.BP_SHUFFLE = shuffle.Shuffle(
+                    self,
+                    self._BP_SHUFFLE_BASE_ADDR,
+                    self._BP_SHUFFLE_ADDR_INCREMENT)
             else:
                 self.BP_SHUFFLE = None
 
             if self.NUMBER_OF_BP_SHUFFLE_LANES and self.NUMBER_OF_GPU_LINKS:
                 self._logger.debug('%r: === Instantiating 2nd CROSSBAR' % self)
-                self.CROSSBAR2 = shuffle_crossbar.ShuffleCrossbar(self, self._CROSSBAR2_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT, crossbar_level=2, number_of_bin_sel=2) # CROSSBAR block
+                self.CROSSBAR2 = shuffle_crossbar.ShuffleCrossbar(
+                    self,
+                    self._CROSSBAR2_BASE_ADDR,
+                    self._CROSSBAR_ADDR_INCREMENT,
+                    crossbar_level=2,
+                    number_of_bin_sel=2)  # CROSSBAR block
 
                 self._logger.debug('%r: === Instantiating 3rd CROSSBAR' % self)
-                self.CROSSBAR3 = shuffle_crossbar.ShuffleCrossbar(self, self._CROSSBAR3_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT, crossbar_level=3, number_of_bin_sel=8) # CROSSBAR block
+                self.CROSSBAR3 = shuffle_crossbar.ShuffleCrossbar(
+                    self,
+                    self._CROSSBAR3_BASE_ADDR,
+                    self._CROSSBAR_ADDR_INCREMENT,
+                    crossbar_level=3,
+                    number_of_bin_sel=8)  # CROSSBAR block
             else:
-                self.CROSSBAR2= None
+                self.CROSSBAR2 = None
                 self.CROSSBAR3 = None
 
             if self.NUMBER_OF_CORRELATORS:
@@ -387,9 +411,11 @@ class chFPGA_controller(IceBoardExtHandler):
             for fmc_number in range(self._NUMBER_OF_FMC_SLOTS):
                 if fmc_number+1 in self.mezzanine.keys():
                     self._FMC_present[fmc_number] = True
-                    self._logger.debug('%r:   An MGADC08 ADC Board is present on FMC slot %i' % (self, fmc_number))
+                    self._logger.debug('%r:   An MGADC08 ADC Board is present on FMC slot %i' % (
+                        self, fmc_number))
                 else:
-                    self._logger.warning('%r:   An MGADC08 ADC Board is *not* present on FMC slot %i' % (self, fmc_number))
+                    self._logger.warning('%r:   An MGADC08 ADC Board is *not* present on FMC slot %i' % (
+                        self, fmc_number))
 
             # Determine if the FMC board corresponding to each channelizer is present
             # self.ANT_FMC_IS_PRESENT = [self._adc_board[self.ANT_FMC_NUMBER[i]].is_present() for i in range(self.NUMBER_OF_ANTENNAS)]
@@ -435,17 +461,18 @@ class chFPGA_controller(IceBoardExtHandler):
 
 
     @async
-    def init(self,
-             sampling_frequency=800e6,
-             reference_frequency=10e6,
-             adc_mode=0,
-             adc_delay_table=None,
-             data_width=4,
-             group_frames=4,
-             enable_gpu_link=1,
-             create_receiver= False,
-             verbose=0,
-             **kwargs):
+    def init(
+            self,
+            sampling_frequency=800e6,
+            reference_frequency=10e6,
+            adc_mode=0,
+            adc_delay_table=None,
+            data_width=4,
+            group_frames=4,
+            enable_gpu_link=1,
+            create_receiver= False,
+            verbose=0,
+            **kwargs):
         """
         Initialize the FPGA firmware AND the Python objects to a known state.
 
@@ -487,7 +514,10 @@ class chFPGA_controller(IceBoardExtHandler):
         self._logger.info('%r: --- Initializing FPGA subsystems' % self)
 
         self._logger.debug('%r: --- Initializing GPIO' % self)
-        self.GPIO.init()  # This stops the antenna procesors from sending data. Neeeded if the FPGA is flooding the buffers which prevent subsequent reads to come through
+
+        # Initialize GPIO.
+        # This stops the channelizers from sending data. Neeeded if the FPGA is flooding the buffers which prevent subsequent reads to come through
+        self.GPIO.init()
         self.GPIO.BUCK_PHASE = 0xfedcba9876543210  # debug
         #self.fpga.flush_data_socket() # Now the the data stops coming, flush the buffers
         self.mmi.flush()
@@ -502,7 +532,7 @@ class chFPGA_controller(IceBoardExtHandler):
         self.REFCLK.init()
         # self.REFCLK.status()
 
-        #Only do for ML605, not KC705 board
+        # Only do for ML605, not KC705 board
         self._logger.debug('%r: --- Initializing SYSMON' % self)
         yield async_moment
         self.SYSMON.init()
@@ -528,30 +558,28 @@ class chFPGA_controller(IceBoardExtHandler):
             if mezz_number in self.mezzanine:
                 mezz = self.mezzanine[mezz_number]
                 self._logger.debug('%r:   Powering down FMC%i' % (self, mezz_number - 1))
-                yield self.hw.set_mezzanine_power.async(mezz_number-1, False)
+                yield self.hw.set_mezzanine_power.async(mezz_number - 1, False)
                 # mezz.set_power(False)  # For some reason, prevents the board from rebooting (!)
                 yield async_sleep(0.2)  # *** make async
                 self._logger.debug('%r:   Powering up FMC%i' % (self, mezz_number - 1))
-                yield self.hw.set_mezzanine_power.async(mezz_number-1, True)
+                yield self.hw.set_mezzanine_power.async(mezz_number - 1, True)
                 # mezz.set_power(True)
                 yield async_sleep(0.2) # Give it some time for the power to stabilize
-                # We need to initialize the ADC board befor we initialize ANT (and its data acquisition) because the delay blocks need a clock
+                # We need to initialize the ADC board before we initialize ANT (and its data acquisition) because the delay blocks need a clock
                 self._logger.debug('%r:   Initializing FMC%i' % (self, mezz_number - 1))
                 mezz.init(sampling_frequency=sampling_frequency, reference_frequency=reference_frequency, adc_mode=adc_mode)
                 # mezz.status()
             else:
-                self._logger.debug('%r:    Skipping FMC%i initialization since no board is present in that slot' % (self, mezz_number - 1))
-
+                self._logger.debug('%r:    Skipping FMC%i initialization since no board is present in that slot' % (
+                    self, mezz_number - 1))
 
         self._logger.debug('%r:   Taking channelizers out of reset after FMC enabling' % (self))
         self.set_ant_reset(1)
 
         self._logger.debug('%r:   Sending sync()' % (self))
         yield async_moment
-        self.sync() # might be needed  to make sure that the clock is running to set delays
+        self.sync()  # might be needed  to make sure that the clock is running to set delays
 
-
-#        self._FMC_present = self._adc_board[0].is_present()
         # self._logger.info('%r: --- Initializing FPGA subsystems' % self)
         self._logger.info('%r: === Initializing Channelizers' % self )
         self.ANT.init(delay_table=adc_delay_table, fmc_present=self.ANT_FMC_IS_PRESENT)
@@ -565,7 +593,8 @@ class chFPGA_controller(IceBoardExtHandler):
             self.CROSSBAR.init()
             # self.CROSSBAR.status()
         else:
-            self._logger.warning("%r: There is no 1st CROSSBAR module in this firmware build (so there can't be data streamed to the correlators or GPU links!)" % self);
+            self._logger.warning("%r: There is no 1st CROSSBAR module in this firmware build "
+                                 "(so there can't be data streamed to the correlators or GPU links!)" % self)
 
         if self.BP_SHUFFLE:
             yield async_moment
@@ -577,15 +606,14 @@ class chFPGA_controller(IceBoardExtHandler):
             yield async_moment
             self.CROSSBAR2.init()
         else:
-            self._logger.warning("%r: There is no 2nd CROSSBAR module in this firmware build" % self);
+            self._logger.warning("%r: There is no 2nd CROSSBAR module in this firmware build" % self)
 
         self._logger.debug('%r: === Initializing 3rd Crossbar' % self)
-        if self.CROSSBAR3:  # *** Fixme
+        if self.CROSSBAR3:
             yield async_moment
             self.CROSSBAR3.init()
         else:
             self._logger.warning("%r: There is no 3rd CROSSBAR module in this firmware build" % self);
-
 
         if self.CORR:
             self._logger.info('%r: === Initializing FPGA-based correlator (X-Engine)' % self)
@@ -596,7 +624,10 @@ class chFPGA_controller(IceBoardExtHandler):
             self._logger.debug('%r: There are no FPGA correlators in this firmware build' % self);
 
         self.set_data_width(data_width)  #sets the data width of both the SCALER and CROSSBAR
-        self._logger.debug('%r: Data width set to (Re+Im) = (%i+%i) bits' % (self, self.get_data_width(), self.get_data_width()))
+        self._logger.debug('%r: Data width set to (Re+Im) = (%i+%i) bits' % (
+            self,
+            self.get_data_width(),
+            self.get_data_width()))
 
         self.CROSSBAR.set_frames_per_packet(group_frames)
         self._logger.debug('%r: The 1st crossbar will pack %i frames per packet' % (self, group_frames))
@@ -607,7 +638,7 @@ class chFPGA_controller(IceBoardExtHandler):
             self._logger.info('%r: === Initializing GPU links' % self)
             self.GPU.init()
             self.GPU.set_enable(enable_gpu_link)
-            self._logger.debug('%r: GPU link is currently %s' % (self, ['Disabled','Enabled'][bool(enable_gpu_link)]))
+            self._logger.debug('%r: GPU link is currently %s' % (self, ['Disabled', 'Enabled'][bool(enable_gpu_link)]))
 
         # MGT is disabled
         #self._logger.debug('  - MGT_PLL')
@@ -616,7 +647,6 @@ class chFPGA_controller(IceBoardExtHandler):
         #self.MGT.init() # MGT_PLL must be initialized first
 
         self._logger.debug("%r: Done with initializations." % self)
-
 
         yield async_moment
         self.set_ant_reset(0) # disable antenna reset
@@ -630,7 +660,6 @@ class chFPGA_controller(IceBoardExtHandler):
     def get_channels(self):
         """ Return a list of available channel numbers """
         return list(self.ANT.keys())
-
 
     def get_channelizers(self, channels=None):
         """ Return a list of channelizer objects for the specified or all channel numbers
@@ -669,7 +698,7 @@ class chFPGA_controller(IceBoardExtHandler):
         config = chFPGA_config() # Create empty config container
         # Add configuration parameters
 
-        config.config_protocol_version = (1,0)
+        config.config_protocol_version = (1, 0)
         config.config_capture_time = time.time()
         config.system_firmware_version = self.get_version()
         config.system_platform_id = self.PLATFORM_ID
@@ -679,7 +708,6 @@ class chFPGA_controller(IceBoardExtHandler):
         config.system_local_command_port_number = self.local_port_number
         config.system_local_data_port_number = self.get_local_data_port_number()
         config.system_local_corr_port_number = self.local_port_number + self.GPIO.CORR_IP_PORT_OFFSET
-
 
         config.number_of_antennas = self.NUMBER_OF_ANTENNAS
         config.system_list_of_antennas_with_channelizers = self.LIST_OF_ANTENNAS_WITH_FFT
@@ -695,7 +723,6 @@ class chFPGA_controller(IceBoardExtHandler):
         config.system_frame_period = self.FRAME_PERIOD
         config.motherboard_serial = self.GPIO.FPGA_SERIAL_NUMBER
 
-
         if not basic:
             mezz1 = self.mezzanine.get(1, None)
             config.adc_board_is_present = bool(mezz1)
@@ -703,7 +730,8 @@ class chFPGA_controller(IceBoardExtHandler):
             if mezz1:
                 config.adc_board_temperature = mezz1.AmbTemp.temperature
                 config.adc_board_adc_chip_temperature = [adc.get_temperature() for adc in mezz1.ADC]
-            config.adc_serial = [self.mezzanine[mezz_number].serial if mezz_number in self.mezzanine else None for mezz_number in (1, 2)] #mezz1._board_info['Serial #']
+            config.adc_serial = [self.mezzanine[mezz_number].serial if mezz_number in self.mezzanine else None
+                                 for mezz_number in (1, 2)]  # mezz1._board_info['Serial #']
 
             config.antenna_data_source = self.get_data_source()
             config.antenna_fft_bypass = self.get_FFT_bypass()
@@ -713,19 +741,21 @@ class chFPGA_controller(IceBoardExtHandler):
             config.FPGA_board_frequency = self.FreqCtr.read_frequency('CLK200', gate_time=0.05)
             config.CTRL_clock_frequency = self.FreqCtr.read_frequency('CTRL_CLK', gate_time=0.05)
             config.ant_clock = self.FreqCtr.read_frequency('ANT_CLK', gate_time=0.05)
+
             if self.CORR:
                 config.correlator_clock = self.FreqCtr.read_frequency('CORR_CLK', gate_time=0.05)
                 # config.correlator_capture_period_in_frames = [corr.ACC.CAPTURE_PERIOD for corr in self.CORR]
                 # config.correlator_integration_period_in_frames = [corr.ACC.INTEGRATION_PERIOD for corr in self.CORR]
+
             config.fmc_ref_clock = self.FreqCtr.read_frequency('FMCA_REFCLK', gate_time=0.05)
             config.mgt_ref_clock = self.FreqCtr.read_frequency('GPU_REFCLK', gate_time=0.05)
             config.mgt_word_clock = self.FreqCtr.read_frequency('GPU_TXCLK', gate_time=0.05)
-            config.adc_clocks = [self.FreqCtr.read_frequency(('ADC_CLK'+str(i)), gate_time=0.05) for i in range(8)]  # todo: fix ADC range
+            # todo: fix ADC range below (?)
+            config.adc_clocks = [self.FreqCtr.read_frequency(('ADC_CLK' + str(i)), gate_time=0.05) for i in range(8)]
         	# config.motherboard_serial = self.GPIO.FPGA_SERIAL_NUMBER
             # Add FFT shift, scaler gain, corr integration/capture period etc.
             # config.freq_flags = self.freq_flags  # JFC: what is that?
         async_return(config)
-
 
     def update_config(self):
         pass
@@ -751,7 +781,7 @@ class chFPGA_controller(IceBoardExtHandler):
     def sync(self, local=1, verbose=0):
         if verbose:
             self._logger.debug("%r: Syncing board" % self)
-        self.set_adc_mask(0) # null the ADC data before it gets to the channelizers to reduce power consumption
+        self.set_adc_mask(0)  # null the ADC data before it gets to the channelizers to reduce power consumption
         if local:
             self.REFCLK.local_sync()
         else:
@@ -765,7 +795,7 @@ class chFPGA_controller(IceBoardExtHandler):
         self.GPIO.pulse_ant_reset() # resets all
 
     def reset(self):
-        """ Resets the antenna processor modules and collelators.
+        """ Resets the channelizers, corner-turn and correlator engines.
         Memory-mapped registers are not affected.
         """
         self.set_ant_reset(1)
@@ -775,7 +805,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
     def set_default_channels(self, channels):
         """
-            Sets the default channels to use in other functions when not specifically specified.
+        Sets the default channels to use in other functions when not specifically specified.
         """
         if isinstance(channels, int):
             channels = [channels]
@@ -783,7 +813,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
     def get_default_channels(self):
         """
-            Returns the default channels that are used in other functions when not specifically specified.
+        Returns the default channels that are used in other functions when not specifically specified.
         """
         return self.default_channels
 
@@ -797,12 +827,19 @@ class chFPGA_controller(IceBoardExtHandler):
                         local_sync=True,
                         channels=None):
         """
-            Single command used to set all channelizer settings. The data processing chain is:
+        Single command used to set all channelizer settings.
+
+        The data processing chain is:
+
                   ADC --> ADCDAQ --> FUNCGEN --> --> FFT --> SCALER
         """
         # Set the ADC chip operational mode (data, ramp, pulse)
         if adc_mode is not None or adc_sampling_mode is not None or adc_bandwidth is not None:
-            self.set_adc_mode(mode=adc_mode, sampling_mode=adc_sampling_mode, bandwidth=adc_bandwidth, sync=False)
+            self.set_adc_mode(
+                mode=adc_mode,
+                sampling_mode=adc_sampling_mode,
+                bandwidth=adc_bandwidth,
+                sync=False)
 
         # Set the FPGA's ADC data acquisition module operational mode
         if adcdaq_mode is not None:
@@ -815,24 +852,24 @@ class chFPGA_controller(IceBoardExtHandler):
         if function is not None:
             if function == 'freq_test': #Configure funcgen so the visibility data has a unique real number for 108 freq bins. The other freq bins are zeros
                 N = min(len(freq_test_bins), 108) # N has to be less that 108 for this to work
-                if N==0: # Send same number (1+0j) for all frequencies
-                    v = (9*np.ones(2048, dtype=np.uint8))<<4 # with the offset encoding, 9s here result in 1s in the complex visibility data
-                    v[1::2] = (8*np.ones(1024, dtype=np.uint8))<<4 # with the offset encoding, 8s here result in 0s in the complex visibility data
+                if N == 0: # Send same number (1+0j) for all frequencies
+                    v = (9*np.ones(2048, dtype=np.uint8)) << 4 # with the offset encoding, 9s here result in 1s in the complex visibility data
+                    v[1::2] = (8 * np.ones(1024, dtype=np.uint8)) << 4 # with the offset encoding, 8s here result in 0s in the complex visibility data
                 else:
                     freq_pattern_real = np.array([ 1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  2,  2,
-                                                    2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  3,  3,  3,  3,  3,
-                                                    3,  3,  3,  3,  3,  3,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,
-                                                    4,  4,  5,  5,  5,  5,  5,  5,  5,  5,  5,  6,  6,  6,  6,  6,  6,
-                                                    6,  6,  7,  7,  7,  7,  7,  7,  7,  8,  8,  8,  8,  8,  8,  9,  9,
-                                                    9,  9,  9,  9, 10, 10, 10, 10, 11, 11, 11, 11, 11, 12, 12, 12, 12,
-                                                   13, 13, 13, 14, 14, 15], dtype=np.uint8)<<4
+                                                   2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  3,  3,  3,  3,  3,
+                                                   3,  3,  3,  3,  3,  3,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,
+                                                   4,  4,  5,  5,  5,  5,  5,  5,  5,  5,  5,  6,  6,  6,  6,  6,  6,
+                                                   6,  6,  7,  7,  7,  7,  7,  7,  7,  8,  8,  8,  8,  8,  8,  9,  9,
+                                                   9,  9,  9,  9, 10, 10, 10, 10, 11, 11, 11, 11, 11, 12, 12, 12, 12,
+                                                  13, 13, 13, 14, 14, 15], dtype=np.uint8) << 4
                     freq_pattern_imag = np.array([ 1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,  2,  3,
-                                                    4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,  3,  4,  5,  6,  7,
-                                                    8,  9, 10, 11, 12, 13, 14, 15,  4,  5,  6,  8,  9, 10, 11, 12, 13,
-                                                   14, 15,  6,  7,  8,  9, 11, 12, 13, 14, 15,  6,  8,  9, 10, 11, 12,
-                                                   14, 15,  7,  8, 10, 12, 13, 14, 15,  8, 10, 12, 13, 14, 15,  9, 10,
-                                                   11, 12, 14, 15, 12, 13, 14, 15, 11, 12, 13, 14, 15, 12, 13, 14, 15,
-                                                   13, 14, 15, 14, 15, 15], dtype=np.uint8)<<4
+                                                   4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,  3,  4,  5,  6,  7,
+                                                   8,  9, 10, 11, 12, 13, 14, 15,  4,  5,  6,  8,  9, 10, 11, 12, 13,
+                                                  14, 15,  6,  7,  8,  9, 11, 12, 13, 14, 15,  6,  8,  9, 10, 11, 12,
+                                                  14, 15,  7,  8, 10, 12, 13, 14, 15,  8, 10, 12, 13, 14, 15,  9, 10,
+                                                  11, 12, 14, 15, 12, 13, 14, 15, 11, 12, 13, 14, 15, 12, 13, 14, 15,
+                                                  13, 14, 15, 14, 15, 15], dtype=np.uint8) << 4
                     v = np.zeros(2048, dtype=np.uint8)
                     v_real = np.zeros(1024, dtype=np.uint8)
                     v_imag = np.zeros(1024, dtype=np.uint8)
@@ -840,9 +877,9 @@ class chFPGA_controller(IceBoardExtHandler):
                     v_imag[freq_test_bins] = freq_pattern_imag[:N]
                     v[::2] = v_real
                     v[1::2] = v_imag
-                self.set_funcgen_function('arb', channels=channels, data=v) # If FFT and scaler are bypassed, then the visibility data has a unique real number for the 108 freq bins in freq_test_bins. The rest are zeros.
+                self.set_funcgen_function('arb', channels=channels, data=v)  # If FFT and scaler are bypassed, then the visibility data has a unique real number for the 108 freq bins in freq_test_bins. The rest are zeros.
             else:
-                self.set_funcgen_function(function=function, channels=channels)#self.set_funcgen_function(function=function, a=a, b=b, channels=channels)
+                self.set_funcgen_function(function=function, channels=channels)  #self.set_funcgen_function(function=function, a=a, b=b, channels=channels)
 
         # Set FFT bypass and shift schedule
         if fft_bypass is not None:
@@ -875,7 +912,15 @@ class chFPGA_controller(IceBoardExtHandler):
         d[:, 1::2] = data.imag
         d <<= 4
 
-        self.set_channelizer(data_source='funcgen', function='AB', a=0, b=0, fft_bypass=1, scaler_bypass=1, offset_binary_encoding=0)
+        self.set_channelizer(
+            data_source='funcgen',
+            function='AB',
+            a=0,
+            b=0,
+            fft_bypass=1,
+            scaler_bypass=1,
+            offset_binary_encoding=0)
+
         for ch in range(16):
             self.set_funcgen_function('arb', channels=[ch], data=d[ch])
         return d
@@ -901,19 +946,18 @@ class chFPGA_controller(IceBoardExtHandler):
             channels = self.default_channels
 
         if source in data_sources:
-            self.set_ant_reset(1) # Reset is needed to resyncronize the system with the new data
+            self.set_ant_reset(1)  # Reset is needed to resynchronize the system with the new data
             for ant in self.get_channelizers(channels):
                 ant.FUNCGEN.set_data_source(source)
-            self.set_ant_reset(0) # Reset is needed to resyncronize the system with the new data
+            self.set_ant_reset(0)  # Reset is needed to resynchronize the system with the new data
         elif source in function_names:
-            self.set_ant_reset(1) # Reset is needed to resyncronize the system with the new data
+            self.set_ant_reset(1)  # Reset is needed to resynchronize the system with the new data
             for ant in self.get_channelizers(channels):
                 ant.FUNCGEN.set_data_source('funcgen')
                 ant.FUNCGEN.set_function(source, **kwargs)
-            self.set_ant_reset(0) # Reset is needed to resyncronize the system with the new data
+            self.set_ant_reset(0)  # Reset is needed to resyncronize the system with the new data
         else:
             raise ValueError("Invalid data source or function name '%s'. Valid data sources are %s:" % (source, ', '.join(data_sources + function_names)))
-
 
     def get_data_source(self):
         """
@@ -921,14 +965,15 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         return [ant.FUNCGEN.get_data_source() for ant in self.ANT.values()]
 
-
     def set_funcgen_function(self, function=None, channels=None, **kwargs):
         """
         Sets the waveform generated by the function generator on specified channels (or default channels if the channels are not specified).
         This may cause one frame to partially contain the new waveform.
         """
         if (function is None) or (function.lower() not in self.ANT[0].FUNCGEN.FUNCTION_NAMES):
-            raise ValueError("Invalid function generator function '%s'. Valid functions are %s:" % (function, ', '.join(self.ANT[0].FUNCGEN.FUNCTION_NAMES.keys())))
+            raise ValueError("Invalid function generator function '%s'. Valid functions are %s:" % (
+                function,
+                ', '.join(self.ANT[0].FUNCGEN.FUNCTION_NAMES.keys())))
 
         if channels is None:
             channels = self.default_channels
@@ -948,13 +993,14 @@ class chFPGA_controller(IceBoardExtHandler):
             mezz_number = (channel // 8) + 1
             return self.mezzanine.get(mezz_number, None)
         else:
-            board_list=set()
+            board_list = set()
             for ch in channel:
                 mezz_number = (ch // 8) + 1
                 if mezz_number in self.mezzanine.keys():
                     board_list.add(self.mezzanine[mezz_number])
                 else:
-                    self._logger.warning('%r: ADC Mezzanine board for channel %i is not present. Ignoring this board' % (self, ch))
+                    self._logger.warning('%r: ADC Mezzanine board for channel %i is not present. Ignoring this board' % (
+                        self, ch))
             return list(board_list)
 
     ADC_MODE_NAMES = {
@@ -989,11 +1035,13 @@ class chFPGA_controller(IceBoardExtHandler):
             if channels:
                 raise RuntimeError('channels cannot be specified when multiple modes are provided')
             for fmc_number, m in enumerate(mode):
-                self.mezzanine[fmc_number+1].ADC.set_test_mode(test_mode=self.ADC_MODE_NAMES[m.lower()][0])
+                self.mezzanine[fmc_number + 1].ADC.set_test_mode(test_mode=self.ADC_MODE_NAMES[m.lower()][0])
             return
 
         if mode.lower() not in self.ADC_MODE_NAMES:
-            raise ValueError("Invalid ADC mode '%s'. Valid modes are %s" % (mode, ', '.join(self.ADC_MODE_NAMES.keys())))
+            raise ValueError("Invalid ADC mode '%s'. Valid modes are %s" % (
+                mode,
+                ', '.join(self.ADC_MODE_NAMES.keys())))
         (mode_value, capture_period) = self.ADC_MODE_NAMES[mode.lower()]
 
         if channels is None:
@@ -1002,18 +1050,16 @@ class chFPGA_controller(IceBoardExtHandler):
         # Set the mode on all affected ADC boards
         adc_boards = self.get_adc_board(channels)
         for adc_board in adc_boards:
-                adc_board.ADC.set_test_mode(test_mode=mode_value, adc_mode=sampling_mode, bandwidth=bandwidth)
+            adc_board.ADC.set_test_mode(test_mode=mode_value, adc_mode=sampling_mode, bandwidth=bandwidth)
 
         # Set the capture period for all specified channels
         for ch in channels:
             ant = self.ANT[ch]
-            ant.ADCDAQ.CAPTURE2_PERIOD = capture_period # set the period so we are ready to capture data correctly after the SYNC resets the CAPTURE logic
+            ant.ADCDAQ.CAPTURE2_PERIOD = capture_period  # set the period so we are ready to capture data correctly after the SYNC resets the CAPTURE logic
 
         # self.current_ADC_mode = mode_value
         if sync:
             self.sync()  # make sure the ADC mode is set and that capture  restarts properly with the right period
-
-    # set_ADC_mode = set_adc_mode  # For legacy code compatibility
 
     def get_adc_mode(self, channels=None):
         """
@@ -1034,7 +1080,7 @@ class chFPGA_controller(IceBoardExtHandler):
             mode_name = [name for (name, value) in self.ADC_MODE_NAMES.items() if value[0] == mode_value][0]
             mode_names.append(mode_name)
 
-        if len(set(mode_names)) == 1: # eliminate all duplicates. We should be left with only one mode number.
+        if len(set(mode_names)) == 1:  # Eliminate all duplicates. We should be left with only one mode number.
             return mode_names[0]
         else:
             return mode_names
@@ -1058,7 +1104,6 @@ class chFPGA_controller(IceBoardExtHandler):
             ant.ADCDAQ.set_ADCDAQ_mode(mode) # set the period so we are ready to capture data correctly after the SYNC resets the CAPTURE logic
 
     set_ADCDAQ_mode = set_adcdaq_mode
-
 
     def set_ant_reset(self, state):
         """ Sets the state of the reset line of ALL channelizer.
@@ -1092,7 +1137,7 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         Stops the transmission of data.
         """
-        self.GPIO.GLOBAL_TRIG = 0 # disable data transmission if continuous mode is currentlly selected
+        self.GPIO.GLOBAL_TRIG = 0  # disable data transmission if continuous mode is currentlly selected
         for ant in self.ANT.values():
             ant.PROBER.RESET = 1
 
@@ -1112,7 +1157,6 @@ class chFPGA_controller(IceBoardExtHandler):
 
         """
         # Make sure there is a list of opened sockets
-
 
         if not self._data_socket:
 
@@ -1176,10 +1220,19 @@ class chFPGA_controller(IceBoardExtHandler):
         for ch, stream_id in stream_ids.items():
             self.ANT[ch].PROBER.STREAM_ID = stream_id
 
-
-    def start_data_capture(self, period=None, frames_per_burst=1,  number_of_bursts=0,
-                           channels=None, source='scaler', sync=1, verbose=1,
-                           burst_period_in_seconds=None, burst_period_in_frames=None, offset=0, send_delay=0):
+    def start_data_capture(
+            self,
+            period=None,
+            frames_per_burst=1,
+            number_of_bursts=0,
+            channels=None,
+            source='scaler',
+            sync=1,
+            verbose=1,
+            burst_period_in_seconds=None,
+            burst_period_in_frames=None,
+            offset=0,
+            send_delay=0):
         """
         Starts the transmission of ADC (post-function generator / pre-FFT) or SCALER (post
         scaler) data frames to the Ethernet port at the specified rate.
@@ -1231,12 +1284,12 @@ class chFPGA_controller(IceBoardExtHandler):
         if burst_period_in_seconds is not None:
             period = burst_period_in_seconds
 
-        if ( (burst_period_in_frames is None) and (period is None)) or ((burst_period_in_frames is not None) and (period is not None)) :
+        if ((burst_period_in_frames is None) and (period is None)) \
+           or ((burst_period_in_frames is not None) and (period is not None)):
             raise ValueError("You must specify either 'period' or 'burst_period_in_frames' ")
 
         if period is not None:
             burst_period_in_frames = max(float(period) / self.FRAME_PERIOD, 1)
-
 
         burst_period_in_frames = int(burst_period_in_frames)
         # print "%s" % channels.__repr__()
@@ -1260,19 +1313,19 @@ class chFPGA_controller(IceBoardExtHandler):
 
             frames_per_second = frames_per_burst * 1.0 / self.FRAME_PERIOD / burst_period_in_frames
             packet_size_in_bits = (self.FRAME_LENGTH + 10 + 42) * 8  # 10 header bytes, 42 Ethernet/IP/UDP overhead
-            self._logger.info('%r: Data rates are:\n' % (self) +
+            self._logger.info(
+                '%r: Data rates are:\n' % (self) +
                 '    1 board, 1 channel: %.3f Mbits/s\n' % (frames_per_second * packet_size_in_bits / 1e6) +
                 '    1 board, %i channels: %.3f Mbit/s\n' % (len(channels), len(channels) * frames_per_second * packet_size_in_bits / 1e6) +
                 '    1 crate: %.3f Mbits/s' % (16 * 16 * frames_per_second * packet_size_in_bits / 1e6)
                 )
 
-
         # stop data from going into the PROBER and MASTER to minimize the risk
         # of malformed packets and unstable communications
         reset_state = self.get_ant_reset()
 
-        self.set_trig(0) # disable data transmission if continuous mode is currentlly selected
-        self.set_ant_reset(1) # no nonger supported by firmware
+        self.set_trig(0)  # disable data transmission if continuous mode is currentlly selected
+        self.set_ant_reset(1)  # no nonger supported by firmware
 
         # Do not limit the transfer rate
         self.GPIO.HOST_FRAME_READ_RATE = 5
@@ -1294,7 +1347,7 @@ class chFPGA_controller(IceBoardExtHandler):
             self._logger.debug('%r: %s raw data capture on channel %i' % (self, ('Disabling', 'Enabling')[ch in channels], ch))
             ant.PROBER.RESET = 0
 
-        self.set_trig(1)  # **no nonger supported by firmware *** enables data transmission if continuous mode is selected
+        self.set_trig(1)  # **no longer supported by firmware *** enables data transmission if continuous mode is selected
         self.set_ant_reset(reset_state)
 
     def set_data_capture(self, channels=None, sub_period=23, source='adc'):
@@ -1311,7 +1364,7 @@ class chFPGA_controller(IceBoardExtHandler):
                  A capture is always done at the beginning of each primary
                 period, with subsequent captures spaced by 2**(sub_period+1)
                 frames. This can be used to speed up captures, but the rate
-                rate cannot be slower than the promary capture rate.
+                rate cannot be slower than the primary capture rate.
 
                 The spacing between the last capture of a primary period and
                 the first one of the following one might differ from other
@@ -1367,7 +1420,7 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         return [bool(ant.FFT.BYPASS) for ant in self.ANT.values()]
 
-    get_FFT_bypass = get_fft_bypass # for legacy code compatiblity
+    get_FFT_bypass = get_fft_bypass # for legacy code compatibility
 
     def set_scaler_bypass(self, bypass_mode, channels=None):
         """
@@ -1386,15 +1439,13 @@ class chFPGA_controller(IceBoardExtHandler):
             if ant.ant_number in channels:
                 ant.SCALER.BYPASS = bypass_mode
             # else:
-            #     self._logger.warning('Attemnpting to set SCALER bypass mode for antenna channel %i which is not present on this card' % ch)
-
+            #     self._logger.warning('Attempting to set SCALER bypass mode for antenna channel %i which is not present on this card' % ch)
 
     def get_scaler_bypass(self):
         """
         Returns a list indicating if the SCALER is bypassed or not for each antenna.
         """
         return [bool(ant.SCALER.BYPASS) for ant in self.ANT.values()]
-
 
     def set_global_trigger(self, trigger_state):
         """
@@ -1408,19 +1459,6 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         self.GPIO.set_global_trig(trigger_state)
 
-    # def inject_frame(self,  data=None, length=None, channels=None):
-    #     """ Inject a frame of data in the specified antenna processing pipeline"""
-    #     if channels is None:
-    #         channels = self.default_channels
-    #     if isinstance(channels, int):
-    #         channels = [channels]
-    #     for ch in channels:
-    #         if isinstance(data, dict):
-    #             self.ANT[ch].INJECT.inject_frame(data[ch])
-    #         else:
-    #             self.ANT[ch].INJECT.inject_frame(data)
-
-
     def get_version(self):
         """
         Returns the firmware revion currenting running on the FPGA (which si the date and time of bitstream generation)
@@ -1432,7 +1470,15 @@ class chFPGA_controller(IceBoardExtHandler):
         delay_table['sync_delays'] = self.REFCLK.get_sync_delays()
         return delay_table;
 
-    def set_adc_delays(self, source='default', compute_delays=1, save_delays=True, check_sync_delays=False, check_adc_delays=20, verbose=1, retry=5):
+    def set_adc_delays(
+            self,
+            source='default',
+            compute_delays=1,
+            save_delays=True,
+            check_sync_delays=False,
+            check_adc_delays=20,
+            verbose=1,
+            retry=5):
         """
         Set all the hardare delays (sync delays, ADC tap delays, sample_delay, clock_delay) required to acheive proper
         data acquisition from the ADCs.
@@ -1517,7 +1563,7 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         delay_table = None
         delay_table_updated = False
-        if compute_delays < 2: # don't bother getting delays from the specified source if we are going to recompute the delay table anyways
+        if compute_delays < 2:  # don't bother getting delays from the specified source if we are going to recompute the delay table anyways
             if isinstance(source, str):
                 delay_table = self._load_adc_delays(source)
             elif isinstance(source, dict):
@@ -1534,7 +1580,14 @@ class chFPGA_controller(IceBoardExtHandler):
                 self.logger.warning('%r: Provided delay table failed checks' % self)
         if compute_delays >= 2 or (compute_delays >= 1 and not delay_table):
             for trial in range(retry):
-                delay_table = self.compute_adc_delays(channels=list(range(16)), verbose=verbose, adc_sampling_freq=800e6, compute_sync_delays=True, check_sync_delays=check_sync_delays, check_adc_delays=check_adc_delays, set_delays=False)
+                delay_table = self.compute_adc_delays(
+                    channels=list(range(16)),
+                    verbose=verbose,
+                    adc_sampling_freq=800e6,
+                    compute_sync_delays=True,
+                    check_sync_delays=check_sync_delays,
+                    check_adc_delays=check_adc_delays,
+                    set_delays=False)
                 delay_table_updated = True
                 if delay_table and delay_table.get('valid', True):
                     break
@@ -1546,7 +1599,6 @@ class chFPGA_controller(IceBoardExtHandler):
                 self._save_adc_delays(delay_table, tag=source or 'default')
         else:
             raise RuntimeError('Did not obtain a valid delay table.')
-
 
     def _load_adc_delays(self, tag='default'):
         filename = '%s.yaml' % self.get_string_id()
@@ -1595,6 +1647,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
         if not isinstance(file_data, list):
             raise RuntimeError('Delay table file should be a list')
+
         mezzanines = {i: m.get_id() for i, m in self.mezzanine.items()}
         date = datetime.utcnow().isoformat()
 
@@ -1606,10 +1659,11 @@ class chFPGA_controller(IceBoardExtHandler):
             yamlfile.write(s)
 
     def _set_adc_delays(self, delay_table):
-            sync_delays = delay_table.get('sync_delays', None)
-            self.REFCLK.set_sync_delays(sync_delays)
-            self.ANT.set_adc_delays(delay_table);
-
+        """
+        """
+        sync_delays = delay_table.get('sync_delays', None)
+        self.REFCLK.set_sync_delays(sync_delays)
+        self.ANT.set_adc_delays(delay_table);
 
     def check_ramp_errors(self, delay=0.1, trials=10, verbose=1):
         """
@@ -1642,7 +1696,11 @@ class chFPGA_controller(IceBoardExtHandler):
             time.sleep(delay)
             for (i, ant) in self.ANT.items():
                 e = ant.ADCDAQ.RAMP_ERR_CTR
-                if e == 1: e = 0  # we still sometimes get one (and only one) spurious error count just after sync. There is probably still a firmware problem. We'll ignore it by software.
+                # We still sometimes get one (and only one) spurious error
+                # count just after sync. There is probably still a firmware
+                # problem. We'll ignore it by software.
+                if e == 1:
+                    e = 0
                 be = ant.ADCDAQ.BIT_ERR_CTR  # bit error counters
                 word_errors.append(e)
                 # ant.ADCDAQ.RAMP_ERR_CLEAR = 0
@@ -1664,30 +1722,13 @@ class chFPGA_controller(IceBoardExtHandler):
             ``N_channels`` x 32 x 11 byte array, where ``N_channels`` is the numbe of channels specified in :paramref:`channels`.
 
         Note:
-            Parameter `channels` works
-
-            Parameter :paramref:`channels` does not works
-
-            Parameter :paramref:`CHANNELS <capture_adc_eye_diagram.channels>` work
-
-            Parameter :paramref:`capture_adc_eye_diagram.channels` work
-
-            Parameter :paramref:`~capture_adc_eye_diagram.channels` work
-
-            Parameter `CHANNELS <capture_adc_eye_diagram.channels>` work
-
-            Parameter `capture_adc_eye_diagram.channels` work
-
-            Parameter `~capture_adc_eye_diagram.channels` does not work
-
-            Parameter  `chFPGA_controller.init` does not work
 
         """
         old_delays = self.get_adc_delays()
-        old_adc_mode = self.get_adc_mode(channels=channels) # make sure we don't access boards not on the channel list: they may be powered off
+        old_adc_mode = self.get_adc_mode(channels=channels)  # make sure we don't access boards not on the channel list: they may be powered off
         for ch in channels:
                 self.ANT[ch].ADCDAQ.set_delays((None, 0, 0))  # set all sample delays to zero before sync
-        self.set_adc_mode('pulse', channels=channels, sync=True) # generate pulse pattern and sync
+        self.set_adc_mode('pulse', channels=channels, sync=True)  # generate pulse pattern and sync
         period = 11  # The pulse waveform repeats every 11 samples
         for i in range(1):
             self.sync()
@@ -1698,13 +1739,21 @@ class chFPGA_controller(IceBoardExtHandler):
             # self._logger.info('%.32s: Reading channel %i.' % (self, ch))
             adcdaq = self.ANT[ch].ADCDAQ
             for dly in range(32):
-                adcdaq.set_delays(([dly]*8, None, None))  # Set delay, don't change sample delay. No need to sync because sample delay not changed.
+                adcdaq.set_delays(([dly] * 8, None, None))  # Set delay, don't change sample delay. No need to sync because sample delay not changed.
                 data[i, dly, :] = adcdaq.capture_pattern(period=11);
         self._set_adc_delays(old_delays) # restore original delays before the function was called
         self.set_adc_mode(old_adc_mode, channels=channels)
         return data
 
-    def compute_adc_delays(self, channels=list(range(16)), verbose=True, adc_sampling_freq=800e6, compute_sync_delays=True, check_sync_delays=True, check_adc_delays=True, set_delays=True):
+    def compute_adc_delays(
+            self,
+            channels=list(range(16)),
+            verbose=True,
+            adc_sampling_freq=800e6,
+            compute_sync_delays=True,
+            check_sync_delays=True,
+            check_adc_delays=True,
+            set_delays=True):
         """
         Measures the eye diagram of the ADC digital data lines and computes the optimum delays to ensure reliable data acquisition.
 
@@ -1719,23 +1768,29 @@ class chFPGA_controller(IceBoardExtHandler):
         pulse_period = int((1 / adc_sampling_freq) / tap_delay) # 800 MHz period in tap delays (16 taps)
 
         if compute_sync_delays:
-            sync_delays = self.REFCLK.compute_sync_delays(adc_clock_freq=adc_sampling_freq / 2, set_sync_delays=True, verbose=verbose)
+            sync_delays = self.REFCLK.compute_sync_delays(
+                adc_clock_freq=adc_sampling_freq / 2,
+                set_sync_delays=True,
+                verbose=verbose)
         else:
             sync_delays = self.REFCLK.get_sync_delays()
         new_delays['sync_delays'] = sync_delays
 
         if check_sync_delays:
-            sync_invalid = self.REFCLK.check_sync_delays(trials=10, adc_clock_freq=adc_sampling_freq / 2,  verbose=verbose)
+            sync_invalid = self.REFCLK.check_sync_delays(
+                trials=10,
+                adc_clock_freq=adc_sampling_freq / 2,
+                verbose=verbose)
         else:
             sync_invalid = None
 
-        data = self.capture_adc_eye_diagram(channels) #  N_chan x 32 x 11 array
+        data = self.capture_adc_eye_diagram(channels)  #  N_chan x 32 x 11 array
 
         for i, ch in enumerate(channels):
 
             # first, find the offset for which the smallest number of '1' bits for every bit is as high as possible
             q = np.array([ ((data[i] & (1 << bit)) !=0).sum(axis=0) for bit in range(8)]).min(axis = 0)  # smallest number of '1' for each possuble bit, for each offset
-            offset = q.argmax() # offset that has the largest number of '1's
+            offset = q.argmax()  # offset that has the largest number of '1's
             print('CH%02i: offset=%2i : %s' % (ch, offset, q))
 
             n = data[i, :, offset]  # extract the samples for the current channel and selected offset, byt keep all 32 delays
@@ -1745,13 +1800,13 @@ class chFPGA_controller(IceBoardExtHandler):
             for bit in range(8):
                 mask = 1 << bit
                 d = (n & mask) >> bit
-                s = (d.astype(np.int8) + ord('0')).tostring() # Convert to a string of "1" and "0"s so we can use the 'find' method. before doing that, make sure this is an int8 array otherwise we'll get more than one char per value...
+                s = (d.astype(np.int8) + ord('0')).tostring()  # Convert to a string of "1" and "0"s so we can use the 'find' method. before doing that, make sure this is an int8 array otherwise we'll get more than one char per value...
                 re = s.find('0111')
                 fe = s.find('1110')
                 # print s,re,fe
-                if re >= 0 and fe >= 0 and fe > re: # if we have both a rising edge
+                if re >= 0 and fe >= 0 and fe > re:  # if we have both a rising edge
                     delay = (fe + 2 + re + 1) / 2
-                elif re >= 0: # if we have a rising edge only
+                elif re >= 0:  # if we have a rising edge only
                     delay = min(re + 1 + pulse_period / 2 - 1, 31)  # 4 samples after the rising edge, but stop at max delay. -1 to be closer to the known good edge.
                 elif fe >= 0:
                     delay = max(fe + 3 - pulse_period / 2 - 1, 0)
@@ -1767,7 +1822,7 @@ class chFPGA_controller(IceBoardExtHandler):
                         bit_string += '!O'[d[delay]]
                     else:
                         bit_string += '.#'[d[delay]]
-                s = 'Bit %i: %s Delay = %2i   (rise @ %2i, fall @ %2i)' % (bit, bit_string, computed_delay[bit], re+1, fe+2)
+                s = 'Bit %i: %s Delay = %2i   (rise @ %2i, fall @ %2i)' % (bit, bit_string, computed_delay[bit], re + 1, fe + 2)
                 if verbose:
                         print(s)
                 # self._logger.info(s)
@@ -1787,11 +1842,10 @@ class chFPGA_controller(IceBoardExtHandler):
 
         return new_delays
 
-
     def compute_adc_delay_offsets(self, channels=list(range(16))):
         """
         Measures the eye diagram of the ADC digital data lines and computes
-        the permisable offset to ensure reliable data acquisition.
+        the permissible offset to ensure reliable data acquisition.
 
         Returns a delay/offset table (delaytable), flags any stuck bits
         (stuckbits), provides the logic level at the chosen eye sampling point
@@ -1816,15 +1870,15 @@ class chFPGA_controller(IceBoardExtHandler):
             bitdelay = []
             changood = []
             for bit in range(8):
-                mask = 1 << bit #looking at one adc bit at a time
+                mask = 1 << bit  # looking at one adc bit at a time
                 sample = (t[chan][:,offset]) & mask
                 if any(sample): # If sample has nonzero values
                     chosendelay = int((sample * np.arange(32)).sum() / sample.sum())  # performing a center of mass claculation to pick eye location
                     changood.append( (((t[chan][:, offset])[chosendelay]) & mask) >> bit)  # Checking what the bit level at the eye center is
-                else: # Sample is all zeros
+                else:  # Sample is all zeros
                     chosendelay = np.NaN
                     changood.append(np.NaN)
-                    problem = 1 #Can't find a good spot so indicate a problem is present
+                    problem = 1  # Can't find a good spot so indicate a problem is present
                 bitdelay.append(chosendelay)
                 #self._logger.info( 'Warning: Center of eye diagram on bit %i of channel %i has glitch ' % (bit, chan))
 
@@ -1836,8 +1890,8 @@ class chFPGA_controller(IceBoardExtHandler):
             delaytable[chan]= (bitdelay, [offset]*8)  # Building the delay table
             bitposgood[chan] = changood  # Building the eye diagram good table
 
-            if(0 in changood):
-                problem = 1 #Inverted bit detected
+            if 0 in changood:
+                problem = 1  # Inverted bit detected
 
         return delaytable, stuckbits, bitposgood, problem
 
@@ -1853,7 +1907,7 @@ class chFPGA_controller(IceBoardExtHandler):
         except:
             mezz2_serial = None
 
-        if (loadfromdict == None):
+        if loadfromdict is None:
 
             for ch in channels:
                 if not self.ANT_FMC_IS_PRESENT[ch]:
@@ -1877,16 +1931,17 @@ class chFPGA_controller(IceBoardExtHandler):
                         goodsolution = 0
                         break
                 if goodsolution == 0:
-                    increment = ([0,1][ch <8], [0,1][ch>7])
+                    increment = ([0,1][ch < 8], [0, 1][ch > 7])
                     if ofset_sync_delay[0] != -1:
                         ofset_sync_delay[0] = (ofset_sync_delay[0] + increment[0]) % 32
                     if ofset_sync_delay[1] != -1:
                         ofset_sync_delay[1] = (ofset_sync_delay[1] + increment[1]) % 32
-                    print('Initial offset calculation resulted in bad eye diagrams - adjusting offset too {0}'.format(self.REFCLK.get_refclk_delay()))
+                    print('Initial offset calculation resulted in bad eye diagrams - adjusting offset too {0}'.format(
+                        self.REFCLK.get_refclk_delay()))
                 trycounter += 1
 
 
-            d1,d2,d3,problem = self.compute_adc_delay_offsets(channels=channels)
+            d1, d2, d3, problem = self.compute_adc_delay_offsets(channels=channels)
             #d1 contains the delay table with offsets
             #d2 indicates if bits are stuck
             #d3 is the value measured at the center of the adc pulse waveform for each bit - should be 1
@@ -1899,7 +1954,7 @@ class chFPGA_controller(IceBoardExtHandler):
             tunedloc=dict()
             tunedloc['delaytable'] = d1
             tunedloc['syncdelay'] = opt_sync_delay
-            tunedloc['boards'] = {'Mezz': [mezz1_serial,mezz2_serial], "MB" : self.serial }
+            tunedloc['boards'] = {'Mezz': [mezz1_serial,mezz2_serial], "MB" : self.serial}
 
             return tunedloc
         else: #We have chosen to load the delay table from a dictionary
@@ -1914,8 +1969,8 @@ class chFPGA_controller(IceBoardExtHandler):
                 raise ValueError('Missing objects in adc delay dictionary')
 
             if (self.serial != dict_mb_serial) \
-                or (mezz1_serial!=None and mezz1_serial!=dict_mezz1_serial) \
-                or (mezz2_serial!=None and mezz2_serial!=dict_mezz2_serial):
+               or (mezz1_serial is not None and mezz1_serial != dict_mezz1_serial) \
+               or (mezz2_serial is not None and mezz2_serial != dict_mezz2_serial):
                 raise ValueError('Cannot use this adc table - hardware is not the same')
 
             self.REFCLK.set_sync_delays(opt_sync_delay)
@@ -1924,17 +1979,25 @@ class chFPGA_controller(IceBoardExtHandler):
             measuredloc=dict()
             measuredloc['delaytable'] = self.get_adc_delays()
             measuredloc['syncdelay'] = self.REFCLK.get_refclk_delay()
-            measuredloc['boards'] = {'Mezz': [mezz1_serial,mezz2_serial], "MB" : self.serial }
+            measuredloc['boards'] = {'Mezz': [mezz1_serial,mezz2_serial], "MB": self.serial}
             return measuredloc
 
 
     def status(self):
+        """
+        """
         self._logger.info('%r: ----------- chFPGA status ---------------' % self)
         self._logger.info('%r:  Controller IP address: %s, port: %i ' % (self, self.ip_addr, self.fpga.port_number))
         self._logger.info('%r:  Firmware version: %s' % (self, self.get_fpga_firmware_version()))
         self._logger.info('%r:  Number of antenna inputs: %i' % (self, self.NUMBER_OF_ANTENNAS))
-        self._logger.info('%r:  Number of antennas with channelizers: %i (antennas %s)' % (self, len(self.LIST_OF_ANTENNAS_WITH_FFT), str(self.LIST_OF_ANTENNAS_WITH_FFT)))
-        self._logger.info('%r:  Number of correlators: %i (correlators %s)' % (self, len(self.LIST_OF_IMPLEMENTED_CORRELATORS),str(self.LIST_OF_IMPLEMENTED_CORRELATORS)))
+        self._logger.info('%r:  Number of antennas with channelizers: %i (antennas %s)' % (
+            self,
+            len(self.LIST_OF_ANTENNAS_WITH_FFT),
+            str(self.LIST_OF_ANTENNAS_WITH_FFT)))
+        self._logger.info('%r:  Number of correlators: %i (correlators %s)' % (
+            self,
+            len(self.LIST_OF_IMPLEMENTED_CORRELATORS),
+            str(self.LIST_OF_IMPLEMENTED_CORRELATORS)))
 
         self.FreqCtr.status()
 
@@ -1965,7 +2028,8 @@ class chFPGA_controller(IceBoardExtHandler):
         xbar_data_width = self.CROSSBAR.get_data_width()
 
         if xbar_data_width and xbar_data_width != chan_data_width:
-            raise RuntimeError("The channelizers and crossbar are not set to the same data width (chan=%i bits, xbar=%i bits). The data stream won't make much sense" % (chan_data_width, xbar_data_width))
+            raise RuntimeError("The channelizers and crossbar are not set to the same data width (chan=%i bits, xbar=%i bits). "
+                               "The data stream won't make much sense" % (chan_data_width, xbar_data_width))
         return chan_data_width
 
     def configure_crossbar(self, *args, **kwargs):
@@ -1988,7 +2052,7 @@ class chFPGA_controller(IceBoardExtHandler):
         else:
             # Set the scaler to use offset binary
             for channel in channels:
-                self.ANT[channel].SCALER.USE_OFFSET_BINARY=offset
+                self.ANT[channel].SCALER.USE_OFFSET_BINARY = offset
             if sync:
                 self.sync()
 
@@ -2017,7 +2081,6 @@ class chFPGA_controller(IceBoardExtHandler):
                 self.CROSSBAR[output].CH_DIST.SEND_FLAGS = send_flags
             if sync:
                 self.sync()
-
 
     def get_formatted_id(self, crate_slot_format='FCC{crate:02d}{slot:02d}', no_crate_format='{slot:s}', no_slot_format='{crate:s})'):
         """ Return a string that represent the board using the provided format list.
@@ -2110,8 +2173,15 @@ class chFPGA_controller(IceBoardExtHandler):
             self.logger.warn("Gain file '%s' could not be saved for (crate,slot)=%r " % (gain_filename, self.get_id()))
 
 
-    def set_gains(self, gain=None, postscaler=None, channels=None, use_fixed_gain=False, bank=0, when=None,
-                  gain_timestamp=None):
+    def set_gains(
+            self,
+            gain=None,
+            postscaler=None,
+            channels=None,
+            use_fixed_gain=False,
+            bank=0,
+            when=None,
+            gain_timestamp=None):
         """
         Sets the digital gain used by the SCALER module to scale the (18+18)
         bits output of the FFT to the (4+4) final channelizer output format.
@@ -2214,7 +2284,7 @@ class chFPGA_controller(IceBoardExtHandler):
         elif isinstance(gain, dict):
             gain = list(gain.items())
         else:  # if anything else including None, a scalar, a gain tuple etc.
-            gain = [ (channels, gain) ]
+            gain = [(channels, gain)]
 
         # Convert the gain timestamp to list
         if isinstance(gain_timestamp, list):
@@ -2237,18 +2307,19 @@ class chFPGA_controller(IceBoardExtHandler):
             elif isinstance(gain_value, (tuple, list)):
                 Glin = gain_value[0]
                 Glog = gain_value[1]
-            else: # if a scalar or a vector
+            else:  # if a scalar or a vector
                 Glin = gain_value
                 Glog = None
             # Replace default postscaler value if one is provided
             if (Glog is None) and (postscaler is not None):
                 Glog = postscaler
 
-            for ch in channel_list: # process each channel
+            for ch in channel_list:  # process each channel
                 if ch not in channels:
                     continue
                 if ch not in self.ANT.keys():
-                    self._logger.warning('%r: Gains on antenna channel %i are not set because that channel is not available' % (self, ch))
+                    self._logger.warning('%r: Gains on antenna channel %i are not set because that channel is not available' % (
+                        self, ch))
                     continue
                 # Set the postscaler value
                 if Glog is not None:
@@ -2263,13 +2334,17 @@ class chFPGA_controller(IceBoardExtHandler):
                     self.ANT[ch].SCALER.USE_GAIN_TABLE = 1
                     self.ANT[ch].SCALER.set_gain_table(Glin, bank=bank, gain_timestamp=timestamp_value)
                 configured_channels.add(ch)
-        self._logger.debug('%r: Setting scaler gains for Antenna %s' % (self, ', '.join([str(i) for i in configured_channels])))
+        self._logger.debug('%r: Setting scaler gains for Antenna %s' % (
+            self,
+            ', '.join([str(i) for i in configured_channels])))
 
         if when is not None:
             self.switch_gains(bank=bank, when=when)
 
     def get_next_gain_bank(self):
-        """ Return the gain bank that will be used on the next automatic bank switch."""
+        """
+        Return the gain bank that will be used on the next automatic bank switch.
+        """
         return [ant.SCALER.READ_COEFF_BANK ^ 1 for ant in self.ANT.values()]
 
     def get_gains(self, bank=0, use_cache=True):
@@ -2305,7 +2380,8 @@ class chFPGA_controller(IceBoardExtHandler):
 
         Returns:
 
-            list of (channel_number, timestamp), one for each channel. Elements are None if the gains was not set for that channel.
+            list of (channel_number, timestamp), one for each channel.
+            Elements are None if the gains was not set for that channel.
         """
         return [(ch.ant_number, ch.SCALER.get_gains_timestamp(bank=bank)) for ch in self.get_channelizers()]
 
@@ -2340,64 +2416,6 @@ class chFPGA_controller(IceBoardExtHandler):
                 ant.SCALER.SYNCHRONIZE_GAIN_BANK = True
                 ant.SCALER.READ_COEFF_BANK = next_bank
                 ant.SCALER.GAIN_BANK_SWITCH_FRAME_NUMBER = when
-
-
-    # def set_synchronized_gain_switching(self, enable=1):
-    #     for ant in self.ANT.values():
-    #         ant.SCALER.SYNCHRONIZE_GAIN_BANK = enable
-    #     self._logger.debug("%r: Synchronized gains for active antennas set to %d" % (self, enable))
-
-
-    # def get_synchronized_gain_switching(self):
-    #     enabled = []
-    #     for ant in self.ANT.values():
-    #         enabled.append(ant.SCALER.SYNCHRONIZE_GAIN_BANK)
-    #     self._logger.debug("%r: syncronization for gain set to %s" % (self, ', '.join([str(i) for i in enabled])))
-    #     return enabled
-
-    # def set_gain_switch_frame_number(self, frame=2147483647):
-    #     for ant in self.ANT.values():
-    #         ant.SCALER.GAIN_BANK_SWITCH_FRAME_NUMBER = frame
-    #     self._logger.debug("%r: set gain switch number for active antennas to %d" % (self, frame))
-
-
-    # def get_gain_switch_frame_number(self):
-    #     frames = []
-    #     for ant in self.ANT.values():
-    #         frames.append(ant.SCALER.GAIN_BANK_SWITCH_FRAME_NUMBER)
-    #     self._logger.debug("%r: gain switch numbers are %s" % (self, ', '.join([str(i) for i in frames])))
-    #     return frames
-
-    # def set_next_gain_bank(self, bank=0):
-    #     '''
-    #     Sets which gain bank (0 or 1) the SCALER will use.  if synchronized gain switching enabled, won't take effect
-    #     until the bank switch frame number.  Otherwise the switch is immediate.
-    #     '''
-    #     for ant in self.ANT.values():
-    #         if bank is None or bank < 0:
-    #             ant.SCALER.READ_COEFF_BANK ^= 1
-    #         else:
-    #             ant.SCALER.READ_COEFF_BANK = bank
-    #     # self._logger.debug("%r: set gain bank for active antennas to %d" % (self, bank))
-
-
-    # def get_next_gain_bank(self):
-    #     '''
-    #     Gets which gain bank (0,1) scaler will use.  if syncronized gain switching enabled, won't take effect
-    #     until the bank switch frame number.  Otherwise is immediate
-    #     '''
-    #     banks = []
-    #     for ant in self.ANT.values():
-    #         banks.append(ant.SCALER.READ_COEFF_BANK)
-    #     self._logger.debug("%r: Got gain bank for active antennas to %s" % (self, ', '.join([str(i) for i in banks])))
-    #     return banks
-
-
-    # def get_current_gain_bank(self):
-    #     gain_banks = []
-    #     for ant in self.ANT.values():
-    #         gain_banks.append(ant.SCALER.CURRENT_GAIN_BANK)
-    #     return gain_banks
 
     def reset_fft_overflow_count(self):
         """ Reset the FFT overflow counter in all channelizers.
@@ -2500,7 +2518,8 @@ class chFPGA_controller(IceBoardExtHandler):
 
         """
         if source not in self.REFCLK.SYNC_SOURCE_TABLE:
-            raise ValueError('Invalid SYNC source name. Valid names are %s' % ', '.join(self.REFCLK.SYNC_SOURCE_TABLE))
+            raise ValueError('Invalid SYNC source name. Valid names are %s' %
+                             ', '.join(self.REFCLK.SYNC_SOURCE_TABLE))
         self.REFCLK.set_sync_source(source)
         # If an user SMA is used, configure it as an input
         if source in self.GPIO.USER_OUTPUTS:
@@ -2516,7 +2535,9 @@ class chFPGA_controller(IceBoardExtHandler):
 
     @async
     def set_irigb_source(self, source):
-        """ Set the source of the IRIG-B signal. Also configures the user SMA as an 'input' if that SMA is used as a source.
+        """
+        Set the source of the IRIG-B signal. Also configures the user SMA as
+        an 'input' if that SMA is used as a source.
 
         Parameters:
 
@@ -2639,7 +2660,12 @@ class chFPGA_controller(IceBoardExtHandler):
                 break
         t1 = time.time()
         self.fpga.set_timeout(old_timeout)
-        print('%i read operations performed in %.2f s (%.0f read/s) with %i errors (%0.3f%% errors)' % (trials, t1 - t0, float(n) / (t1 - t0), errors, float(errors) / float(trials)*100))
+        print('%i read operations performed in %.2f s (%.0f read/s) with %i errors (%0.3f%% errors)' % (
+            trials,
+            t1 - t0,
+            float(n) / (t1 - t0),
+            errors,
+            float(errors) / float(trials) * 100))
 
     def get_temperatures(self):
         """ Return the core temperature of the fpga and the ADC chips.
@@ -2655,7 +2681,7 @@ class chFPGA_controller(IceBoardExtHandler):
         res['FPGA_core'] = self.SYSMON.temperature()
         for mezz_number, mezz in self.mezzanine.items():
             for (adc_number, adc) in enumerate(mezz.ADC):
-                res['FMC%i ADC%i'%(mezz_number-1, adc_number)] = adc.get_temperature()
+                res['FMC%i ADC%i'%(mezz_number - 1, adc_number)] = adc.get_temperature()
         return res
 
     @async
@@ -2672,28 +2698,29 @@ class chFPGA_controller(IceBoardExtHandler):
                      for rail in (self.RAIL.MB_VCC3V3, self.RAIL.MB_VCC5V5, self.RAIL.MB_VCC12V0)])  # have to use a list comprehension, not generator (a yield inside a generator is not consistent in Python 2.7)
         async_return(power)
 
-    def init_crossbars(self,
-                       mode=None,
-                       frames_per_packet=2,
-                       bin_map = None,
+    def init_crossbars(
+            self,
+            mode=None,
+            frames_per_packet=2,
+            bin_map = None,
 
-                       cb1_lanes=16,
-                       cb1_bins=64,
-                       dsmap=list(range(16)),
-                       cb1_bypass=False,
-                       cb1_combine_data_flags=0,
+            cb1_lanes=16,
+            cb1_bins=64,
+            dsmap=list(range(16)),
+            cb1_bypass=False,
+            cb1_combine_data_flags=0,
 
-                       bp_shuffle_bypass=1,
+            bp_shuffle_bypass=1,
 
-                       cb2_lanes=None,
-                       cb2_bins=1,
-                       cb2_bypass=False,
+            cb2_lanes=None,
+            cb2_bins=1,
+            cb2_bypass=False,
 
-                       crate_shuffle_bypass=1,
+            crate_shuffle_bypass=1,
 
-                       remap=True,
-                       chan8_channel_map=list(range(16)),
-                       send_flags=True):
+            remap=True,
+            chan8_channel_map=list(range(16)),
+            send_flags=True):
         """ Initializes the Corner Turn engine in the specified operation mode.
 
         This method configured the 1st, 2nd and 3rd crossbars (which each can include a remap, frame
@@ -2872,12 +2899,15 @@ class chFPGA_controller(IceBoardExtHandler):
         cb2_bin_indices = bin_map.get('cb2', None)
         cb3_bin_indices = bin_map.get('cb3', None)
 
-        if not (cb1_bin_indices is  None or len(cb1_bin_indices)==number_of_cb1_bin_sel):
-            raise ValueError('1st crossbar bin map should have %i lists of bins. Ir currently has %i' % ( number_of_cb1_bin_sel, len(cb1_bin_indices)))
-        if not (cb2_bin_indices is  None or len(cb2_bin_indices)==number_of_cb2_bin_sel):
-            raise ValueError('2nd crossbar bin map should have %i lists of bins. Ir currently has %i' % ( number_of_cb2_bin_sel, len(cb2_bin_indices)))
-        if not (cb3_bin_indices is  None or len(cb3_bin_indices)==number_of_cb3_bin_sel):
-            raise ValueError('3rd crossbar bin map should have %i lists of bins. Ir currently has %i' % ( number_of_cb3_bin_sel, len(cb3_bin_indices)))
+        if not (cb1_bin_indices is  None or len(cb1_bin_indices) == number_of_cb1_bin_sel):
+            raise ValueError('1st crossbar bin map should have %i lists of bins. Ir currently has %i' % (
+                number_of_cb1_bin_sel, len(cb1_bin_indices)))
+        if not (cb2_bin_indices is  None or len(cb2_bin_indices) == number_of_cb2_bin_sel):
+            raise ValueError('2nd crossbar bin map should have %i lists of bins. Ir currently has %i' % (
+                number_of_cb2_bin_sel, len(cb2_bin_indices)))
+        if not (cb3_bin_indices is  None or len(cb3_bin_indices) == number_of_cb3_bin_sel):
+            raise ValueError('3rd crossbar bin map should have %i lists of bins. Ir currently has %i' % (
+                number_of_cb3_bin_sel, len(cb3_bin_indices)))
 
         def get_dest_slot_for_src_lane(src_lane):
             tx = (self.slot, src_lane)  # unique transmitter id (slot, lane)
@@ -2941,14 +2971,14 @@ class chFPGA_controller(IceBoardExtHandler):
             crate_number = self.crate.crate_number or 0 if self.crate else 0
             cb3_bin_select_map = [[]] * number_of_cb3_bin_sel
 
-            cb3_output_bins = 0 # debug
-            cb3_output_words_per_bin = 0 # debug
-            cb3_output_data_flags_words_per_bin = 0 # debug
-            cb3_output_frame_flags_words_per_frame = 0 # debug
+            cb3_output_bins = 0  # debug
+            cb3_output_words_per_bin = 0  # debug
+            cb3_output_data_flags_words_per_bin = 0  # debug
+            cb3_output_frame_flags_words_per_frame = 0  # debug
 
             stream_type = 0
 
-        elif mode == 'chan4': # get the high nibble of every bytes from two lanes in a single word. Allows Get (4+4) bit data from all channelizers
+        elif mode == 'chan4':  # get the high nibble of every bytes from two lanes in a single word. Allows Get (4+4) bit data from all channelizers
             #############################
             # 1st Crossbar
             #############################
@@ -2970,7 +3000,7 @@ class chFPGA_controller(IceBoardExtHandler):
             # 2nd Crossbar
             #############################
             # Bypassed. No channel reordering. Data from input lanes 8-15 is redundant and is not forwarded.
-            cb2_lane_map = list(range(16)) # All information
+            cb2_lane_map = list(range(16))  # All information
             cb2_bypass = True
             cb2_bin_select_map = []
 
@@ -3048,7 +3078,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb1_output_words_per_bin = 4
             cb1_output_bins = cb1_bins
             cb1_input_lanes_per_output_lane = 16
-            cb1_output_data_flags_words_per_bin = (cb1_output_words_per_bin * 4.0) / (32 if cb1_combine_data_flags else 16)  # This is 0.5 if combine_flags
+            cb1_output_data_flags_words_per_bin = (cb1_output_words_per_bin * 4.0) // (32 if cb1_combine_data_flags else 16)  # This is 0.5 if combine_flags
             cb1_output_frame_flags_words_per_frame = 1
 
 
@@ -3138,7 +3168,6 @@ class chFPGA_controller(IceBoardExtHandler):
             #################################
             bp_shuffle_bypass = False
 
-
             #############################
             # 2nd Crossbar
             #############################
@@ -3192,9 +3221,12 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_input_bins = cb1_output_bins
             cb2_input_data_flags_words_per_bin = 1
             cb2_input_frame_flags_words_per_frame = 1
-            cb2_lanes = ((0, 1), (2, 3))  #BS0 selects sublanes 0-1, i.e. its 4 outputs gather data from lanes 0-1, 4-5, 8-9, and 12-13, BS1 selects sublanes 2-3 (lanes 2-3, 6-7, 10-12 and 14-15 )
-            cb2_combine_data_flags = True # hardwired to True in crossbar 2
-            cb2_input_lanes_per_output_lane = cb2_lanes[0][1] - cb2_lanes[0][0] + 1 # 2 input lanes per output
+
+            # BS0 selects sublanes 0-1, i.e. its 4 outputs gather data from lanes 0-1, 4-5, 8-9, and 12-13
+            # BS1 selects sublanes 2-3 (lanes 2-3, 6-7, 10-12 and 14-15 )
+            cb2_lanes = ((0, 1), (2, 3))
+            cb2_combine_data_flags = True  # hardwired to True in crossbar 2
+            cb2_input_lanes_per_output_lane = cb2_lanes[0][1] - cb2_lanes[0][0] + 1  # 2 input lanes per output
 
             # Select the bins to be assigned to each bin selector output.
             if cb2_bin_indices is not None:
@@ -3204,9 +3236,8 @@ class chFPGA_controller(IceBoardExtHandler):
                 # Default: we select all 64 incoming bins, but from half the input lanes
                 cb2_bins = 64
                 cb2_bin_spacing = 1
-                cb2_bin_select_map = [ np.arange(cb2_bins) * cb2_bin_spacing
+                cb2_bin_select_map = [np.arange(cb2_bins) * cb2_bin_spacing
                     for i in range(number_of_cb2_bin_sel)]
-
 
             cb2_output_words_per_bin = cb2_input_words_per_bin * cb2_input_lanes_per_output_lane
 
@@ -3244,8 +3275,8 @@ class chFPGA_controller(IceBoardExtHandler):
             cb3_input_frame_flags_words_per_frame = cb2_output_frame_flags_words_per_frame
             cb3_input_bins = cb2_output_bins
             cb3_lanes = [(0, 7)] * number_of_cb3_bin_sel
-            cb3_input_lanes_per_output_lane = cb3_lanes[0][1] - cb3_lanes[0][0] + 1 # 8 input lanes per bin sel output
-            cb3_combine_data_flags = False # hardwired to False in crossbar 3
+            cb3_input_lanes_per_output_lane = cb3_lanes[0][1] - cb3_lanes[0][0] + 1  # 8 input lanes per bin sel output
+            cb3_combine_data_flags = False  # hardwired to False in crossbar 3
 
             # Select the bins to be assigned to each bin selector output.
             if cb3_bin_indices is not None:
@@ -3275,7 +3306,7 @@ class chFPGA_controller(IceBoardExtHandler):
             #############################
             # 1st Crossbar
             #############################
-            # Selects data from all channelizers, and spread the bins betweeen
+            # Selects data from all channelizers, and spread the bins between
             # all 16 bin selectors to spread the data across 16 boards in a crate.
             cb1_bypass = False
             cb1_four_bit = True
@@ -3366,7 +3397,7 @@ class chFPGA_controller(IceBoardExtHandler):
             # CB2 REMAP
             cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
             # CB@ BIN_SEL
-            cb2_lanes = [(0, 3), (0, 3)] # Every output of both bin sels get data from all the 4 sublanes they get.
+            cb2_lanes = [(0, 3), (0, 3)]  # Every output of both bin sels get data from all the 4 sublanes they get.
             cb2_input_lanes_per_output_lane = cb2_lanes[0][1] - cb2_lanes[0][0] + 1 # 4 input lanes per output
             # Select the bins to be assigned to each bin selector output.
             if cb2_bin_indices is not None:
@@ -3374,8 +3405,8 @@ class chFPGA_controller(IceBoardExtHandler):
                 cb2_bins = len(cb2_bin_indices[0])
             else:
                 # Default: we select half the bins (from all input lanes)
-                cb2_bins = cb1_output_bins // number_of_cb2_bin_sel # 64/2 = 32
-                cb2_bin_spacing = number_of_cb2_bin_sel # 2
+                cb2_bins = cb1_output_bins // number_of_cb2_bin_sel  # 64/2 = 32
+                cb2_bin_spacing = number_of_cb2_bin_sel  # 2
                 cb2_bin_select_map = [
                     np.arange(cb2_bins) * cb2_bin_spacing + i
                     for i in range(number_of_cb2_bin_sel)]
@@ -3384,7 +3415,7 @@ class chFPGA_controller(IceBoardExtHandler):
             if crate_number & 1:
                 cb2_bin_select_map = cb2_bin_select_map[::-1]
 
-            cb2_combine_data_flags = True # hardwired to True in crossbar 2
+            cb2_combine_data_flags = True  # hardwired to True in crossbar 2
 
             # Output packet geometry
 
@@ -3432,7 +3463,7 @@ class chFPGA_controller(IceBoardExtHandler):
                            else [0, 1, 2, 3, 4, 5, 6, 7]
             cb3_bypass = False
             cb3_lanes = [(0, 7)] * number_of_cb3_bin_sel
-            cb3_input_lanes_per_output_lane = cb3_lanes[0][1] - cb3_lanes[0][0] + 1 # 8 input lanes per bin sel output
+            cb3_input_lanes_per_output_lane = cb3_lanes[0][1] - cb3_lanes[0][0] + 1  # 8 input lanes per bin sel output
 
             # Select the bins to be assigned to each bin selector output.
             if cb3_bin_indices is not None:
@@ -3440,12 +3471,12 @@ class chFPGA_controller(IceBoardExtHandler):
                 cb3_bin_select_map = cb3_bin_indices
             else:
                 # Default: we select 1/8th of the incoming bins from all the input lanes
-                cb3_bins = cb2_output_bins // number_of_cb3_bin_sel # 32/8 = 4
-                cb3_bin_spacing = number_of_cb3_bin_sel # = 8
+                cb3_bins = cb2_output_bins // number_of_cb3_bin_sel  # 32/8 = 4
+                cb3_bin_spacing = number_of_cb3_bin_sel  # = 8
                 cb3_bin_select_map = [
                     np.arange(cb3_bins) * cb3_bin_spacing + i
                     for i in range(number_of_cb3_bin_sel)]
-            cb3_combine_data_flags = False # hardwired to False in crossbar 3
+            cb3_combine_data_flags = False  # hardwired to False in crossbar 3
 
             # Output packet geometry
             cb3_output_words_per_bin = cb3_input_words_per_bin * cb3_input_lanes_per_output_lane
@@ -3503,8 +3534,8 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_bypass = True
             cb3_bypass = True
             cb3_output_bins = cb1_bins
-            cb3_output_words_per_bin = 0 # To be updated
-            cb3_output_data_flags_words_per_bin = 0 # To be updated
+            cb3_output_words_per_bin = 0  # To be updated
+            cb3_output_data_flags_words_per_bin = 0  # To be updated
             cb3_output_frame_flags_words_per_frame = 0 # To be updated
             stream_type = 0  # not used, as the shuffled packets are correlated never get out of the FPGA
             crate_number =  0  # idem
@@ -3577,23 +3608,34 @@ class chFPGA_controller(IceBoardExtHandler):
 
 
 
-        self._logger.debug('%r: Configuring crossbars 1 & 2 with frames_per_packet=%i, cb1_lanes=%s, cb1_bins=%i, cb2_lanes=%s, cb2_bins=%i, cb2_bypass=%s, bp_shuffle_bypass=%s' % (self, frames_per_packet, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_shuffle_bypass)))
+        self._logger.debug(
+            '%r: Configuring crossbars 1 & 2 with frames_per_packet=%i, cb1_lanes=%s, cb1_bins=%i, '
+            'cb2_lanes=%s, cb2_bins=%i, cb2_bypass=%s, bp_shuffle_bypass=%s' % (
+                self,
+                frames_per_packet,
+                cb1_lanes,
+                cb1_bins,
+                cb2_lanes,
+                cb2_bins,
+                bool(cb2_bypass),
+                bool(bp_shuffle_bypass)))
 
         # Put everything in reset
         self.set_ant_reset(1)
         self.set_corr_reset(1)
 
         #slot_number = self.slot - 1 if self.slot is not None else 0
-        slot_number = self.slot - 1 if self.slot else 0 #SC 03/17/2019 changed for individual iceboard
+        slot_number = self.slot - 1 if self.slot else 0  # SC 03/17/2019 changed for individual iceboard
         #-------------------------
         # Configure CROSSBAR 1
         #-------------------------
         # Select the bins so slot 0 receives bins 0-63, slot 1 has 64-127 ... slot 15 has 960-1023
 
-        stream_id = [((stream_type << 12) | (crate_number << 8) | (slot_number << 4) | lane) for lane in range(cb1.NUMBER_OF_CROSSBAR_OUTPUTS)]
+        stream_id = [((stream_type << 12) | (crate_number << 8) | (slot_number << 4) | lane)
+                     for lane in range(cb1.NUMBER_OF_CROSSBAR_OUTPUTS)]
         for (cb1_output_lane, bs) in enumerate(cb1):
             bs.BYPASS = cb1_bypass
-            bs.STREAM_ID = stream_id[cb1_output_lane] >> 4 # lane is already hardwared in the last 4 bits
+            bs.STREAM_ID = stream_id[cb1_output_lane] >> 4  # lane is already hardwared in the last 4 bits
             bs.COMBINE_DATA_FLAGS = cb1_combine_data_flags
             bs.SEND_FLAGS = send_flags
             bs.GROUP_FRAMES = frames_per_packet
@@ -3621,7 +3663,7 @@ class chFPGA_controller(IceBoardExtHandler):
         if cb2:
             if cb2_bypass:  # if we bypass, just remap the stream ids from the previous crossbar
                 stream_id = [stream_id[i] for i in cb2_lane_map]
-            else: # otherwise, the bin selector overr
+            else: # otherwise, the bin selector overrides
                 stream_id = [((stream_type << 12) | (crate_number << 8) | (slot_number << 4) | lane) for lane in range(cb2.NUMBER_OF_CROSSBAR_OUTPUTS)]
             cb2.set_lane_map(cb2_lane_map)
             if cb2_timeout_period is not None:
@@ -3652,7 +3694,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb3.set_lane_map(cb3_lane_map)
             if cb3_bypass:  # if we bypass, just remap the stream ids from the previous crossbar
                 stream_id = [stream_id[i] for i in cb3_lane_map]
-            else: # otherwise, the bin selector overr
+            else: # otherwise, the bin selector overrides
                 stream_id = [((stream_type << 12) | (crate_number << 8) | (slot_number << 4) | lane) for lane in range(cb3.NUMBER_OF_CROSSBAR_OUTPUTS)]
             for (cb3_bin_sel, bs) in enumerate(cb3):
                 bs.BYPASS = bool(cb3_bypass)
@@ -3683,7 +3725,13 @@ class chFPGA_controller(IceBoardExtHandler):
         # # for gtx in gpu_links.CHANNEL:
         # #     gtx.LOOPBACK = bp_shuffle_bypass
 
-        def print_packet_size(crossbar_name, frames_per_packet, bins, data_words_per_bin, data_flags_words_per_bin, frame_flags_words_per_frame):
+        def print_packet_size(
+                crossbar_name,
+                frames_per_packet,
+                bins,
+                data_words_per_bin,
+                data_flags_words_per_bin,
+                frame_flags_words_per_frame):
             header_words_per_packet = 4
             packet_flags_words_per_packet = 1
             if not send_flags:
@@ -3723,14 +3771,12 @@ class chFPGA_controller(IceBoardExtHandler):
         self.set_ant_reset(0)
         return stream_id
 
-
     def reset_gpu_links(self):
         """ Resets the GPU links.
 
         All links are reset. There is no way to reset an individual QSFP or individual link.
         """
         self.GPU.reset()
-
 
     def get_shuffle_status(self, cb1_bin_sel_overflow_reset=False):
         def cb1_gen(self):
@@ -3795,7 +3841,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 cb1.LANE_MONITOR_RESET = 1
                 cb1.LANE_MONITOR_RESET = 0
                 lane_mon = cb1.CB1_LANE_MONITOR
-                align_fifo_overflow = bool(lane_mon & (1<<i))  # Sticky bit
+                align_fifo_overflow = bool(lane_mon & (1 << i))  # Sticky bit
 
                 old_global_frame_ctr = bs.IN_FRAME_CTR
                 old_timestamp_ctr = bs.TIMESTAMP_CTR
@@ -3870,7 +3916,6 @@ class chFPGA_controller(IceBoardExtHandler):
         for x in bp_gen(self):
             print(x)
 
-
     @async
     def get_status(self):
         """
@@ -3891,7 +3936,6 @@ class chFPGA_controller(IceBoardExtHandler):
             id=self.get_string_id(),
             crate_id=self.crate.get_string_id() if self.crate else None,
             crate_number=self.crate.crate_number if self.crate else None)
-
 
         ####################################
         # Motherboard temperatures
@@ -3916,7 +3960,7 @@ class chFPGA_controller(IceBoardExtHandler):
         mb_power_sensors = [
             ('MB VCC12V'    , 'VCC12V'    , self.RAIL.MB_VCC12V0   , True),
             ('MB VCC3V3'    , 'VCC3V3'    , self.RAIL.MB_VCC3V3    , True),
-            ('MB VADJ'      , 'VADJ'      , self.RAIL.MB_VADJ      , False), # VADJ is normally powered from VCC5V0
+            ('MB VADJ'      , 'VADJ'      , self.RAIL.MB_VADJ      , False),  # VADJ is normally powered from VCC5V0
             ('MB VCC5V5'    , 'VCC5V5'    , self.RAIL.MB_VCC5V5    , True),
             ('MB VCC1V0'    , 'VCC1V0'    , self.RAIL.MB_VCC1V0    , False),
             ('MB VCC1V0 GTX', 'VCC1V0 GTX', self.RAIL.MB_VCC1V0_GTX, False),
@@ -3960,8 +4004,8 @@ class chFPGA_controller(IceBoardExtHandler):
         ####################################
 
         for qsfp in [1, 2]:
-                is_present = yield self.is_qsfp_present.async(qsfp)
-                metrics.add('fpga_motherboard_qsfp_present', value=is_present, qsfp=qsfp)
+            is_present = yield self.is_qsfp_present.async(qsfp)
+            metrics.add('fpga_motherboard_qsfp_present', value=is_present, qsfp=qsfp)
 
         # is_voltage_nominal
         # sysmon?
@@ -4014,7 +4058,7 @@ class chFPGA_controller(IceBoardExtHandler):
             # yield self.check_command_count.async(reset=True)
             yield self.clear_fpga_udp_errors.async()
             for cb in [self.CROSSBAR, self.CROSSBAR2, self.CROSSBAR3]:
-                if cb: # make sure the crossbar is in this firmware
+                if cb:  # make sure the crossbar is in this firmware
                     metrics += yield cb.get_metrics.async(reset=reset)
         except IOError as e:
             self.logger.error('%r: Error getting FPGA crossbar metrics. Error is %r' % (self, e))
@@ -4035,7 +4079,6 @@ class chFPGA_controller(IceBoardExtHandler):
             self.logger.error('%r: Error getting FPGA hardware metrics. Error is %r' % (self, e))
             metrics = Metrics()
         async_return(metrics)
-
 
     @async
     def get_backplane_metrics(self):
@@ -4094,15 +4137,13 @@ class chFPGA_controller(IceBoardExtHandler):
                 ####################################
                 for slot in range(1,17):
                     is_present = yield self.is_bp_qsfp_present.async(slot)
-                    metrics.add('fpga_backplane_qsfp_present',value=is_present, slot=(slot-1))
+                    metrics.add('fpga_backplane_qsfp_present', value=is_present, slot=(slot-1))
 
             except Exception as e:
                 self.logger.error('%r: error getting backplane metrics: error is %r' % (self, e))
         async_return(metrics)
 
         # backplane QSFP voltage, temp, signal-level
-
-
 
     def get_string_id(self):
         """
@@ -4191,14 +4232,14 @@ class chFPGA_controller(IceBoardExtHandler):
                     raise RuntimeError('The crate %s does not have a valid crate number' % self.crate)
                 crate_number = default_crate if default_crate is not None else self.crate.get_string_id()
 
-            if self.slot: # if there is a valid slot (not 0 or None)
+            if self.slot:  # if there is a valid slot (not 0 or None)
                 slot = self.slot - 1
             else:
                 if numeric_only:
                     raise RuntimeError('The crate %s does not have a valid slot number' % self.crate)
                 slot = default_slot
 
-        else: # if there is no crate, allow empty crate but not an empty slot
+        else:  # if there is no crate, allow empty crate but not an empty slot
             if numeric_only:
                 raise RuntimeError('There is no crate nor numeric crate number')
             crate_number = default_crate
@@ -4210,7 +4251,6 @@ class chFPGA_controller(IceBoardExtHandler):
         #     return (self.get_string_id(), ) if lane is None else (self.get_string_id(), lane)
         # else:
         #     return self.get_crate_id(self.slot - 1) + (tuple() if lane is None else (lane,) )
-
 
     def get_crate_id(self, slot=None):
         """ Return the crate ID tuple optionally appended by the specified slot number.slot
@@ -4257,7 +4297,6 @@ class chFPGA_controller(IceBoardExtHandler):
             channels = self.get_channels()
         return [self.ANT[ch].PROBER.get_stream_id() for ch in channels]
 
-
     def get_stream_id(self, channel):
         """ Return the stream_id of a specified channel.
 
@@ -4277,77 +4316,82 @@ class chFPGA_controller(IceBoardExtHandler):
 
         return {self.get_id(ch): ant.PROBER.get_stream_id() for ch, ant in self.ANT.items()}
 
-
     #########################################################################
     #
     #   FIRMARE CORRELATOR
     #
     #########################################################################
-    def start_corr_capture(self,  integration_period=1.0, capture_period=None, corr_to_use=None, verbose=1):
-        """
-        Instructs chFPGA to starts integrating and capturing the correlator
-        outputs at the specified period. The captures data is sent over the
-        Ethernet interface.
+    # def start_corr_capture(
+    #         self,
+    #         integration_period=1.0,
+    #         capture_period=None,
+    #         corr_to_use=None,
+    #         verbose=1):
+    #     """
+    #     Instructs chFPGA to starts integrating and capturing the correlator
+    #     outputs at the specified period. The captures data is sent over the
+    #     Ethernet interface.
 
-        The capture period can be optionnaly specified independently from the
-        integration period. If not specified, it is equal to the integration
-        period.
+    #     The capture period can be optionnaly specified independently from the
+    #     integration period. If not specified, it is equal to the integration
+    #     period.
 
-        This function does not receive the frames from the ethernet port. This
-        has to be done separately.
+    #     This function does not receive the frames from the ethernet port. This
+    #     has to be done separately.
 
-        corr_to_use -> if not None, is a list specifying which to correlators to use
+    #     corr_to_use -> if not None, is a list specifying which to correlators to use
 
-        History:
-            2012-10-02 JFC: Created
-            2013-03-25 KMB
-        """
+    #     History:
+    #         2012-10-02 JFC: Created
+    #         2013-03-25 KMB
+    #     """
 
-        if not self._last_init_time:
-            self._logger.warning('%r: The system is not initialized. This might not work.' % self)
+    #     if not self._last_init_time:
+    #         self._logger.warning('%r: The system is not initialized. This might not work.' % self)
 
-        if capture_period is None:
-            capture_period = integration_period
+    #     if capture_period is None:
+    #         capture_period = integration_period
 
-        capture_period_in_frames = int(capture_period / self.FRAME_PERIOD)
-        integration_period_in_frames = int(integration_period / self.FRAME_PERIOD)
+    #     capture_period_in_frames = int(capture_period / self.FRAME_PERIOD)
+    #     integration_period_in_frames = int(integration_period / self.FRAME_PERIOD)
 
-        self.set_ant_reset(1)
-        self.set_corr_reset(1)
-        if corr_to_use is None:
-            corrs = self.LIST_OF_IMPLEMENTED_CORRELATORS
-            corrs_not_used = []
-        else:
-            corrs = corr_to_use
-            corrs_not_used = list(set(self.LIST_OF_IMPLEMENTED_CORRELATORS).difference(corr_to_use))
-        for corr_num in corrs:
-            corr = self.CORR[corr_num]
-            self._logger.debug(
-                '%r: Configuring correlator %i to integrate '
-                'over %f seconds (%i frames) '
-                'and transmit data every %f seconds (%i frames)' % (
-                    self,
-                    corr.instance_number,
-                    integration_period,
-                    integration_period_in_frames,
-                    capture_period,
-                    capture_period_in_frames))
-            corr.ACC.RESET = 0
-            corr.ACC.config(integration_period=integration_period_in_frames, capture_period=capture_period_in_frames)
-        for corr_num in corrs_not_used:
-            self._logger.debug('%r: Disabling correlator %i' % (self, corr.instance_number))
-            corr = self.CORR[corr_num]
-            corr.ACC.RESET = 1
-        self.set_corr_reset(0)
-        self.set_ant_reset(0)
-        #self.sync()
+    #     self.set_ant_reset(1)
+    #     self.set_corr_reset(1)
+    #     if corr_to_use is None:
+    #         corrs = self.LIST_OF_IMPLEMENTED_CORRELATORS
+    #         corrs_not_used = []
+    #     else:
+    #         corrs = corr_to_use
+    #         corrs_not_used = list(set(self.LIST_OF_IMPLEMENTED_CORRELATORS).difference(corr_to_use))
+    #     for corr_num in corrs:
+    #         corr = self.CORR[corr_num]
+    #         self._logger.debug(
+    #             '%r: Configuring correlator %i to integrate '
+    #             'over %f seconds (%i frames) '
+    #             'and transmit data every %f seconds (%i frames)' % (
+    #                 self,
+    #                 corr.instance_number,
+    #                 integration_period,
+    #                 integration_period_in_frames,
+    #                 capture_period,
+    #                 capture_period_in_frames))
+    #         corr.ACC.RESET = 0
+    #         corr.ACC.config(integration_period=integration_period_in_frames, capture_period=capture_period_in_frames)
+    #     for corr_num in corrs_not_used:
+    #         self._logger.debug('%r: Disabling correlator %i' % (self, corr.instance_number))
+    #         corr = self.CORR[corr_num]
+    #         corr.ACC.RESET = 1
+    #     self.set_corr_reset(0)
+    #     self.set_ant_reset(0)
+    #     #self.sync()
 
-    def start_correlator(self,
-                         integration_period=16384,
-                         autocorr_only=False,
-                         correlators=None,
-                         bandwidth_limit=0.5e9,
-                         verbose=1):
+    def start_correlator(
+            self,
+            integration_period=16384,
+            autocorr_only=False,
+            correlators=None,
+            bandwidth_limit=0.5e9,
+            verbose=1):
         """
         (Re)starts the correlator with the specified integration time.
 
@@ -4442,8 +4486,8 @@ class chFPGA_controller(IceBoardExtHandler):
         self.start_correlator(integration_period=integration_period, verbose=verbose)
         self.sync()
         p = self.compute_corr_output(data, integration_period=integration_period)
-        f = r.read_corr_frames(flush=False, complete_set=True, max_trials=100, verbose = verbose)
-        return np.all(p==f), p, f
+        f = r.read_corr_frames(flush=False, complete_set=True, max_trials=100, verbose=verbose)
+        return np.all(p == f), p, f
 
     def test_correlator(self, test_name='rand_complex', integration_period=8192, trials=100, verbose=0):
         if test_name=='rand_complex':
@@ -4462,7 +4506,6 @@ class chFPGA_controller(IceBoardExtHandler):
                         print('Cannot make frames match!')
                         return match, data, p, f
 
-
         elif test_name=='rand_complex_C':
             for data_set_number in range(trials):
 
@@ -4478,7 +4521,6 @@ class chFPGA_controller(IceBoardExtHandler):
                     p = self.compute_corr_output(data, integration_period=integration_period)
                     timestamp,f = ir.read_correlator_frame(verbose=verbose)
                     f = np.swapaxes(f, 0, 2)
-
 
                     match = np.all(p==f)
                     if match:
@@ -4502,7 +4544,6 @@ class chFPGA_controller(IceBoardExtHandler):
         print('*** TEST PASSED! ***')
         return True, None, None, None
 
-
     @async
     def _call_subprocess(self, cmd):
         """
@@ -4518,7 +4559,6 @@ class chFPGA_controller(IceBoardExtHandler):
         if p.returncode:
             raise RuntimeError("The command '%s' returned with the error code %i. stderr is displayed below:\n %s" % (cmd, p.returncode, ''.join(p.stderr.readlines())))
         async_return(p.stdout.readlines())
-
 
     @async
     def arm_exec(self, cmd):
