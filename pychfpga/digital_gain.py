@@ -1,6 +1,5 @@
 import os
 import glob
-import re
 import datetime
 import time
 from calendar import timegm
@@ -10,8 +9,9 @@ import numpy as np
 
 from wtl.archive import Hdf5Archive
 
-__version__ = u'0.5'
-__archive_version__ = u'3.2.0'
+__version__ = '0.5'
+__archive_version__ = '3.2.0'
+
 
 class DigitalGainArchive(Hdf5Archive):
     """Interface to an Hdf5Archive containing digital gains.
@@ -95,8 +95,9 @@ class DigitalGainArchive(Hdf5Archive):
 
         # Search for previous files
         if search:
-            search_pathname = os.path.join(self.output_dir,
-                              '*' + instrument_name + '_' + self.output_suffix, '*.h5')
+            search_pathname = os.path.join(
+                self.output_dir,
+                '*' + instrument_name + '_' + self.output_suffix, '*.h5')
             candidate_files = sorted(glob.glob(search_pathname))
 
             # Only use files with the same axes
@@ -112,7 +113,7 @@ class DigitalGainArchive(Hdf5Archive):
                                  np.all(hf['index_map'][key][:] == val))
 
                     if valid:
-                         output_files.append(cf)
+                        output_files.append(cf)
 
             output_files = output_files or None
 
@@ -128,7 +129,7 @@ class DigitalGainArchive(Hdf5Archive):
         if 'attrs' not in kwargs:
             kwargs['attrs'] = {}
 
-        for key, val in attrs.iteritems():
+        for key, val in attrs.items():
             if key not in kwargs['attrs']:
                 kwargs['attrs'][key] = val
 
@@ -234,8 +235,8 @@ class DigitalGainArchive(Hdf5Archive):
             kwargs[key] = value
 
         if 'update_id' not in kwargs:
-            kwargs['update_id'] = '_'.join([self.output_suffix,
-                                            datetime.datetime.utcfromtimestamp(smp).strftime("%Y%m%dT%H%M%S.%fZ")])
+            kwargs['update_id'] = '_'.join(
+                [self.output_suffix, datetime.datetime.utcfromtimestamp(smp).strftime("%Y%m%dT%H%M%S.%fZ")])
 
         # Call superclass
         super(DigitalGainArchive, self).write(smp, **kwargs)
@@ -306,6 +307,6 @@ class DigitalGainArchive(Hdf5Archive):
             return self._chan_id
 
         except AttributeError:
-            self._chan_id = {inp['correlator_input']:inp['chan_id']
+            self._chan_id = {inp['correlator_input']: inp['chan_id']
                              for inp in self.axes['input']}
             return self._chan_id
