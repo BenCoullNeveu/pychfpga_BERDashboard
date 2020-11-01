@@ -1,27 +1,17 @@
 #!/usr/bin/python
-# Disable pylint TAB warnings (W0312) and Line too long (=C0301)
-# pylint: disable=W0312,C0301
 
 """
-calculate_gains.py script
- computes and sets ideal gain for 4bit gaussian noise.
+calculate_gains.py: Digital gain computation engine.
 
-
-
-#
-History:
-    2011-08-14 JFC: Created from chFPGA, which now only contains top test code.
-    2011-09-09 JFC: Added global FREF
-    2011-10-11 JFC: Updated delay tables
-    2014-02-21 KMB: Created from top test
+Computes and sets ideal gain for 4bit gaussian noise.
 """
 # import logging
+
+# Standard library packages
 import time
-import pickle
-import os
 import traceback
 
-
+# PyPy external packages
 import numpy as np
 
 
@@ -29,11 +19,18 @@ class GainCalc(object):
 
     # States
     SET_GAINS = 'set_gains'  # call get_gains() and set the gains of the fpga to the specified values
-    SEND_DATA = 'send_data' # call process_data() with a new set of data that has the new gains
+    SEND_DATA = 'send_data'  # call process_data() with a new set of data that has the new gains
     DONE = 'done'
     NBINS = 1024
 
-    def __init__(self, channel_ids, stream_ids,  n_iterations=18, target_rms= 1.5 * np.sqrt(2), weight=0.2, initial_gains=[('*', (1.0, 22))]):
+    def __init__(
+            self,
+            channel_ids,
+            stream_ids,
+            n_iterations=18,
+            target_rms=1.5*np.sqrt(2),
+            weight=0.2,
+            initial_gains=[('*', (1.0, 22))]):
         """ Computes the frequency-dependent digital gains of the specified
             channels to bring the signals within the target RMS values across
             the band.
@@ -61,12 +58,11 @@ class GainCalc(object):
                 glog is an integer
 
         """
-
         self.channel_ids = channel_ids
         self.stream_ids = stream_ids
 
         # Compute a map that allow us to convert a stream id into an index in the buffer
-        self.stream_id_map = {sid:i for i,sid in enumerate(self.stream_ids)}
+        self.stream_id_map = {sid: i for i, sid in enumerate(self.stream_ids)}
         # self.stream_id_to_index_map = {sid:index for index, sid in enumerate(self.channel_ids)}
         self.nchan = len(self.channel_ids)
         # self.n_rms_samples = n_frames
@@ -74,14 +70,14 @@ class GainCalc(object):
 
         self.weight = weight
 
-        #for 4 bit number *sqrt2 since real and imag, check this
-        self.target_rms = target_rms #2.83 is 1.5bits  1.5 is 0.6bits
+        # for 4 bit number *sqrt2 since real and imag, check this
+        self.target_rms = target_rms  # 2.83 is 1.5bits  1.5 is 0.6bits
 
         # Buffer in which we'll accumulate the incoming data
         self.temp_gains = np.zeros((self.nchan, self.NBINS), dtype=np.float32)  # temp buffer
-        self.mask = np.zeros((self.nchan, self.NBINS), dtype=np.int8) # We store  abs(x)**2
+        self.mask = np.zeros((self.nchan, self.NBINS), dtype=np.int8)  # We store  abs(x)**2
 
-        self.gains = np.zeros((self.nchan, self.NBINS), dtype=np.float32) #
+        self.gains = np.zeros((self.nchan, self.NBINS), dtype=np.float32)
         self.glin = np.zeros((self.nchan, self.NBINS), dtype=np.int16)
         self.glog = np.zeros((self.nchan), dtype=np.int8)
 
@@ -107,7 +103,7 @@ class GainCalc(object):
         # RMS averaging
         # keep track of the iteration number
         self.frame_count = np.zeros((self.nchan), dtype=np.int8)
-        self.iteration_number = np.zeros((self.nchan ), dtype=np.int8)
+        self.iteration_number = np.zeros((self.nchan), dtype=np.int8)
         self.done = np.zeros((self.nchan), dtype=bool)
 
     def get_gains(self, ix=None):
@@ -148,10 +144,10 @@ class GainCalc(object):
         ix_done = ix[self.done[ix]]
 
         # Get a filtered version of the linear gains as a Masked Array, with RFI spikes masked.
-        filtered_masked_glin= self.filter_gains(self.glin[ix_done])
+        filtered_masked_glin = self.filter_gains(self.glin[ix_done])
 
-
-        gains = {tuple(self.channel_ids[j]): (filtered_masked_glin[i].astype(np.int16), self.glog[j].astype(np.int8)) for i, j in enumerate(ix_done)}
+        gains = {tuple(self.channel_ids[j]): (filtered_masked_glin[i].astype(np.int16), self.glog[j].astype(np.int8))
+                 for i, j in enumerate(ix_done)}
         mask = filtered_masked_glin.mask
         return gains, mask
 
@@ -184,7 +180,6 @@ class GainCalc(object):
             # get the buffer index of the provided ids
             t1 = time.time()
 
-
             # Find the input index of valid stream_ids
             ix = np.array([i for i, sid in enumerate(stream_ids) if sid in self.stream_id_map], dtype=np.int16)
 
@@ -192,7 +187,7 @@ class GainCalc(object):
             bix = np.array([self.stream_id_map[sid] for sid in stream_ids[ix]], dtype=np.int16)
 
             # remove channels that are already completed
-            ix_done = self.done[bix] == False
+            ix_done = not self.done[bix]
 
             ix = ix[ix_done]
             bix = bix[ix_done]
@@ -201,16 +196,16 @@ class GainCalc(object):
             # new_gain = ideal_rms / (data / current_gain)
 
             # Compute current linear gain from glin/glog
-            # self.temp_gains[bix] = self.glin[bix] * (2.**self.glog[bix, None])  # 2 has to be a float, otherwise it returns the ** result as int8
             # print 'CG: Gain Iteration', self.iteration_number[ix]
             # print 'CG: RMS is ', np.median(rms[ix, 1:], axis=-1)
             # N=np.array([0,13,313,513])
             print 'CG: Received RMS data from %i channels. Processing %i of those.' % (rms.shape[0], bix.size)
             # print 'CG: Median Actual/target RMS ratio is ', np.median(rms[ix, 1:] / self.target_rms, axis=-1)
             # print 'CG: Median RMS is ', np.median(rms[ix, 1:], axis=-1)
-            print 'CG: Got Stream IDs:' , stream_ids[ix]
+            print 'CG: Got Stream IDs:', stream_ids[ix]
             # Compute new gain base don the ratio of the acrual rms vs target rms
-            # We want to slowly ease into that gain to avoid being affected too much by transients, so just take 20% of thhat target and 80% of the old gain
+            # We want to slowly ease into that gain to avoid being affected too much by transients,
+            # so just take 20% of thhat target and 80% of the old gain
             # self.temp_gains[ix][...] = (20.0 * target_gains + 80.0 * self.temp_gains[ix]) / 100.0
             # self.temp_gains[ix][...] = 0.2 * target_gains + 0.8 * self.temp_gains[ix]
             # self.temp_gains[ix][...] = 0.2 * target_gains + 0.8 * self.temp_gains[ix]
@@ -218,8 +213,6 @@ class GainCalc(object):
             gmax = 4.0
             print('temp gains.shape=', self.temp_gains[bix].shape)
             print('rms.shape=', rms[ix].shape)
-            # self.temp_gains[ix] *= (1-a) + a*(np.clip(self.target_rms / rms[ix], 1/gmax/a, gmax/a))  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
-            # self.temp_gains[bix] *= np.clip((1-a) + a*self.target_rms / rms[ix], 1/gmax, gmax)  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
 
             self.temp_gains[bix] = np.clip(
                 self.temp_gains[bix] * np.clip(
@@ -528,139 +521,31 @@ class GainCalc(object):
         return np.ma.array(filtered_signal, mask=masked_signal.mask)
 
 
-
-def get_frames(port):
-    """
-    Returns:
-        Numpy array, dtype=complex, shape=(100,16,1024) containing FFT data for 100 channelizer frames (16 channel each)
-    """
-
-    chanIndex = np.arange(16)
-    channels = np.arange(16)
-    number_of_frames = 0
-    frames = 100
-    data_list = np.zeros((frames, 16, 2048))
-    while number_of_frames < frames:
-        try:
-            a = get_frame(port)
-            data_list[number_of_frames, :, :] = a.values()[0]
-            #for chanNum in chanIndex:
-            #    data_list[number_of_frames,chanNum, :] = a[channels[chanNum]]
-            number_of_frames += 1
-        except KeyError:
-            pass
-            print "missed some data..."
-    #data_list = data_list.astype(np.int8)
-    #data_list ^= np.int8(128)
-    #data_list /= 2**4
-    data_list = (data_list.astype(np.int8) ^ np.int8(128)) >> 4
-    #data_list = (np.bitwise_xor(data_list.astype(np.int8), 128*np.ones(data_list.shape, dtype=np.int8)).astype(np.int8))/2**4 #data_list/2**4
-    data = data_list[:,:,::2] + 1.0j*data_list[:,:,1::2]
-    return data
-
-
-
-# @async
-def calculate_gains(c, gain_folder='/home/chime/ch_acq/gains'):
-    '''Calculate digital gains for all the inputs of an iceboard c
-    '''
-    slot_0based = c.slot - 1 if c.slot else 0
-    crate = c.crate.crate_number if c.crate and c.crate.crate_number is not None else 0
-    print 'Calculating digital gains for crate %02i slot %02i (FCC%02i%02i)' % (crate, slot_0based, crate, slot_0based)
-
-
-    # Get current state. Assumes all inputs have the same state
-    data_source = c.get_data_source()[0]
-    adc_mode = c.get_adc_mode()
-    fft_bypass = c.get_fft_bypass()[0]
-    fft_shift = c.get_fft_shift()[0]
-    scaler_bypass = c.get_scaler_bypass()[0]
-    local_data_port_number = c.get_local_data_port_number()
-
-    # Configure channelizer
-    # FFT enabled
-    c.set_data_source('adc')
-    c.set_adc_mode('data')
-    c.set_fft_bypass(0)
-    c.set_fft_shift(1367)
-    c.set_scaler_bypass(0)
-    #c.set_send_flags()
-    c.set_offset_binary_encoding()
-
-    # Set initial default gains of (glin, glog) = (1, 22)
-    # We will start converging towards the final value from there
-    default_log2_gain = 22
-    c.set_gains((1, default_log2_gain))  # startup gain is (1, 22)
-    #c.set_local_data_port_number(int(port))
-    temp_gains = np.ones(16, 1024) * 2**default_log2_gain
-
-
-    # Start capturing FFT data
-    port = 42500 # Picked randomly. Hack
-    c.set_local_data_port_number(port)
-    c.start_data_capture(burst_period_in_seconds=0.001) # default source = 'scaler' (i.e FFT data after scaler)
-    c.sync()
-
-
-
-    # Save the cleaned-up gains
-    output = open(os.path.join(gain_folder, 'gains_FCC%02i%02i.pkl' % (crate, slot_0based)),'wb')
-    pickle.dump(gain, output)
-    output.close()
-    print "Scaler Gain set and saved"
-
-
-    # restore normal iceboard operation
-    c.stop_data_capture()
-    # restore iceboard state
-    c.set_data_source(data_source)
-    c.set_adc_mode(adc_mode)
-    c.set_fft_bypass(fft_bypass)
-    c.set_fft_shift(fft_shift)
-    c.set_scaler_bypass(scaler_bypass)
-    c.set_local_data_port_number(local_data_port_number)
-
-
-def unused():
-        # Compute RMS value across the 100 frames
-        # We are computing the RMS of a series FFT frequency samples, *not* the RMS of a timestream. ``std`` is defined as::
-        #
-        #     std = sqrt(mean(abs(x - x.mean())**2))
-        #
-        # where x.mean() tends toward
-        # zero because the noise or RFI is uncorrelated with the frame rate.
-        # This means this is roughly equivalent to::
-        #
-        #     std = sqrt(mean(abs(x)**2))
-        #
-        # where ``abs(x)**2`` is the power in that bin, so we end up computing the average power with all bins of the same frequency.
-        measured_rms = data[:, :, :].std(axis=0) # shape=(16, 1024) std for each (chan, bin) across 100 samples
-        measured_rms[measured_rms < 0.8] = 0.8  # low-saturate rms to 0.8
-        # rmss.append(outrms.mean())
-        print measured_rms.mean(axis=1) # show average RMS across all channels for all bins
-        # if i == 0: # initial gain
-        #     g = ideal_rms * 2**(default_log2_gain) / measured_rms  #shape=(16, 1024)   ideal_rms*2**(default_log2_gain-4)/measured_rms
-        # else:
-        #     for j, glog1 in enumerate(glog):
-        #         # compute the digital gain that would get us to the target RMS
-        #         # new_gain = ideal_rms / (data / current_gain)
-        #         target_gains[j] = ideal_rms * temp_gains[j] / measured_rms[j]  #  g[j].shape=(1024)    ideal_rms*glin*(2**(glog-4))/measured_rms
-        #         # but we want to slowly ease into that gain, so just take 20% of thhat target and 80% of the old gain
-
-        #         new_gains[j] = (20.0 * g[j] + 80.0 * temp_gains[j]) / 100.0
-
-
-        # Save the gains. These were converged to using median values, and they contain outliers due to RFI
-        out1 = open(os.path.join(gain_folder, 'gains_noisy_FCC%02i%02i.pkl' % (crate, slot_0based)), 'wb')
-        pickle.dump(gain, out1)
-        out1.close()
-
-
 from wtl.rest import RunSyncWrapper
 import raw_acq
 
 
 def compute_gains(ca, number_of_averages=100, ch=3):
+    """
+    Stand-alone compute_gains function for testing the gain calculation algorithm.
+
+    It starts data capture on all boards of the array, instantiate an raw_acq
+    receiver and a gain computation object, and iterate the gain calculation
+    process for the specified number of times.
+
+    The same process is implemented in the fpga_master framework.
+
+    Parameters:
+
+        ca (FPGAArray): A FPGAArray object containing the boards on which we
+            want to compute digital gains
+
+        number_of_averages (int): Number of FFT averages that are captured by the
+            receiver for each iteration
+
+        ch (int): stream ID index on which we want to compute the gain (debug)
+
+    """
     ca.set_sync_method('local_soft_trigger')
 
     ca.set_operational_mode('shuffle16', frames_per_packet=1)
@@ -682,16 +567,16 @@ def compute_gains(ca, number_of_averages=100, ch=3):
     g.gain = np.empty((g.n_rms_iterations, 1024))
     # Set all gains to their initial values
     ca.set_gains(gains=g.get_gains(), bank=bank, when='now')
-    i=0
+    i = 0
     try:
         r.start(ports=port_map, stream_ids=stream_ids, start_thread=True)
 
         while not g.is_done():
             print('.')
             ix, rms = r.get_fft_rms(stream_ids=stream_ids, target_gain_bank=bank, number_of_frames=number_of_averages)
-            g.rms[i,:] = rms[ch]
-            g.gain[i,:] = g.glin[ch] * 2.**g.glog[ch]
-            i+=1
+            g.rms[i, :] = rms[ch]
+            g.gain[i, :] = g.glin[ch] * 2.**g.glog[ch]
+            i += 1
             new_gains = g.update_gains(ix, rms)
             # bank ^= 1 # switch bank
             ca.set_gains(gains=new_gains, bank=bank, when='now')
