@@ -12,8 +12,14 @@ import time
 import traceback
 
 # PyPy external packages
-import numpy as np
 
+import numpy as np
+# Private external packages
+
+from wtl.rest import RunSyncWrapper  # For testing
+
+# local imports
+from .. import raw_acq
 
 class GainCalc(object):
 
@@ -84,7 +90,7 @@ class GainCalc(object):
         # Set initial default gains of (glin, glog)
         # We will start converging towards the final value from there
         if isinstance(initial_gains, dict):
-            initial_gains = initial_gains.items()
+            initial_gains = list(initial_gains.items())
 
         self.initial_gains = initial_gains
         for ix, cid in enumerate(self.channel_ids):
@@ -199,10 +205,10 @@ class GainCalc(object):
             # print 'CG: Gain Iteration', self.iteration_number[ix]
             # print 'CG: RMS is ', np.median(rms[ix, 1:], axis=-1)
             # N=np.array([0,13,313,513])
-            print 'CG: Received RMS data from %i channels. Processing %i of those.' % (rms.shape[0], bix.size)
+            print('CG: Received RMS data from %i channels. Processing %i of those.' % (rms.shape[0], bix.size))
             # print 'CG: Median Actual/target RMS ratio is ', np.median(rms[ix, 1:] / self.target_rms, axis=-1)
             # print 'CG: Median RMS is ', np.median(rms[ix, 1:], axis=-1)
-            print 'CG: Got Stream IDs:', stream_ids[ix]
+            print('CG: Got Stream IDs:', stream_ids[ix])
             # Compute new gain base don the ratio of the acrual rms vs target rms
             # We want to slowly ease into that gain to avoid being affected too much by transients,
             # so just take 20% of thhat target and 80% of the old gain
@@ -211,14 +217,14 @@ class GainCalc(object):
             # self.temp_gains[ix][...] = 0.2 * target_gains + 0.8 * self.temp_gains[ix]
             a = self.weight
             gmax = 4.0
-            print('temp gains.shape=', self.temp_gains[bix].shape)
-            print('rms.shape=', rms[ix].shape)
+            print(('temp gains.shape=', self.temp_gains[bix].shape))
+            print(('rms.shape=', rms[ix].shape))
 
+            # Compute new gains. Equivalent to idealRMS*glin*(2**(glog-4))/outrms (?)
             self.temp_gains[bix] = np.clip(
                 self.temp_gains[bix] * np.clip(
-                    (1-a) + a*self.target_rms / rms[ix],
-                1/gmax, gmax), 1, 2**(31+16))  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
-
+                    (1-a) + a*self.target_rms / rms[ix], 1/gmax, gmax),
+                1, 2**(31+16))  # g[j].shape=(1024)
 
             # Debugging code: prints rms and gain for selected stream ID.
             S = 16*10 + 0
@@ -226,14 +232,14 @@ class GainCalc(object):
                 x = np.where(stream_ids[ix] == S)[0][0]
                 bx = self.stream_id_map[S]
                 # print 'CG: Stream 0 Median Actual/target RMS ratio is ', rms[ix[0]] / self.target_rms
-                print 'CG: Stream 0 Median RMS is ', ',  '.join('%7.3f'% rms[x, i] for i in xrange(10))
-                print 'CG: Stream 0 Gain is ', ',  '.join('%7.3e'% self.temp_gains[bx, i] for i in xrange(10))
+                print('CG: Stream 0 Median RMS is ', ',  '.join('%7.3f' % rms[x, i] for i in range(10)))
+                print('CG: Stream 0 Gain is ', ',  '.join('%7.3e' % self.temp_gains[bx, i] for i in range(10)))
 
             # print 'CG: new_gain is ', self.temp_gains[ix]
 
             # Convert linear gain into (glin, glog) values
-            self.glin[bix], self.glog[bix] = self.calc_gains(self.temp_gains[bix])  # glin.shape=(16,1024), glog.shape=(16)
-
+            # glin.shape=(16,1024), glog.shape=(16)
+            self.glin[bix], self.glog[bix] = self.calc_gains(self.temp_gains[bix])
 
             # #####################################
             # Keep track of how many iteration we have done
@@ -250,12 +256,12 @@ class GainCalc(object):
             # print self.iteration_number[ix]
             # print 'Gain is glin=%i, glog=%i, g=%f' % (self.glin[ix[0]][0], self.glog[ix[0]], self.glin[ix[0]][0] * 2**self.glog[ix[0]])
             t2 = time.time()
-            print 'Gain updating time: %.3f ms for %i channels' % (((t2 - t1) * 1000, bix.size))
+            print('Gain updating time: %.3f ms for %i channels' % (((t2 - t1) * 1000, bix.size)))
 
             return self.get_gains(bix)
 
         except Exception as e:
-            print'CG Exception:\n%r' % e
+            print('CG Exception:\n%r' % e)
             traceback.print_exc()
             raise
 
@@ -283,9 +289,12 @@ class GainCalc(object):
 
             (glin, glog):
 
-                - `glin` is an array with the same shape than `g`, containing complex gains that are around 2**13.
+                - `glin` is an array with the same shape than `g`, containing
+                  complex gains that are around 2**13.
 
-                - `glog` is an array with one less dimension than 'g', and contain a power-of-two scaling factor that is needed to express the target gain `g` such as g = glin* 2**glog.
+                - `glog` is an array with one less dimension than 'g', and
+                  contain a power-of-two scaling factor that is needed to
+                  express the target gain `g` such as g = glin* 2**glog.
 
 
         The maximum ``glin`` positive gain values is (2**15 - 1) (int16). We
@@ -302,7 +311,7 @@ class GainCalc(object):
             2019-03-29: 776 ms on TP520 with gains(2048, 1024). original version
 
         """
-        #print g
+        # print g
 
         # Eliminate gains that would be too high from the computations by creating
         # a masked array
@@ -311,18 +320,17 @@ class GainCalc(object):
         bad_values[:, 0] = True
         g = np.ma.array(g, mask=bad_values)
 
-
         # ############
         # Compute glog
         # ############
-        # np.abs(g) / 2**13 is the postscaler gain that needs to be applied to have glin be 2**13
+        # np.abs(g) / 2**13 is the postscaler gain that needs to be applied to have ``glin`` be 2**13
         #
         # we take the median of that postscaler across all frequencies (the last
-        # domension of `g`) to be less sensitive to outliers, and take the log2 of
+        # dimension of `g`) to be less sensitive to outliers, and take the log2 of
         # it, which is rounded up so we keep our headroom of at least 4.
         #
         # glog has one less dimension than `g`.
-        glog = np.clip((np.ceil(np.log2(np.ma.median(np.abs(g) / target_glin , axis=-1)))).astype(np.int), 0, 31)
+        glog = np.clip((np.ceil(np.log2(np.ma.median(np.abs(g) / target_glin, axis=-1)))).astype(np.int), 0, 31)
         # ma.median will result in a masked value if all elements are masked. In
         # these cases, give to glog the the median glog from all channels
         # (hopefully there is at lease one good glog) .
@@ -335,12 +343,12 @@ class GainCalc(object):
         # ############
 
         glin = g / (2.**glog[..., None])  # glog is broadcasted along the last dimension of g.
-        glin[bad_values] = 2**14 # Set a high gain the saturated gains (should probably be 2**15-1)
+        glin[bad_values] = 2**14  # Set a high gain the saturated gains (should probably be 2**15-1)
         # saturate gains that are getting too close to the maximum range
         glin[glin > 2**14] = 2**14
         # truncate to integer, and convert to complex (necessary?)
         # np.floor(glin, out=glin)
-        #glin = glin.astype(np.int).astype(np.complex)
+        # glin = glin.astype(np.int).astype(np.complex)
 
         return glin, glog
 
@@ -374,10 +382,9 @@ class GainCalc(object):
         """
         signal = np.array(signal)
         # mask = np.ma.make_mask_none((len(signal),))
-        #The first bin is always bad for some reason
+        # The first bin is always bad for some reason
         # mask[0] = True
         # self.masked = np.ma.array(np.log(signal), mask=mask)
-
 
         if filter_type == 'fourier':
             filtered_mask_signal = np.ma.array(self.fourier_filter(signal, num_components))
@@ -399,8 +406,6 @@ class GainCalc(object):
         filtered_mask_signal = (filtered_mask_signal.real).astype(np.int).astype(np.complex)
         return filtered_mask_signal
 
-
-
     def fourier_filter(self, signal, num_components):
         """ Apply an ideal low-pass filter in the Fourier domain across the last dimension.
 
@@ -409,25 +414,32 @@ class GainCalc(object):
 
         Parameters:
 
-            signal (ndarray): signal(s) to filter. The array can contain any dimensions. Filtering is done on each signal individually across the last dimension.
+            signal (ndarray): signal(s) to filter. The array can contain any
+                dimensions. Filtering is done on each signal individually
+                across the last dimension.
 
         Should extend to other windows.
-        not assured to maintain signal size
+
+        Not assured to maintain signal size
         """
         signal = np.array(signal)
-        signal_length = signal.shape[-1] # length of the last dimension
+        signal_length = signal.shape[-1]  # length of the last dimension
         # Pad. If we represent the signal by 0123, we build the array 21+0123+ 3
-        padded_signal = np.concatenate((signal[..., signal_length/2:0:-1], signal, signal[..., -1:-signal_length/2:-1]), axis=-1)
-        f_signal = np.fft.fft(padded_signal, axis=-1) # FFT across the last axis
+        padded_signal = np.concatenate((
+            signal[..., signal_length/2: 0: -1],
+            signal,
+            signal[..., -1: -signal_length/2: -1]), axis=-1)
+        f_signal = np.fft.fft(padded_signal, axis=-1)  # FFT across the last axis
         # We eliminate all high frequency beyond num_components
         f_signal[..., num_components: -num_components] = 0
-        filtered = np.fft.ifft(f_signal, axis=-1)[..., signal_length / 2: -signal_length / 2 + 1]
+        filtered = np.fft.ifft(f_signal, axis=-1)[..., signal_length // 2: -signal_length // 2 + 1]
         filtered = (filtered.real).astype(np.int).astype(np.complex)
         return filtered
 
     def mask_rfi(self, signal, filtered_signal, threshold):
         """
-        Set the mask flag of the element of `signal` that deviate from `filtered_signal` by a factor that exceeds `threshold`.
+        Set the mask flag of the element of `signal` that deviate from
+        `filtered_signal` by a factor that exceeds `threshold`.
 
         Parameters:
 
@@ -469,7 +481,9 @@ class GainCalc(object):
         # seriesin a 2D array individually. It somehow combines them, which is
         # useless to us. So we need to process the data line by line.
         for i in range(signal.shape[0]):
-            fit_coeff = np.ma.polyfit(x, signal[i], degree)  # ma.polyfit does not use masked data points in signal to compute the polynomial coefficients
+            # Compute fit coefficients. ma.polyfit does not use masked data
+            # points in signal to compute the polynomial coefficients
+            fit_coeff = np.ma.polyfit(x, signal[i], degree)
             filtered_signal[i, :] = np.poly1d(fit_coeff)(x)
         self.mask_rfi(signal, filtered_signal, threshold)
         return filtered_signal
@@ -481,7 +495,8 @@ class GainCalc(object):
 
 
         A polynomial fit of increasing order is iteratively fitted to the
-        signal. At each iteration, part of the signal that exceed the fit by a threshold factor are masked in `signal`. More and more of `signal`
+        signal. At each iteration, part of the signal that exceed the fit by a
+        threshold factor are masked in `signal`. More and more of `signal`
         gets flagged by each iteration. The final polynomial fitted signal and
         the final mask are then returned.
 
@@ -499,7 +514,7 @@ class GainCalc(object):
                   `signal` samples have deviated too much from the filtered
                   version during the iterative filtering process.
         """
-        #The first bin is always bad for some reason
+        # The first bin is always bad for some reason
         degree = 1
         threshold = 1.2
         # Create a copy of the signal as a masked array with nothing initially
@@ -511,7 +526,8 @@ class GainCalc(object):
 
         # Fit with radually higher order polynomial and mask RFI with gradually lower thresholds
         while threshold > 1.01:
-            filtered_signal[...] = self.poly_filter(masked_signal, threshold, degree)  # this masked_signal mask is modified to mask RFI
+            # Compute filtered signal. This masked_signal mask is modified to mask RFI
+            filtered_signal[...] = self.poly_filter(masked_signal, threshold, degree)
             threshold = 1 + (threshold - 1) * 0.8
             if degree < 15:
                 degree += 2
@@ -519,10 +535,6 @@ class GainCalc(object):
         np.floor(filtered_signal, out=filtered_signal)
         # filtered_signal = (filtered.real).astype(np.int).astype(np.complex)
         return np.ma.array(filtered_signal, mask=masked_signal.mask)
-
-
-from wtl.rest import RunSyncWrapper
-import raw_acq
 
 
 def compute_gains(ca, number_of_averages=100, ch=3):
@@ -551,10 +563,9 @@ def compute_gains(ca, number_of_averages=100, ch=3):
     ca.set_operational_mode('shuffle16', frames_per_packet=1)
     ca.ib.start_data_capture(period=.004, source='scaler')
 
-
     stream_id_map = ca.get_stream_id_map()
-    channel_ids = stream_id_map.keys()
-    stream_ids = stream_id_map.values()
+    channel_ids = list(stream_id_map.keys())
+    stream_ids = list(stream_id_map.values())
     bank = 0
 
     port_map = [dict(
