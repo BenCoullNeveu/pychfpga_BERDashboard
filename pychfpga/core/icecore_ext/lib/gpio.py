@@ -20,7 +20,7 @@ class GPIO(object):
             value = bool(value)
         elif value < 0 or value >= (1 << width):
             raise ValueError("%i is an invalid value for GPIO field '%s'" % (value, name))
-        io_expander.write(byte, value << bit, mask= ((1 << width)-1) << bit, select=select)
+        io_expander.write(byte, value << bit, mask=((1 << width)-1) << bit, select=select)
 
     def __getattr__(self, name):
         if name in self._gpio_table:
