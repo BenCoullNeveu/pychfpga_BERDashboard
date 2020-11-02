@@ -1,10 +1,9 @@
 #!/usr/bin/python
-# Disable pylint Line too long (=C0301)
-# pylint: disable=C0301
 
 """
 ADC_PLL.py module
- Implements the ADC PLL interface
+
+Implements the ADC PLL interface
 
 History:
     2011-07-08 JFC : Created from test code in chFPGA.py
@@ -55,7 +54,7 @@ class ADC_PLL_base(object):
         fmin = 2200  # MHz. Minimum VCO frequency
         fmax = 4400  # MHz. Minimum VCO frequency
 
-        fdiv = int(2**np.ceil(np.log2(fmin / fout))) #110925 JFC - Compute any factor for the output divider fdiv.
+        fdiv = int(2**np.ceil(np.log2(fmin / fout)))  # 110925 JFC - Compute any factor for the output divider fdiv.
         if fdiv > 16:
             raise Exception('Output frequency is too low')
 
@@ -68,26 +67,43 @@ class ADC_PLL_base(object):
         LD_pin_mode = 1  # 0=LOW, 1=Lock Detect, 2=Low, 3= High
 
         # REGISTER 4
-        FB_select = 0  # 0=feedback from output divided (needed to ensure absolute phase reproducibility), 1=feedback from VCO directly
+        # Feedback select:
+        #    0=feedback from output divided (needed to ensure absolute phase reproducibility),
+        #    1=feedback from VCO directly
+        FB_select = 0
         RF_div = int(np.log2(fdiv))  # Output divider: 0=/1, 1=/2, 2=/4, 3=/8, 4=/16
-        band_sel_div = int(fref * 8) #1-255. R counter output / band_sel_div < 125 kHz.
+        band_sel_div = int(fref * 8)  # 1-255. R counter output / band_sel_div < 125 kHz.
         vco_power_down = 0  # 0-1
         mute_until_lock_detect = 0  # 0-1
-        AUX_sel = 0  #  0=use output divider output, 1=use VCO output directly,
-        AUX_enable = 1  #0-1
+        AUX_sel = 0  # 0=use output divider output, 1=use VCO output directly,
+        AUX_enable = 1  # 0-1
         AUX_power = 2  # 0=-4 dBm, 1=-1 dBm, 2=2 dBm, 3=5 dBm
-        RF_enable = 1        #0-1
+        RF_enable = 1  # 0-1
         RF_power = 2  # 0=-4 dBm, 1=-1 dBm, 2=2 dBm, 3=5 dBm
 
         # REGISTER 3
         cycle_slip_reduction = 0  # 0-1. Needs 50% duty cycle and lowest CP current
-        clock_div_mode = 2  # 0=clock divider off, 1=fast lock, 2=resync enable, 3=reserved #111018 JFC: set to 2 to allow phase control
+        # Div mode:
+        #     0=clock divider off,
+        #     1=fast lock,
+        #     2=resync enable,
+        #     3=reserved
+        clock_div_mode = 2  # 111018 JFC: set to 2 to allow phase control
         clock_div = 2  # 0-4095
-
 
         # REGISTER 2
         noise_mode = 0  # 0=low noise, 1-2: reserved, 3=low spur
-        muxout = 0  # !using 4 interferes with the locking process! 0=Hi-Z, 1=Vdd, 2=GND, 3=R Divider out, 4= N divider out, 5=Analog lock detect, 6= Digital lock detect, 7=reserved
+        # Mux output
+        # Warning: Using 4 interferes with the locking process!
+        #   0=Hi-Z,
+        #   1=Vdd,
+        #   2=GND,
+        #   3=R Divider out,
+        #   4= N divider out,
+        #   5=Analog lock detect,
+        #   6= Digital lock detect,
+        #   7=reserved
+        muxout = 0
         ref_doubler = 0  # Reference clock doubler: 0=disabled, 1=enabled
         rdiv2 = 1  # Reference clock divide-by-2: 0=disabled, 1=enabled
         R_counter = 1  # Reference clock divider: 1-1023
@@ -107,13 +123,13 @@ class ADC_PLL_base(object):
 
         # REGISTER 0
         if FB_select:  # if feedback is from VCO directly
-            int_div = int(fdiv * fout / fref / 2 * (rdiv2 + 1))  #23-65535
-        else: # if feedback is from the output of the output divider
-            int_div = int(fout / fref * (rdiv2 + 1))  #23-65535
+            int_div = int(fdiv * fout / fref / 2 * (rdiv2 + 1))  # 23-65535
+        else:  # if feedback is from the output of the output divider
+            int_div = int(fout / fref * (rdiv2 + 1))  # 23-65535
         fractional_mode = True
 
         int_div -= 1 * fractional_mode
-        frac_div = modulus*fractional_mode  #0-4095 Non-zero for frationnal mode
+        frac_div = modulus*fractional_mode  # 0-4095 Non-zero for fractional mode
         if FB_select:
             fvco = (int_div + frac_div / modulus) * fref / (rdiv2 + 1)
         else:
@@ -126,10 +142,12 @@ class ADC_PLL_base(object):
             self.logger.debug('%r:  Reference divide-by-2 enabled: %s' % (self.adc_board, bool(rdiv2)))
             self.logger.debug('%r:  PFB frequency: %.0f MHz' % (self.adc_board, fref / (1 + rdiv2)))
             self.logger.debug('%r:  Integer multiplication factor: %i' % (self.adc_board, int_div))
-            self.logger.debug('%r:  Fractional multiplication factor/modulus: %i/%i' % (self.adc_board, frac_div, modulus))
+            self.logger.debug('%r:  Fractional multiplication factor/modulus: %i/%i'
+                              % (self.adc_board, frac_div, modulus))
             self.logger.debug('%r:  Total multiplication factor: %i' % (self.adc_board, int_div + frac_div / modulus))
-            self.logger.debug('%r:  Feedback includes output dividor: %s' %  (self.adc_board, not FB_select))
-            self.logger.debug('%r:  VCO Frequency: %.3f MHz (%.0f MHz min, %.0f MHz max)' % (self.adc_board, fvco, fmin, fmax))
+            self.logger.debug('%r:  Feedback includes output dividor: %s' % (self.adc_board, not FB_select))
+            self.logger.debug('%r:  VCO Frequency: %.3f MHz (%.0f MHz min, %.0f MHz max)'
+                              % (self.adc_board, fvco, fmin, fmax))
             self.logger.debug('%r:  Output division factor: %i' % (self.adc_board, fdiv))
             self.logger.debug('%r:  Programmed output frequency: %.3f' % (self.adc_board, fvco / fdiv))
 
@@ -143,10 +161,20 @@ class ADC_PLL_base(object):
                 self.logger.debug('%r: "%s" is not a PLL variable' % (self.adc_board, varname))
 
         PLL_reg5 = np.uint32((LD_pin_mode << 22) + (0x3 << 19) + 5)
-        PLL_reg4 = np.uint32((FB_select << 23) + (RF_div << 20) + (band_sel_div << 12) + (vco_power_down << 11) + (mute_until_lock_detect << 10) + (AUX_sel << 9) + (AUX_enable << 8) + (AUX_power << 6) + (RF_enable << 5) + (RF_power << 3)+4)
+        PLL_reg4 = np.uint32((FB_select << 23) + (RF_div << 20) + (band_sel_div << 12)
+                             + (vco_power_down << 11) + (mute_until_lock_detect << 10)
+                             + (AUX_sel << 9) + (AUX_enable << 8) + (AUX_power << 6)
+                             + (RF_enable << 5) + (RF_power << 3)+4)
         PLL_reg3 = np.uint32((cycle_slip_reduction << 18) + (clock_div_mode << 15) + (clock_div << 3)+3)
-        PLL_reg2 = np.uint32((noise_mode << 29) + (muxout << 26) + (ref_doubler << 25) + (rdiv2 << 24) + (R_counter << 14) + (double_buf << 13) + (CP_current << 9) + (LDF << 8) + (LDP << 7) + (PD_polarity << 6) + (power_down << 5) + (CP_three_state << 4) + (counter_reset << 3)+2)
-#        PLL_reg2_tristate=(noise_mode << 29) + (muxout << 26) + (ref_doubler << 25) + (rdiv2 << 24) + (R_counter << 14) + (double_buf << 13) + (CP_current << 9) + (LDF << 8) + (LDP << 7) + (PD_polarity << 6) + (power_down << 5) + (1 << 4) + (counter_reset << 3)+2
+        PLL_reg2 = np.uint32((noise_mode << 29) + (muxout << 26) + (ref_doubler << 25)
+                             + (rdiv2 << 24) + (R_counter << 14) + (double_buf << 13)
+                             + (CP_current << 9) + (LDF << 8) + (LDP << 7)
+                             + (PD_polarity << 6) + (power_down << 5)
+                             + (CP_three_state << 4) + (counter_reset << 3)+2)
+        # PLL_reg2_tristate=((noise_mode << 29) + (muxout << 26) + (ref_doubler << 25) + (rdiv2 << 24)
+        #                    + (R_counter << 14) + (double_buf << 13) + (CP_current << 9)
+        #                    + (LDF << 8) + (LDP << 7) + (PD_polarity << 6)
+        #                    + (power_down << 5) + (1 << 4) + (counter_reset << 3)+2)
         PLL_reg1 = np.uint32((prescaler << 27) + (phase << 15) + (modulus << 3)+1)
         PLL_reg0 = np.uint32((int_div << 15) + (frac_div << 3)+0)
 
@@ -181,4 +209,3 @@ class ADC_PLL_base(object):
         if not self.adc_board.is_mezzanine_present():
             self.logger.info('%r: FMC board not present' % self.adc_board)
         self.logger.info('%r:  No status info' % self.adc_board)
-

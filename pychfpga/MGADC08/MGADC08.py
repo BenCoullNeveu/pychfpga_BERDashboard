@@ -1,6 +1,4 @@
 #!/usr/bin/python
-# Disable pylint Line too long (=C0301)
-# pylint: disable=C0301
 
 """
 MGADC08.py module
@@ -31,6 +29,7 @@ from . import ADC_PLL
 from . import AmbTemp
 from . import MGT_PLL
 
+
 class MGADC08_base(FMCMezzanine):
     """ Implements the object that exposes the MGADC08 FMC ADC board hardware ressources"""
     handler_name = 'MGADC08_Handler'
@@ -41,13 +40,19 @@ class MGADC08_base(FMCMezzanine):
     _pk = Column(Integer, ForeignKey('fmc_mezzanines._pk'), primary_key=True)
 
     @classmethod
-    def decode_eeprom(cls, eeprom_data:bytes):
-        """ Parses the mezzanine EEPROM data into a IPMI structure, supporting both the IPMI and old McGill storage format.
+    def decode_eeprom(cls, eeprom_data: bytes):
+        """
+        Parses the mezzanine EEPROM data into a IPMI structure, supporting
+        both the IPMI and old McGill storage format.
 
         Parameters:
             eeprom_data (bytes): Contents of the eeprom
+
         Returns:
-            FRU object containing the information from the EEPROM. None is returned if the EEPROM is not formatted in a recognized format"""
+
+            FRU object containing the information from the EEPROM. None is
+            returned if the EEPROM is not formatted in a recognized format"""
+
         logger = logging.getLogger(__name__)
         if eeprom_data[0] == 0x0d:  # if this is McGill format
             # # Read the eeprom block by block until we detect the end of the
@@ -64,11 +69,13 @@ class MGADC08_base(FMCMezzanine):
             last_char = eeprom_data.find(b'}')
             if last_char < 0:
                 logger.error(
-                    '%r: The Mezzanine EEPROM indicated McGill-style data but no valid dictionary found on EEPROM. Did the board pass '
+                    '%r: The Mezzanine EEPROM indicated McGill-style data but '
+                    'no valid dictionary found on EEPROM. Did the board pass '
                     'the quality control tests?' % cls)
                 return None
 
-            data_string = eeprom_data[1:last_char + 1]  # keep only the dict definition data_string: remove first char (board ID) and stop at last '}'.
+            # keep only the dict definition data_string: remove first char (board ID) and stop at last '}'.
+            data_string = eeprom_data[1:last_char + 1]
 
             # Read checksum
             crc_string = eeprom_data[last_char + 1: last_char + 1 + 4]
@@ -131,7 +138,7 @@ class MGADC08_Handler(FMCMezzanineHandler):
     SPI_IO_EXP_ADDR    = 6  # IO Expander. Read/Write device
     SPI_PLL2_ADDR      = 7  # MGT PLL. Write only.
 
-    _board_is_present = False # Will be checked later
+    _board_is_present = False  # Will be checked later
 
     def __repr__(self):
         return "%r.Mezz%r" % (
@@ -146,7 +153,7 @@ class MGADC08_Handler(FMCMezzanineHandler):
         self.reference_frequency = None
         # self._board_info = {}
 
-        #self.check_FMC_presence()
+        # self.check_FMC_presence()
         self.verbose = False
         self._board_is_present = True
 
@@ -195,15 +202,16 @@ class MGADC08_Handler(FMCMezzanineHandler):
         'sma': 1
         }
 
-
     def set_refclk_source(self, source):
         if source not in self.REFCLK_SOURCES:
-            raise ValueError("Invalid Reference clock source name '%s'. Valid sources are: %s" % (source, ', '.join(list(self.REFCLK_SOURCES.keys()))))
+            raise ValueError(
+                "Invalid Reference clock source name '%s'. Valid sources are: %s"
+                % (source, ', '.join(list(self.REFCLK_SOURCES.keys()))))
         self.IOExpander.REFCLK_INPUT_SEL = self.REFCLK_SOURCES[source]
 
     def get_refclk_source(self):
         source = self.IOExpander.REFCLK_INPUT_SEL
-        return [k for k,v in list(self.REFCLK_SOURCES.items()) if v == source][0]
+        return [k for k, v in list(self.REFCLK_SOURCES.items()) if v == source][0]
 
     def is_adc_pll_locked(self):
         """ Check is the Mezzanine's ADC PLL is locked *By looking at the PLL_LOCK line on the FMC connector*.
@@ -267,7 +275,9 @@ class MGADC08_Handler(FMCMezzanineHandler):
     def status(self):
         """ Displays the status of the ADC board"""
         self.logger.info('%r: Status of MGADC08 ADC board on Mezzanine %i' % (self, self.mezzanine))
-        self.logger.info('%r:   ADC board is %s' % (self, ('not present', 'present')[bool(self.is_mezzanine_present())]))
+        self.logger.info(
+            '%r:   ADC board is %s'
+            % (self, ('not present', 'present')[bool(self.is_mezzanine_present())]))
         if self.is_mezzanine_present():
             self.AmbTemp.status()
             self.IOExpander.status()
@@ -294,7 +304,11 @@ class MGADC08_Handler(FMCMezzanineHandler):
     #                 raise
     #             print('e', end=' ')
     #             time.sleep(0.01)
-    #     #125 is the ASCII character for the } which is used in the dictionary. The 1000 characters is used to make sure this doesn't go indefinitely
+    #
+    #     #125 is the ASCII character for the } which is used in the
+    #     dictionary. The 1000 characters is used to make sure this doesn't go
+    #     indefinitely
+    #
     #     #Converts each address in EEPROM to a character and put it together in a string
     #     dictionary_is_present = False
     #     for i in range(500):
@@ -348,7 +362,6 @@ class MGADC08_Handler(FMCMezzanineHandler):
     #         print('No dictionary found on EEPROM. Did the board pass the quality control test?')
     #     self._board_info = dict_out
 
-
     # Old method used to QC the original boards. Not used anymore. Not ported to Py3.
     # def write_board_info(self, dict = None ):
     #         """
@@ -366,10 +379,14 @@ class MGADC08_Handler(FMCMezzanineHandler):
     #             head_ver = input("Enter the header version (e.g. 1): ")
     #             delay_tab = input("Enter the delay table of the board: ")
     #             model = input("Enter the model of the ADC (e.g. MGADC08):      ")
-    #             stat = input("Enter the status of the board (0 = Working, 1 = In QC , 2 = Has problems but works, 3 = Failed): ")
+    #
+    #             stat = input("Enter the status of the board (0 = Working, 1
+    #                = In QC , 2 = Has problems but works, 3 = Failed): ")
+#
     #             board_date = input("Enter the date the last test was done (DD/MM/YYYY): ")
     #             site = input("Enter the URL to find all the tests associated with this board: ")
-    #             comments = input("Enter any additional comments you may have about the board. If none, please put 'None': ")
+    #             comments = input("Enter any additional comments you may have about the
+    #                  board. If none, please put 'None': ")
     #             dict = {'Serial #': ser_num, \
     #                     'Rev #': rev_num, \
     #                     'Fabrication Run': fab_run, \
@@ -396,7 +413,8 @@ class MGADC08_Handler(FMCMezzanineHandler):
     #                         try:
     #                             self.eeprom.write(i+1, ord(chars[i]))
     #                         except Exception as e:
-    #                             print(self.logger.info('%r: error writing to EEPROM, will retry: %s' % (self, e.message)))
+    #                             print(self.logger.info('%r: error writing to EEPROM, will retry: %s'
+    #                                   % (self, e.message)))
     #                             pass
     #                 except Exception as e:
     #                     print(self.logger.info('%r: error reading from EEPROM, will retry: %s' % (self, e.message)))
