@@ -57,18 +57,20 @@ class FpgaMmi:
     OPCODE_READ_STATUS        = 0b010
     OPCODE_READ_RAM           = 0b011
 
-    def __init__(self,
-                 fpga_ip_addr,
-                 fpga_port_number,
-                 interface_ip_addr=None,
-                 local_port_number=0,
-                 fpga_serial_number=None,
-                 set_fpga_networking_parameters=False,
-                 udp_retries=10,
-                 timeout=0.5,
-                 parent=None):
+    def __init__(
+            self,
+            fpga_ip_addr,
+            fpga_port_number,
+            interface_ip_addr=None,
+            local_port_number=0,
+            fpga_serial_number=None,
+            set_fpga_networking_parameters=False,
+            udp_retries=10,
+            timeout=0.5,
+            parent=None):
         """
-         'fpga_serial_number' is needed only if we set the FPGA networking using UDP broadcasts (set_fpga_networking_parameters is True)
+         'fpga_serial_number' is needed only if we set the FPGA networking
+         using UDP broadcasts (set_fpga_networking_parameters is True)
         """
         self.logger = logging.getLogger(__name__)
         self.fpga_ip_addr = fpga_ip_addr
@@ -87,14 +89,16 @@ class FpgaMmi:
         self.error_counter = 0
 
     def __enter__(self):
-            self.open()
-            return self
+        self.open()
+        return self
 
     def __exit__(self, etype, einst, etraceback):
-            self.close()
+        self.close()
 
     def __repr__(self):
-        # return '%r.%s(FPGA %s:%s, local %s:%s)' % (self.parent, self.__class__.__name__, self.fpga_ip_addr, self.fpga_port_number, self.interface_ip_addr, self.local_port_number)
+        # return '%r.%s(FPGA %s:%s, local %s:%s)' % (
+        # self.parent, self.__class__.__name__, self.fpga_ip_addr,
+        # self.fpga_port_number, self.interface_ip_addr, self.local_port_number)
         return '%r.%s(%s)' % (self.parent, self.__class__.__name__, self.fpga_ip_addr)
 
     def open(self):
@@ -109,14 +113,15 @@ class FpgaMmi:
 
         self.udp = udp.Udp(
             remote_ip_addr=self.fpga_ip_addr,
-            remote_port_number=self.fpga_port_number, # None or 0: use local port number
-            local_port_number=self.local_port_number, # 0 : use random port assigned by OS
+            remote_port_number=self.fpga_port_number,  # None or 0: use local port number
+            local_port_number=self.local_port_number,  # 0 : use random port assigned by OS
             if_ip_addr=self.interface_ip_addr)
 
         self.udp.set_timeout(self.timeout)
         self.local_port_number = self.udp.local_port_number
         self.fpga_port_number = self.udp.remote_port_number
-        # self.logger.info('   Opened control socket on %s:%i through interface %s' % (self.fpga_ip_addr, self.local_port_number, self.interface_ip_addr))
+        # self.logger.info('   Opened control socket on %s:%i through interface %s'
+        #                  % (self.fpga_ip_addr, self.local_port_number, self.interface_ip_addr))
 
     def close(self):
         """Closes the socket"""
@@ -173,9 +178,12 @@ class FpgaMmi:
         trial = 0
         while trial < number_of_trials:
             with FpgaMmi(FpgaMmi.BROADCAST_IP_ADDR, FpgaMmi._BROADCAST_BASE_PORT) as mmi:
-                mmi.write(self._FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig1) # Send string with trigger flag cleared
-                mmi.write(self._FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig2) # resend with trigger flag set. The 0-to-1 transition will load the desired networking parameters
-                mmi.write(self._FPGA_IP_SETUP_BASE_ADDR, [0] * len(ip_setup_string + trig2)) # Write zeros everywhere to make sure we stop latching data
+                # Send string with trigger flag cleared
+                mmi.write(self._FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig1)
+                # resend with trigger flag set. The 0-to-1 transition will load the desired networking parameters
+                mmi.write(self._FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig2)
+                # Write zeros everywhere to make sure we stop latching data
+                mmi.write(self._FPGA_IP_SETUP_BASE_ADDR, [0] * len(ip_setup_string + trig2))
             # logger.debug('FPGA S/N %016X is configured with address %s:%i' % (serial_number, ip_addr, port_number))
             if not check:
                 return
@@ -183,10 +191,16 @@ class FpgaMmi:
             if serial and serial == serial_number:
                 return
             else:
-                logger.debug('%r: Networking configuration of FPGA S/N %016X with address %s:%i failed.' % (self, serial_number, ip_addr, port_number))
-                trial +=1
-        logger.debug('%r: Unable to configure FPGA S/N %016X with address %s:%i' % (self, serial_number, ip_addr, port_number))
-        raise FpgaMmiException('%r: Unable to configure FPGA S/N %016X with address %s:%i' % (self, serial_number, ip_addr, port_number))
+                logger.debug(
+                    '%r: Networking configuration of FPGA S/N %016X with address %s:%i failed.'
+                    % (self, serial_number, ip_addr, port_number))
+                trial += 1
+        logger.debug(
+            '%r: Unable to configure FPGA S/N %016X with address %s:%i'
+            % (self, serial_number, ip_addr, port_number))
+        raise FpgaMmiException(
+            '%r: Unable to configure FPGA S/N %016X with address %s:%i'
+            % (self, serial_number, ip_addr, port_number))
 
     def get_fpga_config(self, ip_addr, port_number,
                         timeout=0.1, number_of_trials=3):
@@ -253,7 +267,8 @@ class FpgaMmi:
             resync (bool): if `resync` is True, the sequence number will be resynchronized to the
                 incoming reply and will not raise an exception.
 
-            timeout_increase_factor (float): factor by which the timeout is increased each time there is a timeout error.
+            timeout_increase_factor (float): factor by which the timeout is
+                increased each time there is a timeout error.
 
         Returns:
 
@@ -276,9 +291,14 @@ class FpgaMmi:
                 self.send_counter += 1
                 data = self.udp.recv()
                 self.recv_counter += 1
-                # self.logger.warning('read command: Got 0x%02x, expected 0x%02x' % (ord(data[0]), self.send_counter & 0xff))
-                # Check if the sequence number returned by the FPGA corresponds to ours so we know we got the answer to the right command.
-                seq = data[0] # received sequence number
+                # self.logger.warning(
+                #   'read command: Got 0x%02x, expected 0x%02x'
+                #   % (ord(data[0]), self.send_counter & 0xff))
+
+                # Check if the sequence number returned by the FPGA
+                # corresponds to ours so we know we got the answer to the
+                # right command.
+                seq = data[0]  # received sequence number
                 if seq != self.send_counter & 0xff:
                     if resync:
                         self.send_counter = seq
@@ -290,14 +310,18 @@ class FpgaMmi:
                     # FPGA is one count behind.
                     elif has_timed_out and seq == (self.send_counter - 1) & 0xff:
                         self.send_counter = seq
-                        error = "Command sequnce number was offset by one following a timeout. The previous command probably didn't reach the FPGA. Resynchronizing and retrying to make sure."
+                        error = "Command sequence number was offset by one following a timeout. " \
+                                "The previous command probably didn't reach the FPGA. " \
+                                "Resynchronizing and retrying to make sure."
                     else:
-                        error = 'Invalid sequence number from a read command. Got 0x%02x, expected 0x%02x.' % (seq, self.send_counter & 0xff)
+                        error = ('Invalid sequence number from a read command. '
+                                 'Got 0x%02x, expected 0x%02x.'
+                                 % (seq, self.send_counter & 0xff))
                 elif len(data) != expected_reply_length + 1:
-                        error = "FPGA Read command to returned %i bytes (0x%s). %i were expected." % (
-                            len(data),
-                            ' '.join('%02X' % b for b in data),
-                            expected_reply_length + 1)
+                    error = "FPGA Read command to returned %i bytes (0x%s). %i were expected." % (
+                        len(data),
+                        ' '.join('%02X' % b for b in data),
+                        expected_reply_length + 1)
 
                 has_timed_out = False
             except self.udp.TimeoutException:
@@ -365,12 +389,13 @@ class FpgaMmi:
             opcode = self.OPCODE_READ_CONTROL
 
         while offset < byte_length:
-            log2_length = min((byte_length - offset).bit_length() - 1, 3)  # compute the log2 of the number of bytes to read, limited to 3 (i.e. 8 bytes)
+            # compute the log2 of the number of bytes to read, limited to 3 (i.e. 8 bytes)
+            log2_length = min((byte_length - offset).bit_length() - 1, 3)
             read_length = 1 << log2_length  # number of bytes to read in this iteration
             command_bytes = bytes([
-                    (opcode << 5) | (log2_length << 3) + ((addr >> 16) & 0x07), # byte 0: opcode, length, MSB of address
-                    (addr >> 8) & 0xFF, # byte 2: address
-                    addr & 0xFF]) # Byte 3: address
+                    (opcode << 5) | (log2_length << 3) + ((addr >> 16) & 0x07),  # byte 0: opcode, length, MSB of address
+                    (addr >> 8) & 0xFF,  # byte 1: address
+                    addr & 0xFF])  # Byte 2: LSB of address
 
             data = self._send_command(command_bytes, read_length, retry, resync)
             if retry is not None and retry < 0:
@@ -382,9 +407,10 @@ class FpgaMmi:
             addr += read_length
             offset += read_length
 
-        dout.dtype = np.dtype(type) # change interpretation of the byte array into a 'type' array
+        dout.dtype = np.dtype(type)  # change interpretation of the byte array into a 'type' array
 
-        #if we requested a single value (length=1), returns the object, otherwise return a numpy array of objects
+        # If we requested a single value (length=1), returns the object,
+        # otherwise return a numpy array of objects
         if len(dout) == 1:
             return dout[0]
         else:
@@ -401,10 +427,12 @@ class FpgaMmi:
         This command can read only a single object that is 1,2,4 or 8 bytes
         wide.
         """
-
-        byte_length = np.dtype(type).itemsize  # number of bytes contained in the destination vector type
-        log2_length = byte_length.bit_length()-1  # compute the log2 of the number of bytes to read, limited to 3 (i.e. 8 bytes)
-        read_length = 1 << log2_length  # number of bytes to read in this iteration
+        # number of bytes contained in the destination vector type
+        byte_length = np.dtype(type).itemsize
+        # compute the log2 of the number of bytes to read, limited to 3 (i.e. 8 bytes)
+        log2_length = byte_length.bit_length()-1
+        # number of bytes to read in this iteration
+        read_length = 1 << log2_length
         # dout = np.zeros(byte_length, np.int8) # initialize result vector as a byte array
         dout = []
         # Loop to read all required bytes (the FPGA does not support multi-byte reads (yet))
@@ -428,7 +456,7 @@ class FpgaMmi:
         while True:
             try:
                 data = self.udp.recv()
-                if data == s:  # ignore the command packet that was broadcasted back to us
+                if data == command_bytes:  # ignore the command packet that was broadcasted back to us
                     continue
             except self.udp.TimeoutException:
                 break
@@ -450,7 +478,7 @@ class FpgaMmi:
             return bytes(iter(data))
         elif isinstance(data, int):
             return bytes([data])
-        elif isinstance(data, (np.uint32, np.uint16, bp.uint8)):
+        elif isinstance(data, (np.uint32, np.uint16, np.uint8)):
             return data.newbyteorder('>').tobytes()  # store as big endian (most significant byte first)
         else:
             return bytes([data])
@@ -506,7 +534,7 @@ def discover_fpgas(interface_ip_addr=None, source_subarrays=[0], timeout=0.1):
         - This function should not be called when the MMI interface is opened.
         - This function is supported only for direct Ethernet connections to
           the FPGA
-        - /!\ Calling this function will disrupt operations of all FPGAs in
+        - //!\\ Calling this function will disrupt operations of all FPGAs in
           the network as reading from them cause them to redirect their
           outputs to this machine on the broadcast port.
     """

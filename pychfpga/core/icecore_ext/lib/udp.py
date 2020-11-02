@@ -1,6 +1,4 @@
 #!/usr/bin/python
-# Disable pylint TAB warnings (W0312) and Line too long (=C0301)
-# pylint: disable=W0312,C0301
 
 """
 udp.py module
@@ -12,6 +10,7 @@ Provides a class that represents a UDP socket
 import logging
 import socket
 import __main__  # used to store a list of all opened sockets
+
 
 class Udp(object):
     """
@@ -39,7 +38,7 @@ class Udp(object):
         self.remote_port_number = remote_port_number
         self.remote_ip_addr = remote_ip_addr
         self.address = (remote_ip_addr, remote_port_number)
-        self.local_port_number = local_port_number or 0 # make sure None is 0
+        self.local_port_number = local_port_number or 0  # make sure None is 0
 
         if if_ip_addr:
             self.if_ip_addr = if_ip_addr
@@ -70,7 +69,8 @@ class Udp(object):
         if self.remote_ip_addr == self.BROADCAST:
             self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, True)
         # sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
-        #self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # don't use REUSEADDR: many sockets get open and we then fail to receive replies
+        # self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # #         don't use REUSEADDR: many sockets get open and we then fail to receive replies
 
         # Bind the UDP port to the specified interface .
         #
@@ -79,7 +79,9 @@ class Udp(object):
         # interface and port number. the desired values. The FPGA will send replies back to
         # this/port
         #
-        # We need to specify the interface explicitly because the packet might be sent over the wrong (default) interface (which happened when the 10GbE was connected to the FPGA).
+        # We need to specify the interface explicitly because the packet might
+        # be sent over the wrong (default) interface (which happened when the
+        # 10GbE was connected to the FPGA).
         self.sock.bind((self.if_ip_addr, self.local_port_number))
         # store the socket in the main module so it will live persistently until the Python session is closed.
         __main__.__opened_sockets__[self.local_port_number] = self.sock
@@ -123,7 +125,6 @@ class Udp(object):
         data = self.sock.recv(self.BUFFER_LENGTH)
         return data
 
-
     def flush(self):
         """Flushes the socket receive buffer."""
         old_timeout = self.sock.gettimeout()
@@ -134,8 +135,8 @@ class Udp(object):
                 if len(data) == 0:
                     break
         except socket.timeout:
-            pass # do nothing
-            #print('Buffer is empty')
+            pass  # do nothing
+            # print('Buffer is empty')
         self.sock.settimeout(old_timeout)
 
     def set_timeout(self, timeout):
