@@ -6,13 +6,15 @@ import logging
 import hashlib
 import zlib
 import struct
-import urllib2
+import urllib.request
+import urllib.error
+import urllib.parse
 import datetime
 import os
 
 
 class FpgaBitstream(object):
-    """ Oject used to fetch and store FPGA bit files.
+    """ Object used to fetch and store FPGA bit files.
 
     The firmware is represented by a URL ( a file or a remote location), and
     is loaded in memory when needed.
@@ -29,7 +31,7 @@ class FpgaBitstream(object):
         """ Creates a bitstream object from the specified 'url', which can be
         a filename or a remote resource.
 
-        If 'load' is true, the itsream will be loded in memory immediately,
+        If 'load' is true, the bitsream will be loaded in memory immediately,
         otherwise it will be loaded only when needed.
         """
         self.logger = logging.getLogger(__name__)
@@ -74,7 +76,7 @@ class FpgaBitstream(object):
         self.logger.info('%r: Reading file from URL %s ...' %
                          (self, self.url))
         if '://' in self.url:
-            with urllib2.urlopen(self.url) as res:
+            with urllib.request.urlopen(self.url) as res:
                 data = res.read()
         else:
             # Open as a file with relative path. mode='rb': b is important ->
