@@ -6,13 +6,13 @@ concurrently on all its items.
 import collections
 import logging
 import itertools
-#import numpy as np
 
-import async
+from . import async
 
 __all__ = [
     "Ccoll"
 ]
+
 
 class Ccoll(object):
     """
@@ -77,7 +77,6 @@ class Ccoll(object):
     _dict = None
     logger = None
 
-
     @classmethod
     def chain(cls, *iterables):
         """ Concatenates any number of iterables into a sincle Ccoll collection. """
@@ -86,7 +85,8 @@ class Ccoll(object):
     @classmethod
     def unique(cls, iterable):
         """ Create a Ccoll with only unique elements. """
-        return cls(collections.OrderedDict((key, None) for key in iterable).keys())  # Use OrderedDist to create an 'OrderedSet'
+        # Use OrderedDist to create an 'OrderedSet'
+        return cls(collections.OrderedDict((key, None) for key in iterable).keys())
 
     def __init__(self, objects, keys=None):
         # Do not define a docstring here: for some reason ipython will use it
@@ -101,7 +101,7 @@ class Ccoll(object):
         object_list = list(objects)  # in case object is a generator etc.
         # Get the object that this class will mimic if callble
         self._proto = object_list[0] if object_list else None
-        keys = keys if keys is not None else range(len(object_list))
+        keys = keys if keys is not None else list(range(len(object_list)))
         if len(set(keys)) != len(object_list):
             raise ValueError('Keys are not unique')
         self._dict = collections.OrderedDict(sorted(zip(keys, object_list)))
@@ -128,38 +128,41 @@ class Ccoll(object):
 
     # Mirror the main attributes of _proto if it is callable so we can mimic
     # its signature.
-    __doc__ = property(lambda self: self._proto.__doc__ if callable(self._proto) else 'Collection of %s objects' % type(self._proto))
+    __doc__ = property(lambda self: self._proto.__doc__ if callable(self._proto)
+                       else 'Collection of %s objects' % type(self._proto))
     __class__ = property(lambda self: self._proto.__class__ if callable(self._proto) else Ccoll)
     __name__ = property(lambda self: self._proto.__name__ if callable(self._proto) else Ccoll.__name__)
-    im_func = property(lambda self: self._proto.im_func)
-    func_code = property(lambda self: self._proto.func_code)
-    func_defaults = property(lambda self: self._proto.func_defaults)
+    __func__ = property(lambda self: self._proto.__func__)
+    __code__ = property(lambda self: self._proto.__code__)
+    ___defaults__ = property(lambda self: self._proto.__defaults__)
 
     # Offer a subset of OrderedDict methods. We could just have inherited dict,
     # but methods that change the dict would have been available, and it is
     # also tricky to redefine __iter__
-    def __iter__(self): return self._dict.itervalues()
+    def __iter__(self): return iter(self._dict.values())
 
     def __len__(self): return self._dict.__len__()
 
     def __reversed__(self): return self._dict.__reversed__()
 
-    def items(self): return self._dict.items()
+    def items(self): return list(self._dict.items())
 
-    def iteritems(self): return self._dict.iteritems()
+    def iteritems(self): return iter(self._dict.items())
 
-    def keys(self): return self._dict.keys()
+    def keys(self): return list(self._dict.keys())
 
-    def iterkeys(self): return self._dict.iterkeys()
+    def iterkeys(self): return iter(self._dict.keys())
 
-    def values(self): return self._dict.values()
+    def values(self): return list(self._dict.values())
 
-    def itervalues(self): return self._dict.itervalues()
+    def itervalues(self): return iter(self._dict.values())
 
     def __getitem__(self, index): return self._dict.__getitem__(index)
 
     def __contains__(self, x):
-        raise TypeError("Please explicitly specify the target: use 'x in ccoll.keys() or 'x in ccoll.values()' instead of 'x in ccoll'")
+        raise TypeError("Please explicitly specify the target: "
+                        "use 'x in ccoll.keys() or 'x in ccoll.values()' "
+                        "instead of 'x in ccoll'")
 
     def __call__(self, *args, **kwargs):
         # """ Concurrently calls every element of the collection with the
@@ -184,8 +187,8 @@ class Ccoll(object):
     #  For example, if c in a Ccoll containing  a list of dicts, c.values() returns the elements of
     #  the Ccoll, no the values() of each dict element. c.item_values() does however call values() on each dict element.
 
-    def getitem(self, slice_): # deprecated
-        print 'getitem: use item_getitem instead'
+    def getitem(self, slice_):  # deprecated
+        print('getitem: use item_getitem instead')
         return self.__getattr__('__getitem__')(slice_)
 
     def item_getitem(self, slice_):
@@ -203,16 +206,20 @@ class Ccoll(object):
     def get(self, *args, **kwargs):
         """
         ``get(key)`` returns the value with key and raises KeyError if not found.
+
         ``get(key, default) returns the value with the key and returns ``default`` if not found.
-        ``get(attr1=value1, attr2=value2 ...)`` returns the first element where all the specified attributes match the specified values.
+
+        ``get(attr1=value1, attr2=value2 ...)`` returns the first element
+        where all the specified attributes match the specified values.
         """
         if (args and kwargs) or not (args or kwargs):
             raise AttributeError('Specify either a key or a key=value arguments')
 
         if len(args) == 0:
-            value = (v for (k,v) in self._dict.items() if all(hasattr(v, kn) and getattr(v, kn) == kv for (kn, kv) in kwargs.items()))
+            value = (v for (k, v) in self._dict.items() if all(hasattr(v, kn)
+                     and getattr(v, kn) == kv for (kn, kv) in kwargs.items()))
             try:
-                return value.next()
+                return next(value)
             except StopIteration:
                 raise KeyError('No object match the specified key=value pair(s)')
         elif len(args) == 1:
@@ -261,8 +268,8 @@ class Ccoll(object):
     def __array__(self, dtype=None):
         import numpy as np
         if dtype is None:
-            dtype = type(self._dict.itervalues().next())
-        return np.array(self._dict.values(), dtype=dtype)
+            dtype = type(next(iter(self._dict.values())))
+        return np.array(list(self._dict.values()), dtype=dtype)
 
     def _check_collection_attributes(self, name):
         """ Checks if all members of the collection has the specified
@@ -274,7 +281,5 @@ class Ccoll(object):
         elif not all(attr_present):
             raise AttributeError("Attribute %s must exist on all elements "
                                  "of the current results" % name)
-
-
 
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab
