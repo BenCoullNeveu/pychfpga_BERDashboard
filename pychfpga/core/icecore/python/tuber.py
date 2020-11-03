@@ -19,7 +19,7 @@ import tornado.ioloop
 import tornado.httpclient
 import tornado.gen
 
-import async
+from . import async
 
 #tornado.httpclient.AsyncHTTPClient.configure("tornado.curl_httpclient.CurlAsyncHTTPClient", max_clients=300) #, max_buffer_size=200000)  # So we can probe many boards at once (Default is 10)
 tornado.httpclient.AsyncHTTPClient.configure(None, max_clients=300, max_buffer_size=200000)  # So we can probe many boards at once (Default is 10)
@@ -475,7 +475,7 @@ class TuberObject(object):
         # don't hide other superclasses
         class_attributes = [item for class_ in type(self).mro()
                             for item in class_.__dict__.keys()]
-        instance_attributes = self.__dict__.keys()
+        instance_attributes = list(self.__dict__.keys())
         return list(set(class_attributes +
                         instance_attributes +
                         meta.properties +
