@@ -937,19 +937,19 @@ class IceBoardPlusHandler(IceBoardHandler):
         ARM processor through the Tuber protocol.
         """
         (meta, props, methods) = self._tuber_get_meta()  # get the meta info
-        print "Methods for tuber object '%s':" % self.tuber_objname
-        print '-----------------------------------------'
+        print("Methods for tuber object '%s':" % self.tuber_objname)
+        print('-----------------------------------------')
         for method_name, method_properties in sorted(methods.items()):
-            print '%-30s: %s' % (method_name, method_properties.summary)
-        print
-        print "Properties for tuber object '%s':" % self.tuber_objname
-        print '-----------------------------------------'
+            print('%-30s: %s' % (method_name, method_properties.summary))
+        print()
+        print("Properties for tuber object '%s':" % self.tuber_objname)
+        print('-----------------------------------------')
         for prop_name, prop_properties in sorted(props.items()):
             try:
                 values = ', '.join('.%s' % p for p in prop_properties)
             except TypeError:
                 values = '= %s' % prop_properties
-            print '%-30s: %s' % (prop_name, values)
+            print('%-30s: %s' % (prop_name, values))
 
 # @session.register_yaml_object
 # @tuber.TuberCategory("Mezzanine", lambda m: m.iceboard,

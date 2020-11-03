@@ -23,7 +23,7 @@ from . import hardware_map, tuber, async
 from . import handler
 from .handler import HandlerParentAttribute
 from . import session
-from hw import ipmi_fru
+from .hw import ipmi_fru
 import datetime
 import base64
 

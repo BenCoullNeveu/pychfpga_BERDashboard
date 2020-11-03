@@ -73,8 +73,8 @@ import sqlalchemy.orm
 import sqlalchemy.ext.declarative
 import sqlalchemy.types
 
-import async
-import ccoll
+from . import async
+from . import ccoll
 
 Base = sqlalchemy.ext.declarative.declarative_base()
 
@@ -130,7 +130,7 @@ class HWMQuery(sqlalchemy.orm.Query):
             raise AttributeError()
 
         # First, try algorithms from the registry.
-        for (cls, algs) in self._algorithm_registry.iteritems():
+        for (cls, algs) in self._algorithm_registry.items():
             if not issubclass(self.column_descriptions[0]['type'], cls):
                 continue
             if name in algs:
@@ -178,7 +178,7 @@ class HWMQuery(sqlalchemy.orm.Query):
             set.intersection(*[set(dir(obj)) for obj in self])
 
         # Add algorithms from the registry.
-        for (cls, algs) in self._algorithm_registry.iteritems():
+        for (cls, algs) in self._algorithm_registry.items():
             if issubclass(self.column_descriptions[0]['type'], cls):
                 s.update([a.__name__ for a in algs])
 

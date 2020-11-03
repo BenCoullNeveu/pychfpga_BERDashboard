@@ -56,7 +56,7 @@ import os
 import sys
 import mimetypes
 import logging.config
-import hardware_map
+from . import hardware_map
 
 
 class HWMCSVConstructor(object):
@@ -297,10 +297,10 @@ class YAMLLoader(yaml.SafeLoader):
         super(YAMLLoader, self).__init__(*args, **kwargs)
 
         # Plumbing
-        self.add_constructor(u'!include', yaml_include_constructor)
-        self.add_constructor(u'!logging', logging_constructor)
-        self.add_constructor(u'!HardwareMap', hwm_constructor)
-        self.add_constructor(u'!HWMLookup', hwm_lookup_constructor)
+        self.add_constructor('!include', yaml_include_constructor)
+        self.add_constructor('!logging', logging_constructor)
+        self.add_constructor('!HardwareMap', hwm_constructor)
+        self.add_constructor('!HWMLookup', hwm_lookup_constructor)
 
 
 def set_yaml_loader_class(cls):

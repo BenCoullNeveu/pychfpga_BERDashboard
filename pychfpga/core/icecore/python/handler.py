@@ -156,7 +156,7 @@ class HandlerObject(object):
         try:  # AttributeError in handler are bad. Promote to RuntimeError
             h = self.handler
         except AttributeError:  # Re-raise, but preserve traceback info
-            raise RuntimeError, sys.exc_info()[1], sys.exc_info()[2]
+            raise RuntimeError(sys.exc_info()[1]).with_traceback(sys.exc_info()[2])
         if h:
             result = getattr(h, name)  # Will raise AttributeError if needed
             if callable(result):
@@ -260,7 +260,7 @@ class HandlerParentAttribute(object):
             try:  # Elevate AttributeError to RuntimeError, otherwise weird
                 return self._getter(parent) if parent else self._values[obj]
             except (AttributeError):  # Re-raise, but preserve traceback info
-                raise RuntimeError, sys.exc_info()[1], sys.exc_info()[2]
+                raise RuntimeError(sys.exc_info()[1]).with_traceback(sys.exc_info()[2])
         else:
             try:
                 return self._values[obj]
@@ -273,7 +273,7 @@ class HandlerParentAttribute(object):
         self._values[obj] = value
 
 
-class Handler(object):
+class Handler(object, metaclass=HandlerMeta):
     """ Basic generic handler base class. All handlers should be derived from this
     class.
 
@@ -283,7 +283,6 @@ class Handler(object):
     Define all attributes that can be initialized with keywords arguments in
     the class so they won't be passed on to other subclasses.
     """
-    __metaclass__ = HandlerMeta  # Allows automatic registration with the parent class
     __handler_for__ = None  # Do not register this handler by default
     __handler_name__ = None # Name under which this class is registered with the parent class
 
