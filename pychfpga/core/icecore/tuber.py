@@ -403,7 +403,6 @@ class TuberObject:
         '''
 
         attrs = dir(super(self.__class__, self))
-        print('dir')
         (meta, _, _) = self._tuber_get_meta()
 
         return sorted(attrs + meta.properties + meta.methods)
@@ -496,7 +495,7 @@ class TuberObject:
 
         if name not in meta.methods and name not in meta.properties:
             raise AttributeError(f"'{name}' is not a valid method or property!")
-        print(f'getattr: {name}')
+
         if name in meta.properties:
             # Fall back on properties.
             setattr(self, name, metap[name])
