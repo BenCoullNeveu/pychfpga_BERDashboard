@@ -15,7 +15,6 @@ History:
 import logging
 
 import numpy as np
-from pychfpga.common.util import hex
 from .Module import Module_base, BitField, CONTROL, STATUS
 
 
@@ -195,12 +194,14 @@ class I2C_base(Module_base):
         read_data = read_data[-read_length:]
         # data.dtype=np.dtype(type)
         if error_msg:
-            error_msg = ('%r: write_read:  The following errors occured while '
-                         'writing %i bytes and reading %i bytes on FPGA I2C '
-                         'port %i at address 0x%02x with data %s\n %s' % (
-                            self, write_length, read_length,
-                            self.current_port, addr,
-                            hex(read_data), error_msg))
+            error_msg = (
+                '%r: write_read:  The following errors occured while '
+                'writing %i bytes and reading %i bytes on FPGA I2C '
+                'port %i at address 0x%02x with data [%s]\n %s' % (
+                    self, write_length, read_length,
+                    self.current_port, addr,
+                    ' '.join(hex(x) for x in read_data),
+                    error_msg))
             if noerror:
                 self.logger.warning(error_msg)
             else:
