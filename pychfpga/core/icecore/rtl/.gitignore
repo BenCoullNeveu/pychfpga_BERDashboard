@@ -1,8 +1,0 @@
-*.log
-*.jou
-*.str
-xsim.dir/
-vivado_pid*.zip
-xelab.pb
-xvhdl.pb
-.Xil/

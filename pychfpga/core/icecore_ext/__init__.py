@@ -9,6 +9,10 @@ This package provide IceBoard and IceCrate classes that extends the features off
       - Can be instantiated automatically by backplane auto-discovered based on the IPMI model type
       - Provides backplane-specific information and gives direct access to the backplane hardware
 """
-from .iceboard_ext import IceBoardExtHandler
-from .icecrate_ext import IceCrateExt, IceCrateExtHandler
+from .iceboard_ext import HardwareMap
+from .iceboard_ext import IceBoard, IceBoardPlus, IceBoardExtHandler
+from .icecrate_ext import IceCrate
 from .fpga_bitstream import FpgaBitstream
+# from .mdns_discovery import mdns_discover
+from .ccoll import Ccoll
+# from .myasync import myasync, async_sleep, async_return, async_moment

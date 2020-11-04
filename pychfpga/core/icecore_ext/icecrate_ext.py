@@ -4,11 +4,10 @@
 import logging
 import time
 
-from sqlalchemy import Column, Integer
-
-from ..icecore import IceCrate, IceCrateHandler, Ccoll
-from ..icecore import session
-from ..icecore.handler import HandlerParentAttribute
+from .ccoll import Ccoll
+from .iceboard_ext import HardwareMap
+# from ..icecore import session
+# from ..icecore.handler import HandlerParentAttribute
 
 from .lib.eeprom import eeprom as EEPROM
 from .lib import ina230  # I2C Voltage and current monitor
@@ -29,35 +28,58 @@ class MasterIceboardObject(object):
         obj = getattr(self._crate.master_iceboard, self._iceboard_object_name)
         return getattr(obj, name)
 
-
-@session.register_yaml_object()
-class IceCrateExt(IceCrate):
-    handler_name = 'IceCrateExtHandler'
-    __mapper_args__ = {'polymorphic_identity': 'IceCrateExt'}
-    __ipmi_part_number__ = []  # Must match part number in IPMI data
-    crate_number = Column(
-            Integer,
-            doc='Integer used to assign a experiment-specific unique numerical '
-                'number to a crate. Used in tuples to identify links')
-
-
-class IceCrateExtHandler(IceCrateHandler):
-    """ IceCrate handler that provides access to the backplane through an
-    IceBoard.
-
-    This defines the attributes and methods that are available to all
-    IceCrates (including those inherited from IceCrateHandler).
-
-    Any attributes added by the user must be accessed after it has been
-    ensured that the correct IceCrate has been instantiated.
+@HardwareMap.register_class()
+class IceCrate(object):
     """
-    part_number = None
-    crate_number = HandlerParentAttribute(lambda ib: ib.crate_number)
+    Provide the basic methods to operate the IceCrate.
+    """
 
-    #####################################
-    # Define hardware-specific constants
-    #####################################
-    NUMBER_OF_SLOTS = None  #
+    part_number = None
+    __ipmi_part_number__ = None  # Must match part number in IPMI data
+    crate_number = None
+
+    NUMBER_OF_SLOTS = 0
+
+    def __init__(self, serial=None, **kwargs):
+        """ Create all the objects needed to interface the backplane hardware.
+
+        __init__ should only passively create objects. It must not attempt to
+        access methods provided by the ARM as the Crate may be created before
+        IceBoards are associated to it.
+
+        IceCrate handler that provides access to the backplane through an
+        IceBoard.
+
+        This defines the attributes and methods that are available to all
+        IceCrates (including those inherited from IceCrateHandler).
+
+        Any attributes added by the user must be accessed after it has been
+        ensured that the correct IceCrate has been instantiated.
+
+        NOTE: attempting to access an unknown attribute might cause an
+        infinite recursion loop as Tuber tries to access the master_iceboard
+        object that may not already exist.
+        """
+        super().__init__(**kwargs)
+
+        self.slot = {}  # (slot_number:iceboar_object) mapping
+        self.serial = serial  # str
+
+        self._logger = logging.getLogger(__name__)
+        self._logger.debug('%r: Instantiating backplane object' % self)
+
+    def __repr__(self):
+        # return "IceCrate(%s)" % self.get_id()[0]
+        return '%s(%s)' % (self.__class__.__name__, self.get_id())
+
+    def init(self):
+        pass
+
+    @property
+    def master_iceboard(self):
+        active_iceboards = [(slot, iceboard) for (slot, iceboard) in self.slot.items() if iceboard.hostname or iceboard.serial]
+        return sorted(active_iceboards)[0][1]
+
     _BP_RX_TO_TX_MAP = {}
     _BP_TX_TO_RX_MAP = {tx: rx for (rx, tx) in _BP_RX_TO_TX_MAP.items()}
     _BP_RX_NET_LENGTH = {}
@@ -82,29 +104,6 @@ class IceCrateExtHandler(IceCrateHandler):
     def get_rx_net_length(cls, rx_slot_lane_tuple):
         return cls._BP_RX_NET_LENGTH[rx_slot_lane_tuple]
 
-    def __init__(self, **kwargs):
-        """ Create all the objects needed to interface the backplane hardware.
-
-        __init__ should only passively create objects. It must not attempt to
-        access methods provided by the ARM as the Crate may be created before
-        IceBoards are associated to it.
-
-        NOTE: attempting to access an unknown attribute might cause an
-        infinite recursion loop as Tuber tries to access the master_iceboard
-        object that may not already exist.
-        """
-        super(IceCrateExtHandler, self).__init__(**kwargs)
-
-        self._logger = logging.getLogger(__name__)
-        self._logger.debug('%r: Instantiating backplane hardware' % self)
-
-    def __repr__(self):
-        return "IceCrate(%s)" % self.get_id()[0]
-
-    def init(self):
-        """ Communicates with the hardware and sets it in a known state.
-        """
-        pass
 
     def get_string_id(self):
         """ Return a string composed of the backplane model and serial number
@@ -140,6 +139,7 @@ class IceCrateExtHandler(IceCrateHandler):
     def get_number_of_slots(self):
         return self.NUMBER_OF_SLOTS
 
+
 ####################################################
 #  __  __  _____ _  ________ ____  _____  __   __
 # |  \/  |/ ____| |/ /____  |  _ \|  __ \/_ | / /
@@ -151,17 +151,19 @@ class IceCrateExtHandler(IceCrateHandler):
 ####################################################
 
 
-@session.register_yaml_object()
-class IceCrate_MGK7BP16(IceCrateExt):
-    handler_name = 'IceCrate_MGK7BP16_Handler'
-    __mapper_args__ = {'polymorphic_identity': 'IceCrate_MGK7BP16'}
-    __ipmi_part_number__ = ['MGK7BP16', 'MGK7BP']  # Must match part number in IPMI data
+# @session.register_yaml_object()
+# class IceCrate_MGK7BP16(IceCrateExt):
+#     handler_name = 'IceCrate_MGK7BP16_Handler'
+#     __mapper_args__ = {'polymorphic_identity': 'IceCrate_MGK7BP16'}
+#     __ipmi_part_number__ = ['MGK7BP16', 'MGK7BP']  # Must match part number in IPMI data
 
 
-class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
+@HardwareMap.register_class()
+class IceCrate_MGK7BP16_Handler(IceCrate):
     """ IceCrate handler that provides access to the backplane through an IceBoard.
     """
     part_number = 'MGK7BP16'
+    __ipmi_part_number__ = ['MGK7BP16', 'MGK7BP']  # Must match part number in IPMI data
 
     #####################################
     # Define hardware-specific constants
@@ -452,7 +454,7 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
         infinite recursion loop as Tuber tries to access the master_iceboard
         object that may not already exist.
         """
-        super(IceCrateExtHandler, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self._logger = logging.getLogger(__name__)
         self._logger.debug('%r: Instantiating backplane hardware' % self)
@@ -1128,18 +1130,19 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
 # Generated with http://patorjk.com/software/taag/#p=display&f=Big Money-ne&t=MGK7BP1
 
 
-@session.register_yaml_object()
-class IceCrate_MGK7BP1(IceCrateExt):
-    handler_name = 'IceCrate_MGK7BP1_Handler'
-    __mapper_args__ = {'polymorphic_identity': 'IceCrate_MGK7BP1'}
-    __ipmi_part_number__ = ['MGK7BP1']  # Must match part number in IPMI data
+# @session.register_yaml_object()
+# class IceCrate_MGK7BP1(IceCrateExt):
+#     handler_name = 'IceCrate_MGK7BP1_Handler'
+#     __mapper_args__ = {'polymorphic_identity': 'IceCrate_MGK7BP1'}
+#     __ipmi_part_number__ = ['MGK7BP1']  # Must match part number in IPMI data
 
-
-class IceCrate_MGK7BP1_Handler(IceCrateExtHandler):
+@HardwareMap.register_class()
+class IceCrate_MGK7BP1_Handler(IceCrate):
     """
     Provides access to the 1-slot test backplane.
     """
     part_number = 'MGK7BP1'
+    __ipmi_part_number__ = ['MGK7BP1']  # Must match part number in IPMI data
 
     #####################################
     # Define hardware-specific constants
