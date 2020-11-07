@@ -149,7 +149,7 @@ def async_call(func_list, variable_arg_list, *args, **kwargs):
         func_list = [functools.partial(func, arg) for (func, arg)
                      in zip(func_list, variable_arg_list)]
 
-    if all([isinstance(f, Parallelizable) for f in func_list]): # If all the functions are coroutines
+    if all(iscoroutine(f) for f in func_list):  # If all the functions are coroutines
         @async        #  Create a Parallelizable object that runs all coroutines in parallel
         def p(*args, **kwargs):
             async_return((yield [f.async(*args, **kwargs) for f in func_list]))
