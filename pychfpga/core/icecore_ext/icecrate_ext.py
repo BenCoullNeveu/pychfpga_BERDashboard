@@ -5,7 +5,9 @@ import logging
 import time
 
 from .ccoll import Ccoll
-from .iceboard_ext import HardwareMap
+from .hardware_map import register_class
+from ..icecore.hardware_assets import IceCrateBase
+
 # from ..icecore import session
 # from ..icecore.handler import HandlerParentAttribute
 
@@ -28,11 +30,13 @@ class MasterIceboardObject(object):
         obj = getattr(self._crate.master_iceboard, self._iceboard_object_name)
         return getattr(obj, name)
 
-@HardwareMap.register_class()
-class IceCrate(object):
+@register_class()
+class IceCrate(IceCrateBase):
     """
     Provide the basic methods to operate the IceCrate.
     """
+    _class_registry = {}  # {part_number:class}
+    _instance_registry = {}  # {(model,serial):instance}
 
     part_number = None
     __ipmi_part_number__ = None  # Must match part number in IPMI data
@@ -64,6 +68,7 @@ class IceCrate(object):
 
         self.slot = {}  # (slot_number:iceboar_object) mapping
         self.serial = serial  # str
+        self._instance_registry[(self.part_number, serial)] = self
 
         self._logger = logging.getLogger(__name__)
         self._logger.debug('%r: Instantiating backplane object' % self)
@@ -158,8 +163,8 @@ class IceCrate(object):
 #     __ipmi_part_number__ = ['MGK7BP16', 'MGK7BP']  # Must match part number in IPMI data
 
 
-@HardwareMap.register_class()
-class IceCrate_MGK7BP16_Handler(IceCrate):
+@register_class()
+class IceCrate_MGK7BP16(IceCrate):
     """ IceCrate handler that provides access to the backplane through an IceBoard.
     """
     part_number = 'MGK7BP16'
@@ -456,7 +461,7 @@ class IceCrate_MGK7BP16_Handler(IceCrate):
         """
         super().__init__(**kwargs)
 
-        self._logger = logging.getLogger(__name__)
+        # self._logger = logging.getLogger(__name__)
         self._logger.debug('%r: Instantiating backplane hardware' % self)
 
         self._i2c = MasterIceboardObject(self, 'i2c')  # Indirect reference to the master Iceboard's I2C object
@@ -650,6 +655,8 @@ class IceCrate_MGK7BP16_Handler(IceCrate):
 
         This requires I2C communication with the backplane.
         """
+        super().init()
+
         self._logger.info('%r: Starting backplane initialization' % self)
         for trial in range(10):
             self._logger.info('%r: Backplane initialization trial #%i' % (self, trial))
@@ -669,7 +676,7 @@ class IceCrate_MGK7BP16_Handler(IceCrate):
 
                 if self._fan_ctrl_present:
                     self._fan_ctrl.init()
-                    self.logger.info('%r: Initialized fan controller from FPGA' % (self))
+                    self._logger.info('%r: Initialized fan controller from FPGA' % (self))
                 self._logger.info('%r: Successfully completed backplane initialization' % self)
                 return
             except (IOError, RuntimeError) as e:
@@ -707,7 +714,7 @@ class IceCrate_MGK7BP16_Handler(IceCrate):
                 try:
                     tmp_object.init()
                 except IOError:
-                    self.logger.error('%r: Error initializing the Backplane temperature sensors' % self)
+                    self._logger.error('%r: Error initializing the Backplane temperature sensors' % self)
 
     def _init_power_sensors(self, power_sensor_name='BP_3V3'):
         """
@@ -740,7 +747,7 @@ class IceCrate_MGK7BP16_Handler(IceCrate):
                         i_typ=power_sensor_list[3],
                         tol_i=power_sensor_list[4])
                 except IOError:
-                    self.logger.error('%r: Error initializing the Backplane Power sensors.' % self)
+                    self._logger.error('%r: Error initializing the Backplane Power sensors.' % self)
 
     def _init_qsfp_ctrl(self):
         """
@@ -762,7 +769,7 @@ class IceCrate_MGK7BP16_Handler(IceCrate):
             # IntL (dir=input, output = 0), ResetL and ModselL (dir=output,
             # output=1)
         except IOError:
-            self.logger.error('%r: Error initializing the Backplane QSFP GPIO control lines' % self)
+            self._logger.error('%r: Error initializing the Backplane QSFP GPIO control lines' % self)
 
     def _init_reset_ctrl(self):
         """
@@ -1136,8 +1143,8 @@ class IceCrate_MGK7BP16_Handler(IceCrate):
 #     __mapper_args__ = {'polymorphic_identity': 'IceCrate_MGK7BP1'}
 #     __ipmi_part_number__ = ['MGK7BP1']  # Must match part number in IPMI data
 
-@HardwareMap.register_class()
-class IceCrate_MGK7BP1_Handler(IceCrate):
+@register_class()
+class IceCrate_MGK7BP1(IceCrate):
     """
     Provides access to the 1-slot test backplane.
     """
@@ -1172,10 +1179,10 @@ class IceCrate_MGK7BP1_Handler(IceCrate):
                 - i2c_set_port(...) # Port number 0 (connected to the FPGA I2C switch) is used for all accesses
                 - i2c_write_read(...) # FPGA I2C engine
         """
-        super(IceCrate_MGK7BP1_Handler, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self._I2C_BACKPLANE_BUS_NAME = 'BP'
-        self._logger = logging.getLogger(__name__)
+        # self._logger = logging.getLogger(__name__)
         self._logger.debug('Initializing Iceboard hardware')
         self._i2c = MasterIceboardObject(self, 'i2c')
         # self._i2c = iceboard.i2c
@@ -1230,6 +1237,7 @@ class IceCrate_MGK7BP1_Handler(IceCrate):
 
     def init(self):
         """Initializes the backplane to a known state"""
+        super().init()
         self._init_gpio_ctrl()  # The power I2c bus needs to be bridged to the monitor I2C bus for this to work
 
     def _init_gpio_ctrl(self):
