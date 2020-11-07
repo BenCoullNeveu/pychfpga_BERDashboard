@@ -11,7 +11,7 @@ import urllib.error
 import urllib.parse
 import datetime
 import os
-
+import base64
 
 class FpgaBitstream(object):
     """ Object used to fetch and store FPGA bit files.
@@ -160,13 +160,12 @@ class FpgaBitstream(object):
         else:
             bitstream = data
 
-        # Compute MD5 sum as a hex string
-        md5_string = hashlib.md5(bitstream).hexdigest()
-        crc32 = zlib.crc32(bitstream)  # compute CRC32 of the data
-
         self.bitstream_cache = bitstream
-        self.crc32 = crc32
-        self.md5_string = md5_string
+        self.bytes = bitstream
+        self.base64 = base64.encode(bitstream)
+        self.crc32 = zlib.crc32(bitstream)  # compute CRC32 of the data
+        # Compute MD5 sum as a hex string
+        self.md5_string = hashlib.md5(bitstream).hexdigest()
         self.timestamp_string = timestamp_string
         self.timestamp = timestamp
         return
