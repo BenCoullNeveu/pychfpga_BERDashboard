@@ -10,7 +10,7 @@ commands sent directly to the FPGA Ethernet port.
 import logging
 import numpy as np
 from . import udp as udp
-from ..iceboard_ext import IceBoardExtHandler
+from ..iceboard_ext import IceBoardExt
 
 
 class FpgaMmiException(IOError):
@@ -39,15 +39,15 @@ class FpgaMmi:
     PROTO_TCP = 'TCP'
     TimeoutException = TimeoutException
 
-    _BROADCAST_BASE_PORT = IceBoardExtHandler._BROADCAST_BASE_PORT
-    _FPGA_IP_SETUP_BASE_ADDR = IceBoardExtHandler._FPGA_IP_SETUP_BASE_ADDR
-    _FPGA_SERIAL_NUMBER_ADDR = IceBoardExtHandler._FPGA_SERIAL_NUMBER_ADDR
-    _FPGA_TIMESTAMP_ADDR = IceBoardExtHandler._FPGA_TIMESTAMP_ADDR
+    _BROADCAST_BASE_PORT = IceBoardExt._BROADCAST_BASE_PORT
+    _FPGA_IP_SETUP_BASE_ADDR = IceBoardExt._FPGA_IP_SETUP_BASE_ADDR
+    _FPGA_SERIAL_NUMBER_ADDR = IceBoardExt._FPGA_SERIAL_NUMBER_ADDR
+    _FPGA_TIMESTAMP_ADDR = IceBoardExt._FPGA_TIMESTAMP_ADDR
 
     # Match those with what is used by Module
-    _CONTROL_BASE_ADDR = IceBoardExtHandler._CONTROL_BASE_ADDR
-    _STATUS_BASE_ADDR  = IceBoardExtHandler._STATUS_BASE_ADDR
-    _RAM_BASE_ADDR     = IceBoardExtHandler._RAM_BASE_ADDR
+    _CONTROL_BASE_ADDR = IceBoardExt._CONTROL_BASE_ADDR
+    _STATUS_BASE_ADDR  = IceBoardExt._STATUS_BASE_ADDR
+    _RAM_BASE_ADDR     = IceBoardExt._RAM_BASE_ADDR
 
     OPCODE_WRITE_CONTROL      = 0b100
     OPCODE_WRITE_CONTROL_MASK = 0b101
@@ -411,9 +411,12 @@ class FpgaMmi:
 
         # If we requested a single value (length=1), returns the object,
         # otherwise return a numpy array of objects
+
         if len(dout) == 1:
+            # print(f'mmi read dout={dout} -> {dout[0]}')
             return dout[0]
         else:
+            # print(f'mmi read dout={dout} )')
             return dout
 
     def broadcast_read(self, addr, type=np.dtype('>u8'), timeout=.5):
@@ -470,6 +473,7 @@ class FpgaMmi:
         return dout
 
     def _to_bytes(self, data):
+        # print(f'to_bytes data = {data}')
         if isinstance(data, bytes):
             return data
         elif isinstance(data, list):
