@@ -8,11 +8,18 @@ Module.py module
 #
 # History:
     2011-08-03 JFC : Created from ANT.py
+
     2011-09-25 JFC: Added read_DRP and read_RAM
-    2012-06-23 JFC: Added bitfield_property to introduce a new way to define bitfields (allows these bitfields to be more easily referred to as function arguments, and makes pylint happier)
-        Fixed class name printing when raising exception when attempting to write to a locked attribute
-    2012-07-23 JFC: Fixed read_ and write_bitfield to correctly handle data as big endian (MSB at lower address).
-        Added 32-bit field support.
+
+    2012-06-23 JFC: Added bitfield_property to introduce a new way to define
+        bitfields (allows these bitfields to be more easily referred to as
+        function arguments, and makes pylint happier) Fixed class name
+        printing when raising exception when attempting to write to a locked
+        attribute
+
+    2012-07-23 JFC: Fixed read_ and write_bitfield to correctly handle data as
+        big endian (MSB at lower address). Added 32-bit field support.
+
     2012-07-25 JFC: added bitfield() to facilitate access to bitfield properties and methods
 """
 
@@ -21,7 +28,7 @@ import time
 
 _CONTROL_BASE_ADDR = 0x000000
 _STATUS_BASE_ADDR = 0x080000
-_RAM_BASE_ADDR = 0x100000 # also used for DRP access
+_RAM_BASE_ADDR = 0x100000  # also used for DRP access
 
 
 # Page values
@@ -41,8 +48,10 @@ PAGE_OFFSET = {
 
 class BitField(object):
     """
-    Holds the definition of a memory-mapped variable
-    It is implemented as a data descriptor that calls the read_bitfield() and write_field() properties of the parent object when accessed.
+    Holds the definition of a memory-mapped variable.
+
+    It is implemented as a data descriptor that calls the read_bitfield() and
+    write_field() properties of the parent object when accessed.
     """
     # Page values
     CONTROL = CONTROL  # Control bytes (read/write)
@@ -73,12 +82,11 @@ class BitField(object):
         self.msb_addr = addr - (bit + width - 1) // 8  # leftmost byte address
         self.number_of_bytes = self.lsb_addr - self.msb_addr + 1
 
-
     def __set__(self, obj, value):
         self.write(obj, value)
 
     def __get__(self, obj, obj_type):
-        if obj is None: # if not accessed from an instance
+        if obj is None:  # if not accessed from an instance
             return self
         else:
             return self.read(obj)
@@ -101,8 +109,8 @@ class BitField(object):
 
 
             obj.write_control(self.msb_addr,
-                       data_bytes[-number_of_bytes:],
-                       mask=mask_bytes[-number_of_bytes:])
+                              data_bytes[-number_of_bytes:],
+                              mask=mask_bytes[-number_of_bytes:])
 
         elif self.page == self.STATUS:
             raise RuntimeError('Cannot write to a STATUS register')
@@ -111,14 +119,15 @@ class BitField(object):
         else:
             raise RuntimeError('Unknown page %i' % self.page)  # Should never happen, was tested in __init__
 
-
     def read(self, obj):
         if self.number_of_bytes not in self.data_types:
-            raise ValueError('Unsupported byte width %i. The bitfield must span exactly 1, 2, 4 or 8 bytes' % self.number_of_bytes)
+            raise ValueError(
+                'Unsupported byte width %i. The bitfield must '
+                'span exactly 1, 2, 4 or 8 bytes' % self.number_of_bytes)
         data_type = self.data_types[self.number_of_bytes]
 
         if self.page == self.DRP:
-            value = obj.read_drp(self._addr) # read 16-bit value
+            value = obj.read_drp(self._addr)  # read 16-bit value
         elif self.page == self.CONTROL:
             value = obj.read_control(self.msb_addr, type=data_type)
         elif self.page == self.STATUS:
@@ -134,7 +143,6 @@ class BitField(object):
 
         # Extract the desired bits
         return (int(value) >> self.bit) & ((1 << self.width)-1)
-
 
     def get_name(self, obj):
         """
@@ -271,7 +279,7 @@ class Module_base(object):
         if isinstance(bitfield, str):
             bitfield = self.get_bitfield(bitfield)
 
-        return bitfield.read()
+        return bitfield.read(self)
 
     def write_bitfield(self, bitfield, data):
         """ Writes 'data' to the bitfield.
@@ -287,7 +295,7 @@ class Module_base(object):
         if isinstance(bitfield, str):
             bitfield = self.get_bitfield(bitfield)
 
-        bitfield.write(data)
+        bitfield.write(self, data)
 
     # write_field = write_bitfield # for backwards compatibility
 
@@ -396,7 +404,7 @@ class Module_base(object):
             address includes the page (CONTROL/STATUS/RAM/DRP) offset.
         """
         bitfield = self.get_bitfield(bitfield_name)
-        return bitfield._addr + self.PAGE_OFFSET[bitfield.page]
+        return bitfield._addr + PAGE_OFFSET[bitfield.page]
 
     def pulse_bit(self, bitfield_name, bit=0):
         """
@@ -406,8 +414,8 @@ class Module_base(object):
         bitfield = self.get_bitfield(bitfield_name)
         if bitfield.width != 1:
             raise TypeError('The bitfield must be a single bit (width=1)')
-        bitfield.write(1)
-        bitfield.write(0)
+        bitfield.write(self, 1)
+        bitfield.write(self, 0)
 
     def wait_for_bit(self, bitfield_name, timeout=1, target_value=1, no_error=False):
         """
