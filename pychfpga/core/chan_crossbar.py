@@ -10,10 +10,11 @@ data that contains some selected frequency bins from all input channels.
 """
 
 import logging
+import asyncio
+
 
 from wtl.metrics import Metrics
 from .Module import Module_base, BitField
-from .icecore import async, async_return, async_sleep, async_moment
 
 from . import chan_bin_sel
 
@@ -176,8 +177,7 @@ class ChanCrossbar(Module_base):
         print('%20s: %s' % ('ALIGN FRAME CTR', ' '.join('%6i' % v for v in align_frame_ctr)))
         # print '%20s: %s' % ('ALIGN GLOBAL FRAME CTR', '(common to all lanes) %6i' % self.ALIGN_GLOBAL_FRAME_CTR)
 
-    @async
-    def get_metrics(self, reset=True):
+    async def get_metrics(self, reset=True):
         """ Return the monitoring metrics for the 1st crossbar.
         """
         metrics = Metrics(
@@ -188,21 +188,21 @@ class ChanCrossbar(Module_base):
             id=self.fpga.get_string_id())
 
         for lane in range(self.NUMBER_OF_CROSSBAR_INPUTS):
-            yield async_moment
+            await asyncio.sleep(0)
             self.LANE_MONITOR_SEL = lane
-            yield async_moment
+            await asyncio.sleep(0)
             metrics.add('fpga_crossbar1_reset_state', value=self.RESET_MON, lane=lane)
-            yield async_moment
+            await asyncio.sleep(0)
             metrics.add('fpga_crossbar1_align_fifo_overflow_flag', value=self.ALIGN_FIFO_OVERFLOW, lane=lane)
-            yield async_moment
+            await asyncio.sleep(0)
             metrics.add('fpga_crossbar1_input_frame_counter', value=self.INPUT_FRAME_CTR, lane=lane)
-            yield async_moment
+            await asyncio.sleep(0)
             metrics.add('fpga_crossbar1_align_output_frame_counter', value=self.ALIGN_FRAME_CTR, lane=lane)
 
         if reset:
             self.reset_stats()
 
-        async_return(metrics)
+        return metrics
 
     def map(self, input_data):
         """

@@ -12,9 +12,9 @@ import time
 import collections
 import numpy as np
 import matplotlib.pyplot as plt
+import asyncio
 
 from .Module import Module_base, BitField
-from .icecore import async, async_return, async_sleep, async_moment
 from wtl.metrics import Metrics
 
 # Types of memory-mapped registers
@@ -694,8 +694,7 @@ class XGLinkArray(XGLinkCore):
             else:
                 gtx.TXDIFFCTRL = pwr
 
-    @async
-    def get_rx_lane_monitor(self, names, lane_group=None):
+    async def get_rx_lane_monitor(self, names, lane_group=None):
         """ Retreive monitoring info for the specified monitoring points in the target lane group.
 
         Parameters:
@@ -724,12 +723,12 @@ class XGLinkArray(XGLinkCore):
         # get monitoring results
         mon = [list() for _ in names]
         for phys_lane in phys_lanes:
-            yield async_moment
+            await asyncio.sleep(0)
             self.LANE_SEL = phys_lane
             for i, bf in enumerate(bitfields):
                 mon[i].append(self.read_bitfield(bf))
 
-        async_return(mon if is_list else mon[0])
+        return mon if is_list else mon[0]
 
     def reset_stats(self):
         self.RESET_STATS = 1
@@ -738,8 +737,7 @@ class XGLinkArray(XGLinkCore):
     def get_rx_error_count(self, lane_group=None):
         return self.get_rx_lane_monitor('ERROR_CTR', lane_group)
 
-    @async
-    def get_metrics(self, reset=True):
+    async def get_metrics(self, reset=True):
         """ Return metrics on the status of the rx links as a Metrics object.
         """
         metrics = Metrics(
@@ -750,8 +748,8 @@ class XGLinkArray(XGLinkCore):
             type='GAUGE')
 
         for link_type, link_group in [('pcb_gtx', 'pcb'), ('qsfp_gtx', 'qsfp')]:
-            yield async_moment  # let the ioloop process data
-            err, min_len, max_len, frame_det, rx_fifo, tx_fifo = yield self.get_rx_lane_monitor.async(
+            await asyncio.sleep(0)  # let the ioloop process data
+            err, min_len, max_len, frame_det, rx_fifo, tx_fifo = await self.get_rx_lane_monitor(
                 ['ERROR_CTR', 'MIN_FRAME_LENGTH', 'MAX_FRAME_LENGTH',
                  'FRAME_DETECT', 'RX_FIFO_OVERFLOW', 'TX_FIFO_OVERFLOW'],
                 link_group)
@@ -766,7 +764,7 @@ class XGLinkArray(XGLinkCore):
                 metrics.add('fpga_bp_link_length_mismatch', value=(min_len[lane] != max_len[lane]),
                             link_type=link_type, lane=lane)
         for gtx_number, gtx in enumerate(self.gtx):
-            yield async_moment  # let the ioloop process data
+            await asyncio.sleep(0)  # let the ioloop process data
             #gtx_number = lane + link_group*self.NUMBER_OF_PCB_LANES
             metrics.add('fpga_bp_link_tx_power', value=gtx.TXDIFFCTRL, gtx=gtx_number)
             metrics.add('fpga_bp_link_rx_power', value=gtx.DMONITOROUT & 0x7F, gtx=gtx_number)
@@ -775,7 +773,7 @@ class XGLinkArray(XGLinkCore):
         if reset:
             self.reset_stats()
 
-        async_return(metrics)
+        return metrics
 
     def get_bp_rx_status(self, link_group=None):
         """ Checks the status of the rx links. Returns a list of dict, each

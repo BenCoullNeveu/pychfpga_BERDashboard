@@ -13,15 +13,19 @@ History:
     2013-12-03 : JFC : Created
 """
 
+# Standard Library packages
 import logging
+import asyncio
 from collections import OrderedDict
 
+# PyPi packages
 import numpy as np
 
+# External private packages
 from wtl.metrics import Metrics
-from .Module import Module_base, BitField
-from .icecore import async, async_return, async_sleep, async_moment
 
+# local packages
+from .Module import Module_base, BitField
 from . import SHUFFLE_BIN_SEL
 
 
@@ -283,18 +287,17 @@ class ShuffleCrossbar(Module_base):
         self.HEADER_CAPTURE_EN = 1
         return sid
 
-    @async
-    def capture_frame_number(self):
+    async def capture_frame_number(self):
         frame = []
 
         # get 8 bits of stream ID
         self.HEADER_CAPTURE_EN = 0
         for i in range(self.NUMBER_OF_CROSSBAR_INPUTS):
-            yield async_moment
+            await asyncio.sleep(0)
             self.LANE_MONITOR_SEL = i
             frame.append(self.FRAME_NUMBER_CAPTURE_DATA)
         self.HEADER_CAPTURE_EN = 1
-        async_return(frame)
+        return frame
 
 
     LANE_MONITOR_TABLE = {
@@ -312,8 +315,7 @@ class ShuffleCrossbar(Module_base):
 
         }
 
-    @async
-    def get_lane_monitor(self, names):
+    async def get_lane_monitor(self, names):
         """
         Return a list describing the status of the specified flag for each *input*
         lane.
@@ -333,12 +335,12 @@ class ShuffleCrossbar(Module_base):
 
         mon = [[] for _ in bitfields]
         for lane in range(self.NUMBER_OF_CROSSBAR_INPUTS):
-            yield async_moment
+            await asyncio.sleep(0)
             self.LANE_MONITOR_SEL = lane
             for i, bf in enumerate(bitfields):
                 mon[i].append(self.read_bitfield(bf))
 
-        async_return(mon if is_list else mon[0])
+        return mon if is_list else mon[0]
 
     def get_align_status(self):
         status = []
@@ -459,8 +461,7 @@ class ShuffleCrossbar(Module_base):
         print('%25s: %s' % ('Frame #', ' '.join('%6i' % f for f in frame_number)))
         print('%25s: %s' % ('Delta Frame #', ' '.join('%6i' % (f - frame_ref) for f in frame_number)))
 
-    @async
-    def get_metrics(self, reset=True):
+    async def get_metrics(self, reset=True):
         """ Return the monitoring metrics for the 2nd and 3rd crossbar.
         """
         metrics = Metrics(
@@ -473,34 +474,34 @@ class ShuffleCrossbar(Module_base):
         # add ALIGN status flags
         bitfield_names = ['BAD_TLAST', 'BAD_TVALID', 'BAD_FRAME_LENGTH',
                           'MISSING_FRAME', 'ALIGN_FIFO_OVERFLOW', 'DATA_TIMEOUT']
-        align_flags = yield self.get_lane_monitor.async(bitfield_names)
+        align_flags = await self.get_lane_monitor(bitfield_names)
         for i, bitfield_name in enumerate(bitfield_names):
             flags = align_flags[i]
             for lane, flag in enumerate(flags):
                 metrics.add(prefix + bitfield_name.lower() + '_flag', lane=lane, value=flag)
 
         # Add frame alignment flag
-        yield async_moment
-        frame_numbers = yield self.capture_frame_number.async()
+        await asyncio.sleep(0)
+        frame_numbers = await self.capture_frame_number()
         for lane, frame_number in enumerate(frame_numbers):
             offset = frame_number - frame_numbers[0]
             metrics.add(prefix + 'frame_alignment_offset', lane=lane, value=offset)
 
         # Add BIN SEL status
         for lane, bs in enumerate(self.BIN_SEL):
-            yield async_moment
+            await asyncio.sleep(0)
             number_of_sublanes_per_output = self.NUMBER_OF_INPUT_LANES // bs.NUMBER_OF_OUTPUTS
             sublane_mask = (1 << (bs.LAST_LANE + 1)) - (1 << bs.FIRST_LANE)
             mask = sum(sublane_mask << (number_of_sublanes_per_output * i) for i in range(bs.NUMBER_OF_OUTPUTS))
 
             metrics.add(prefix + 'bin_sel_data_fifo_overflow',
                         lane=lane, value=bs.FIFO_OVERFLOW & mask)
-            yield async_moment
+            await asyncio.sleep(0)
             metrics.add(prefix + 'bin_sel_flags_fifo_overflow',
                         lane=lane, value=bs.FLAGS_FIFO_OVERFLOW & mask)
         # Add input lane counters
         bitfield_names = ['INPUT_FRAME_CTR', 'ALIGN_FRAME_CTR', 'DELAY_CAPTURE', 'FIFO_COUNT']
-        counters = yield self.get_lane_monitor.async(bitfield_names)
+        counters = await self.get_lane_monitor(bitfield_names)
         for i, bitfield_name in enumerate(bitfield_names):
             flags = counters[i]
             for lane, flag in enumerate(flags):
@@ -508,7 +509,7 @@ class ShuffleCrossbar(Module_base):
 
         # Add output lane counters
         for lane in range(self.NUMBER_OF_CROSSBAR_OUTPUTS):
-            yield async_moment
+            await asyncio.sleep(0)
             self.LANE_MONITOR_SEL = lane
             metrics.add(prefix + 'output_frame_ctr', lane=lane, value=self.OUTPUT_FRAME_CTR)
             metrics.add(prefix + 'packet_error_ctr', lane=lane, value=self.PACKET_ERROR_CTR)
@@ -516,4 +517,4 @@ class ShuffleCrossbar(Module_base):
         if reset:
             self.reset_stats()
 
-        async_return(metrics)
+        return metrics
