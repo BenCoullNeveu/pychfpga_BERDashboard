@@ -19,6 +19,7 @@ History:
        one. Old data will be automatically flushed over time.
 """
 
+# Standard library packages
 
 import queue
 import threading
@@ -26,15 +27,19 @@ import struct
 import time
 import select
 
+# PyPi packages
+
 import numpy as np
 
-import SocketIO
+# Local packages
+
+from . import SocketIO
 
 
 class ReceiverThread(threading.Thread):
     BUF_SIZE = 65536
     data = bytearray(BUF_SIZE)
-    data_buf = buffer(data)
+    data_buf = memoryview(data)
     data_block = np.zeros((16, 2048 + 9), dtype=np.uint8)
     # Number of frequency bin pairs, Number of antennas, Number of bytes per word, header
     # NUMBER_OF_CORRELATORS = 5
