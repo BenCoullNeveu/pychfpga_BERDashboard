@@ -27,6 +27,8 @@ We can also, using a little sugar, call it asynchronously:
     <coroutine object double_slowly at 0x...>
     >>> asyncio.run(c)
     4
+or
+    >>> asyncio.run(double_slowly.__acall__(2))
 
 ...which devolves to the usual asyncio case.
 
@@ -64,6 +66,7 @@ This works the same way:
 '''
 
 import asyncio
+import nest_asyncio
 import functools
 
 __all__ = ["tworoutine"]
@@ -73,30 +76,64 @@ class tworoutine:
     '''
     Base class for double-entry style asynchronous coding.
 
+    Wraps a coroutine (async function) so it can be invoked as a synchronous function.
+
     For client code, this class provides two points of entry:
 
     - tworoutine(args) Synchronous, via tworoutine(args), and
     - Asynchronous, via ~(tworoutine)(args).
 
     The synchronous entry is
+
+
+    The object that is created here takes the place of the function or method that it decorates.
+
+    If we decorate a class method, this object lives as a class attribute, and
+    is passed the unbound method. The class can act as a non-data description.
+    Any access to this object calls __get__, which returns another
+    `twofunction` object that now points to the bound method.
     '''
 
-    __instance = None
+    _used_loops = set()
+
+    # __instance = None
 
     def __init__(self, coroutine=None, instance=None):
+        """
+        Parameters:
 
-        self.__instance = instance
+            coroutine (function / unbound method): coroutine to wrap into this object.
 
-        if coroutine is not None:
-            # This path is intended for use as a @tworoutine decorator.
+            instance: instance of the object to which the coroutine belongs.
+                If specified, this objects represent the bound method.
+        """
+
+        # print(f'coroutine={coroutine}')
+
+        # we can't check if `coroutine` is a coroutine because asyncio.iscoroutingfunction() does not work when we rewrap the function into a bound method.
+
+        if not asyncio.iscoroutinefunction(coroutine):
+            raise TypeError('Decorator can only be used with coroutines function or method')
+
+
+        # self.__instance = instance
+
+        if instance is None:
             self.__acall__ = coroutine
+        else:
+            self.__acall__ = functools.partial(coroutine, instance)
 
-        functools.update_wrapper(self, self.__acall__)
+        # Have this object mimic the decorated one
+        functools.update_wrapper(self, coroutine)
 
     def __get__(self, instance, owner):
         '''Descriptor allowing us to behave as bound methods.'''
+        # print(f'Getting {instance} from {owner}')
 
-        return self.__class__(instance=instance, coroutine=self.__acall__)
+        # We pass the instance separately (i.e we don't functool.partial() the
+        # instance right away so the coroutine can still be recognized as
+        # one.
+        return self.__class__(self.__acall__, instance)
 
     def __call__(self, *args, **kwargs):
         '''Stub for ordinary, serial call.'''
@@ -105,21 +142,61 @@ class tworoutine:
         # invoke it synchronously. This is often all the serial version needs
         # to do anyways.
         try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
+
+            # loop = asyncio.get_running_loop() # get the running current loop
+            loop = asyncio.get_event_loop() # get the current loop, running or not
+            # loop = asyncio.new_event_loop() # get the current loop, running or not
+            nest_asyncio.apply(loop)  # make sure we can run in an already running loop
+            print(f'Reusing loop {id(loop)}. patch={getattr(loop, "_nest_patched", False)}')
+
+        except RuntimeError as e:
             loop = asyncio.new_event_loop()
+            nest_asyncio.apply(loop)  # make sure we can run in an already running loop
+
+            print(f'Could not get event loop because of error {e}. Creating a new loop {loop} with ID {id(loop)}')
 
         coroutine = (~self)(*args, **kwargs)
-        return loop.run_until_complete(coroutine)
+        self._used_loops.add(loop)
+        # print(f'About to create and execute coroutine {coroutine}({args},{kwargs}). The loop is {loop} and is running={loop.is_running()}')
+        try:
+            result = loop.run_until_complete(coroutine)
+        except Exception as e:
+            print(f'Exception during run_until_complete(): {e}')
+            raise e
+        # print(f'Result is {result}')
+        return result
 
     def __invert__(self):
-        if self.__instance:
-            return functools.partial(self.__acall__, self.__instance)
-        else:
-            return self.__acall__
+        """ Use the invert operator "~" as a shortcut to return the original async function/method
+
+        Usage:
+
+        >>> result = await (~self.mymethod)()
+
+        """
+        return self.__acall__
+
+    def __mul__(self, other):
+        print(f'{other}')
+        return self.__acall__(other)
+
+    @property
+    def cr(self):
+        """ Return the original coroutine.
+
+        Usage:
+
+        >>> result = await self.mymethod.cr()
+
+        """
+        return self.__acall__
 
     async def __acall__(self, *args, **kwargs):
-        '''Stub for asynchronous call that returns a Future.'''
+        '''Stub for a coroutine function.
+
+        This get overriden by the instance variable __acall__ that is set with the original async function at class  instantiation.
+        '''
         raise NotImplementedError()
+
 
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab
