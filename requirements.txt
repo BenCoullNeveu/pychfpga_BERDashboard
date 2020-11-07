@@ -3,34 +3,35 @@
 # but can be used manually as well with ``pip install -r requirements.txt``
 
 # Private packages
-wtl.namespace @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.namespace.git
-wtl.metrics @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.metrics.git
-wtl.log @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.log.git
-wtl.rest @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.rest.git
-wtl.config @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.config.git
-wtl.h5-archive @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.h5-archive.git@v1.0.3
+wtl.namespace @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.namespace.git  # testing 1.1.0
+wtl.metrics @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.metrics.git  # testing 1.1
+wtl.log @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.log.git  # testing 1.1.0
+wtl.rest @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.rest.git  # testing
+wtl.config @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.config.git # testing 1.1.0
+wtl.h5-archive @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.h5-archive.git   # was @v1.0.3, testing 1.1.0
 
 # PyPi packages
-numpy==1.15.2
-psutil==5.4.7
-tornado==5.1.1
+aiohttp  # new, using 3.7.2
+simplejson  # new , using 3.17.2 (Tuber)
 
-# raw_acq-specific dependencies
-h5py==2.8.0
+numpy  # was ==1.15.2, testing 1.19.2
+psutil  # was ==5.4.7, now testing 5.7.3
+tornado  # was ==5.1.1 ( last Python 2.7 version), now testing 6.1
+h5py  # was ==2.8.0, testing 3.0.0
+matplotlib  # was ==2.2.3, now testing 3.3.2
+docutils  # was ==0.14, now testing 0.16
+PyYAML  # was 3.13, testing 5.3.1
+requests  # was ==2.19.1, now testing 2.24.0
+netifaces   # was not specified, now using 0.10.9
+pybonjour @ git+git@github.com:depl0y/pybonjour-python3.git  # Python 3 commit on Oct 2 2013 (version 1.1.1, original was on 2008-05-08). Testing 2c8283f0f97897c46570d20e6aa482f69fe3ca13
 
-# pychfpga dependencies
-# pychfpga @ file:///pychfpga  # file:/path or file://host/path
-# pychfpga @ ./pychfpga
-matplotlib==2.2.3
-docutils==0.14
-futures==3.2.0
-lxml==4.2.5
-nose==1.3.7
-PyYAML==3.13
-requests==2.19.1
+# futures==3.2.0  # does not seem to be needed directly. Removed.
+
+# For testing
+lxml  # was ==4.2.5, now using 4.6.1
+nose  # was ==1.3.7, still using it.
+
+
 SQLAlchemy==1.2.12
-netifaces
-pybonjour @ git+https://github.com/Eichhoernchen/pybonjour.git@c63b48c1f0ebf0fb20d412a853ecb6b09e29439b  # check for newer commit
-
 
 

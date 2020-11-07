@@ -39,6 +39,8 @@ setup(
       classifiers=[
               "Programming Language :: Python :: 3",
               "Operating System :: OS Independent",
+              "Topic :: Scientific/Engineering :: Astronomy",
+              "Intended Audience :: Science/Research",
           ],
       python_requires='>=3.7',
       install_requires=requirements,
