@@ -139,8 +139,8 @@ class I2C_base(Module_base):
             if data is None:  # if we do not write any date, we perform a single transaction with BYTES1=read_length and BYTES2=0
                 self.write_control(0x00, [(addr << 1) + 0x01])  # write I2C address with read flag to the transmit buffer
                 expected_ack = 2 ** (read_length + 1) - 1;
-                self.write_control(0x04,[0x00 + read_length])  # Prepare to start transaction by clearing the START bit
-                self.write_control(0x04,[0x80 + read_length])  # start transaction by creating a 0-to-1 transition on the START bit. Do this as a separate transmission to make sure that the firmware registered the zero
+                self.write_control(0x04, [0x00 + read_length])  # Prepare to start transaction by clearing the START bit
+                self.write_control(0x04, [0x80 + read_length])  # start transaction by creating a 0-to-1 transition on the START bit. Do this as a separate transmission to make sure that the firmware registered the zero
             else:  # if we write and optionally read
                 self.write_control(0x00, [(addr << 1) + 0x00] + data)  # write address with write flag and data in transmit buffer (4 bytes max)
                 expected_ack = 2 ** (read_length + write_length + 1 + (read_length != 0)) - 1
@@ -207,6 +207,7 @@ class I2C_base(Module_base):
             else:
                 self.logger.error(error_msg)
                 raise IOError(error_msg)
+        # print(f'write_read ={read_data}')
 
         return read_data
 
