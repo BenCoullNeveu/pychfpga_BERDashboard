@@ -8,6 +8,8 @@ MGADC08.py module
  2011-07-25 : JFC : Created
 """
 # MGADC08 FMC ADC board device handlers
+
+# Standard library packages
 import logging
 import numpy as np
 import time
@@ -16,28 +18,74 @@ import zlib
 import ast
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
+# Local packages
 
-from pychfpga.core.icecore import FMCMezzanine
-from pychfpga.core.icecore import FMCMezzanineHandler
-from pychfpga.core.icecore.hw.ipmi_fru import FRU, Board, Product, MultiDict
+from ..core.icecore.hw.ipmi_fru import FRU, Board, Product, MultiDict
+from ..core.icecore_ext import FMCMezzanine, register_class
+from ..core.chFPGA_controller import chFPGA_controller
 
-# Import mezzanine-specific modules
+# mezzanine-specific modules
 from . import ADC
 from . import IOExpander
 from . import ADC_PLL
 from . import AmbTemp
 from . import MGT_PLL
 
-
-class MGADC08_base(FMCMezzanine):
+@register_class()
+class FMCMezzanine_MGADC08(FMCMezzanine):
     """ Implements the object that exposes the MGADC08 FMC ADC board hardware ressources"""
-    handler_name = 'MGADC08_Handler'
+
+    part_number = "MGADC08"
     __ipmi_part_number__ = 'MGADC08'  # Must match part number in IPMI data. Used for auto-discovery.
 
-    __tablename__ = 'mgadc08'
-    __mapper_args__ = {'polymorphic_identity': 'MGADC08'}
-    _pk = Column(Integer, ForeignKey('fmc_mezzanines._pk'), primary_key=True)
+
+    # SPI port numbers specific to this board
+    SPI_ADC0_ADDR      = 0    # ADC. R/W device. 8 bit address+RW, 16 bit data.
+    SPI_ADC1_ADDR      = 1  # ADC. R/W device. 8 bit address+RW, 16 bit data.
+    SPI_ADC0_TEMP_ADDR = 2  # ADC temperature sensor chip. Read only
+    SPI_ADC1_TEMP_ADDR = 3  # ADC temperature sensor chip. Read only
+    SPI_AMB_TEMP_ADDR  = 4  # Board temperature sensor chip. Read/Write device
+    SPI_PLL1_ADDR      = (5, 1)  # ADC PLL. The second element of the tuple indicates that we use the alternate timing
+    #SPI_ADC_BIAS_ADDR =5 # Bias measurement ADC.  Read/Write device # Not present on Rev2 board
+    SPI_IO_EXP_ADDR    = 6  # IO Expander. Read/Write device
+    SPI_PLL2_ADDR      = 7  # MGT PLL. Write only.
+
+    _board_is_present = False  # Will be checked later
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # self.type = 'mgadc08'
+
+
+        self.sampling_frequency = None
+        self.reference_frequency = None
+        # self._board_info = {}
+
+        # self.check_FMC_presence()
+        self.verbose = False
+        self._board_is_present = True
+
+        # self.motherboard = self.iceboard
+        self.fmc_number = self.mezzanine - 1
+
+        self.logger.debug('%r: Creating MGADC08 instance and hardware elements' % self)
+        self.logger.debug('%r:   - ADC' % self)
+        self.ADC = ADC.ADC_base(adc_board=self)
+        self.logger.debug('%r:   - IOExpander' % self)
+        self.IOExpander = IOExpander.IOExpander_base(adc_board=self)
+        self.logger.debug('%r:   - ADC_PLL' % self)
+        self.ADC_PLL = ADC_PLL.ADC_PLL_base(adc_board=self)
+        self.logger.debug('%r:   - AmbTemp' % self)
+        self.AmbTemp = AmbTemp.AmbTemp_base(adc_board=self)
+        self.logger.debug('%r:   - MGT_PLL' % self)
+        self.MGT_PLL = MGT_PLL.MGT_PLL_base(mezz=self)
+
+    def __repr__(self):
+        return "%r.Mezz%r" % (
+            self.iceboard,
+            self.mezzanine)
+
+
 
     @classmethod
     def decode_eeprom(cls, eeprom_data: bytes):
@@ -123,54 +171,8 @@ class MGADC08_base(FMCMezzanine):
         except ValueError:
             return None
 
-class MGADC08_Handler(FMCMezzanineHandler):
 
-    __handler_for__ = MGADC08_base
 
-    # SPI port numbers specific to this board
-    SPI_ADC0_ADDR      = 0    # ADC. R/W device. 8 bit address+RW, 16 bit data.
-    SPI_ADC1_ADDR      = 1  # ADC. R/W device. 8 bit address+RW, 16 bit data.
-    SPI_ADC0_TEMP_ADDR = 2  # ADC temperature sensor chip. Read only
-    SPI_ADC1_TEMP_ADDR = 3  # ADC temperature sensor chip. Read only
-    SPI_AMB_TEMP_ADDR  = 4  # Board temperature sensor chip. Read/Write device
-    SPI_PLL1_ADDR      = (5, 1)  # ADC PLL. The second element of the tuple indicates that we use the alternate timing
-    #SPI_ADC_BIAS_ADDR =5 # Bias measurement ADC.  Read/Write device # Not present on Rev2 board
-    SPI_IO_EXP_ADDR    = 6  # IO Expander. Read/Write device
-    SPI_PLL2_ADDR      = 7  # MGT PLL. Write only.
-
-    _board_is_present = False  # Will be checked later
-
-    def __repr__(self):
-        return "%r.Mezz%r" % (
-            self.iceboard.handler,
-            self.mezzanine)
-
-    def __init__(self, **kwargs):
-        super(MGADC08_Handler, self).__init__(**kwargs)
-        # self.type = 'mgadc08'
-        self._board_is_present = None
-        self.sampling_frequency = None
-        self.reference_frequency = None
-        # self._board_info = {}
-
-        # self.check_FMC_presence()
-        self.verbose = False
-        self._board_is_present = True
-
-        self.motherboard = self.iceboard
-        self.fmc_number = self.mezzanine - 1
-
-        self.logger.debug('%r: Creating MGADC08 Handler instance and hardware elements' % self)
-        self.logger.debug('%r:   - ADC' % self)
-        self.ADC = ADC.ADC_base(adc_board=self)
-        self.logger.debug('%r:   - IOExpander' % self)
-        self.IOExpander = IOExpander.IOExpander_base(adc_board=self)
-        self.logger.debug('%r:   - ADC_PLL' % self)
-        self.ADC_PLL = ADC_PLL.ADC_PLL_base(adc_board=self)
-        self.logger.debug('%r:   - AmbTemp' % self)
-        self.AmbTemp = AmbTemp.AmbTemp_base(adc_board=self)
-        self.logger.debug('%r:   - MGT_PLL' % self)
-        self.MGT_PLL = MGT_PLL.MGT_PLL_base(mezz=self)
 
     ############################################
     # Methods available to the board hardware
@@ -226,8 +228,6 @@ class MGADC08_Handler(FMCMezzanineHandler):
     def adc_sync(self):
         self.iceboard.REFCLK.local_sync()
 
-    def set_power(self, state):
-        self.iceboard.set_mezzanine_power(bool(state), self.mezzanine)
 
     # def check_FMC_presence(self, verbose=0):
     #     """ Checks if the FMC is present"""
@@ -241,11 +241,14 @@ class MGADC08_Handler(FMCMezzanineHandler):
     #     """ returns a boolean indicating whether the ADC board is present"""
     #     return self._board_is_present
 
-    def init(self, sampling_frequency=800e6, reference_frequency=10e6, verbose=0, adc_mode=0, adc_bandwidth=2):
+    async def init(self, sampling_frequency=800e6, reference_frequency=10e6, verbose=0, adc_mode=0, adc_bandwidth=2):
         """ Initializes the FMC board modules"""
 
+        if not isinstance(self.iceboard, chFPGA_controller):
+            raise RuntimeError('%r: This %s mezzanine require a motherboard with the chFPGA firmware (chFPGA_controller instance)' % (self, self.__class__))
+
         # Do nothing if the FMC is not present
-        if not self.is_mezzanine_present():
+        if not await self.is_mezzanine_present_async():
             self.logger.error('%r: Attempting to initialize a mezzanine that is not physically present. Aborting.' % self)
             raise RuntimeError('Cannot initialize an mezzanine that is not present')
 
@@ -253,7 +256,7 @@ class MGADC08_Handler(FMCMezzanineHandler):
         #     self.logger.error('%r: Attempting to initialize a mezzanine that is of the wrong type. Aborting.' % self)
         #     raise RuntimeError('Cannot initialize an mezzanine of the wrong type')
 
-        if not self.get_mezzanine_power():
+        if not await self.get_mezzanine_power_async():
             self.logger.error('%r: Attempting to initialize a mezzanine that is not powered up. Aborting.' % self)
             raise RuntimeError('Cannot initialize an mezzanine that has no power')
 
