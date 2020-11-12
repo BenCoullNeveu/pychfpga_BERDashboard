@@ -43,15 +43,15 @@ if getattr(__main__, '__reload__', False):
 # Automatically update the search path for absolute imports of pychfpga and
 # its subpackages. We use absolute imports because 1) if both relative and
 # absolute imports are made, then  modules are loaded multiple times and
-# SQLAlchemy complains. 2) wa cannot access pychfpga subpackages if we run
+# SQLAlchemy complains. 2) we cannot access pychfpga subpackages if we run
 # this module as a script because Python refuses to consider the script folder
 # as a package.
 try:
     import pychfpga
 except ImportError:
-    ch_acq_path = os.path.realpath(os.path.join(os.path.dirname(__file__), '..'))
-    if ch_acq_path not in sys.path:
-        sys.path.insert(0, ch_acq_path)
+    pychfpga_path = os.path.realpath(os.path.join(os.path.dirname(__file__), '..'))
+    if pychfpga_path not in sys.path:
+        sys.path.insert(0, pychfpga_path)
 
 
 from pychfpga.core.icecore_ext import Ccoll
