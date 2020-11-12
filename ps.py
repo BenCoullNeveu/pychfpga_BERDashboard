@@ -8,14 +8,14 @@ REST Server and clients for the CHIME receiver hut power supplies.
 import sys
 import argparse
 import time
+import aiohttp
 
 # PyPi packages
 
 # External private packages
 from wtl import log
 from wtl.rest import AsyncRESTServer, AsyncRESTClient # generic REST servers and clients
-from wtl.rest import endpoint, coroutine, coroutine_return, sleep
-from wtl.rest import RunSyncWrapper, IOLoop, run_client, SocketContext
+from wtl.rest import endpoint, run_client, SocketContext
 from wtl.namespace import NameSpace
 from wtl.config import load_yaml_config
 from wtl.metrics import Metrics
@@ -440,8 +440,7 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
         return ps_names
 
 
-    @coroutine
-    def _get_metrics(self):
+    async def _get_metrics(self):
         """ Return a Metrics object containing power supply monitoring data
         """
         self.log.info('%.32r: Received monitoring metrics request' % self)
@@ -455,7 +454,7 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
                 metrics.add('fpga_power_supply_status', name=ps_name, value=int(status.status == 'OK'), type='gauge')
             except IOError:
                 pass
-        coroutine_return(metrics)
+        return metrics
 
     def _set_is_ready_later(self, name):
         """ Sets the is_ready flag for power supply `name` to True after the power supply power-up delay has elapsed """
@@ -467,9 +466,8 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
     # Server commands
     ##################
 
-    @coroutine
     @endpoint('start')
-    def start(self, handler, **config):
+    async def start(self, **config):
         """ ``POST endpoint: /start`` Initializes the power supply server with the provided configuration.
 
         This creates a power supply instance for each of the supply specified under the ``units`` key.
@@ -499,11 +497,10 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
                 self.is_ready[ps_name] = True
                 #self._set_is_ready_later(ps_name)
 
-        coroutine_return('Power supply server started')
+        return 'Power supply server started'
 
-    @coroutine
     @endpoint('stop')
-    def stop(self, handler):
+    async def stop(self):
         """ ``GET endpoint: /stop`` Uninlitializes the server and keep it running so it can be started with a new configuration."""
         if not self.power_supplies():
             self.log.warning('%.32r: Power Supply server is not started' % self)
@@ -511,11 +508,10 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
             for ps_name, ps in self.power_supplies.items():
                 ps.close()
             self.power_supplies = {}
-        coroutine_return('Power supply server stopped')
+        return 'Power supply server stopped'
 
-    @coroutine
     @endpoint('status')
-    def status(self, handler):
+    async def status(self):
         """ ``GET endpoint: /status`` Return the status of all the supplies handled by this server.
 
         Returns:
@@ -541,12 +537,11 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
         for ps_name, ps in self.power_supplies.items():
             stati[ps_name] = ps.status()
             self.log.info('%.32r: Status of %s is %s' % (self, ps_name, stati[ps_name]))
-        coroutine_return(stati)
+        return stati
 
 
-    @coroutine
     @endpoint('is-started')
-    def is_started(self, handler):
+    async def is_started(self):
         """ ``GET endpoint: /is-started`` indicates if the server is initialized.
 
         This information is also included in the status() dict.
@@ -554,12 +549,11 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
         Returns:
             bool: True if the power supply server is initialized
         """
-        coroutine_return(bool(self.power_supplies))
+        return bool(self.power_supplies)
 
 
-    @coroutine
     @endpoint('list-names')
-    def listNames(self, handler):
+    async def listNames(self):
         """ ``GET endpoint: /list-names`` Return the list of the names of the supplies handled bu
         the current running configuration.
 
@@ -569,11 +563,10 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
             list of str: names of the supplies, as defined in the configuration
         """
         self.log.info('%.32r: Received list names request' % self)
-        coroutine_return(list(self.power_supplies.keys()))
+        return list(self.power_supplies.keys())
 
-    @coroutine
     @endpoint('power-on')
-    def power_on(self, handler, ps_names=None):
+    async def power_on(self, ps_names=None):
         """ ``POST endpoint: /power-on`` Powers up the specified supplies.
 
         Parameters:
@@ -604,12 +597,11 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
                 self._set_is_ready_later(ps_name)
                 self.log.info("%.32r: %s is powered ON" % (self, ps_name))
 
-                # yield sleep(self.config.power_on.delay) # make this asynchronous so all the delay happen in parallel
-        coroutine_return("%s are powered ON" % (ps_names))
+                # await asyncio.sleep(self.config.power_on.delay) # make this asynchronous so all the delay happen in parallel
+        return "%s are powered ON" % (ps_names)
 
-    @coroutine
     @endpoint('power-off')
-    def power_off(self, handler, ps_names=None):
+    async def power_off(self, ps_names=None):
         """ ``POST endpoint: /power-off`` Powers down the specified supplies.
 
         Parameters:
@@ -636,37 +628,33 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
                 ps.power_off()
                 ps.lock()
                 self.log.info("%.32r: %s is powered OFF" % (self, ps_name))
-        coroutine_return('%s are powered OFF' % ps_names)
+        return '%s are powered OFF' % ps_names
 
 
-    @coroutine
     @endpoint('is-enabled')
-    def is_enabled(self, handler):
+    async def is_enabled(self):
         is_enabled = {name: ps.is_enabled()
                     for name, ps in self.power_supplies.items()}
-        coroutine_return(is_enabled)
+        return is_enabled
 
-    @coroutine
     @endpoint('is-ready')
-    def is_ready(self, handler):
+    async def is_ready(self):
         is_ready = {name: (ps.is_enabled() and ps.is_ok() ) #and self.is_ready[name]
                     for name, ps in self.power_supplies.items()}
-        coroutine_return(self.is_ready)
+        return self.is_ready
 
 
-    @coroutine
     @endpoint('get-metrics')
-    def get_metrics(self, handler):
-        metrics = yield self._get_metrics()
-        coroutine_return(metrics.as_dict())
+    async def get_metrics(self):
+        metrics = await self._get_metrics()
+        return metrics.as_dict()
 
-    @coroutine
     @endpoint('get-monitoring-data')
-    def monitoringMetrics(self, handler):
+    async def monitoringMetrics(self):
         self.log.info('%.32r: Received monitoring metrics request' % self)
-        metrics = yield self._get_metrics()
-        handler.set_header('Content-Type', 'text/plain')
-        handler.write(str(metrics))
+        metrics = await self._get_metrics()
+        return aiohttp.web.Response(text=str(metrics))
+
 
 #########################################
 # Power Supply REST client
@@ -707,19 +695,17 @@ class PowerSupplyAsyncRESTClient(AsyncRESTClient):
             heartbeat_string='Pc')
 
 
-    # @coroutine
-    # def ping(self):
+    # async # def ping(self):
     #     try:
-    #         yield self.get('status')
+    #         await self.get('status')
     #         self.log.info("Successfully pinged power_supply server at %s:%i" % (self.hostname, self.port))
     #     except Exception as e:
     #         self.log.debug(repr(e))
     #         self.log.error("Can't ping power_supply server at %s:%i" % (self.hostname, self.port))
-    #         coroutine_return(False)
-    #     coroutine_return(True) # coroutine_return raises an exception: we don't want it in the try block
+    #         return alse)
+    #     return rue) # return raises an exception: we don't want it in the try block
 
-    @coroutine
-    def start(self, config):
+    async def start(self, config):
         """ If the PowerSupply remote server is not started, start it with the specified configuration
 
         Parameters:
@@ -737,80 +723,70 @@ class PowerSupplyAsyncRESTClient(AsyncRESTClient):
         if isinstance(config, NameSpace):
             config = config.as_dict()
 
-        server_info = NameSpace((yield self.status()))
+        server_info = NameSpace(await self.status())
         ps_names = list(config['units'].keys())
 
 
         if not server_info.is_started:
             self.log.info('%.32r: Server not started. Starting it with the provided configuration' % self)
-            start_results = yield self.post('start', **config)  # start the server if not already started
+            start_results = await self.post('start', **config)  # start the server if not already started
         else:
             self.log.info('%.32r: Server is already started' % self)
             if set(server_info.ps_names) != set(ps_names):
                 self.log.warning('%.32r: The server does not support the same supplies as the current config (%s instead of %s)' % (self, server_info.ps_names, ps_names))
             start_results = 'Already started'
 
-        # result = yield self.post('start', **config)
+        # result = await self.post('start', **config)
 
         # if server_info.name != name:
         #     raise RuntimeError('%.32r: The remote server does not have the expected name (%s instead of %s)' % (self, server_info.name, name))
 
 
-        coroutine_return(start_results)
+        return start_results
 
-    @coroutine
-    def is_started(self):
-        coroutine_return((yield self.get('is-started')))
+    async def is_started(self):
+        return (await self.get('is-started'))
 
-    @coroutine
-    def stop(self):
-        result = yield self.get('stop')
-        coroutine_return(result)
+    async def stop(self):
+        result = await self.get('stop')
+        return result
 
-    @coroutine
-    def status(self):
-        result = yield self.get('status')
-        coroutine_return(result)
+    async def status(self):
+        result = await self.get('status')
+        return result
 
-    @coroutine
-    def is_enabled(self):
+    async def is_enabled(self):
         """ Indicates if the power supplies are enabled (but do not necessarily produce a valid output) """
-        result = yield self.get('is-enabled')
-        coroutine_return(result)
+        result = await self.get('is-enabled')
+        return result
 
-    @coroutine
-    def is_ready(self):
+    async def is_ready(self):
         """ Indicates if the power supplies are enabled, have a valid output and the power up delay has elapsed.
         """
-        result = yield self.get('is-ready')
-        coroutine_return(result)
+        result = await self.get('is-ready')
+        return result
 
-    @coroutine
-    def list_names(self):
-        result = yield self.get('list-names')
-        coroutine_return(result)
+    async def list_names(self):
+        result = await self.get('list-names')
+        return result
 
-    @coroutine
-    def power_on(self, *ps_names):
-        result = yield self.post('power-on', ps_names=ps_names)
-        coroutine_return(result)
+    async def power_on(self, *ps_names):
+        result = await self.post('power-on', ps_names=ps_names)
+        return result
 
-    @coroutine
-    def power_off(self, *ps_names):
-        result = yield self.post('power-off', ps_names=ps_names)
-        coroutine_return(result)
+    async def power_off(self, *ps_names):
+        result = await self.post('power-off', ps_names=ps_names)
+        return result
 
-    @coroutine
-    def power_cycle(self, *ps_names):
-        off_result = yield self.post('power-off', ps_names=ps_names)
-        yield sleep(3)
-        on_result = yield self.post('power-on', ps_names=ps_names)
-        coroutine_return((off_result, on_result))
+    async def power_cycle(self, *ps_names):
+        off_result = await self.post('power-off', ps_names=ps_names)
+        await asyncio.sleep(3)
+        on_result = await self.post('power-on', ps_names=ps_names)
+        return (off_result, on_result)
 
-    @coroutine
-    def get_metrics(self):
-        result = yield self.get('get-metrics')
-        coroutine_return(Metrics(result))
+    async def get_metrics(self):
+        result = await self.get('get-metrics')
+        return Metrics(result)
 
 
 
@@ -894,7 +870,12 @@ def main():
     """
     # Setup logging
     log.setup_basic_logging('DEBUG')
-    client, server = run_client(sys.argv[1:], PowerSupplyAsyncRESTServer, PowerSupplyAsyncRESTClient, object_name ='PowerSupply', server_config_path='power_supplies.servers')
+    client, server = run_client(
+        sys.argv[1:],
+        PowerSupplyAsyncRESTServer,
+        PowerSupplyAsyncRESTClient,
+        object_name ='PowerSupply',
+        server_config_path='power_supplies.servers')
     return client, server
 
 if __name__ == '__main__':
