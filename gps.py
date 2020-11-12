@@ -12,6 +12,7 @@ import calendar
 import queue
 import asyncio
 import aiohttp
+import traceback
 
 # External private packages
 from wtl import log
@@ -799,7 +800,7 @@ class GPSAsyncRESTServer(AsyncRESTServer):
         super().__init__(address=address, port=port, heartbeat_string='Gs')
         self.metrics_queue = queue.Queue(1000)
         self.metrics = Metrics(latest_only=True)
-        self.add_periodic_callback(self._get_metrics, 1000)
+        self.add_periodic_callback(self._get_metrics, 1000, stop_on_errors=False)
         self.startup_time = datetime.datetime.utcnow()
         self.GIT_VERSION = get_git_version()
 
@@ -822,9 +823,7 @@ class GPSAsyncRESTServer(AsyncRESTServer):
                 #    self.metrics_queue.put(metrics)
             except IOError as e:
                 self.log.warning('%r: Error while trying to access metric from %s\nThe error is:\n%r' % (self, gps_name, e))
-            except Exception as e:
-                self.log.error(e)
-                raise
+                # raise
 
         self.log.info('Queue has %i metrics blocks' % len(self.metrics))  # _queue.qsize())
 
@@ -837,9 +836,10 @@ class GPSAsyncRESTServer(AsyncRESTServer):
     async def start(self, **config):
         """ Start the GPS server with provided config
         """
+        print('Starting GPS server')
         self.log.info('%r: Received start command' % self)
         if self.gps:
-            raise RuntimeError('%.32r: Power Supply server is already started' % self)
+            raise RuntimeError('%.32r: GPS server is already started' % self)
 
         # Register config with comet broker
         try:
@@ -880,16 +880,21 @@ class GPSAsyncRESTServer(AsyncRESTServer):
             self.log.debug('%r: Creating GPS handler %s' % (self, name))
             gps = SpectrumInstrumentsTM4D(**params)
             self.gps[name] = gps
+            print(f'Creating gps {gps}')
         return 'GPS server started'
 
     @endpoint('stop')
     async def stop(self):
         if not self.gps:
-            self.log.warning('%.32r: Power Supply server is not started' % self)
+            self.log.warning('%.32r: GPS server is not started' % self)
         else:
             self.gps = {}
         return 'GPS server stopped'
 
+    @endpoint('test')
+    async def test(self, x=1):
+        y = x + 1
+        return y
     #
     # @endpoint('status')
     # async def status(self, handler):
@@ -925,7 +930,7 @@ class GPSAsyncRESTServer(AsyncRESTServer):
         # handler.write(str(self.metrics.pop()))
         return aiohttp.web.Response(text=str(self.metrics.pop()))
 #########################################
-# Power Supply REST client
+# GPS REST client
 #########################################
 
 class GPSAsyncRESTClient(AsyncRESTClient):
@@ -950,7 +955,7 @@ class GPSAsyncRESTClient(AsyncRESTClient):
 
         port (int): The port number to which the RawAcq REST server is listening. Default is port 80.
 
-        ps_names (list of str): list of power supply names on which this client will operate. Other
+        ps_names (list of str): list of GPS names on which this client will operate. Other
             supplies will not be affected.
     """
     DEFAULT_PORT = GPSAsyncRESTServer.DEFAULT_PORT
@@ -964,7 +969,7 @@ class GPSAsyncRESTClient(AsyncRESTClient):
 
 
     async def start(self, config):
-        """ If the PowerSupply remote server is not started, start it with the specified configuration
+        """ If the GPS remote server is not started, start it with the specified configuration
 
         Parameters:
 
@@ -973,16 +978,20 @@ class GPSAsyncRESTClient(AsyncRESTClient):
 
         """
         #print('start!')
-        self.log.info('%s: Starting remote PowerSupply server at %s:%i with config: %r' % (self, self.hostname, self.port, config))
+        self.log.info('%s: Starting remote GPS server at %s:%i with config: %r' % (self, self.hostname, self.port, config))
 
         if isinstance(config, str):
             config = load_yaml_config(config)
-        result = self.post('start', **config)
+        result = await self.post('start', **config)
         return 'GPS server started'
 
 
     async def stop(self):
         result = await self.get('stop')
+        return result
+
+    async def test(self, **args):
+        result = await self.post('test', **args)
         return result
 
     #
@@ -1008,7 +1017,7 @@ def main():
     """ Command-line interface to launch and operate the GPS server.
     """
     # Setup logging
-    log.setup_basic_logging('DEBUG')
+    log.setup_basic_logging('WARN')
     client, server = run_client(
         sys.argv[1:], GPSAsyncRESTServer, GPSAsyncRESTClient,
         object_name ='GPS', server_config_path='gps.servers')
