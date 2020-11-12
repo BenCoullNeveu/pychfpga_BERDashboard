@@ -179,7 +179,7 @@ class IceBoard(IceBoardBase):
 
     async def ping_async(self, timeout=0.1):
         """
-        Returns a boolean inticating whether a tuber object is available at
+        Returns a boolean indicating whether a tuber object is available at
         the specified ARM hostname.
         """
         self.logger.info('%r: Pinging %s' % (self, self.tuber_uri))
@@ -187,7 +187,7 @@ class IceBoard(IceBoardBase):
             await self._tuber_sleep_async(0)
             return True
         except TuberError as e:
-            logger.debug('%.32r: Tuber Ping returned an error. Board is considered to be absent. Error is \n%r' % (self, err))
+            self.logger.debug('%.32r: Tuber Ping returned an error. Board is considered to be absent. Error is \n%r' % (self, e))
             return False
         #     async.async_return(False)
         # except ValueError:
