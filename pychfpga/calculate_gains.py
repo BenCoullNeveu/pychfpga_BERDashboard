@@ -16,10 +16,10 @@ import traceback
 import numpy as np
 # Private external packages
 
-from wtl.rest import RunSyncWrapper  # For testing
+# from wtl.rest import RunSyncWrapper  # For testing
 
 # local imports
-from .. import raw_acq
+import raw_acq # this assumed that '..' has been put into the search path
 
 class GainCalc(object):
 
@@ -550,7 +550,7 @@ def compute_gains(ca, number_of_averages=100, ch=3):
     Parameters:
 
         ca (FPGAArray): A FPGAArray object containing the boards on which we
-            want to compute digital gains
+            want to compute digital gains. We operate only on the first board of the array.
 
         number_of_averages (int): Number of FFT averages that are captured by the
             receiver for each iteration
@@ -558,44 +558,46 @@ def compute_gains(ca, number_of_averages=100, ch=3):
         ch (int): stream ID index on which we want to compute the gain (debug)
 
     """
-    ca.set_sync_method('local_soft_trigger')
+    async def run():
+        ca.set_sync_method('local_soft_trigger')
 
-    ca.set_operational_mode('shuffle16', frames_per_packet=1)
-    ca.ib.start_data_capture(period=.004, source='scaler')
+        ca.set_operational_mode('shuffle16', frames_per_packet=1)
+        ca.ib.start_data_capture(period=.004, source='scaler')
 
-    stream_id_map = ca.get_stream_id_map()
-    channel_ids = list(stream_id_map.keys())
-    stream_ids = list(stream_id_map.values())
-    bank = 0
+        stream_id_map = ca.get_stream_id_map()
+        channel_ids = list(stream_id_map.keys())
+        stream_ids = list(stream_id_map.values())
+        bank = 0
 
-    port_map = [dict(
-        port=ca.ib[0].get_data_socket().getsockname()[1],
-        sources=[(ca.ib[0].hostname, 80)])
-        ]
-    r = RunSyncWrapper(raw_acq.RawAcqReceiver())
-    g = GainCalc(channel_ids=channel_ids, n_iterations=20)
-    g.rms = np.empty((g.n_rms_iterations, 1024))
-    g.gain = np.empty((g.n_rms_iterations, 1024))
-    # Set all gains to their initial values
-    ca.set_gains(gains=g.get_gains(), bank=bank, when='now')
-    i = 0
-    try:
-        r.start(ports=port_map, stream_ids=stream_ids, start_thread=True)
+        port_map = [dict(
+            port=ca.ib[0].get_data_socket().getsockname()[1],
+            sources=[(ca.ib[0].hostname, 80)])
+            ]
+        r = raw_acq.RawAcqReceiver()
+        g = GainCalc(channel_ids=channel_ids, n_iterations=20)
+        g.rms = np.empty((g.n_rms_iterations, 1024))
+        g.gain = np.empty((g.n_rms_iterations, 1024))
+        # Set all gains to their initial values
+        await ca.set_gains_async(gains=g.get_gains(), bank=bank, when='now')
+        i = 0
+        try:
+            await r.start_async(ports=port_map, stream_ids=stream_ids, start_thread=True)
 
-        while not g.is_done():
-            print('.')
-            ix, rms = r.get_fft_rms(stream_ids=stream_ids, target_gain_bank=bank, number_of_frames=number_of_averages)
-            g.rms[i, :] = rms[ch]
-            g.gain[i, :] = g.glin[ch] * 2.**g.glog[ch]
-            i += 1
-            new_gains = g.update_gains(ix, rms)
-            # bank ^= 1 # switch bank
-            ca.set_gains(gains=new_gains, bank=bank, when='now')
-        # Set the final gains
-        filtered_gains, mask = g.get_filtered_gains()
-        ca.set_gains(gains=filtered_gains, bank=0, when='now')
-    except Exception:
-        raise
-    finally:
-        r.stop()
-    return g, filtered_gains, mask
+            while not g.is_done():
+                print('.')
+                ix, rms = r.get_fft_rms(stream_ids=stream_ids, target_gain_bank=bank, number_of_frames=number_of_averages)
+                g.rms[i, :] = rms[ch]
+                g.gain[i, :] = g.glin[ch] * 2.**g.glog[ch]
+                i += 1
+                new_gains = g.update_gains(ix, rms)
+                # bank ^= 1 # switch bank
+                await ca.set_gains_async(gains=new_gains, bank=bank, when='now')
+            # Set the final gains
+            filtered_gains, mask = g.get_filtered_gains()
+            await ca.set_gains_async(gains=filtered_gains, bank=0, when='now')
+        except Exception:
+            raise
+        finally:
+            r.stop()
+        return g, filtered_gains, mask
+    g, filtered_gains, mask = asyncio.run(run())
