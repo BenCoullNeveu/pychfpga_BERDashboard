@@ -19,12 +19,11 @@ import select
 import netifaces  # non-standard Python library (pip install netifaces)
 import numpy as np
 import h5py
-import tornado
 import psutil
 
 # External private packages
 from wtl import log
-from wtl.rest import AsyncRESTServer, endpoint, AsyncRESTClient, coroutine, coroutine_return, IOLoop, RunSyncWrapper, moment, sleep, run_client
+from wtl.rest import AsyncRESTServer, endpoint, AsyncRESTClient, run_client
 from wtl.namespace import NameSpace
 from wtl.metrics import Metrics
 
@@ -54,12 +53,14 @@ class RawAcqReceiver(object):
         Should probably fix the 'serve forever bits'
     '''
 
-    # QUEUE_MAXSIZE = 10240 #: Maximum number of elements in a queue, just in case we can't read the queue as fast as we fill it. Otherwise we can use infinite memory.
+    # QUEUE_MAXSIZE = 10240 #: Maximum number of elements in a queue, just in
+    # case we can't read the queue as fast as we fill it. Otherwise we can use
+    # infinite memory.
 
     def __init__(self):
         self.log = log.get_logger(self)
         self.ports = None
-        self.port_number = [] # actual port number associated with each socket
+        self.port_number = []  # actual port number associated with each socket
         self.name = None
         self.datawriter = None
         self.receivers = []
@@ -70,8 +71,9 @@ class RawAcqReceiver(object):
         self.start_time = None
         self.started = False
         self.stream_ids = []
-        self.sockets = [] # Empty indicates that the receiver is not started
-        self.lock = threading.RLock()  # Locks access to data while the receiver thread is populating it
+        self.sockets = []  # Empty indicates that the receiver is not started
+        self.lock = threading.RLock()  # Locks access to data while the
+                                       # receiver thread is populating it
         self.is_locked=False #debug
         self.raw_packet_processor = None
         self.corr_packet_processor = None
@@ -79,22 +81,22 @@ class RawAcqReceiver(object):
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, self.name)
 
-    @coroutine
-    def start(self,
-              name='RawAcq',
-              ports=[],
-              stream_ids=[],
-              corr_name=None,
-              run_name=None,
-              data_folder=None,
-              run_folder=None,
-              start_thread=True,
-              metrics_refresh_time=1,
-              adc_rms_refresh_count=60,
-              corr_firmware_integration_period=0, #used to compute timestamps
-              corr_software_integration_period=0, # no corr processing until changed
-              jump_thresholds=[],
-              ):
+    async def start_async(
+            self,
+            name='RawAcq',
+            ports=[],
+            stream_ids=[],
+            corr_name=None,
+            run_name=None,
+            data_folder=None,
+            run_folder=None,
+            start_thread=True,
+            metrics_refresh_time=1,
+            adc_rms_refresh_count=60,
+            corr_firmware_integration_period=0,  #used to compute timestamps
+            corr_software_integration_period=0,  # no corr processing until changed
+            jump_thresholds=[],
+            ):
         """ Start a raw data receiver for each specified port.
 
         For each port we monitor, create a data queue and start a
@@ -147,7 +149,7 @@ class RawAcqReceiver(object):
                 this list will be rejected.
 
 
-            jump_thresholds (list of int): Theshold values
+            jump_thresholds (list of int): Threshold values
 
             metrics_refresh_time (float): cadence in seconds at which metrics are updated
 
@@ -203,10 +205,9 @@ class RawAcqReceiver(object):
         # self.frame0_irigb_time = frame0_irigb_time
 
         # Socket creation variables
-        self.sockets = [] # Sockets that were opened
-        self.port_number = [] # actual port number associated with each socket
+        self.sockets = []  # Sockets that were opened
+        self.port_number = []  # actual port number associated with each socket
         self.ping_error_count = {}
-
 
         self.start_time = time.time()
         # Number of packets that are received
@@ -217,20 +218,18 @@ class RawAcqReceiver(object):
         self.current_processed_packets = 0
         self.packet_current_processing_time = 0
 
-
         #######################################
         # Raw buffer & buffer unpacking objetcs
         #######################################
 
         # Define numpy data types that will be used to efficiently parse the data
 
-        self.DATA_SIZE = 2048 # number of bytes of data
+        self.DATA_SIZE = 2048  # number of bytes of data
         self.RAW_PACKET_LENGTH = 10 + self.DATA_SIZE  # header length + data length
         self.CORR_PACKET_LENGTH = CORR.NBYTES_PER_HEADER + CORR.NPROD_PER_CMAC * CORR.NBYTES_PER_PROD
 
-
         self.PACKET_SIZE = max(self.RAW_PACKET_LENGTH, self.CORR_PACKET_LENGTH)
-        self.BUF_SIZE = 2048 # size of receive buffer. Big enough to accomodate all packets for one frame from the RAW or correlator subsystem.
+        self.BUF_SIZE = 2048  # size of receive buffer. Big enough to accomodate all packets for one frame from the RAW or correlator subsystem.
 
         if not self.BUF_SIZE:
             self.log.warning('%r: Buffer size is zero! The list of expected STREAM IDs must have been empty!' % self)
@@ -252,13 +251,10 @@ class RawAcqReceiver(object):
             # frame0_irigb_time = self.frame0_irigb_time
             )
 
-
-
-
         # Determine the interface from which data will be coming from each source by pinging them
         # returns a dictionary that maps each source to an interface IP and target port
         #   { (src_ip, src_port) : (if_ip, port) }
-        src_if_addrs = yield self.ping_sources()
+        src_if_addrs = await self.ping_sources_async()
         print('IF addr=', src_if_addrs)
         failed_src = [src_addr for src_addr, src_if_addr in src_if_addrs.items() if not src_if_addr]
         if failed_src:
@@ -349,7 +345,7 @@ class RawAcqReceiver(object):
             status='started',
             target_addr=dest_ifs # return as a list of tuples, json does not support tuple-indexed dicts
             )
-        coroutine_return(result)
+        return result
 
     def get_udp_socket(self, addr):
         """
@@ -375,8 +371,8 @@ class RawAcqReceiver(object):
         return sock
 
 
-    @coroutine
-    def _ping(self, addr, timeout=0.3):
+
+    async def _ping_async(self, addr, timeout=0.3):
         """
         Establish a TCP connection with `addr`  at and return the interface and local port used for the connection.
 
@@ -390,32 +386,33 @@ class RawAcqReceiver(object):
         """
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(timeout)
-        stream = tornado.iostream.IOStream(s)
+        loop = asyncio.get_event_loop()
+        # stream = tornado.iostream.IOStream(s)
 
         try:
-            yield stream.connect(addr)
+            await loop.sock_connect(s, addr)
             if_addr = s.getsockname()
             s.close()
         except (socket.timeout, Exception) as e:
             self.log.warn('Could not establish a TCP connection with %s:%s. Error is:\n %s' % (addr[0], addr[1], e))
             if_addr = None
 
-        coroutine_return(if_addr)
+        return if_addr
 
-    @coroutine
-    def ping_sources(self):
+
+    async def ping_sources_async(self):
         if not self.ports:
-            coroutine_return()
+            return
         self.log.info('%r: Pinging all data sources' % (self))
         # Determine the interface from which data will be coming from each source by pinging them
-        src_if_addrs = yield {tuple(src):self._ping(tuple(src))
-                              for port_info in self.ports
-                              for src in port_info['sources']} # can be parallelized
-        for src_addr, src_if_addr in src_if_addrs.items():
+        src_addrs = [tuple(src) for port_info in self.ports
+                              for src in port_info['sources']]
+        src_if_addrs = await asyncio.gather(*[self._async(src) for src in src_addrs])
+        for src_addr, src_if_addr in zip(src_addrs, src_if_addrs):
             old_count = self.ping_error_count.setdefault(src_addr, 0)
             if not src_if_addr:
                 self.ping_error_count[src_addr] = old_count + 1
-        coroutine_return(src_if_addrs)
+        return src_if_addrs
 
 
     def _get_mac_address(self, if_addr):
@@ -541,8 +538,8 @@ class RawAcqReceiver(object):
         self.packet_max_processing_time = max(t3 - t0, self.packet_max_processing_time)
         self.packet_current_processing_time += t3 - t0
 
-    @coroutine
-    def get_metrics(self):
+
+    async def get_metrics_async(self):
         """ Gather metrics from all packet processors"""
         metrics = Metrics(default_type='gauge')
 
@@ -564,7 +561,7 @@ class RawAcqReceiver(object):
         metrics.add('raw_acq_node_cpu_system', value=cpu.system)
         metrics.add('raw_acq_node_cpu_idle', value=cpu.idle)
 
-        yield moment
+        await asyncio.sleep(0)
 
 
         # IOloop health stats
@@ -583,7 +580,7 @@ class RawAcqReceiver(object):
             dropped_packets = self.get_udp_dropped_packets(self.port_number)
             for port, dropped in dropped_packets.items():
                 metrics.add('raw_acq_udp_dropped_packets', value=dropped, port=port)
-            yield moment
+            await asyncio.sleep(0)
 
             # Ping stats
             for (src_ip, src_port), count in self.ping_error_count.items():
@@ -612,9 +609,9 @@ class RawAcqReceiver(object):
             # Get metrics from packet processors
             for proc in [self.raw_packet_processor, self.corr_packet_processor]:
                 if proc:
-                    yield proc.get_metrics(metrics)
+                    await proc.get_metrics_async(metrics)
 
-        coroutine_return(metrics)
+        return metrics
 
     def get_udp_dropped_packets(self, ports):
         """ Return the number of packet dropped by the operating system IP stack """
@@ -642,7 +639,7 @@ class RawAcqReceiver(object):
         return bool(self.sockets)
 
 
-    def check_ioloop_response_time(self):
+    async def check_ioloop_response_time_async(self):
         t = time.time()
         if self.ioloop_last_time is not None:
             self.ioloop_max_response_time = max(self.ioloop_max_response_time or 0, t-self.ioloop_last_time)
@@ -1084,7 +1081,7 @@ class RawPacketProcessor(object):
         # Schedule for the acquisition to stop if capture_ducation is non-zero
         if capture_duration:
             self.log.info('%r: HDF5 raw data data writer will be stopped in %f seconds' % (self, capture_duration))
-            IOLoop.current().call_later(capture_duration, self.stop_adc_hdf5)
+            asyncio.get_event_loop().call_later(capture_duration, self.stop_adc_hdf5)
 
 
         # Create the target folder
@@ -1140,8 +1137,8 @@ class RawPacketProcessor(object):
                 self.adc_rms_updated[cix] = 1
 
 
-    @coroutine
-    def get_adc_rms(self):
+
+    async def get_adc_rms_async(self):
         """ Return the latest averaged ADC RMS values.
 
 
@@ -1160,7 +1157,7 @@ class RawPacketProcessor(object):
                 self.chan_ids,
                 self.adc_rms_timestamp.tolist(),
                 self.adc_rms.tolist()))
-        coroutine_return(result)
+        return result
 
 
         #########################################
@@ -1217,8 +1214,8 @@ class RawPacketProcessor(object):
         #         self.old_timestamp = None
         #         self.capture_start = False
 
-    @coroutine
-    def get_data(self):
+
+    async def get_data_async(self):
         """
         Grab data from the queue until we have a frame for all channels for a single timestamp.
         """
@@ -1248,9 +1245,9 @@ class RawPacketProcessor(object):
             raise RuntimeError('Data set capture is already in progress')
         self.start_capture = True
         while not self.start_capture:
-            yield moment
+            await asyncio.sleep(0)
 
-        coroutine_return(self.all_ts, self.ports, self.all_data)
+        return self.all_ts, self.ports, self.all_data
 
 
     def process_fft_packets(self):
@@ -1339,8 +1336,8 @@ class RawPacketProcessor(object):
                         self.fft_rms[cix] = np.sqrt(self.fft_rms_buffer[cix].astype(np.float32) / self.fft_n_frames[cix, None])
                         self.fft_rms_buffer[cix] = 0
                         # print('Completed channels', np.sort(cix))
-    @coroutine
-    def start_fft_rms(self, stream_ids, target_gain_bank, number_of_frames=100):
+
+    async def start_fft_rms_async(self, stream_ids, target_gain_bank, number_of_frames=100):
         """ Start the acquisition of averages RMS data from the FFT data using
         the specified target bank. `get_fft_rms()` should be polled to
         retreive the data products that are ready.
@@ -1362,8 +1359,8 @@ class RawPacketProcessor(object):
             self.fft_rms_started[ix] = True
 
 
-    @coroutine
-    def get_fft_rms(self, all_done=True):
+
+    async def get_fft_rms_async(self, all_done=True):
         """ Returns FFT RMS data products that are ready.
 
         Returns:
@@ -1374,7 +1371,7 @@ class RawPacketProcessor(object):
                 rms is an ndarray(N, 1024) containing the corresponding rms-averages FFT spetra
         """
         # t0 = time.time()
-        # yield self.start_fft_rms(stream_ids=stream_ids, target_gain_bank=target_gain_bank, number_of_frames=number_of_frames)
+        # await self.start_fft_rms_async(stream_ids=stream_ids, target_gain_bank=target_gain_bank, number_of_frames=number_of_frames)
 
         # ix = np.array([self.sid_map[sid] for sid in stream_ids], dtype=np.int16)
 
@@ -1385,11 +1382,11 @@ class RawPacketProcessor(object):
         # with threading.Lock():
         with self.fft_lock:
             # if all_done and not any(self.fft_rms_done[self.fft_rms_started]):
-            #     coroutine_return((np.array([], dtype=np.int16),np.array([])))
+            #     return np.array([], dtype=np.int16),np.array([])))
             #     # while not all(self.fft_rms_done):
                 #     # print(self.fft_rms_done[ix])
                 #     time.sleep(0.001) # give some time to run the receiver thread
-                #     yield moment
+                #     await asyncio.sleep(0)
             # t2 = time.time()
             # print('FFT RMS acquisition done, setup=%.3f ms, acq=%.3f ms, total=%.3f' % ((t1-t0)*1000, (t2-t1)*1000, (t2-t0)*1000))
             ix = np.logical_and(self.fft_rms_started, self.fft_rms_done)
@@ -1397,11 +1394,11 @@ class RawPacketProcessor(object):
             rms = self.fft_rms[ix]
             self.fft_rms_started[ix] = False
         self.log.info('%r: get_fft_rms returned FFT RMS vectors from %i channels' % (self, sid.size))
-        coroutine_return ((sid, rms))
+        return ((sid, rms))
 
 
-    @coroutine
-    def get_metrics(self, metrics):
+
+    async def get_metrics_async(self, metrics):
         """ Gathers the Raw acquisition related metrics (ADC and FFT)
 
         Parameters:
@@ -1418,7 +1415,7 @@ class RawPacketProcessor(object):
             metrics.add('raw_acq_disk_free', value=s.f_bfree * s.f_bsize)
             metrics.add('raw_acq_disk_percent_used', value=(s.f_blocks - s.f_bfree) / s.f_blocks)
             metrics.add('raw_acq_disk_percent_free', value=s.f_bfree / s.f_blocks)
-            yield moment
+            await asyncio.sleep(0)
 
         # HDF5 file writing stats
         metrics.add('raw_acq_hdf5_run_time', value= 0 if self.hdf5_start_time is None else time.time() - self.hdf5_start_time )
@@ -1430,7 +1427,7 @@ class RawPacketProcessor(object):
             metrics.add('raw_acq_hdf5_n_elements_max', value=self.hdf5_file.elements_per_file)
             metrics.add('raw_acq_hdf5_number_of_files', value=self.hdf5_file.file_number)
 
-        yield moment
+        await asyncio.sleep(0)
 
 
 
@@ -1475,7 +1472,7 @@ class RawPacketProcessor(object):
 
 
 
-        yield moment
+        await asyncio.sleep(0)
 
         cix, = np.where(self.metrics_updated)  # boolean ndarray
 
@@ -1506,7 +1503,7 @@ class RawPacketProcessor(object):
             # for i, count in enumerate(self.metrics_jumps[ix]):
             #     metrics.add('raw_acq_jumps', value= count, crate=crate, slot=slot, chan=chan, threshold=self.threshold[i])
             time.sleep(0.0001) # relinquish some time to the thread? Not sure if it helps.
-            yield moment
+            await asyncio.sleep(0)
         self.metrics_updated[cix] = False
 
         # ix, = np.where(self.fft_metrics_updated)  # boolean ndarray
@@ -1531,7 +1528,7 @@ class RawPacketProcessor(object):
             metrics.add('raw_acq_fft_packet_length_error', value=metrics_fft_packet_length_error, crate=crate, slot=slot, chan=chan)
             metrics.add('raw_acq_fft_scaler_overflows', value=np.sum(fft_scaler_overflows), crate=crate, slot=slot, chan=chan)
             time.sleep(0.0001) # relinquish some time to the thread? Not sure if it helps.
-            yield moment
+            await asyncio.sleep(0)
             self.fft_metrics_updated[cix] = False
             # self.is_locked=False
 
@@ -1549,7 +1546,7 @@ class RawPacketProcessor(object):
         for csid, crms in zip(c_stream_id, c_adc_rms):
             crate, slot, chan = self.unpack_stream_id(csid)
             metrics.add('raw_acq_adc_averaged_rms', value=crms, crate=crate, slot=slot, chan=chan)
-            yield moment
+            await asyncio.sleep(0)
 
         metrics.add('raw_acq_run_time', value=0 if self.start_time is None else time.time() - self.start_time)
 
@@ -2113,8 +2110,8 @@ class CorrPacketProcessor(object):
                 dt1 * 1000,
                 dt2 * 1000))
 
-    @coroutine
-    def get_metrics(self, metrics):
+
+    async def get_metrics_async(self, metrics):
 
         metrics.add('raw_acq_processed_corr_packets', value=self.corr_processed_packets)
         if self.hdf5_file:
@@ -2164,7 +2161,7 @@ class CorrPacketProcessor(object):
         # Schedule for the acquisition to stop if capture_ducation is non-zero
         if capture_duration:
             self.log.info('%r: HDF5 correlator data writer will be stopped in %f seconds' % (self, capture_duration))
-            IOLoop.current().call_later(capture_duration, self.stop_corr_hdf5)
+            asyncio.get_event_loop().call_later(capture_duration, self.stop_corr_hdf5)
 
 
         # Create the target folder
@@ -2373,39 +2370,39 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
         self.receiver = RawAcqReceiver()
         super(RawAcqAsyncRESTServer, self).__init__(address=address, port=port,  heartbeat_string='Rs')
         # self.add_periodic_callback(self.receiver.print_stats, 3000)
-        self.add_periodic_callback(self.receiver.ping_sources, 20000) # ping the raw_acq data sources periodically to ensure the switches tables always know how to route the packets to here
-        self.add_periodic_callback(self.receiver.check_ioloop_response_time, 3000)
+        self.add_periodic_callback(self.receiver.ping_sources_async, 20000) # ping the raw_acq data sources periodically to ensure the switches tables always know how to route the packets to here
+        self.add_periodic_callback(self.receiver.check_ioloop_response_time_async, 3000)
         self.startup_time = datetime.datetime.utcnow()
         self.GIT_VERSION = get_git_version()
 
 
-    @coroutine
-    def shutdown(self):
+
+    async def shutdown(self):
         self.receiver.stop()
 
-    @coroutine
-    @endpoint
-    def start(self, handler, **config):
+
+    @endpoint('start')
+    async def start(self, **config):
         self.log.info('%r: Received start command with %r' % (self, config))
         if self.receiver.is_running():
             self.log.info('%r: Receiver is already running. Stopping it and restarting a new one' % (self))
-            yield self.receiver.stop()
+            self.receiver.stop()
             # raise RuntimeError('Server is already started')
 
         # Register config with comet broker
         comet_config = config.pop('comet_broker', {})
-        try:
-            enable_comet = comet_config['enabled']
-        except KeyError:
-            msg = "Missing config value 'comet_broker/enabled'."
+        enable_comet = comet_config.get('enabled', None)
+        print(f'comet_broker={comet_config}, enabled={enable_comet}')
+        if enable_comet is None: # if the comet_broker.enable parameter is not specified
+            msg = "Missing config value 'comet_broker.enabled'."
             self.log.error(msg)
             raise RuntimeError('Cannot start comet broker: %s' % (msg))
-        if enable_comet:
+        if enable_comet: # if comet parameters are present and comet is is enabled
             if comet is None:
                 msg = "Failure importing comet for configuration tracking.  Please install the " \
                       "comet package or set 'comet_broker/enabled' to False in config."
                 self.log.error(msg)
-                coroutine_return(msg)
+                return msg
             try:
                 comet_host = comet_config['host']
                 comet_port = comet_config['port']
@@ -2425,69 +2422,61 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
                 raise RuntimeError('Cannot start comet broker: %s' % (msg))
         else:
             self.log.warning("Config registration DISABLED. This is only OK for testing.")
-
-        result = yield self.receiver.start(**config)
+        config.pop('hostname')
+        config.pop('port')
+        result = await self.receiver.start_async(**config)
         self.log.info('%r: UDP receiver started. Returned %r' % (self, result))
-        coroutine_return(result)
+        return result
 
-    @coroutine
-    @endpoint
-    def stop(self, handler):
+
+    @endpoint('stop')
+    async def stop(self):
         if not self.receiver.is_running():
             self.log.warning('%r: Server is not running' % self)
         self.receiver.stop()
-        coroutine_return("stopped receiver")
+        return "stopped receiver"
 
-    @coroutine
+
     @endpoint('start-raw-hdf5')
-    def start_raw_hdf5(self, handler, base_dir='./', base_filename='RawAcq', capture_duration=0, capture_refresh_time=0, elements_per_file=2048*64):
+    async def start_raw_hdf5(self, base_dir='./', base_filename='RawAcq', capture_duration=0, capture_refresh_time=0, elements_per_file=2048*64):
         self.receiver.raw_packet_processor.start_adc_hdf5(
             base_dir=base_dir,
             base_filename=base_filename,
             capture_duration=capture_duration,
             capture_refresh_time=capture_refresh_time,
             elements_per_file=elements_per_file)
-        coroutine_return("started hdf5 writing to disk.")
+        return "started hdf5 writing to disk."
 
-    @coroutine
     @endpoint('stop-raw-hdf5')
-    def stop_raw_hdf5(self, handler):
+    async def stop_raw_hdf5(self):
         self.receiver.raw_packet_processor.stop_adc_hdf5()
-        coroutine_return("stopped hdf5 writing to disk.")
+        return "stopped hdf5 writing to disk."
 
-    @coroutine
     @endpoint('status')
-    def status(self, handler):
+    async def status(self):
         self.log.warning('%r: getting status request' % self)
-        coroutine_return(dict(started=self.receiver.is_running() if self.receiver else False))
+        return dict(started=self.receiver.is_running() if self.receiver else False)
 
-
-    @coroutine
-    @endpoint
-    def get_packets(self, handler):
+    @endpoint('get-packets')
+    async def get_packets(self):
         self.log.info('%r: received get_packets command' % self)
-        ts, ports, data = yield self.receiver.raw_packet_processor.get_data()
-        coroutine_return(ts=ts.tolist(), ports=ports, data=data.tolist())
+        ts, ports, data = await self.receiver.raw_packet_processor.get_data()
+        return dict(ts=ts.tolist(), ports=ports, data=data.tolist())
 
-
-    @coroutine
     @endpoint('start-fft-rms')
-    def start_fft_rms(self, handler, stream_ids=[], target_gain_bank=0, number_of_frames=100):
+    async def start_fft_rms(self, stream_ids=[], target_gain_bank=0, number_of_frames=100):
         self.log.info('%r: received start_fft_rms command' % self)
-        yield self.receiver.raw_packet_processor.start_fft_rms(stream_ids=stream_ids, target_gain_bank=target_gain_bank, number_of_frames=number_of_frames)
-        coroutine_return()
+        await self.receiver.raw_packet_processor.start_fft_rms_async(stream_ids=stream_ids, target_gain_bank=target_gain_bank, number_of_frames=number_of_frames)
+        return
 
-
-    @coroutine
     @endpoint('get-fft-rms')
-    def get_fft_rms(self, handler):
+    async def get_fft_rms(self):
         self.log.info('%r: received get_fft_rms command' % self)
-        ix, rms = yield self.receiver.raw_packet_processor.get_fft_rms()
-        coroutine_return((ix.tolist(), rms.tolist()))
+        ix, rms = await self.receiver.raw_packet_processor.get_fft_rms_async()
+        return (ix.tolist(), rms.tolist())
 
-    @coroutine
     @endpoint('start-corr-hdf5')
-    def start_corr_hdf5(self, handler,
+    async def start_corr_hdf5(self,
                         base_dir=None,
                         base_filename=None,
                         capture_duration=0,
@@ -2507,41 +2496,29 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
             software_integration_period=software_integration_period,
             frame0_irigb_time=frame0_irigb_time
             )
-        coroutine_return("started correlator hdf5 writing to disk with parameters %r." % firmware_integration_period)
+        return "started correlator hdf5 writing to disk with parameters %r." % firmware_integration_period
 
-    @coroutine
+
     @endpoint('stop-corr-hdf5')
-    def stop_corr_hdf5(self, handler):
+    async def stop_corr_hdf5(self):
         self.receiver.corr_packet_processor.stop_adc_hdf5()
-        coroutine_return("stopped corrlelator hdf5 writing to disk.")
+        return "stopped corrlelator hdf5 writing to disk."
 
-
-    # @coroutine
-    # @endpoint
-    # def estimate_gains(self, handler):
-    #     if self.gain_estimator:
-    #         gains = self.gain_estimator.estimateGains()
-    #         coroutine_return(gains=gains)
-    #     else:
-    #         raise RuntimeError('Gain estimator is not created (most probably because the server is not started)')
-
-    @coroutine
     @endpoint('get-rms')
-    def get_rms(self, handler):
+    async def get_rms(self):
         if self.receiver and self.receiver.is_running() and self.receiver.raw_packet_processor is not None:
-            rms = yield self.receiver.raw_packet_processor.get_adc_rms()
+            rms = await self.receiver.raw_packet_processor.get_adc_rms_async()
         else:
             rms = []  # if the receiver is not ready, return an empty list. This won't cause the caller to crash.
-            # coroutine_return("raw packet processor not yet running")
-        coroutine_return(rms=rms)
+            # return raw packet processor not yet running")
+        return dict(rms=rms)
 
-    @coroutine
     @endpoint('get-monitoring-data')
-    def get_monitoring_data(self, handler):
+    async def get_monitoring_data(self):
         t0 = time.time()
         self.log.info('%r: Received monitoring metrics request' % self)
         if self.receiver:
-            metrics = yield self.receiver.get_metrics()
+            metrics = await self.receiver.get_metrics_async()
         t1 = time.time()
         handler.set_header('Content-Type', 'text/plain')
         handler.set_header('Content-Encoding', 'gzip')
@@ -2561,9 +2538,9 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
     This client is used by ch_master to start, configue and operate all the RawAcq servers in the array.
 
     The client is implemented using a Tornado AsyncHTTPClient. It exposes the RawAcq server methods
-    (i.e REST endpoints) as local methods. The local methods are Tornado coroutines so requests to
+    (i.e REST endpoints) as local methods. The local methods are Tornados so requests to
     multiple clients can be made in parallel. This is especially beneficial since the data requests
-    from the server are slow IO operations which benefit the mist from co-execution.
+    from the server are slow IO operations which benefit the mist from casync o-execution.
 
     The client will operate only if the IOloop in which is was created is running.
 
@@ -2599,65 +2576,65 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
         self.config = config
 
 
-    @coroutine
-    def ping(self):
+
+    async def ping(self):
         try:
-            yield self.get('status')
+            await self.get('status')
             self.log.info("Successfully pinged raw_acq server at %s:%i" % (self.hostname, self.port))
         except Exception as e:
             self.log.debug(repr(e))
             self.log.error("Can't ping raw_acq server at %s:%i" % (self.hostname, self.port))
-            coroutine_return(False)
-        coroutine_return(True) # coroutine_return raises an exception: we don't want it in the try block
+            return False
+        return True # return raises an exception: we don't want it in the try block
 
-    @coroutine
-    def status(self):
-        result = yield self.get('status')
-        coroutine_return(result)
 
-    @coroutine
-    def start(self, **config):
+    async def status(self):
+        result = await self.get('status')
+        return result
+
+
+    async def start(self, config):
         """ Start the RaqAcq remote server with the keyword argument as configuration data"""
         self.log.info('%s: Starting remote RawAcq server at %s:%i with config: %r' % (self, self.hostname, self.port, config))
-        result = yield self.post('start', **config)
-        coroutine_return(result)
+        result = await self.post('start', **config)
+        return result
 
-    @coroutine
-    def stop(self):
-        result = yield self.get('stop')
-        coroutine_return(result)
 
-    @coroutine
-    def get_packets(self):
-        data = yield self.get('get-packets')
-        coroutine_return(data)
+    async def stop(self):
+        result = await self.get('stop')
+        return result
 
-    @coroutine
-    def start_fft_rms(self, stream_ids=[], target_gain_bank=0, number_of_frames=100):
-        yield self.post('start-fft-rms', stream_ids=stream_ids, target_gain_bank=target_gain_bank, number_of_frames=number_of_frames)
 
-    @coroutine
-    def get_fft_rms(self):
-        ix, rms = yield self.get('get-fft-rms')
-        coroutine_return((ix, rms))
+    async def get_packets(self):
+        data = await self.get('get-packets')
+        return data
 
-    @coroutine
-    def start_raw_hdf5(self, base_dir=None, base_filename=None, capture_duration=0, capture_refresh_time=0, elements_per_file=2048*64):
-        result = yield self.post('start-raw-hdf5',
+
+    async def start_fft_rms(self, stream_ids=[], target_gain_bank=0, number_of_frames=100):
+        await self.post('start-fft-rms', stream_ids=stream_ids, target_gain_bank=target_gain_bank, number_of_frames=number_of_frames)
+
+
+    async def get_fft_rms(self):
+        ix, rms = await self.get('get-fft-rms')
+        return (ix, rms)
+
+
+    async def start_raw_hdf5(self, base_dir=None, base_filename=None, capture_duration=0, capture_refresh_time=0, elements_per_file=2048*64):
+        result = await self.post('start-raw-hdf5',
             base_dir=base_dir or self.hdf5_base_dir,
             base_filename=base_filename or self.base_filename,
             capture_duration=capture_duration,
             capture_refresh_time=capture_refresh_time,
             elements_per_file=elements_per_file)
-        coroutine_return(result)
+        return result
 
-    @coroutine
-    def stop_raw_hdf5(self):
-        result = yield self.get('stop-raw-hdf5')
-        coroutine_return(result)
 
-    @coroutine
-    def start_corr_hdf5(self,
+    async def stop_raw_hdf5(self):
+        result = await self.get('stop-raw-hdf5')
+        return result
+
+
+    async def start_corr_hdf5(self,
         base_dir=None, base_filename=None,
         capture_duration=0,
         elements_per_file=2048*64,
@@ -2667,7 +2644,7 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
         frame0_irigb_time=0
         ):
 
-        result = yield self.post('start-corr-hdf5',
+        result = await self.post('start-corr-hdf5',
             base_dir=base_dir,
             base_filename=base_filename,
             capture_duration=capture_duration,
@@ -2676,20 +2653,16 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
             software_integration_period=software_integration_period,
             firmware_integration_period=firmware_integration_period,
             frame0_irigb_time=frame0_irigb_time)
-        coroutine_return(result)
-
-    @coroutine
-    def stop_corr_hdf5(self):
-        result = yield self.get('stop-corr-hdf5')
-        coroutine_return(result)
-
-    @coroutine
-    def estimate_gains(self):
-        coroutine_return((yield self.post('estimate_gains')))   # estimate-gains?
+        return result
 
 
+    async def stop_corr_hdf5(self):
+        result = await self.get('stop-corr-hdf5')
+        return result
 
 
+    async def estimate_gains(self):
+        return (await self.post('estimate_gains'))   # estimate-gains?
 
 def main():
     """ Command-line interface to operate the RawAcq server.
@@ -2758,9 +2731,14 @@ def main():
         ./raw_acq jfc.erh power_off # power off supplies used by server running at theaddress specified in the jfc.erh config
     """
     # Setup logging
-    log.setup_basic_logging('INFO')
+    log.setup_basic_logging('DEBUG')
 
-    client, server = run_client(sys.argv[1:], RawAcqAsyncRESTServer, RawAcqAsyncRESTClient, object_name ='RawAcq', server_config_path='raw_acq.servers')
+    client, server = run_client(
+        sys.argv[1:],
+        RawAcqAsyncRESTServer,
+        RawAcqAsyncRESTClient,
+        object_name ='RawAcq',
+        server_config_path='raw_acq.servers')
     return client, server
 
 if __name__ == '__main__':
