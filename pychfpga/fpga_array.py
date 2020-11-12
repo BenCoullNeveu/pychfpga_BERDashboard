@@ -2739,7 +2739,7 @@ class FPGAArray(object):
                 self.logger.warn('%r: SYNC failed on trial %i/%i due to the following error. Will retry.\n%r'
                                  % (self, trial, max_trials, e))
 
-    async def set_channelizers(
+    async def set_channelizers_async(
             self,
             adc_mode=None, adc_sampling_mode=None, adc_bandwidth=2,
             adcdaq_mode=None,
@@ -2806,6 +2806,21 @@ class FPGAArray(object):
             self.logger.warn('%r: Stream IDs are not unique!')
 
         return stream_id_map
+
+    async def start_correlators_async(self, integration_period):
+        """
+        """
+        for ib in self.ib:
+            ib.start_correlator(integration_period)
+            await asyncio.sleep(0)
+
+    async def set_offset_binary_encoding_async(self, offset_encoding_enabled):
+        """
+        """
+        for ib in self.ib:
+            ib.set_offset_binary_encoding(offset_encoding_enabled)
+            await asyncio.sleep(0)
+
 
     def get_iceboard(self, board):
         """ Return the ICEBoard specified by tuple or serial number.
@@ -2945,7 +2960,7 @@ class FPGAArray(object):
 #                      % (ib, ib.get_fpga_serial_number())
 #            print 'Setting gains on IceBoard SN%s' % ib.serial
 #            ib.set_gain(g_array)
-    async def load_gains(self, bank=0, gain_folder='/home/chime/ch_acq/gains'):
+    async def load_gains_async(self, bank=0, gain_folder='/home/chime/ch_acq/gains'):
         """ Returns the gains from the gain files associated with every board of the array.
 
         If a gain file is not found for a specific board, the default gains
@@ -2999,7 +3014,7 @@ class FPGAArray(object):
                 array_gains[board_id] = board_gains
         return (array_gains)
 
-    async def save_gains(self, gains, gain_folder='/home/chime/ch_acq/gains'):
+    async def save_gains_async(self, gains, gain_folder='/home/chime/ch_acq/gains'):
         """ Save the gains.
 
         Parameters:
@@ -3031,7 +3046,7 @@ class FPGAArray(object):
             ib = self.get_iceboard(board_id)
             ib.save_gains(gains=board_gains, folder=gain_folder)
 
-    async def get_gains(self, bank=0, use_cache=True):
+    async def get_gains_async(self, bank=0, use_cache=True):
         """ Return the digital gains programmed in the specified bank for all channels of all boards of the array.
 
         Parameters:
@@ -3062,7 +3077,7 @@ class FPGAArray(object):
             await asyncio.sleep(0)
         return (gains)
 
-    async def get_gain_timestamps(self, bank=0):
+    async def get_gain_timestamps_async(self, bank=0):
         """
         Returns the timestamp at which the gains for each channel of thewas set.
 
@@ -3089,7 +3104,7 @@ class FPGAArray(object):
             await asyncio.sleep(0)
         return (timestamps)
 
-    async def set_gains(self, gains, bank=-1,  when='now', gain_timestamps=None):
+    async def set_gains_async(self, gains, bank=-1,  when='now', gain_timestamps=None):
         """ Set the gains on the boards in the array.
 
         Parameters:
@@ -3139,7 +3154,7 @@ class FPGAArray(object):
             await asyncio.sleep(0)
 
         if when is not None:
-            self.switch_gains(bank=bank, when=when)
+            await self.switch_gains_async(bank=bank, when=when)
 
     def group_gains_per_board_id(self, channel_based_gains):
         """ Convert a channel_id based gain table into a board_id-based gain table.
@@ -3224,7 +3239,7 @@ class FPGAArray(object):
         """
         self.ib[0].get_next_gain_bank()[0]
 
-    def switch_gains(self, bank=-1, when='now'):
+    async def switch_gains_async(self, bank=-1, when='now'):
         self.ib.switch_gains(bank=bank, when=when)
 
     # def set_synchronized_gain_switching_mode(self, enable):
@@ -3249,12 +3264,12 @@ class FPGAArray(object):
     #     """
     #     self.ib.set_gain_switch_frame_number(frame=frame)
 
-    async def reset_corr(self, delay=0.1):
+    async def _async(self, delay=0.1):
         self.ib.set_corr_reset(1)
         await asyncio.sleep(0.1)
         self.ib.set_corr_reset(0)
 
-    async def reset_gpu_links(self, board_ids=None):
+    async def reset_gpu_links_async(self, board_ids=None):
         """ Reset the GPU links for the boards specified in `board_ids`
 
         Parameters:
@@ -3277,11 +3292,11 @@ class FPGAArray(object):
         """
         ibs = self.get_iceboards(board_ids)
         for ib in ibs:
-            ib.reset_gpu_links()
+            await ib.reset_gpu_links_async()
             await asyncio.sleep(0)
         return ([ib.get_id() for ib in ibs])
 
-    async def get_fpga_config(self, basic=False):
+    async def get_fpga_config_async(self, basic=False):
         """ Concurrently gets the configuration info for each FPGA """
         configs = await asyncio.gather(*[ib.get_config_async(basic=basic) for ib in self.ib])
         return dict(zip(self.ib.get_id(), configs))
@@ -3325,7 +3340,7 @@ class FPGAArray(object):
                     ch_out[(crate, slot, lane)] = [bin for bin in range(1024)]
         return ch_out
 
-    async def get_chan_output(self):
+    async def get_chan_output_async(self):
         ch_out = OrderedDict()
         for ic in self.ic:
             for ib in ic.slot.values():
@@ -4385,7 +4400,7 @@ class FPGAArray(object):
     def get_monitoring_info(self):
         return self.ib.index_by(lambda ib: ib.get_id()).get_status()
 
-    async def get_arm_metrics(self, metrics):
+    async def get_arm_metrics_async(self, metrics):
         """ Get the monitoring information on the backplanes & boards that are accessible from the ARM.
 
         Includes:
@@ -4409,7 +4424,7 @@ class FPGAArray(object):
         self.logger.info('%r: Got %i IceBoard temperature & power supply metrics' % (self, len(m)))
         metrics += await asyncio.gather(*[ib.get_fpga_udp_metrics_async() for ib in self.ib])
 
-    async def get_fpga_metrics(self, metrics, reset=True):
+    async def get_fpga_metrics_async(self, metrics, reset=True):
         """ Get the monitoring information on the FPGA firmware status across the array.
 
         Includes:
@@ -4654,7 +4669,7 @@ class FPGAArray(object):
             ps.unlock()
             ps.power_cycle(delay=4)
 
-    async def set_adc_delays(self, **kwargs):
+    async def set_adc_delays_async(self, **kwargs):
         """
         Set ADC delays for all Mezzanines on all IceBoards of the array. Calls
         set_adc_delays() on each IceBoard instance with the specified
