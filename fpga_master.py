@@ -20,10 +20,11 @@ import json
 import functools
 import pickle
 import datetime
+import asyncio
 
 # PyPI packages
 import psutil
-import asyncio
+import aiohttp.web
 import numpy as np
 
 
@@ -189,6 +190,10 @@ class FPGAMaster(object):
         self.gain_calc_metrics = Metrics()
         self.gain_hdf5 = None
 
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}()'
+
     def set_config(self, config):
         self.config = NameSpace(config)
 
@@ -293,7 +298,7 @@ class FPGAMaster(object):
 
 
         # Start the receivers concurrently
-        start_results = await {server_name: raw_acq_server.start(
+        start_results = await asyncio.gather(*[raw_acq_server.start(
                 name=recv_names[server_name],
                 ports=recv_ports[server_name],
                 stream_ids=self.raw_acq_stream_ids[server_name],
@@ -306,18 +311,18 @@ class FPGAMaster(object):
                 run_name=self.run_name,
                 corr_name=self.corr_name
                 )
-            for server_name, raw_acq_server in self.raw_acq.items()}
+            for server_name, raw_acq_server in self.raw_acq.items()])
 
         # Configure the FPGA transmit addresses based on what the receiver returned
-        for server_name, start_result in start_results.items(): # for each RawAcq server
+        for server_name, start_result in zip(self.raw_acq.keys(), start_results):  # for each RawAcq server
             # The start command returned the target address to use for each data source as a list in the format
             #    [ ((src_ip, src_port), (if_ip, port, mac)) ...].
             # We convert this to a dict {(src_ip, src_port):(if_ip, port, mac),...} for easy lookup
-            targets = {tuple(src_addr): target_addr for src_addr,target_addr in start_result['target_addr']}
+            targets = {tuple(src_addr): target_addr for src_addr, target_addr in start_result['target_addr']}
             for ib in self.raw_acq_ibs[server_name]:
                     ip_addr, port, eth_addr = targets[(ib.hostname, 80)]
-                    self.log.info('%r: Setting data transmission address if board %s to %s:%i (%s)' % (self, ib.get_id(), ip_addr, port, eth_addr))
-                    ib.set_data_target_address(ip_addr, port, eth_addr)
+                    self.log.info('%r: Setting data transmission address of board %s to %s:%i (%s)' % (self, ib.get_id(), ip_addr, port, eth_addr))
+                    await ib.set_data_target_address_async(ip_addr, port, eth_addr)
         self.log.info('%r: RawAcq server setup successfully' % self)
 
 
@@ -634,10 +639,13 @@ class FPGAMaster(object):
         gains = await self.fpgas.get_gains_async(bank=bank, use_cache=True)
         gains = {self._chan_id_to_serial_number(key): val for key, val in gains.items()}
 
+        self.log.info(f'{self!r}: save_gains: remapped gains are {gains}')
         gain_timestamps = await self.fpgas.get_gain_timestamps_async(bank=bank)
         gain_timestamps = {self._chan_id_to_serial_number(key): val for key, val in gain_timestamps.items()}
 
+        self.log.info(f'{self!r}: save_gains: setting gains')
         self.gain_hdf5.set_gain(gains, compute_time=gain_timestamps)
+        self.log.info(f'{self!r}: save_gains: writing gains')
         self.gain_hdf5.write(smp=time.time(), run_name=self.run_name)
         self.log.info('%r: saved current gains to file %s.' % (self, self.gain_hdf5.archive_files[-1]))
 
@@ -1391,30 +1399,87 @@ class FPGAMaster(object):
 
     def initialize_gain_hdf5(self):
 
+
+        # Get axis types
+        # original format is: {axis_name, {'dtype': axis_dtype}}
+        # axis_dtypes = {axis_name:axis_dtype}
+        axis_dtypes = {axis_name:axis_dtype['dtype'] for axis_name, axis_dtype in digital_gain.DigitalGainArchive._axes.items()}
+
         # Create frequency axis
         freq = self.SAMPLING_FREQUENCY - np.fft.fftfreq(self.SAMPLES_PER_FRAME, 1.0 / self.SAMPLING_FREQUENCY)
         freq = 1e-6 * freq[0: self.SAMPLES_PER_FRAME // 2]
         freq = np.array(list(zip(freq, [np.median(np.abs(np.diff(freq)))] * freq.size)),
-                        dtype=[('centre', '<f8'), ('width', '<f8')])
+                        dtype=axis_dtypes['freq'])
 
         # Create input axis
-        if self.config.input_reorder:
-            inputs = np.array([(chan_id, input_sn) for reorder, chan_id, input_sn in self.config.input_reorder],
-                              dtype=[('chan_id', 'u2'), ('correlator_input', 'S32')])
-        else:
-            inputs = np.array([(stream_id, self._chan_id_to_serial_number(chan_id))
-                               for chan_id, stream_id in sorted(self.fpgas.get_stream_id_map().items(), key=lambda x:x[1])],
-                              dtype=[('chan_id', 'u2'), ('correlator_input', 'S32')])
 
-        # Initialize writer
+        if self.config.input_reorder:
+            # If we already have a channel_id to channel SN map,
+            # use it. We assume that the map contains all the channels IDs
+            # starting from zero (the HDF5 write uses the size of the array to set
+            # the axis indices)
+            inputs = np.array([(chan_id, input_sn.encode()) for reorder, chan_id, input_sn in self.config.input_reorder],
+                              dtype=axis_dtypes['input'])
+        else:
+            sid_to_cid_map = {sid:cid for cid,sid in self.fpgas.get_stream_id_map().items()}  # {stream_id, chan_id}
+            max_sid = max([sid for sid, cid in sid_to_cid_map.items()])
+            sid_to_sn_map = [(sid, self._chan_id_to_serial_number(sid_to_cid_map.get(sid,(0,0,0)))) for sid in range(max_sid+1)]
+            inputs = np.array(sid_to_sn_map, dtype=axis_dtypes['input'])
+
+            # inputs = np.array([(stream_id, self._chan_id_to_serial_number(chan_id))
+            #                    for chan_id, stream_id in sorted(self.fpgas.get_stream_id_map().items(), key=lambda x:x[1])],
+            #                   dtype=axis_dtypes['input'])
+        self.log.info(f'{self!r}: Created input axis as {inputs} with dtypes {inputs.dtype}')
+        # Expand some strings
         hdf5_conf = self.config.fpga.gain_hdf5.copy()
         hdf5_conf['output_dir'] = os.path.expanduser(hdf5_conf.get('output_dir', '.'))
-        self.gain_hdf5 = digital_gain.DigitalGainArchive(freq=freq, input=inputs,
-                                            instrument_name=self.config.corr_name,
-                                            attrs={'git_version_tag': self.GIT_VERSION},
-                                            **hdf5_conf)
+        # Initialize writer
+        self.gain_hdf5 = digital_gain.DigitalGainArchive(
+            freq=freq, input=inputs,
+            instrument_name=self.config.corr_name,
+            attrs={'git_version_tag': self.GIT_VERSION},
+            **hdf5_conf)
 
     def _chan_id_to_serial_number(self, chan_id):
+        """
+        Converts a channel ID (crate, slot, chan) into a input serial number
+        string that can be used in the gains database.
+
+        The serial number format is determined by the format string found in
+        the configuration under the top-level key``input_sn``. The following
+        fields are recognized:
+
+            - corr_sn (str): serial numer of the correlator, as found in the
+              config under "corr_sn"
+            - crate (int): crate number. Will be zero if there is no valid
+              crate or crate number.
+            - slot (int): slot number, indexed from 1. Is 1 of there is no
+              valid slot number.
+            - slot_zero_based (int): slot number, indexed from 0. Is 0 of
+              there is no valid slot number.
+            - chan (int):hardware  channel number, as used by fpga_array
+            - input (int): application specific channel number, which
+              represent how the channels are labeled in the field. The
+              channels are remapped using the map in the config under
+              ``input_number_map``.
+
+
+        For example:
+
+           input_sn: "%(corr_sn)s%(crate)02d%(slot_zero_based)02d%(input)02d"
+
+        Parameters:
+
+            chan_id (tuple). A (crate, slot, chan) tuple. If ``crate`` is a
+                string, the crate number is assumed to be 0. ``slot`` is the
+                zero-based slot number; if ``slot`` is a string, the first
+                slot is assumed. ``chan`` shall be a integer channel number.
+
+        Returns:
+
+            A channel serial number byte array.
+
+        """
 
         crate, slot, chan = chan_id
         args_sn = {'corr_sn': self.config.corr_sn,
@@ -1423,12 +1488,11 @@ class FPGAMaster(object):
                    'slot_zero_based': slot if not isinstance(slot, str) else 0,
                    'chan': chan,
                    'input': self.config.input_number_map[chan]}
-
-        return self.config.input_sn % args_sn
+        return (self.config.input_sn % args_sn).encode()
 
     def _serial_number_to_chan_id(self, sn):
 
-        mo = re.match('%s(\d{2})(\d{2})(\d{2})' % self.config.corr_sn, sn)
+        mo = re.match('%s(\d{2})(\d{2})(\d{2})' % self.config.corr_sn, sn.decode())
         crate = int(mo.group(1))
         slot = int(mo.group(2))
         inp = int(mo.group(3))
@@ -1984,19 +2048,25 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
                 except Exception as e:
                     self.log.warning('%r: Error getting FPGA metrics. error is: %r\n%s' % (self, e, traceback.format_exc()))
             else:
-                self.log.info('%r: We got a metrics requests but we are not yet ready to scrape metrics from the FPGAs. Ignoring.' % (self))
+                self.log.info('%r: We are not yet ready to scrape metrics from the FPGAs. Ignoring.' % (self))
 
             self.log.info('%r: Finished gathering FPGA metrics.  It took %.1f seconds to gather those. We now have %i pending metrics.' % (self, time.time()-t0, len(self.metrics)))
             await asyncio.sleep(10)
 
 
     @endpoint('get-monitoring-data')
-    async def get_monitoring_data(self):
+    async def get_monitoring_data(self, request):
+        """
+        Parameters:
+
+            request (aiohttp.web.Request): request object
+        """
         try:
             t0 = time.time()
             # metrics = self.metrics #  Metrics()
             number_of_metrics = len(self.metrics)
-            client_ip = handler.request.remote_ip
+            # get IP address of the remote client initialing the HTTP request
+            client_ip = request.remote
             self.log.info('%r: Received metrics request from %s' % (self, client_ip))
             if self.last_metrics_client and client_ip != self.last_metrics_client:
                 self.log.warn('%r: A new client at %s is pulling metrics from '
@@ -2004,15 +2074,21 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
                               (self, client_ip, self.last_metrics_client))
             self.last_metrics_client = client_ip
 
-            handler.set_header('Content-Type', 'text/plain')
-            handler.set_header('Content-Encoding', 'gzip')
-            handler.write(self.metrics.pop().get_gzip())
+            # handler.set_header('Content-Type', 'text/plain')
+            # handler.set_header('Content-Encoding', 'gzip')
+            # handler.write(self.metrics.pop().get_gzip())
+            response = aiohttp.web.Response(
+                body=self.metrics.pop().get_gzip(),
+                headers={'Content-Encoding': 'gzip'})
+
             self.log.info('%r: Returning %i FPGA metrics (compression ratio %.0f%%)' %
                 (self, number_of_metrics, self.metrics.last_compression_ratio * 100))
 
             # handler.write(self.metrics.pop().get_gzip())
             self.log.info('%r: Metrics request took %.3f seconds to execute' %
                 (self, time.time()-t0))
+            return response
+
         except Exception as e:
             self.log.error('%r: Exception in get-monitoring-data. Error is: %r' %
                 (self, e))
@@ -2243,14 +2319,14 @@ class FPGAMasterAsyncRESTClient(AsyncRESTClient):
         self.print_result(r)
 
 
-    async def start(self, config=None):
+    async def start(self, **config):
         """
         Start fpga_master with specified config file.
         """
         if not config:
             raise ValueError('A YAML configuration filename:object must be specified')
-        if isinstance(config, str):
-            config = load_yaml_config(config.encode('ascii'))
+        # if isinstance(config, str):
+        #     config = load_yaml_config(config.encode('ascii'))
         print('Client start')
         self.log.info('%r: Sending start command to server' % self)
         reply = await self.post('start', **config)
