@@ -8,6 +8,7 @@ import os
 import sys
 import socket
 import time
+import asyncio
 import __main__
 # import itertools
 
@@ -16,6 +17,7 @@ import datetime
 import select
 
 # PyPi packages
+import aiohttp.web
 import netifaces  # non-standard Python library (pip install netifaces)
 import numpy as np
 import h5py
@@ -96,6 +98,8 @@ class RawAcqReceiver(object):
             corr_firmware_integration_period=0,  #used to compute timestamps
             corr_software_integration_period=0,  # no corr processing until changed
             jump_thresholds=[],
+            hostname=None, # not used, but may be passed by start_client()
+            post=None # # not used, but may be passed by start_client()
             ):
         """ Start a raw data receiver for each specified port.
 
@@ -402,17 +406,17 @@ class RawAcqReceiver(object):
 
     async def ping_sources_async(self):
         if not self.ports:
-            return
+            return None
         self.log.info('%r: Pinging all data sources' % (self))
         # Determine the interface from which data will be coming from each source by pinging them
         src_addrs = [tuple(src) for port_info in self.ports
                               for src in port_info['sources']]
-        src_if_addrs = await asyncio.gather(*[self._async(src) for src in src_addrs])
+        src_if_addrs = await asyncio.gather(*[self._ping_async(src) for src in src_addrs])
         for src_addr, src_if_addr in zip(src_addrs, src_if_addrs):
             old_count = self.ping_error_count.setdefault(src_addr, 0)
             if not src_if_addr:
                 self.ping_error_count[src_addr] = old_count + 1
-        return src_if_addrs
+        return dict(zip(src_addrs, src_if_addrs))
 
 
     def _get_mac_address(self, if_addr):
@@ -478,7 +482,9 @@ class RawAcqReceiver(object):
         while self.started and (stop_condition is None or not stop_condition()):
             try:
                 # Check which sockets have data and read it into the buffer
+                # print(f'selecting sockets {self.sockets}')
                 sockets_with_data, [], [] = select.select(self.sockets, [], [], timeout)
+                # print(f' sockets with data:{sockets_with_data}')
                 if sockets_with_data:
                     for sock in sockets_with_data:
                         t0 = time.time()
@@ -487,7 +493,7 @@ class RawAcqReceiver(object):
                         self.packet_max_readout_time = max(time.time() - t0, self.packet_max_readout_time)
                         # Process packets if the buffer is full or if we have
                         # been buffering packets for a sufficient period of
-                        # time. This is useful when we have long buffer but
+                        # time. This is useful when we have a long buffer but
                         # low packet rate.
                         if self.n == self.BUF_SIZE or t0 - last_processing_time > max_time_between_processing:
                             self.process_packets()
@@ -515,7 +521,7 @@ class RawAcqReceiver(object):
             self.buf and its structured references: captured packets, in random order
 
         """
-        # print('Processin %i packets' % self.n)
+        print('Processin %i packets' % self.n)
 
         # Just return if there are no packets to process
         if not self.n:
@@ -2422,8 +2428,8 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
                 raise RuntimeError('Cannot start comet broker: %s' % (msg))
         else:
             self.log.warning("Config registration DISABLED. This is only OK for testing.")
-        config.pop('hostname')
-        config.pop('port')
+        # config.pop('hostname', None)
+        # config.pop('port', None)
         result = await self.receiver.start_async(**config)
         self.log.info('%r: UDP receiver started. Returned %r' % (self, result))
         return result
@@ -2520,12 +2526,17 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
         if self.receiver:
             metrics = await self.receiver.get_metrics_async()
         t1 = time.time()
-        handler.set_header('Content-Type', 'text/plain')
-        handler.set_header('Content-Encoding', 'gzip')
-        handler.write(metrics.get_gzip())
+        # handler.set_header('Content-Type', 'text/plain')
+        # handler.set_header('Content-Encoding', 'gzip')
+        # handler.write(metrics.get_gzip())
+
+        # Return gzip-compressed response
+        response = aiohttp.web.Response(
+            body=metrics.get_gzip(),
+            headers={'Content-Encoding': 'gzip'})
         t2 = time.time()
         self.log.info('%r: Returning raw_acq %i metrics. The request took %.3f seconds (%.3fs to format metrics, %.3fs to encode them)' % (self, len(metrics), t2 - t0, t1 - t0, t2 - t1))
-
+        return response
 
 ################################################
 # RawAcq REST Client
@@ -2593,7 +2604,7 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
         return result
 
 
-    async def start(self, config):
+    async def start(self, **config):
         """ Start the RaqAcq remote server with the keyword argument as configuration data"""
         self.log.info('%s: Starting remote RawAcq server at %s:%i with config: %r' % (self, self.hostname, self.port, config))
         result = await self.post('start', **config)
