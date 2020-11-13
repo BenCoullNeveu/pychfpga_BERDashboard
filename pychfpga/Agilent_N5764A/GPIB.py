@@ -9,19 +9,19 @@ class GPIBException(Exception):
 
 class GPIB(object):
         """
-        A class to communicate with instruments over LAN or over GPIB using a Prologix ethernet-GPIB converter.  
+        A class to communicate with instruments over LAN or over GPIB using a Prologix ethernet-GPIB converter.
 
         All commands to the prologix controller and to the GPIB instrument end by CR or LF.
-        Commands destined to the Prologix controller start with '++'. 
-        Other commands are sent to the instrument through GPIB. 
+        Commands destined to the Prologix controller start with '++'.
+        Other commands are sent to the instrument through GPIB.
         In this case, the CR or LF is removed from the command and the terminator set with the set_terminator() method is appended to the string.
 
-        interface: 
+        interface:
             'lan': direct lan interface at specified 'ip_addr' and 'ip_port'
-            'eth': GPIB connection through an ethernet-based Prologix adapter on 'ip_port' at GPIB address 'gpib_addr' 
+            'eth': GPIB connection through an ethernet-based Prologix adapter on 'ip_port' at GPIB address 'gpib_addr'
             'usb': GPIB connection through an USB-based Prologix adapter on serial port 'usb_port' at GPIB address 'gpib_addr'
         """
-        GPIBException = GPIBException 
+        GPIBException = GPIBException
         def __init__(self, interface=None, gpib_addr=None, ip_addr=None,  ip_port = 1234, usb_port=None, timeout=0.5):
                 #self.interface = interface
                 self.ip_addr = None
@@ -32,7 +32,7 @@ class GPIB(object):
                 self.use_eoi = True
                 self.adapter_timeout = timeout
                 self.instrument_timeout = 8 # This has to be long enough to let the instrument respond even when it is busy sweeping etc.
-                self.default_timeout = 0.5       
+                self.default_timeout = 0.5
                 self.use_prologix = False
                 if interface == 'dummy':
                         print("Using dummy instrument")
@@ -55,7 +55,7 @@ class GPIB(object):
                 elif interface == 'usb':
                         print("Initializing Connection to Prologix interface over USB port %s..." % (usb_port))
                         self.use_prologix = True
-                        self.ser = serial.Serial(usb_port, 921600, timeout=timeout) ##GPIB usb converter 57600 
+                        self.ser = serial.Serial(usb_port, 921600, timeout=timeout) ##GPIB usb converter 57600
                         #serPort could be 'COM3' or '/dev/tty***' or '/dev/cu***'depending on windows/linux/osx
                         self.ser.rtscts  = False
                         self.ser.xonxoff = False
@@ -70,7 +70,7 @@ class GPIB(object):
                             self.write("++mode 1\n") #switch prologix to controller mode
                             self.write("++auto 0\n") #disable automatic switching of the instrument into talk mode after a command is sent. We will send ++read commands manually.
                             self.write("++eoi 1\n") #send EOI signal at end of command
-                            self.write("++eot_enable 0\n") #make sure the prologix does not add anything to the strings coming from the GPIB when the EOI is received. The USB interface had this enabled by default, which causes failure of the recognition of end-of-line   
+                            self.write("++eot_enable 0\n") #make sure the prologix does not add anything to the strings coming from the GPIB when the EOI is received. The USB interface had this enabled by default, which causes failure of the recognition of end-of-line
                             self.write("++read_tmo_ms %i\n" % (self.adapter_timeout*1000)) #read timeout in milliseconds
                             #self.write("++clr\r")
                             self.change_address(self.address)
@@ -87,8 +87,8 @@ class GPIB(object):
 
         def __exit__(self, etype, einst, etraceback):
                 self.close()
-                
-        # Low-level data interface to the prologix adapter  
+
+        # Low-level data interface to the prologix adapter
         def close(self):
             """
             Closes the Ethernet or USB communication ports to the Prologix adapter.
@@ -101,7 +101,7 @@ class GPIB(object):
                     print('Closing USB serial socket')
                     self.ser.close()
                     self.ser = None
-                    
+
         def set_timeout(self, timeout):
             if self.sock:
                 self.sock.settimeout(timeout)
@@ -131,19 +131,19 @@ class GPIB(object):
         def send(self, string):
                 """
                 Low-level command that sends a string to Ethernet or USB port to which the Prologix interface is attached.
-                 The string is sent as-is 
+                 The string is sent as-is
                 """
                 if self.sock:
-                    self.sock.send(string)
+                    self.sock.send(string.encode('ascii'))
                 elif self.ser:
-                    self.ser.write(string)
+                    self.ser.write(string.encode('ascii'))
 
         def recv(self):
                 """
-                Low-level command that receives a string from the interface (Ethernet or USB) to which the Prologix interface is connected. 
+                Low-level command that receives a string from the interface (Ethernet or USB) to which the Prologix interface is connected.
                 """
                 if self.sock:
-                        return self.sock.recv(16384)
+                        return self.sock.recv(16384).decode('ascii')
                 elif self.ser:
                         return ''.join(self.ser.readlines())
                 else:
@@ -166,7 +166,7 @@ class GPIB(object):
 
             """
             if self.use_prologix:
-                    #print '      Reading data...' 
+                    #print '      Reading data...'
                     if wait_for_eoi is None:
                             wait_for_eoi = self.use_eoi
 
@@ -179,7 +179,7 @@ class GPIB(object):
             if timeout is None:
                     timeout = self.default_timeout
 
-            timeout = max(timeout, self.adapter_timeout+0.1) # make sure we wait at least long enough for the adapter to give up 
+            timeout = max(timeout, self.adapter_timeout+0.1) # make sure we wait at least long enough for the adapter to give up
 
             old_timeout=self.get_timeout()
             self.set_timeout(timeout)
@@ -195,7 +195,7 @@ class GPIB(object):
                         if terminator == '':
                                 break
                         elif not len(data1):
-                                raise socket.timeout # the serial port returns 
+                                raise socket.timeout # the serial port returns
                         elif data1[-1]==terminator:
                                 break
                         print('.', end=' ')
@@ -229,7 +229,7 @@ class GPIB(object):
                     self.set_timeout(timeout)
                     status_string = self.recv()
                     return int(status_string)
-                
+
         def read_version(self, timeout = None):
                 if self.use_prologix:
                     self.write('++ver\n')
@@ -237,8 +237,8 @@ class GPIB(object):
                             self.set_timeout(timeout)
                     self.set_timeout(timeout)
                     return self.recv()
-                
-     
+
+
 
         def change_address(self, address):
              if self.use_prologix:
@@ -247,8 +247,8 @@ class GPIB(object):
 
         def set_gpib_terminator(self, terminator):
                 """
-                Sets the terminator that is appended at the end of strings sent to the GPIB instrument. 
-                The original CR or LF received by the Prologix interface are stripped replaced by the specified terminator character.  
+                Sets the terminator that is appended at the end of strings sent to the GPIB instrument.
+                The original CR or LF received by the Prologix interface are stripped replaced by the specified terminator character.
                 """
                 if self.use_prologix:
                     terminator_codes = {
@@ -256,7 +256,7 @@ class GPIB(object):
                             '\r' : 1, # CR only
                             '\n': 2, # LF only
                             '': 3, # No terminator
-                            } 
+                            }
 
                     if terminator not in terminator_codes:
                             raise Exception('Invalid termination code')
@@ -275,12 +275,12 @@ class GPIB(object):
                 self.write(comstr + "\n")
 
         def flush(self, timeout=0.5):
-                """ 
-                Flushes the GPIB Instrument output buffers. The instrument is asked to talk until no data is sent and there is a timeout. 
+                """
+                Flushes the GPIB Instrument output buffers. The instrument is asked to talk until no data is sent and there is a timeout.
                 """
                 # Flush the socket buffer first
                 self.flush_interface()
-                # Now read the instrument until no more data comes            
+                # Now read the instrument until no more data comes
                 while self.read(wait_for_timeout=True, timeout=self.adapter_timeout+0.1, verbose=0):
                         pass
 
@@ -288,20 +288,20 @@ class GPIB(object):
                 """
                 Sends a command to the instrument and returns the reply string without the terminator or trailing spaces.
                 """
-                
+
                 self.command(command)
                 self.command('*WAI')
                 #time.sleep(0.01)
                 reply_string = self.read(**kwargs)
                 return reply_string.rstrip() # remove trailing spaces or CR or LF
- 
+
         def query_float(self, *args,  **kwargs):
                 reply_string = self.query(*args, **kwargs)
                 return float(reply_string)
 
         def query_int(self, *args,  **kwargs):
                 return int(self.query_float(*args, **kwargs))
-        
- 
-                
+
+
+
         TimeoutException = socket.timeout
