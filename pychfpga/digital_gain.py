@@ -23,14 +23,14 @@ class DigitalGainArchive(Hdf5Archive):
 
     _axes = {
         'update_time': {'dtype': np.float64},
-        'freq':  {'dtype': [('centre', '<f8'), ('width', '<f8')]},
-        'input': {'dtype': [('chan_id', 'u2'), ('correlator_input', 'S32')]},
+        'freq':  {'dtype': np.dtype([('centre', '<f8'), ('width', '<f8')])},
+        'input': {'dtype': np.dtype([('chan_id', 'u2'), ('correlator_input', 'U32')])},
     }
 
     _dataset_spec = {
         'update_id': {
             'axes': ['update_time', ],
-            'dtype': h5py.special_dtype(vlen=bytes),
+            'dtype': h5py.special_dtype(vlen=str),
             'metric': False,
         },
         'compute_time': {
