@@ -705,7 +705,7 @@ class PowerSupplyAsyncRESTClient(AsyncRESTClient):
     #         return alse)
     #     return rue) # return raises an exception: we don't want it in the try block
 
-    async def start(self, config):
+    async def start(self, **config):
         """ If the PowerSupply remote server is not started, start it with the specified configuration
 
         Parameters:

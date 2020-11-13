@@ -968,7 +968,7 @@ class GPSAsyncRESTClient(AsyncRESTClient):
 
 
 
-    async def start(self, config):
+    async def start(self, **config):
         """ If the GPS remote server is not started, start it with the specified configuration
 
         Parameters:
