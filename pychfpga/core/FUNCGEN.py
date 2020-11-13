@@ -177,6 +177,8 @@ class FUNCGEN_base(Module_base):
             return fn_names[0]
 
     def set_buffer(self, data, function_number=0, info='Arbitrary data'):
+        """
+        """
 
         data = np.array(data, np.uint8)
 
@@ -191,7 +193,7 @@ class FUNCGEN_base(Module_base):
 
         self.RAM_PAGE = 4
         self.write_ram(0, function_number)
-        self.write_ram(1, info + chr(0))
+        self.write_ram(1, info.encode() + b'\x00')
 
     def get_buffer(self, use_cache=True):
 
