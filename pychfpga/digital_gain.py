@@ -88,7 +88,8 @@ class DigitalGainArchive(Hdf5Archive):
         for ax in self._axes.keys():
             if ax != self._grow_ax:
                 if ax in kwargs:
-                    self.axes[ax] = kwargs.pop(ax)
+                    dtype = self._axes[ax]['dtype']
+                    self.axes[ax] = kwargs.pop(ax).astype(dtype)
                 else:
                     ValueError("Must pass the axis %s as a keyword arg when initializing %s." %
                                (ax, self))
@@ -112,10 +113,11 @@ class DigitalGainArchive(Hdf5Archive):
                 with h5py.File(cf, 'r') as hf:
 
                     valid = True
-                    for key, val in self.axes.iteritems():
+                    for key, val in self.axes.items():
+                        dtype = self._axes[key]['dtype']
                         valid = (valid and (key in hf['index_map']) and
                                  (hf['index_map'][key].size == val.size) and
-                                 np.all(hf['index_map'][key][:] == val))
+                                 np.all(hf['index_map'][key][:].astype(dtype) == val))
 
                     if valid:
                         output_files.append(cf)
