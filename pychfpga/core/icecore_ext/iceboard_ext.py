@@ -121,12 +121,16 @@ class IceBoard(IceBoardBase):
     tuber_objname = 'IceBoard'  # use the generic Iceboard support functions.
 
 
-    def __init__(self, hostname=None, serial=None, crate=None, slot=None, mezzanine=None, **kwargs):
+    subarray = None  # Arbitrary string used to group and select subsets of Iceboard"
+
+
+    def __init__(self, hostname=None, serial=None, crate=None, slot=None, subarray=None, **kwargs):
         self.logger = logging.getLogger(__name__)
         super().__init__(hostname=hostname, serial=serial, **kwargs)  # pass on the remaining kwargs
         self.crate = crate
         self.slot = slot
-        self.mezzanine = {} # mezzanine or {}
+        self.subarray = subarray
+        self.mezzanine = {}
         self._instance_registry[(self.part_number, serial)] = self
 
 
@@ -254,7 +258,6 @@ class IceBoardPlus(IceBoard):
     """
 
     handler_name = None  # Firmware-specific
-    subarray = None  # Arbitrary string used to group and select subsets of Iceboard"
 
 
     # Core FPGA firmware registers (delete when moved to the ARM)
@@ -925,6 +928,7 @@ class IceBoardExt(IceBoardPlus):
             serial=None,
             crate=None,
             slot=None,
+            subarray=None,
 
             # Parameters that are always local
             fpga_ip_addr=None,
@@ -945,7 +949,8 @@ class IceBoardExt(IceBoardPlus):
             hostname=hostname,
             serial=serial,
             crate=crate,
-            slot=slot)
+            slot=slot,
+            subarray=subarray)
         self.logger = logging.getLogger(__name__)
 
         # Store object-specific local paramaters
