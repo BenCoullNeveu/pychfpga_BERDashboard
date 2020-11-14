@@ -302,21 +302,22 @@ class FpgaMmi:
                 if seq != self.send_counter & 0xff:
                     if resync:
                         self.send_counter = seq
+                    error = ('Invalid sequence number from a read command. '
+                             'Got 0x%02x, expected 0x%02x.'
+                             % (seq, self.send_counter & 0xff))
+                    self.flush()
                     # if we had a timeout, it is either because the command
                     # did not reach the FPGA or the reply didn't make it back.
                     # In the later case, our command counters are still in
                     # sync, so the next retry will work. In the first case, we
                     # advanced our counter when the FPGA didn't, so we'll resync if the
                     # FPGA is one count behind.
-                    elif has_timed_out and seq == (self.send_counter - 1) & 0xff:
-                        self.send_counter = seq
-                        error = "Command sequence number was offset by one following a timeout. " \
-                                "The previous command probably didn't reach the FPGA. " \
-                                "Resynchronizing and retrying to make sure."
-                    else:
-                        error = ('Invalid sequence number from a read command. '
-                                 'Got 0x%02x, expected 0x%02x.'
-                                 % (seq, self.send_counter & 0xff))
+                    # elif has_timed_out and seq == (self.send_counter - 1) & 0xff:
+                    #     self.send_counter = seq
+                    #     error = "Command sequence number was offset by one following a timeout. " \
+                    #             "The previous command probably didn't reach the FPGA. " \
+                    #             "Resynchronizing and retrying to make sure."
+                    # else:
                 elif len(data) != expected_reply_length + 1:
                     error = "FPGA Read command to returned %i bytes (0x%s). %i were expected." % (
                         len(data),
