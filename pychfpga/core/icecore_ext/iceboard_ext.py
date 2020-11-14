@@ -11,7 +11,6 @@ from collections import OrderedDict
 import socket
 import asyncio
 
-from unsync import unsync
 import nest_asyncio
 # External private packages
 
@@ -423,7 +422,7 @@ class IceBoardPlus(IceBoard):
         icecrate_class = {}
         part_number = None
         serial = None
-        if (await self.tuber_is_backplane_present_async()):
+        if (await self.is_backplane_present_async()):
             ipmi = await self._tuber_get_backplane_ipmi_async()  # Tuber call
             part_number = ipmi.product.part_number
             serial = ipmi.product.serial_number
@@ -647,12 +646,15 @@ class IceBoardPlus(IceBoard):
     # *** JFC: We now have the equivalent ARM method. Will delete this when we
     #     confirm it behaves the same.
 
+    async def is_backplane_present_async(self):
+        return await self.tuber_is_backplane_present_async()
+
     async def get_slot_number(self):
         """ Reads the GPIO to determine in which slot number this IceBoard is
         connected.
 
         """
-        if await self.tuber_is_backplane_present_async():  # Is this test necessary?
+        if await self.is_backplane_present_async():  # Is this test necessary?
             return await self.tuber_get_backplane_slot_async()
         else:
             return None
@@ -1054,7 +1056,7 @@ class IceBoardExt(IceBoardPlus):
         # replace a.b.c.d by a.b.3.d. We need to find a more generic mechanism
         # for this (like obtaining another IP from the DHCP server)
         if not self.fpga_ip_addr:
-            ip_packed = socket.inet_aton(self._get_arm_ip())
+            ip_packed = socket.inet_aton(await self._tuber_get_arm_ip_async())
             ip_tuple = tuple(c for c in ip_packed)
             ip_packed = bytes(self.fpga_ip_addr_fn(*ip_tuple))
             # ip_packed = ip_packed[:2] + chr(3) + ip_packed[3]
@@ -1215,10 +1217,10 @@ class IceBoardExt(IceBoardPlus):
     def is_open(self):
         return self._is_open
 
-    def ping_fpga(self, timeout=0.3):
+    async def ping_fpga_async(self, timeout=0.3):
         # Open the core right now if needed so we don't mask IOError exceptions this could generate
         if not self.is_core_open():
-            self.open_core()
+            await self.open_core()
         try:
             self.mmi_read(self._GPIO_COOKIE_REG, timeout=timeout)
             return True
@@ -1497,12 +1499,12 @@ class IceBoardExt(IceBoardPlus):
         word = await self.fpga_spi_mmi_read_async(self._REMOTE_IP_PORT_ADDR)
         await self.fpga_spi_mmi_write_async(self._REMOTE_IP_PORT_ADDR, (word & 0xFFFF) | (port << 16))
 
-    async def get_local_data_port_number(self):
+    async def get_local_data_port_number_async(self):
         """ Return the port number to which the FPGA is sending its captured data stream on the control network.
         """
         return((await self.fpga_spi_mmi_read_async(self._REMOTE_IP_PORT_ADDR)) >> 16)
 
-    async def set_data_target_address(self, ip_addr=None, port=None, mac_addr=None):
+    async def set_data_target_address_async(self, ip_addr=None, port=None, mac_addr=None):
         """
         Sets the IP address, port number and MAC address to which data is sent back to the host comptuter.
 
