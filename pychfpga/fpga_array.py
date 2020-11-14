@@ -1056,6 +1056,8 @@ class FPGAArray(object):
             # make sure we see the previous prints right away so we have a better feeling of what is happening
             self.print_flush()
             await asyncio.gather(*[ib.discover_mezzanines_async() for ib in self.ib])
+        for ib in self.ib:
+            print(f'Mezzanines after discovery {ib}, {ib.mezzanine[1].iceboard}, {ib.mezzanine[2].iceboard}')
 
         def get_mezz_name(ib, mezz_number):
             m = ib.mezzanine.get(mezz_number, None)
@@ -1074,18 +1076,22 @@ class FPGAArray(object):
                   % (ib, ','.join('%i:%s' % (k, m.part_number) for k,m in ib.mezzanine.items()), isinstance(ib, chFPGA_controller)))
             if (not all(m.part_number == FMCMezzanine_MGADC08.part_number for m in ib.mezzanine.values() if m)) or isinstance(ib, chFPGA_controller):
                 continue
+            print(f'Mezzanines before {ib}, {ib.mezzanine}')
             new_ib = chFPGA_controller(
                 hostname=ib.hostname, serial=ib.serial,
-                crate=ib.crate, slot=ib.slot,
-                mezzanine=ib.mezzanine)
+                crate=ib.crate, slot=ib.slot)
+            for fmc, mezz in ib.mezzanine.items():
+                new_ib.mezzanine[fmc] = mezz
+                mezz.iceboard = new_ib
             self.ib[i] = new_ib
             # Update the crate's slot assignment iceboard object
             if new_ib.crate and new_ib.slot:
                 new_ib.crate.slot[new_ib.slot] = new_ib
             # Update the mezzanine's iceboard object
-            for m in new_ib.mezzanine.values():
-                m.iceboard = new_ib
+            # for m in new_ib.mezzanine.values():
+            #     m.iceboard = new_ib
             print('Replacing %r with %r' % (ib, new_ib))
+            print(f'Mezzanines after {self.ib[i]}, {self.ib[i].mezzanine}')
 
 
 
@@ -1542,7 +1548,7 @@ class FPGAArray(object):
         # IceBoard in the array and the boards are not all set to operate on
         # the backplane clock.
         if len(self.ib) > 1:  # self.ic.NUMBER_OF_SLOTS
-            clock_sources = self.ib.index_by(repr).get_clock_source()
+            clock_sources = self.ib.index_by(repr).get_iceboard_clock_source_sync()
             target_clock_source = 'CLOCK_SOURCE_BP'
             if set(clock_sources.values()) != set([target_clock_source]):
                 raise RuntimeError('The following IceBoards are not configured to use the backplane clock: %s' % (
@@ -3292,7 +3298,7 @@ class FPGAArray(object):
         """
         ibs = self.get_iceboards(board_ids)
         for ib in ibs:
-            await ib.reset_gpu_links_async()
+            ib.reset_gpu_links()
             await asyncio.sleep(0)
         return ([ib.get_id() for ib in ibs])
 
