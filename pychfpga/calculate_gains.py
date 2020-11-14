@@ -193,7 +193,7 @@ class GainCalc(object):
             bix = np.array([self.stream_id_map[sid] for sid in stream_ids[ix]], dtype=np.int16)
 
             # remove channels that are already completed
-            ix_done = not self.done[bix]
+            ix_done = ~self.done[bix]  # ~ is equivalent to logical not only if the array is bool
 
             ix = ix[ix_done]
             bix = bix[ix_done]
@@ -426,9 +426,9 @@ class GainCalc(object):
         signal_length = signal.shape[-1]  # length of the last dimension
         # Pad. If we represent the signal by 0123, we build the array 21+0123+ 3
         padded_signal = np.concatenate((
-            signal[..., signal_length/2: 0: -1],
+            signal[..., signal_length//2: 0: -1],
             signal,
-            signal[..., -1: -signal_length/2: -1]), axis=-1)
+            signal[..., -1: -signal_length//2: -1]), axis=-1)
         f_signal = np.fft.fft(padded_signal, axis=-1)  # FFT across the last axis
         # We eliminate all high frequency beyond num_components
         f_signal[..., num_components: -num_components] = 0
