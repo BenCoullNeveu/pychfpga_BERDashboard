@@ -421,12 +421,13 @@ class FPGAMaster(object):
 
         for target, gain in gains: # format: [ (target, (glin, glog)), ...]
             ib_chans = self.fpgas.get_iceboards([target], lane_type='chan').items()  # Returns [(ib, [chan, ...]), ...]
+            self.log.info(f'{self!r}: set_gains(): setting gains for {ib_chans}')
             await self.fpgas.set_gains_async({ib.get_id(chan):gain for ib, chans in ib_chans for chan in chans}, bank=0, when='now')
 
 
     async def compute_gains(self,
                      targets=None,
-                     capture_rate = 23,
+                     capture_rate=23,
                      save_gains=False,
                      enable=True,
                      noise_injection=None,
@@ -490,6 +491,7 @@ class FPGAMaster(object):
         ib_chans = self.fpgas.get_iceboards(targets, lane_type='chan').items()
 
         if not ib_chans:
+            self.log.error(f'{self!r}: No target board was found for the specified targets {targets}. Available boards are {[ib.get_id() for ib in self.fpgas.ib]}')
             raise RuntimeError('No target board was found for the specified patterns')
 
         self.log.info('%r: *** Gain calculator : Starting compute_gains() on the following channels: %s' % (self, ', '.join(str(ib.get_id()) + str(ch) for ib,ch in ib_chans)))
@@ -1418,7 +1420,7 @@ class FPGAMaster(object):
             # use it. We assume that the map contains all the channels IDs
             # starting from zero (the HDF5 write uses the size of the array to set
             # the axis indices)
-            inputs = np.array([(chan_id, input_sn.encode()) for reorder, chan_id, input_sn in self.config.input_reorder],
+            inputs = np.array([(chan_id, input_sn) for reorder, chan_id, input_sn in self.config.input_reorder],
                               dtype=axis_dtypes['input'])
         else:
             sid_to_cid_map = {sid:cid for cid,sid in self.fpgas.get_stream_id_map().items()}  # {stream_id, chan_id}
@@ -1488,11 +1490,11 @@ class FPGAMaster(object):
                    'slot_zero_based': slot if not isinstance(slot, str) else 0,
                    'chan': chan,
                    'input': self.config.input_number_map[chan]}
-        return (self.config.input_sn % args_sn).encode()
+        return (self.config.input_sn % args_sn)
 
     def _serial_number_to_chan_id(self, sn):
 
-        mo = re.match('%s(\d{2})(\d{2})(\d{2})' % self.config.corr_sn, sn.decode())
+        mo = re.match('%s(\d{2})(\d{2})(\d{2})' % self.config.corr_sn)
         crate = int(mo.group(1))
         slot = int(mo.group(2))
         inp = int(mo.group(3))
@@ -1629,9 +1631,9 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
         return 'Initialization in progress. Check status for completion.'
 
 
-    @endpoint('methods')
-    async def methods(self):
-        return self.get_endpoint_info()
+    # @endpoint('methods')
+    # async def methods(self):
+    #     return self.get_endpoint_info() # does not exist anymore
 
 
     @endpoint('status')
@@ -1724,11 +1726,13 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
             self.log.warning("%r: FPGA array is not ready to accept command" % (self))
             return dict(message="FPGA not ready")
 
-        # Run compute_gains() in the background so we can return immediately.
-        asyncio.create_task(self.chime_master.compute_gains(**params))
-
-        return dict(message='Gains update in progress')
-
+        try:
+            # Run compute_gains() in the background so we can return immediately.
+            asyncio.create_task(self.chime_master.compute_gains(**params))
+            return dict(message='Gains update in progress')
+        except Exception as e:
+            self.log.error(f'{self!r}: compute_gains error: {e}')
+            raise
 
     @endpoint('set-data-capture')
     async def set_data_capture(self, **params):
@@ -1756,29 +1760,40 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
 
 
     @endpoint('set-gains')
-    async def set_gains(self, **params):
+    async def set_gains(self, gains):
         """ REST endpoint to set the gains for desired channels.
 
         Parameters:
 
-            targets (list of tuple/dict): List of tuples describing the
-                (crate, slot, channels) for which gains shall be set.
-                Missing tuple elements, ``"*"`` and None are considered to be a
+            gains (list): List of of (target, gain_spec) describing the
+                gains to be applied to the specified targets.
+
+                ``target_list`` is a list of tuples specifying the (crate,
+                slot, channels) to apply the gain to. "*" can be used as a
+                wildcard, and any missing element is also considered to be a
                 wildcard.
 
-            **accepts all other parameters for `FPGAMaster.compute_gains`**
+
+                ``gain_spec`` specify the target gain as a (glin, glog) tuple,
+                where ``glin`` is a gain scalar or 1024-element vector, and
+                ``glog`` is a integer post-scaler value.
+
+
 
         Example::
 
-            curl -H "Content-Type: application/json" -X POST http://localhost:54321/set-gains -d '{"gains": [ [["*"]], [1.0, 22]] ]}'
+            curl -H "Content-Type: application/json" -X POST http://localhost:54321/set-gains -d '{"gains": [ [["*"], [1.0, 22]] ] }'
         """
         if not (self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas):
             self.log.warning("%r: FPGA array is not ready to accept command" % (self))
             return dict(message="FPGA not ready")
 
-        await self.chime_master.set_gains(**params)
-        return dict(message='Gains updated')
-
+        try:
+            await self.chime_master.set_gains(gains)
+            return dict(message='Gains updated')
+        except Exception as e:
+            self.log.error(f'{self!r}: set_gains error: {e}')
+            raise
 
 
     @endpoint('serial-compute-gains')
@@ -1819,6 +1834,35 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
 
     @endpoint('get-frame-time')
     async def get_frame_time(self):
+        """
+        Return the dict describing the timing information gathered from the first board of the array.
+        The information is refreshed only once per minute.
+
+        Returns:
+
+            dict containing various time information:
+
+                {
+                frame_number,  # 48-bit frame number
+                gps_time,            # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
+                gps_ctime,           # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
+                gps_nano,
+                gps_time2            # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
+                gps_ctime2           # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
+                gps_nano2,
+                server_ctime         # system time, expressed in ctime format (float expressing seconds since UTC epoch)
+                server_ctime_before  # system time, expressed in ctime format (float expressing seconds since UTC epoch)
+                start_ctime,
+                frame0_time,
+                frame0_ctime,
+                frame0_nano)
+                }
+
+        Example:
+
+            curl http://localhost:54321/get-frame-time
+
+        """
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas and self.chime_master.fpgas.ib:
 
             try:
@@ -1869,6 +1913,26 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
 
     @endpoint('get-frame0-time')
     async def get_frame0_time(self):
+        """
+        Get the time of the first frame (frame 0) of the current acquisition.
+
+
+        Returns:
+
+            A dict containng the time information:
+
+                {
+                start_ctime # system time of when the acquisition was started
+                frame0_time # time_struct,
+                frame0_ctime # ctime,
+                frame0_nano  #
+                }
+
+        Example:
+
+            curl http://localhost:54321/get-frame0-time
+
+        """
         if (self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas and
             self.chime_master.fpgas.sync_timestamp):
 
@@ -1884,20 +1948,60 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
         else:
             return {}
 
-
     @endpoint('get-frequency-map')
-    async def get_frequency_map(self,format='s:b'):
-        return self.chime_master.get_frequency_map(format=format)
+    async def get_frequency_map(self, format='s:b'):
+        """
+
+        Parameters:
+
+            format (str): format of the frequency map.
+
+                's:b': # stream_id:bins
+                'l:b': # lane_tuple: bins
+                'l:s': # lane_tuple: stream_id
+                'l:cscb',
+                'l:cc',
+                'l:cb',
+                'l:bb':
+
+        Example:
+
+            curl -H "Content-Type: application/json" -X POST http://localhost:54321/get-frequency-map -d '{}'
+
+            curl -H "Content-Type: application/json" -X POST http://localhost:54321/get-frequency-map -d '{"format":"l:s"}'
+
+        """
+        try:
+            return self.chime_master.get_frequency_map(format=format)
+        except Exception as e:
+            self.log.error(f'{self!r}: get_frequency_map error: {e}')
+            raise
 
 
     @endpoint('get-channelizer-output')
     async def get_channelizer_output(self):
+        """
+        Return the output of the channelizer when the function generator is enabled
+
+
+        Example:
+
+            curl http://localhost:54321/get-channelizer-output
+
+        """
         output = await self.chime_master.get_channelizer_output()
         return sanitize_for_json(output)
 
 
     @endpoint('reset-fpga-stats')
     async def reset_fpga_stats(self):
+        """
+
+        Example:
+
+            curl http://localhost:54321/reset-fpga-stats
+
+        """
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
             self.chime_master.reset_fpga_stats()
             return dict(results='FPGA STATS RESET')
@@ -1908,6 +2012,13 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
 
     @endpoint('reset-crossbar-stats')
     async def reset_crossbar_stats(self):
+        """
+
+        Example:
+
+            curl http://localhost:54321/reset-crossbar-stats
+        """
+
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
             self.chime_master.reset_crossbar_stats()
             return dict(results='CROSSBAR STATS RESET')
@@ -1918,6 +2029,12 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
 
     @endpoint('reset-bp-shuffle-stats')
     async def reset_bp_shuffle_stats(self):
+        """
+
+        Example:
+
+            curl http://localhost:54321/reset-bp-shuffle-stats
+        """
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
             self.chime_master.reset_bp_shuffle_stats()
             return dict(results='BP SHUFFLE STATS RESET')
@@ -1927,7 +2044,12 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
 
     @endpoint('abort')
     async def abort(self):
-        """ Savagely stop the server for debugging purposes."""
+        """ Savagely stop the server for debugging purposes.
+
+        Example:
+
+            curl http://localhost:54321/abort
+        """
         asyncio.get_running_loop().stop()
         return dict(results='ABORTING NOW!')
         # sys.exit(-1)
@@ -1935,7 +2057,10 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
 
     @endpoint('call-fpga-array-method')
     async def call_fpga_array_method(self, **args):
-        """  For debuging: calls any fpga_array method. """
+        """
+        For debuging: calls any fpga_array method.
+
+        """
         if not hasattr(self.chime_master, 'fpgas') or not self.chime_master.fpgas:
             handler.write(dict(error='FPGA array is not created yet'))
             return
@@ -2059,7 +2184,12 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
         """
         Parameters:
 
-            request (aiohttp.web.Request): request object
+            request (aiohttp.web.Request): request object, automatically inserted by the call handler.
+
+        Returns:
+
+            Compressed set of metrics.
+
         """
         try:
             t0 = time.time()
@@ -2097,17 +2227,26 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
 
     @endpoint('get-hw-map')
     async def get_hw_map(self):
+        """
+
+        Example:
+
+            curl http://localhost:54321/get-hw-map
+
+        """
         if self.chime_master.fpgas:
             hwm = {}
             # Get icecrates
-            for icecrate in self.chime_master.fpgas.ic:
-                hwm['FCC%02d' %icecrate.crate_number] = 'K7BP16-0%s' %icecrate.serial
+            for ic in self.chime_master.fpgas.ic:
+                cn = ic.crate_number or 0
+                hwm['FCC%02d' % cn] = 'K7BP16-0%s' % ic.serial
             # Get iceboards and mezzanines
-            for iceboard in self.chime_master.fpgas.ib:
-                hwm['FCC%02d%02d' %(iceboard.crate.crate_number, iceboard.slot-1)] = (
-                    'MGK7MB-%s' %iceboard.serial.encode('utf-8'),
-                    'MGMEZZ-%s' %iceboard.mezzanine.get(1, None).serial,
-                    'MGMEZZ-%s' %iceboard.mezzanine.get(2, None).serial
+            for ib in self.chime_master.fpgas.ib:
+                slot = ib.slot or 1
+                crate = ib.crate.crate_number or 0 if ib.crate else 0
+                hwm['FCC%02d%02d' % (crate, slot-1)] = (
+                    [f'{ib.part_number}-{ib.serial}'] +
+                    [f'{m.part_number}-{m.serial}' for m in ib.mezzanine.values()]
                     )
             return hwm
         else:
@@ -2116,6 +2255,14 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
 
     @endpoint('dataset-id')
     async def dataset_id(self):
+        """
+        Return the comet dataset ID
+
+        Example:
+
+            curl http://localhost:54321/dataset-id
+
+        """
         if self.chime_master and self.chime_master.comet_dataset_fmap:
             return dict(id=self.chime_master.comet_dataset_fmap.id)
         else:
@@ -2125,6 +2272,12 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
 
     @endpoint('load-gains')
     async def load_gains(self, update_id=None, bank=0, when='now'):
+        """
+
+        Example:
+
+            curl -H "Content-Type: application/json" -X POST http://localhost:54321/load-gains -d '{}'
+        """
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
             try:
                 uid = await self.chime_master.load_gains(update_id=update_id, bank=bank, when=when)
@@ -2149,6 +2302,13 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
 
     @endpoint('sync')
     async def sync(self):
+        """
+        Syncs the array
+
+        Example:
+
+            curl http://localhost:54321/sync
+        """
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
             self.log.info('%r: received sync() request' % self)
             self.chime_master.fpgas.sync()
@@ -2157,6 +2317,8 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
 
     @endpoint('set_adc_delays')
     async def set_adc_delays(self):
+        """
+        """
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
             self.log.info('%r: received set_adc_delays() request' % self)
             await self.chime_master.fpgas.set_adc_delays_async(**self.chime_master.config.fpga.adc_delay_params)
@@ -2193,6 +2355,11 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
     async def set_funcgen_function(self, max_trial=5, function='ab', **kwargs):
         """
         Set the function generated by the function generators.
+
+        Example:
+
+            curl -H "Content-Type: application/json" -X POST http://localhost:54321/set-funcgen-function -d '{"function":"ab", "a":0, "b":1}'
+
         """
         if not (self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas):
             return 'FPGA array not yet initialized.'
