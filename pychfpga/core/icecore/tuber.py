@@ -523,19 +523,19 @@ class TuberObject:
         self._tuber_meta_properties[self.tuber_uri] = props
         self._tuber_meta_methods[self.tuber_uri] = methods
         self._tuber_meta[self.tuber_uri] = meta
-        # Add properties to instance attributes
+        # Add properties to class attributes
         for name, value in props.items():
-            # Store as a instance attribute
+            # Store as class attribute
             print(f'Adding property {name} to {self}')
-            setattr(self, name, value)
+            setattr(TuberObject, name, value)
 
         # Add sync and async methods to class attributes
         for name, info in methods.items():
             async_name = to_async_name(name)
 
-            meth = tworoutine.tworoutine(self._get_async_method(name, info))
-            print(f'Adding method {name} to {self.__class__}')
-            setattr(TuberObject, name, meth)
+            # meth = tworoutine.tworoutine(self._get_async_method(name, info))
+            # print(f'Adding method {name} to {self.__class__}')
+            # setattr(TuberObject, name, meth)
 
             async_meth = self._get_async_method(name, info)
             print(f'Adding method {async_name} to {self.__class__}')
