@@ -188,9 +188,8 @@ class DigitalGainArchive(Hdf5Archive):
         start_time = timegm(datetime.datetime.strptime(base_prefix, "%Y%m%dT%H%M%SZ").timetuple())
 
         # Determine directory
-        output_dir = os.path.join(self.output_dir, '_'.join([base_prefix,
-                                                             self.attrs['instrument_name'],
-                                                             self.output_suffix]))
+        output_dir = os.path.join(self.output_dir, '_'.join(
+            [base_prefix, self.attrs['instrument_name'], self.output_suffix]))
         try:
             os.makedirs(output_dir)
         except OSError:
