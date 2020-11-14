@@ -37,7 +37,8 @@ from wtl.metrics import Metrics
 
 # from .icecore.session import load_session as load_yaml
 # from .icecore import load_yaml  # Py3: non-database version
-from .icecore_ext.iceboard_ext import IceBoardExt, async_to_sync
+from .icecore_ext.iceboard_ext import IceBoardExt, async_to_sync, register_class
+
 from .chFPGA_receiver import chFPGA_receiver
 # from pychfpga.common import util  # Py3: does not seem to be used
 
@@ -71,6 +72,7 @@ class chFPGA_config(object):
         return '\n'.join(['%s = %s' % (key, repr(value)) for (key, value) in sorted(vars(self).items())])
 
 
+@register_class()
 class chFPGA_controller(IceBoardExt):
     """
     Creates an object that connects to an IceBoard motherboard and its chFPGA firmware and provides
@@ -166,6 +168,7 @@ class chFPGA_controller(IceBoardExt):
             hostname=None,
             serial=None,
             crate=None,
+            subarray=None,
             slot=None):
         """
         Creates an empty IceBoard/chFPGA handler object, but do not interact with the board yet.
@@ -200,6 +203,7 @@ class chFPGA_controller(IceBoardExt):
             serial=serial,
             crate=crate,
             slot=slot,
+            subarray=subarray,
             local_port_number=None  # 0: always select randomly,  `None`:use crate/slot if available else randomly
             )
 

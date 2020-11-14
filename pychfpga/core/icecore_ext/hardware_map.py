@@ -56,3 +56,6 @@ def get_all_class_instances(cls):
 
 def get_all_classes(cls):
         return list(cls._class_registry.values())
+
+def get_all_class_names(cls):
+        return {c.__name__: c for c in cls._class_registry.values()}
