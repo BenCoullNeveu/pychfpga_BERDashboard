@@ -22,6 +22,7 @@ import bz2
 import socket
 import __main__
 import asyncio
+import traceback
 
 # PyPi external packages
 import numpy as np
@@ -718,7 +719,7 @@ class chFPGA_controller(IceBoardExt):
         config.system_fpga_ip_address = self.fpga_ip_addr
         config.system_fpga_port_number = self.fpga_port_number
         config.system_local_command_port_number = self.local_port_number
-        config.system_local_data_port_number = self.get_local_data_port_number()
+        config.system_local_data_port_number = await self.get_local_data_port_number_async()
         config.system_local_corr_port_number = self.local_port_number + self.GPIO.CORR_IP_PORT_OFFSET
 
         config.number_of_antennas = self.NUMBER_OF_ANTENNAS
@@ -1704,8 +1705,8 @@ class chFPGA_controller(IceBoardExt):
 
         # print 'Loading YAML file %s' % filename
         try:
-            with open(fullpath, 'rb') as yamlfile:
-                file_data = yaml.load(yamlfile)
+            with open(fullpath, 'r') as yamlfile:
+                file_data = yaml.load(yamlfile, Loader=yaml.SafeLoader)
         except IOError:
             print('%s not found' % fullpath)
             return None
@@ -1734,8 +1735,8 @@ class chFPGA_controller(IceBoardExt):
         fullpath = os.path.join(os.path.dirname(__file__), '..', 'adc_delay_tables', filename)
         print('Loading YAML file %s' % filename)
         try:
-            with open(fullpath, 'rb') as yamlfile:
-                file_data = yaml.load(yamlfile)
+            with open(fullpath, 'r') as yamlfile:
+                file_data = yaml.load(yamlfile, Loader=yaml.SafeLoader)
         except IOError:
             print('%s not found' % fullpath)
             file_data = []
@@ -1755,7 +1756,7 @@ class chFPGA_controller(IceBoardExt):
         s = yaml.safe_dump(file_data, default_flow_style=None)
         # Save file. Make sure we raise en exception here before we start writing the file,
         # otherwise we will lose the whole file.
-        with open(fullpath, 'wb') as yamlfile:
+        with open(fullpath, 'w') as yamlfile:
             yamlfile.write(s)
 
     def _set_adc_delays(self, delay_table):
@@ -2274,7 +2275,7 @@ class chFPGA_controller(IceBoardExt):
 
         gain_filename = self.get_gains_filename(folder=folder)
         try:
-            with open(gain_filename, 'rb') as f:
+            with open(gain_filename, 'r') as f:
                 gains = pickle.load(f)
             self.logger.info('%r: Loaded gains for board %s from file %s' % (self, gain_filename))
             # ib.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
@@ -2307,7 +2308,7 @@ class chFPGA_controller(IceBoardExt):
         gain_filename = self.get_gains_filename(folder=folder)
 
         try:
-            with open(gain_filename, 'wb') as f:
+            with open(gain_filename, 'w') as f:
                 gains = pickle.dump(gains, f)
             # self.logger.info('Setting gains on IceBoard SN%s, crate %s, slot %i' % (ib.serial, crate, slot))
             # ib.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
@@ -2867,7 +2868,7 @@ class chFPGA_controller(IceBoardExt):
         """
         # Get and sum power asynchronously. We have to use a list comprehension, not generator (a
         # yield inside a generator is not consistent in Python 2.7)
-        power = sum([(await self.get_motherboard_voltage(rail)) * (await self.get_motherboard_current(rail))
+        power = sum([(await self.tuber_get_motherboard_voltage_async(rail)) * (await self.tuber_get_motherboard_current_async(rail))
                      for rail in (self.RAIL.MB_VCC3V3, self.RAIL.MB_VCC5V5, self.RAIL.MB_VCC12V0)])
         return power
 
@@ -4018,7 +4019,7 @@ class chFPGA_controller(IceBoardExt):
             ('MB POW Temp'     , 'Switcher', self.TEMPERATURE_SENSOR.MB_POWER   )]
 
         for display_name, sensor, sensor_name in mb_temp_sensors:
-            value = await self.get_motherboard_temperature(sensor_name)
+            value = await self.tuber_get_motherboard_temperature_async(sensor_name)
             info[display_name] = '%0.1fC' % value
             metrics.add('fpga_motherboard_temp', value,  sensor=sensor)
 
@@ -4039,8 +4040,8 @@ class chFPGA_controller(IceBoardExt):
 
         total_power = 0
         for display_name, sensor, tuber_sensor_name, add_to_total_power in mb_power_sensors:
-            voltage = await self.get_motherboard_voltage(tuber_sensor_name)
-            current = await self.get_motherboard_current(tuber_sensor_name)
+            voltage = await self.tuber_get_motherboard_voltage_async(tuber_sensor_name)
+            current = await self.tuber_get_motherboard_current_async(tuber_sensor_name)
             info[display_name] = '%0.1fV@%0.3fA' % (voltage, current)
             metrics.add('fpga_motherboard_voltage', value=voltage, sensor=sensor)
             metrics.add('fpga_motherboard_current', value=current, sensor=sensor)
@@ -4058,8 +4059,8 @@ class chFPGA_controller(IceBoardExt):
 
         for mezz in [1, 2]:
             for display_name, sensor, sensor_name in mezz_power_sensors:
-                voltage = await self.get_mezzanine_voltage(sensor_name, mezz)
-                current = await self.get_mezzanine_current(sensor_name, mezz)
+                voltage = await self.tuber_get_mezzanine_voltage_async(sensor_name, mezz)
+                current = await self.tuber_get_mezzanine_current_async(sensor_name, mezz)
                 info[display_name % mezz] = '%0.1fV@%0.3fA' % (voltage, current)
                 metrics.add('fpga_mezzanine_voltage', value=voltage, sensor=sensor, mezzanine=mezz)
                 metrics.add('fpga_mezzanine_current', value=current, sensor=sensor, mezzanine=mezz)
@@ -4072,7 +4073,7 @@ class chFPGA_controller(IceBoardExt):
         ####################################
 
         for qsfp in [1, 2]:
-            is_present = await self.is_qsfp_present(qsfp)
+            is_present = await self.tuber_is_qsfp_present_async(qsfp)
             metrics.add('fpga_motherboard_qsfp_present', value=is_present, qsfp=qsfp)
 
         # is_voltage_nominal
@@ -4126,9 +4127,9 @@ class chFPGA_controller(IceBoardExt):
                 if cb:  # make sure the crossbar is in this firmware
                     metrics += await cb.get_metrics(reset=reset)
         except IOError as e:
-            self.logger.error('%r: Error getting FPGA crossbar metrics. Error is %r' % (self, e))
+            self.logger.error('%r: Error getting FPGA crossbar metrics. Error is %r\n\n%s' % (self, e, traceback.format_exc()))
         except Exception as e:
-            self.logger.error('%r: Unhandled error while  getting FPGA crossbar metrics. Error is %r' % (self, e))
+            self.logger.error('%r: Unhandled error while  getting FPGA crossbar metrics. Error is %r\n\n%s' % (self, e, traceback.format_exc()))
         return metrics
 
     async def get_metrics_async(self):
@@ -4159,7 +4160,7 @@ class chFPGA_controller(IceBoardExt):
         crate_id = self.crate.get_string_id() if self.crate else None
         metrics = Metrics(crate_number=crate_number, crate_id=crate_id, type='GAUGE')
 
-        if (await self.is_backplane_present()):
+        if (await self.is_backplane_present_async()):
             try:
                 ####################################
                 # Backplane temperatures
@@ -4170,7 +4171,7 @@ class chFPGA_controller(IceBoardExt):
                     ('BP Slot16 Temp', 'Slot16', self.TEMPERATURE_SENSOR.BP_SLOT16)]
 
                 for display_name, sensor, sensor_name in bp_temp_sensors:
-                    value = await self.get_backplane_temperature(sensor_name)
+                    value = await self.tuber_get_backplane_temperature_async(sensor_name)
                     info[display_name] = '%0.1fC' % value
                     metrics.add('fpga_backplane_temp', value, sensor=sensor)
 
@@ -4178,9 +4179,9 @@ class chFPGA_controller(IceBoardExt):
                 # Backplane voltages and currents
                 ####################################
 
-                voltage = await self.get_backplane_voltage()
-                current = await self.get_backplane_current()
-                power = await self.get_backplane_power()
+                voltage = await self.tuber_get_backplane_voltage_async()
+                current = await self.tuber_get_backplane_current_async()
+                power = await self.tuber_get_backplane_power_async()
                 info['BP VCC3V3'] = '%0.1fV@%0.3fA' % (voltage, current)
                 info['BP power'] = '%0.1fW' % power
                 metrics.add('fpga_backplane_voltage', value=voltage)
@@ -4191,19 +4192,19 @@ class chFPGA_controller(IceBoardExt):
                 # Fan tray
                 ####################################
 
-                metrics.add('fpga_backplane_fantray_tachometer', value=(await self.get_fantray_tachometer()))
+                metrics.add('fpga_backplane_fantray_tachometer', value=(await self.tuber_get_fantray_tachometer_async()))
                 metrics.add('fpga_backplane_fantray_duty_cycle',
-                            value=(await self.get_fantray_duty_cycle()) / 255.)
+                            value=(await self.tuber_get_fantray_duty_cycle_async()) / 255.)
 
                 ####################################
                 # Backplane QSFPs present
                 ####################################
                 for slot in range(1, 17):
-                    is_present = await self.is_bp_qsfp_present(slot)
+                    is_present = await self.tuber_is_bp_qsfp_present_async(slot)
                     metrics.add('fpga_backplane_qsfp_present', value=is_present, slot=(slot-1))
 
             except Exception as e:
-                self.logger.error('%r: error getting backplane metrics: error is %r' % (self, e))
+                self.logger.error('%r: error getting backplane metrics: error is %r\n\n%s' % (self, e, traceback.format_exc()))
         return metrics
 
         # backplane QSFP voltage, temp, signal-level
