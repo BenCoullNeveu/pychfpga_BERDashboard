@@ -44,7 +44,7 @@ class IceCrate(IceCrateBase):
 
     NUMBER_OF_SLOTS = 0
 
-    def __init__(self, serial=None, **kwargs):
+    def __init__(self, serial=None, crate_number=None, **kwargs):
         """ Create all the objects needed to interface the backplane hardware.
 
         __init__ should only passively create objects. It must not attempt to
@@ -68,10 +68,11 @@ class IceCrate(IceCrateBase):
 
         self.slot = {}  # (slot_number:iceboar_object) mapping
         self.serial = serial  # str
+        self.crate_number = crate_number
         self._instance_registry[(self.part_number, serial)] = self
 
         self._logger = logging.getLogger(__name__)
-        self._logger.debug('%r: Instantiating backplane object' % self)
+        self._logger.debug('%r: Instantiating IceCrate object' % self)
 
     def __repr__(self):
         # return "IceCrate(%s)" % self.get_id()[0]
