@@ -4397,8 +4397,8 @@ class FPGAArray(object):
         for ib in self.ib:
             ib.reset_fft_overflow_count()
 
-    def get_monitoring_info(self):
-        return self.ib.index_by(lambda ib: ib.get_id()).get_status()
+    # def get_monitoring_info(self):
+    #     return self.ib.index_by(lambda ib: ib.get_id()).get_status()
 
     async def get_arm_metrics_async(self, metrics):
         """ Get the monitoring information on the backplanes & boards that are accessible from the ARM.
@@ -4414,7 +4414,7 @@ class FPGAArray(object):
         # IceCrate metrics
         self.logger.info('%r: Getting IceBoard backplane hardware metrics (over ARM link)' % self)
         for ic in self.ic:
-            slot, ib = ic.slot.items()[0]
+            slot, ib = list(ic.slot.items())[0]
             metrics += await ib.get_backplane_metrics_async()
 
         # IceBoard metrics
