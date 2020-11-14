@@ -60,7 +60,7 @@ from pychfpga.core.icecore_ext import Ccoll
 
 # from pychfpga.core.icecore import IceBoardPlus
 from pychfpga.core.icecore_ext import IceBoard, IceBoardPlus, IceCrate
-from pychfpga.core.icecore_ext import get_class_by_name
+from pychfpga.core.icecore_ext import get_class_by_name, get_all_class_names, get_all_class_instances
 from pychfpga.MGADC08.MGADC08 import FMCMezzanine_MGADC08  # Import to make sure this Mezzanine is registered  so it can be discovered
 from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.Agilent_N5764A import AgilentN5764A
@@ -71,7 +71,6 @@ from pychfpga import load_yaml_config
 
 
 #####################################
-
 
 class FPGABitstream(object):
     """ Helper object used to load and store a FPGA bitstream. You don't have
@@ -756,13 +755,16 @@ class FPGAArray(object):
             for obj in hwm:
                 params = dict(obj)
                 class_name = params.pop('class')
-                if class_name not in icecrate_classes and ss_name not in iceboard_classes:
-                    raise ValueError("Unknown class name '%s' in a list-based hardware map" % class_name)
+                if class_name not in icecrate_classes and class_name not in iceboard_classes:
+                    raise ValueError("Unknown class name '%s' in a list-based hardware map. Valid class names are %s"
+                                     % (class_name, ','.join(list(icecrate_classes)+list(iceboard_classes))))
                 if class_name in icecrate_classes:
                     # Create the class. It will be registered in the class registry for future use
                     icecrate_classes[class_name](**params)
             # Second pass: Create the IceBoards, and link them to the crates
             for obj in hwm:
+                print(f'Processing hwm entry {obj}')
+
                 params = dict(obj)  # make a copy
                 class_name = params.pop('class')
                 if class_name in iceboard_classes:
@@ -776,7 +778,7 @@ class FPGAArray(object):
                     else:
                         raise RuntimeError('%r: In the hwm, crate must be an integer referring to a crate number. '
                                            'It will be converted to a crate object reference' % self)
-                    hwm.append(iceboard_classes[class_name](**params))
+                    self.hwm.append(iceboard_classes[class_name](**params))
         # Otherwise use the hardware map as is, hoping it is a valid hardware map
         else:
             self.hwm = hwm
