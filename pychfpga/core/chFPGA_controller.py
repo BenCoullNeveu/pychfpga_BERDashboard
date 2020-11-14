@@ -166,8 +166,7 @@ class chFPGA_controller(IceBoardExt):
             hostname=None,
             serial=None,
             crate=None,
-            slot=None,
-            mezzanine={}):
+            slot=None):
         """
         Creates an empty IceBoard/chFPGA handler object, but do not interact with the board yet.
 
@@ -186,9 +185,6 @@ class chFPGA_controller(IceBoardExt):
             slot (int): Slot number in which the board is installed ona
                 backplane. None if there is no backplane.
 
-            mezzanine (dict): Map {mezzanine_number: Mezzanine Handler, ...}
-                describing the installed mezzanines. Can be obtained from the
-                ARM.
 
         The `__init__` function stores the parameters as instance attributes
         of the same name.
@@ -199,12 +195,11 @@ class chFPGA_controller(IceBoardExt):
             created for board that do not exist are are not powered up yet. This is useful when
             arrays of boards are loaded from an unfiltered hardware map.
         """
-        super(chFPGA_controller, self).__init__(
+        super().__init__(
             hostname=hostname,
             serial=serial,
             crate=crate,
             slot=slot,
-            mezzanine=mezzanine,
             local_port_number=None  # 0: always select randomly,  `None`:use crate/slot if available else randomly
             )
 
@@ -436,7 +431,7 @@ class chFPGA_controller(IceBoardExt):
                 if fmc_number + 1 in self.mezzanine.keys():
                     self.ANT_FMC_IS_PRESENT[ant_number] = True
 
-            self.hw.set_led('GP_LED1', 1) # Indicate that the Iceboard is ready
+            await self.hw.set_led('GP_LED1', 1) # Indicate that the Iceboard is ready
             self._data_socket = None
 
         except Exception as e:
