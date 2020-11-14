@@ -121,12 +121,12 @@ class IceBoard(IceBoardBase):
     tuber_objname = 'IceBoard'  # use the generic Iceboard support functions.
 
 
-    def __init__(self, hostname=None, serial=None, crate=None, slot=None, mezzanine={}, **kwargs):
+    def __init__(self, hostname=None, serial=None, crate=None, slot=None, mezzanine=None, **kwargs):
         self.logger = logging.getLogger(__name__)
         super().__init__(hostname=hostname, serial=serial, **kwargs)  # pass on the remaining kwargs
         self.crate = crate
         self.slot = slot
-        self.mezzanine = mezzanine
+        self.mezzanine = {} # mezzanine or {}
         self._instance_registry[(self.part_number, serial)] = self
 
 
@@ -395,13 +395,16 @@ class IceBoardPlus(IceBoard):
             elif update:
                 self.logger.debug(
                     '%r: detect_mezzanines(): Creating Mezzanine '
-                    'Serial %s in Mezzanine %i' % (self, serial, m))
-                new_mezz = get_unique_class_instance(
-                    mezz_class[m],
+                    'Serial %s in Mezzanine %i on iceboard %r' % (self, serial, m, self))
+                # new_mezz = get_unique_class_instance(
+                #     mezz_class[m],
+                new_mezz = mezz_class[m](
                     serial=serial,
                     mezzanine=m,  # mezzanine number (FMC slot)
                     iceboard=self)  # back reference to the carrier iceboard
+                new_mezz.iceboard=self
                 self.mezzanine[m] = new_mezz
+                print(f'{self!r} mezzanines on FMC {m} are {self.mezzanine[m]}')
         return(mezz_class)
 
     async def discover_crate_async(self, update=True):
@@ -658,6 +661,12 @@ class IceBoardPlus(IceBoard):
             return await self.tuber_get_backplane_slot_async()
         else:
             return None
+
+    async def get_iceboard_clock_source_async(self):
+        return await self.tuber_get_clock_source_async()
+
+    get_iceboard_clock_source_sync = async_to_sync(get_iceboard_clock_source_async)
+
 
     # Bitstream management
 
@@ -916,7 +925,6 @@ class IceBoardExt(IceBoardPlus):
             serial=None,
             crate=None,
             slot=None,
-            mezzanine={},
 
             # Parameters that are always local
             fpga_ip_addr=None,
@@ -937,8 +945,7 @@ class IceBoardExt(IceBoardPlus):
             hostname=hostname,
             serial=serial,
             crate=crate,
-            slot=slot,
-            mezzanine=mezzanine)
+            slot=slot)
         self.logger = logging.getLogger(__name__)
 
         # Store object-specific local paramaters
@@ -2144,6 +2151,7 @@ class IceBoardExt(IceBoardPlus):
         """
         ts = await self._get_irigb_time_async(trig=trig, noerror=noerror)
         return(ts.astype(format))
+
 
 
     # provide sync-wrapped functions for convenience
