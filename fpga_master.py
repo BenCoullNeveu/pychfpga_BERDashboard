@@ -1494,7 +1494,7 @@ class FPGAMaster(object):
 
     def _serial_number_to_chan_id(self, sn):
 
-        mo = re.match('%s(\d{2})(\d{2})(\d{2})' % self.config.corr_sn)
+        mo = re.match('%s(\d{2})(\d{2})(\d{2})' % self.config.corr_sn, sn)
         crate = int(mo.group(1))
         slot = int(mo.group(2))
         inp = int(mo.group(3))
