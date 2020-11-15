@@ -187,6 +187,7 @@ class IceBoard(IceBoardBase):
         """
         self.logger.info('%r: Pinging %s' % (self, self.tuber_uri))
         try:
+            await self._tuber_get_meta.__acall__()
             await self._tuber_sleep_async(0)
             return True
         except TuberError as e:
