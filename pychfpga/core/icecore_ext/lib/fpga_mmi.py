@@ -248,7 +248,7 @@ class FpgaMmi:
         """
         return self.udp.get_timeout()
 
-    def _send_command(self, cmd, expected_reply_length, retry=None, resync=False, timeout_increase_factor=1):
+    def _send_command(self, cmd, expected_reply_length, retry=None, resync=True, timeout_increase_factor=1):
         """ Send a read or write command to the FPGA and check the reply for the correct
         sequence number and packet length. If unsuccessful, the command will
         be resent ``retry`` times.
@@ -300,11 +300,12 @@ class FpgaMmi:
                 # right command.
                 seq = data[0]  # received sequence number
                 if seq != self.send_counter & 0xff:
-                    if resync:
-                        self.send_counter = seq
                     error = ('Invalid sequence number from a read command. '
                              'Got 0x%02x, expected 0x%02x.'
                              % (seq, self.send_counter & 0xff))
+                    if resync:
+                        self.send_counter = seq
+                        error += ' Resynchronizing.'
                     self.flush()
                     # if we had a timeout, it is either because the command
                     # did not reach the FPGA or the reply didn't make it back.
@@ -348,7 +349,7 @@ class FpgaMmi:
         return data[1:]
 
     def read(self, addr, type=np.dtype('>u1'), length=1,
-             timeout=None, retry=None, resync=False):
+             timeout=None, retry=None, resync=True):
         """
         Reads memory-mapped byte(s) from the FPGA through the Ethernet
         interface.
@@ -488,7 +489,7 @@ class FpgaMmi:
         else:
             return bytes([data])
 
-    def write(self, addr, data, mask=None, retry=None, resync=False):
+    def write(self, addr, data, mask=None, retry=None, resync=True):
         """
         Writes byte(s) to memory-mapped registers in the FPGA through the
         Ethernet interface.
