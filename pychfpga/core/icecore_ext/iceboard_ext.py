@@ -1397,8 +1397,8 @@ class IceBoardExt(IceBoardPlus):
         self.logger.warning(
             "%r: Temporarily disconnecting the SFP to reset the %s FPGA's "
             "UDP communication stack" % (self, self.hostname))
-        await self.set_pci_switch_direction('SEL_ARM')
-        await self.set_pci_switch_direction('SEL_SFP')
+        await self.tuber_set_pci_switch_direction_async('SEL_ARM')
+        await self.tuber_set_pci_switch_direction_async('SEL_SFP')
 
     async def set_fpga_control_networking_parameters_async(
             self,
