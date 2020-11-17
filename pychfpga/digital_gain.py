@@ -97,8 +97,8 @@ class DigitalGainArchive(Hdf5Archive):
         # Set parameters that specify output file format
         self.output_dir = output_dir or '.'
         self.output_suffix = output_suffix
+        self.log.info(f'{self!r}: Digital gain output directory is {self.output_dir}')
 
-        self.log.info(f'{self!r}: Digital Gains output dir is {self.output_dir}')
         # Search for previous files
         if search:
             search_pathname = os.path.join(
@@ -123,7 +123,7 @@ class DigitalGainArchive(Hdf5Archive):
                         output_files.append(cf)
 
             output_files = output_files or None
-            self.log.info(f'{self!r}: Searched for previous gain files: Candidates are: {output_files}')
+            self.log.info(f'{self!r}: Searched for previous gain files.  Candidates are: {output_files}')
 
         else:
             output_files = None
@@ -143,8 +143,8 @@ class DigitalGainArchive(Hdf5Archive):
 
         # Call superclass
         super().__init__(archive_files=output_files,
-                                                 max_num=max_num, max_file_size=max_file_size,
-                                                 *args, **kwargs)
+                         max_num=max_num, max_file_size=max_file_size,
+                         *args, **kwargs)
 
         # Initialize the gain buffer
         self.buffer = {}
@@ -153,15 +153,12 @@ class DigitalGainArchive(Hdf5Archive):
             dspec = self._dataset_spec[dset]
             axes = [ax for ax in dspec['axes'] if ax != self._grow_ax]
             if axes:
-                # shp = [self.axes[ax].size for ax in axes]
-                self.log.info(f'{self!r}: Initializing buffer for axe {axes} containing {[self.axes[ax] for ax in axes]} with sizes {[self.axes[ax].size for ax in axes]}')
                 shp = [self.axes[ax].size for ax in axes]
-                self.log.info(f'{self!r}: Initializing buffer for axe {axes} to {shp}')
                 self.buffer[dset] = np.zeros(shp, dtype=dspec['dtype'])
 
         # Save the last update to the buffer
         if self.current_file is not None:
-            lastup = self.last_update
+            lastup = self.last_update_id
             for dset in datasets:
                 self.buffer[dset] = self.read(lastup, dset)
 
@@ -249,7 +246,6 @@ class DigitalGainArchive(Hdf5Archive):
                 [self.output_suffix, datetime.datetime.utcfromtimestamp(smp).strftime("%Y%m%dT%H%M%S.%fZ")])
 
         # Call superclass
-        self.log.info(f'{self!r}: write(): writing smp={smp}, kwargs={kwargs}')
         super().write(smp, **kwargs)
 
     def set_gain(self, gain, compute_time=None):
@@ -265,8 +261,6 @@ class DigitalGainArchive(Hdf5Archive):
             a single unix timestamp that is applied to all inputs.  Defaults to the current time.
         """
 
-        self.log.info(f'{self!r}: set_gain: setting gains {gain}')
-
         if compute_time is None:
             compute_time = time.time()
 
@@ -274,11 +268,7 @@ class DigitalGainArchive(Hdf5Archive):
 
             gain_timestamp = compute_time[sn] if isinstance(compute_time, dict) else compute_time
 
-            self.log.info(f'{self!r}: set_gain: looking up channel ID from channel serial number {sn}')
-
             chan_id = self.chan_id[sn]
-
-            self.log.info(f'{self!r}: set_gain: setting gain for channel {chan_id}')
 
             self.buffer['gain_coeff'][:, chan_id] = gcoeff
             self.buffer['gain_exp'][chan_id] = gexp
@@ -305,7 +295,7 @@ class DigitalGainArchive(Hdf5Archive):
         """
 
         if update_id is None:
-            update_id = self.last_update
+            update_id = self.last_update_id
 
         gain_coeff = self.read(update_id, 'gain_coeff')
         gain_exp = self.read(update_id, 'gain_exp')
@@ -323,7 +313,7 @@ class DigitalGainArchive(Hdf5Archive):
     def chan_id(self):
         """Mapping between correlator input serial number and index into the input axis.
 
-        format is
+        Format is
 
             {correlator_input_serial_number: numeric_channel_id}
 
@@ -334,7 +324,6 @@ class DigitalGainArchive(Hdf5Archive):
             return self._chan_id
 
         except AttributeError:
-            self.log.info(f'{self!r}: chan_id: initializing _chan_id map. axes = {list(self.axes["input"])}')
             self._chan_id = {inp['correlator_input']: inp['chan_id']
                              for inp in self.axes['input']}
             return self._chan_id
