@@ -4,18 +4,21 @@ REST Server and clients for the CHIME receiver hut GPS units Spectrum Instrument
 accessed through the StarTech NETRS232 serial-to-ethernet adapters.
 
 """
-# Python Stabdard Library
+# Python Standard Library
 import sys
 import time
 import datetime
 import calendar
-import Queue
+import queue
+import asyncio
+import aiohttp
+import traceback
 
 # External private packages
 from wtl import log
 from wtl.rest import AsyncRESTServer, AsyncRESTClient  # generic REST servers and clients
-from wtl.rest import endpoint, coroutine, coroutine_return, sleep
-from wtl.rest import RunSyncWrapper, IOLoop, run_client, SocketContext
+from wtl.rest import endpoint
+from wtl.rest import run_client, SocketContext
 from wtl.namespace import NameSpace
 from wtl.config import load_yaml_config
 from wtl.metrics import Metrics
@@ -285,7 +288,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         Parameters:
             source (int): 0=LOW at power-on/GPSPPS on Time Valid/FILPPS on lock, 1= LOW at power-on/FILPPS on lock, 2= LOW on power-up/GPSPPS on valid time and Lock, 3=GPSPPS always
         """
-        if source not in [0,1,2,3]:
+        if source not in [0, 1, 2, 3]:
             raise ValueError('%r: PPS source 0=LOW at power-on/GPSPPS on Time Valid/FILPPS on lock, 1= LOW at power-on/FILPPS on lock, 2= LOW on power-up/GPSPPS on valid time and Lock, 3=GPSPPS always' % self)
 
         self.command('24', source)
@@ -297,9 +300,9 @@ class SpectrumInstrumentsTM4D(SocketContext):
             fmt (int): 0: GPS time, 1: UTC time
 
         """
-        if fmt not in [0,1]:
+        if fmt not in [0, 1]:
             raise ValueError('%r: format can be 0=GPS or 1=UTC' % self)
-        self.command('26',fmt)
+        self.command('26', fmt)
 
 
     # Get commands
@@ -324,7 +327,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         date, time_ = self.query('51', reply)
 
-        t= datetime.datetime(
+        t = datetime.datetime(
             int(date[4:]),  int(date[:2]), int(date[2:4]), # year, month, day
             int(time_[:2]), int(time_[2:4]), int(time_[4:6])) # hours, minutes, seconds
 
@@ -794,16 +797,16 @@ class GPSAsyncRESTServer(AsyncRESTServer):
         """ power_supplies list of dict with entries 'type', 'name', and 'address'
         """
         self.gps = {}
-        super(GPSAsyncRESTServer, self).__init__(address=address, port=port, heartbeat_string='Gs')
-        self.metrics_queue = Queue.Queue(1000)
+        super().__init__(address=address, port=port, heartbeat_string='Gs')
+        self.metrics_queue = queue.Queue(1000)
         self.metrics = Metrics(latest_only=True)
-        self.add_periodic_callback(self._get_metrics, 1000)
+        self.add_periodic_callback(self._get_metrics, 1000, stop_on_errors=False)
         self.startup_time = datetime.datetime.utcnow()
         self.GIT_VERSION = get_git_version()
 
 
-    @coroutine
-    def _get_metrics(self):
+
+    async def _get_metrics(self):
         """ get the metrics from the GPS units and put them in the queue
         """
         #metrics = Metrics()
@@ -820,9 +823,7 @@ class GPSAsyncRESTServer(AsyncRESTServer):
                 #    self.metrics_queue.put(metrics)
             except IOError as e:
                 self.log.warning('%r: Error while trying to access metric from %s\nThe error is:\n%r' % (self, gps_name, e))
-            except Exception as e:
-                self.log.error(e)
-                raise
+                # raise
 
         self.log.info('Queue has %i metrics blocks' % len(self.metrics))  # _queue.qsize())
 
@@ -830,14 +831,15 @@ class GPSAsyncRESTServer(AsyncRESTServer):
     # Server commands
     ##################
 
-    @coroutine
+
     @endpoint('start')
-    def start(self, handler, **config):
+    async def start(self, **config):
         """ Start the GPS server with provided config
         """
+        print('Starting GPS server')
         self.log.info('%r: Received start command' % self)
         if self.gps:
-            raise RuntimeError('%.32r: Power Supply server is already started' % self)
+            raise RuntimeError('%.32r: GPS server is already started' % self)
 
         # Register config with comet broker
         try:
@@ -845,13 +847,13 @@ class GPSAsyncRESTServer(AsyncRESTServer):
         except KeyError:
             msg = "Missing config value 'comet_broker/enabled'."
             self.log.error(msg)
-            coroutine_return(msg)
+            return msg
         if enable_comet:
             if comet is None:
                 msg = "Failure importing comet for configuration tracking.  Please install the " \
                       "comet package or set 'comet_broker/enabled' to False in config."
                 self.log.error(msg)
-                coroutine_return(msg)
+                return msg
             try:
                 comet_host = config['comet_broker']['host']
                 comet_port = config['comet_broker']['port']
@@ -859,7 +861,7 @@ class GPSAsyncRESTServer(AsyncRESTServer):
                 msg = "Failure registering initial config with comet broker: 'comet_broker/{}' " \
                       "not defined in config.".format(exc[0])
                 self.log.error(msg)
-                coroutine_return(msg)
+                return msg
             comet_manager = comet.Manager(comet_host, comet_port)
             try:
                 comet_manager.register_start(self.startup_time, self.GIT_VERSION)
@@ -868,7 +870,7 @@ class GPSAsyncRESTServer(AsyncRESTServer):
                 msg = 'Comet failed registering GPS server start and initial config: {}'\
                     .format(exc)
                 self.log.error(msg)
-                coroutine_return(msg)
+                return msg
         else:
             self.log.warning("Config registration DISABLED. This is only OK for testing.")
 
@@ -878,20 +880,24 @@ class GPSAsyncRESTServer(AsyncRESTServer):
             self.log.debug('%r: Creating GPS handler %s' % (self, name))
             gps = SpectrumInstrumentsTM4D(**params)
             self.gps[name] = gps
-        coroutine_return('GPS server started')
+            print(f'Creating gps {gps}')
+        return 'GPS server started'
 
-    @coroutine
     @endpoint('stop')
-    def stop(self, handler):
+    async def stop(self):
         if not self.gps:
-            self.log.warning('%.32r: Power Supply server is not started' % self)
+            self.log.warning('%.32r: GPS server is not started' % self)
         else:
             self.gps = {}
-        coroutine_return('GPS server stopped')
+        return 'GPS server stopped'
 
-    # @coroutine
+    @endpoint('test')
+    async def test(self, x=1):
+        y = x + 1
+        return y
+    #
     # @endpoint('status')
-    # def status(self, handler):
+    # async def status(self, handler):
     #     # ps_names = self._parse_names(ps_names)
     #     # self.log.info('%.32r: Received status request for %r' % (self, ps_names))
     #     stati = dict(is_started=bool(self.power_supplies),
@@ -899,20 +905,20 @@ class GPSAsyncRESTServer(AsyncRESTServer):
     #     for ps_name, ps in self.power_supplies.items():
     #         stati[ps_name] = ps.status()
     #         self.log.info('%.32r: Status of %s is %s' % (self, ps_name, stati[ps_name]))
-    #     coroutine_return(stati)
+    #     return(stati)
 
 
-    @coroutine
+
     @endpoint('list-names')
-    def listNames(self, handler):
+    async def listNames(self):
         self.log.info('%.32r: Received list names request' % self)
-        coroutine_return(self.gps.keys())
+        return list(self.gps.keys())
 
 
 
-    @coroutine
+
     @endpoint('get-monitoring-data')
-    def monitoringMetrics(self, handler):
+    async def monitoringMetrics(self):
         self.log.info('%.32r: Received monitoring metrics request' % self)
         #metrics = self.metrics # Metrics()
         #self.metrics.metrics={}
@@ -920,11 +926,11 @@ class GPSAsyncRESTServer(AsyncRESTServer):
         #    m = self.metrics_queue.get()
         #    metrics.add(m)
         self.log.info('%r: sending %i metrics' % (self, len(self.metrics.metrics)))
-        handler.set_header('Content-Type', 'text/plain')
-        handler.write(str(self.metrics.pop()))
-
+        # handler.set_header('Content-Type', 'text/plain')
+        # handler.write(str(self.metrics.pop()))
+        return aiohttp.web.Response(text=str(self.metrics.pop()))
 #########################################
-# Power Supply REST client
+# GPS REST client
 #########################################
 
 class GPSAsyncRESTClient(AsyncRESTClient):
@@ -949,21 +955,21 @@ class GPSAsyncRESTClient(AsyncRESTClient):
 
         port (int): The port number to which the RawAcq REST server is listening. Default is port 80.
 
-        ps_names (list of str): list of power supply names on which this client will operate. Other
+        ps_names (list of str): list of GPS names on which this client will operate. Other
             supplies will not be affected.
     """
     DEFAULT_PORT = GPSAsyncRESTServer.DEFAULT_PORT
 
     def __init__(self, hostname='localhost', port=DEFAULT_PORT):
-        super(GPSAsyncRESTClient, self).__init__(
+        super().__init__(
             hostname=hostname, port=port,
-            server_class= GPSAsyncRESTServer,
+            server_class=GPSAsyncRESTServer,
             heartbeat_string='Gc')
 
 
-    @coroutine
-    def start(self, config):
-        """ If the PowerSupply remote server is not started, start it with the specified configuration
+
+    async def start(self, **config):
+        """ If the GPS remote server is not started, start it with the specified configuration
 
         Parameters:
 
@@ -972,34 +978,38 @@ class GPSAsyncRESTClient(AsyncRESTClient):
 
         """
         #print('start!')
-        self.log.info('%s: Starting remote PowerSupply server at %s:%i with config: %r' % (self, self.hostname, self.port, config))
+        self.log.info('%s: Starting remote GPS server at %s:%i with config: %r' % (self, self.hostname, self.port, config))
 
         if isinstance(config, str):
             config = load_yaml_config(config)
-        result = self.post('start', **config)
-        coroutine_return('GPS server started')
-
-    @coroutine
-    def stop(self):
-        result = yield self.get('stop')
-        coroutine_return(result)
-
-    # @coroutine
-    # def status(self):
-    #     result = yield self.get('status')
-    #     coroutine_return(result)
+        result = await self.post('start', **config)
+        return 'GPS server started'
 
 
-    @coroutine
-    def list_names(self):
-        result = yield self.get('list-names')
-        coroutine_return(result)
+    async def stop(self):
+        result = await self.get('stop')
+        return result
+
+    async def test(self, **args):
+        result = await self.post('test', **args)
+        return result
+
+    #
+    # async def status(self):
+    #     result = await self.get('status')
+    #     return(result)
 
 
-    # @coroutine
-    # def get_metrics(self):
-    #     result = yield self.get('get-metrics')
-    #     coroutine_return(Metrics(result))
+
+    async def list_names(self):
+        result = await self.get('list-names')
+        return result
+
+
+    #
+    # async def get_metrics(self):
+    #     result = await self.get('get-metrics')
+    #     return(Metrics(result))
 
 
 
@@ -1007,8 +1017,10 @@ def main():
     """ Command-line interface to launch and operate the GPS server.
     """
     # Setup logging
-    log.setup_basic_logging('DEBUG')
-    client, server = run_client(sys.argv[1:], GPSAsyncRESTServer, GPSAsyncRESTClient, object_name ='GPS', server_config_path='gps.servers')
+    log.setup_basic_logging('WARN')
+    client, server = run_client(
+        sys.argv[1:], GPSAsyncRESTServer, GPSAsyncRESTClient,
+        object_name ='GPS', server_config_path='gps.servers')
     return client, server
 
 if __name__ == '__main__':

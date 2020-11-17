@@ -6,13 +6,15 @@ import logging
 import hashlib
 import zlib
 import struct
-import urllib2
+import urllib.request
+import urllib.error
+import urllib.parse
 import datetime
 import os
-
+import base64
 
 class FpgaBitstream(object):
-    """ Oject used to fetch and store FPGA bit files.
+    """ Object used to fetch and store FPGA bit files.
 
     The firmware is represented by a URL ( a file or a remote location), and
     is loaded in memory when needed.
@@ -29,7 +31,7 @@ class FpgaBitstream(object):
         """ Creates a bitstream object from the specified 'url', which can be
         a filename or a remote resource.
 
-        If 'load' is true, the itsream will be loded in memory immediately,
+        If 'load' is true, the bitsream will be loaded in memory immediately,
         otherwise it will be loaded only when needed.
         """
         self.logger = logging.getLogger(__name__)
@@ -74,7 +76,7 @@ class FpgaBitstream(object):
         self.logger.info('%r: Reading file from URL %s ...' %
                          (self, self.url))
         if '://' in self.url:
-            with urllib2.urlopen(self.url) as res:
+            with urllib.request.urlopen(self.url) as res:
                 data = res.read()
         else:
             # Open as a file with relative path. mode='rb': b is important ->
@@ -158,13 +160,12 @@ class FpgaBitstream(object):
         else:
             bitstream = data
 
-        # Compute MD5 sum as a hex string
-        md5_string = hashlib.md5(bitstream).hexdigest()
-        crc32 = zlib.crc32(bitstream)  # compute CRC32 of the data
-
         self.bitstream_cache = bitstream
-        self.crc32 = crc32
-        self.md5_string = md5_string
+        self.bytes = bitstream
+        self.base64 = base64.encode(bitstream)
+        self.crc32 = zlib.crc32(bitstream)  # compute CRC32 of the data
+        # Compute MD5 sum as a hex string
+        self.md5_string = hashlib.md5(bitstream).hexdigest()
         self.timestamp_string = timestamp_string
         self.timestamp = timestamp
         return

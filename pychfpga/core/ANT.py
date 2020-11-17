@@ -13,14 +13,15 @@ History:
 """
 import logging
 
-import ADCDAQ
+from . import ADCDAQ
 # import SRCSEL
-import FFT
-import SCALER
-import PROBER
-import FUNCGEN
+from . import FFT
+from . import SCALER
+from . import PROBER
+from . import FUNCGEN
 from numpy import NaN as npNaN
 # import INJECT
+
 
 class ANT_channel(object):
     """ Implements the interface to one of the channelizer"""
@@ -39,11 +40,26 @@ class ANT_channel(object):
         self.fpga = fpga_instance
         self.logger = logging.getLogger(__name__)
 
-        self.ADCDAQ  = ADCDAQ.ADCDAQ_base(fpga_instance,   base_address + self.ADCDAQ_OFFSET_ADDR*submodule_address_increment,  instance_number)
-        self.FFT     = FFT.FFT_base(fpga_instance,         base_address + self.FFT_OFFSET_ADDR*submodule_address_increment,     instance_number)
-        self.SCALER  = SCALER.SCALER_base(fpga_instance,   base_address + self.SCALER_OFFSET_ADDR*submodule_address_increment,  instance_number)
-        self.PROBER  = PROBER.PROBER_base(fpga_instance,   base_address + self.PROBER_OFFSET_ADDR*submodule_address_increment,  instance_number)
-        self.FUNCGEN = FUNCGEN.FUNCGEN_base(fpga_instance, base_address + self.FUNCGEN_OFFSET_ADDR*submodule_address_increment, instance_number)
+        self.ADCDAQ = ADCDAQ.ADCDAQ_base(
+            fpga_instance,
+            base_address + self.ADCDAQ_OFFSET_ADDR * submodule_address_increment,
+            instance_number)
+        self.FFT = FFT.FFT_base(
+            fpga_instance,
+            base_address + self.FFT_OFFSET_ADDR * submodule_address_increment,
+            instance_number)
+        self.SCALER = SCALER.SCALER_base(
+            fpga_instance,
+            base_address + self.SCALER_OFFSET_ADDR * submodule_address_increment,
+            instance_number)
+        self.PROBER = PROBER.PROBER_base(
+            fpga_instance,
+            base_address + self.PROBER_OFFSET_ADDR * submodule_address_increment,
+            instance_number)
+        self.FUNCGEN = FUNCGEN.FUNCGEN_base(
+            fpga_instance,
+            base_address + self.FUNCGEN_OFFSET_ADDR * submodule_address_increment,
+            instance_number)
         self.frame_length = self.fpga.FRAME_LENGTH
 
     def __repr__(self):
@@ -134,7 +150,7 @@ class ANT_base(object):
     def keys(self):
         """
         """
-        return range(self.fpga.NUMBER_OF_ANTENNAS)
+        return list(range(self.fpga.NUMBER_OF_ANTENNAS))
 
     def values(self):
         """
@@ -144,7 +160,7 @@ class ANT_base(object):
     def items(self):
         """
         """
-        return zip(self.keys(), self.values())
+        return list(zip(self.keys(), self.values()))
 
     # Low-level access functions
 
@@ -232,7 +248,7 @@ class ANT_base(object):
             width=8: data is 8 bits Real + 8 bits Imaginary
         """
 
-        if width==4:
+        if width == 4:
             is_four_bits = 1
         elif width == 8:
             is_four_bits = 0
@@ -242,7 +258,7 @@ class ANT_base(object):
         # Set the channelizer data width
         for ch in self.ANT:
             if not is_four_bits and not ch.SCALER.EIGHT_BIT_SUPPORT:
-                raise ValueError('8-bit mode not supported in thie build of the SCALER firmware')
+                raise ValueError('8-bit mode not supported in this build of the SCALER firmware')
             ch.SCALER.FOUR_BITS = is_four_bits
 
     def get_data_width(self):
@@ -268,7 +284,7 @@ class ANT_base(object):
         try:
             while 1:
                 for ant in self.ANT:
-                    print 'CH%i: %3i' % (ant.ant_number, ant.ADCDAQ.RAMP_ERR_CTR),
-                print
+                    print('CH%i: %3i' % (ant.ant_number, ant.ADCDAQ.RAMP_ERR_CTR), end=' ')
+                print()
         except KeyboardInterrupt:
             pass

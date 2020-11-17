@@ -1,70 +1,70 @@
-- __date__: '2018-10-03T18:43:20.037000'
+- __date__: '2020-11-13T06:37:25.089717'
   __mezzanines__: {1: MGADC08_SN0235, 2: MGADC08_SN0241}
   __tag__: default
   delay_table:
+    sync_delays: [4, 5]
     0:
       clock_delay: 0
       sample_delay: 3
-      tap_delays: [16, 16, 15, 14, 16, 16, 14, 16]
+      tap_delays: [15, 16, 15, 14, 15, 16, 14, 15]
     1:
       clock_delay: 0
       sample_delay: 4
-      tap_delays: [23, 23, 23, 23, 24, 24, 22, 22]
+      tap_delays: [23, 22, 22, 23, 23, 24, 22, 22]
     2:
       clock_delay: 0
-      sample_delay: 2
-      tap_delays: [7, 8, 8, 9, 8, 8, 8, 5]
+      sample_delay: 3
+      tap_delays: [22, 23, 26, 25, 25, 23, 25, 22]
     3:
       clock_delay: 0
       sample_delay: 3
-      tap_delays: [20, 20, 20, 20, 21, 20, 20, 19]
+      tap_delays: [20, 20, 20, 20, 21, 19, 20, 19]
     4:
       clock_delay: 0
       sample_delay: 3
-      tap_delays: [18, 18, 17, 18, 17, 18, 18, 18]
+      tap_delays: [17, 18, 17, 17, 17, 18, 18, 17]
     5:
       clock_delay: 0
       sample_delay: 3
-      tap_delays: [16, 15, 15, 15, 15, 16, 16, 15]
+      tap_delays: [15, 15, 15, 14, 14, 16, 16, 15]
     6:
       clock_delay: 0
       sample_delay: 3
-      tap_delays: [20, 21, 18, 18, 19, 15, 19, 19]
+      tap_delays: [20, 20, 18, 18, 19, 15, 19, 19]
     7:
       clock_delay: 0
       sample_delay: 4
-      tap_delays: [19, 19, 18, 20, 17, 19, 18, 18]
+      tap_delays: [19, 19, 17, 20, 16, 19, 18, 17]
     8:
       clock_delay: 0
       sample_delay: 3
-      tap_delays: [17, 19, 17, 20, 18, 16, 18, 17]
+      tap_delays: [17, 19, 16, 19, 17, 15, 18, 16]
     9:
       clock_delay: 0
       sample_delay: 4
-      tap_delays: [20, 18, 17, 19, 17, 17, 20, 21]
+      tap_delays: [20, 17, 17, 18, 17, 16, 20, 20]
     10:
       clock_delay: 0
       sample_delay: 3
-      tap_delays: [23, 22, 19, 21, 19, 18, 18, 18]
+      tap_delays: [23, 23, 19, 21, 19, 17, 18, 17]
     11:
       clock_delay: 0
       sample_delay: 3
-      tap_delays: [19, 19, 18, 17, 18, 19, 18, 18]
+      tap_delays: [20, 19, 18, 17, 18, 19, 18, 18]
     12:
       clock_delay: 0
       sample_delay: 3
-      tap_delays: [18, 18, 21, 19, 18, 17, 17, 16]
+      tap_delays: [18, 19, 20, 19, 18, 16, 16, 15]
     13:
       clock_delay: 0
       sample_delay: 3
-      tap_delays: [21, 20, 20, 19, 17, 18, 21, 19]
+      tap_delays: [20, 20, 19, 19, 17, 17, 21, 18]
     14:
       clock_delay: 0
       sample_delay: 3
-      tap_delays: [19, 18, 20, 20, 20, 18, 20, 20]
+      tap_delays: [18, 18, 19, 19, 20, 18, 20, 20]
     15:
       clock_delay: 0
       sample_delay: 3
-      tap_delays: [16, 19, 17, 16, 16, 19, 17, 17]
-    sync_delays: [4, 4]
+      tap_delays: [16, 18, 16, 16, 16, 18, 16, 16]
     valid: true

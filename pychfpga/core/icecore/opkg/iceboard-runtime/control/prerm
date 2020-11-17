@@ -1,4 +1,0 @@
-#!/bin/sh
-
-echo "Stopping fastpath..."
-/etc/init.d/S50iceboard-fastpath stop

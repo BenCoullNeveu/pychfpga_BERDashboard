@@ -1,24 +1,23 @@
 #!/usr/bin/python
-# Disable pylint Line too long (=C0301)
-# pylint: disable=C0301
 
 """
 pca9575: Implememnts access to a TCA9548A I2C switch.
 
- History:
- 2013-08-08 : JFC : Created
- 2014-02-23 JFC: Added register table, select(), masked write.
- 2014-03-04 JM: Added default I/O pin configuration at init()
- 2014-03-18 JM: Fixed read function to allow reading by register name, not only by register address
+History:
+    2013-08-08 : JFC : Created
+    2014-02-23 JFC: Added register table, select(), masked write.
+    2014-03-04 JM: Added default I/O pin configuration at init()
+    2014-03-18 JM: Fixed read function to allow reading by register name, not only by register address
                 Fixed masking in write function
 """
+
 
 class pca9575(object):
     """
     Implements the interface to the PCS8575 I2C IO Extender.
     """
     REGISTER_TABLE = {
-        'IN0': 0x00, # input port register
+        'IN0': 0x00,  # input port register
         'IN1': 0x01,
         'INVRT0': 0x02,
         'INVRT1': 0x03,
@@ -48,16 +47,26 @@ class pca9575(object):
         self.address = address
         self.bus_name = port
 
-    def init(self, cfg0_def=0b11111111, cfg1_def=0b11111111, out0_default=None, out1_default=None, bken0=0b10, bken1=0b10, pupd0=0b00001000, pupd1=0b00001000, verbose=0):
+    def init(
+            self,
+            cfg0_def=0b11111111,
+            cfg1_def=0b11111111,
+            out0_default=None,
+            out1_default=None,
+            bken0=0b10,
+            bken1=0b10,
+            pupd0=0b00001000,
+            pupd1=0b00001000,
+            verbose=0):
         """
         Initialization of PCS8575 I2C IO Extender object
         cfg0_def, cfg1_def sets the default configuration of the I/O pins. By default all pins are inputs.
         """
         if out0_default is not None:
-            self.write_reg('OUT0', out0_default);
+            self.write_reg('OUT0', out0_default)
 
         if out1_default is not None:
-            self.write_reg('OUT1', out1_default);
+            self.write_reg('OUT1', out1_default)
 
         self.write_reg('CFG0', cfg0_def)
         self.write_reg('CFG1', cfg1_def)
@@ -79,16 +88,18 @@ class pca9575(object):
         The I2C port for this device is set prior to the operation if 'select' is True.
         If 'mask' is specified, only the bits position that are set in 'mask' are changed.
         """
-        # Convert port name a port address if the name is in the table. Otherwise use the argument as a port address directly.
+        # Convert port name a port address if the name is in the table.
+        # Otherwise use the argument as a port address directly.
         if register in self.REGISTER_TABLE:
             register = self.REGISTER_TABLE[register]
 
         if select:
             self.select()
 
-        if (mask & 0xFF)  != 0xff:
-            old_value = self.i2c.write_read(self.address, data=[register], read_length=1)#self.i2c.write_read(self.address, read_length=1)
+        if (mask & 0xFF) != 0xff:
+            old_value = self.i2c.write_read(self.address, data=[register], read_length=1)[0]
             new_value = (old_value & (~ mask)) | (value & mask)
+            # print(f'Pca9575 register={register} old_value={old_value}')
         else:
             new_value = value
 
@@ -98,7 +109,8 @@ class pca9575(object):
         """
         Read a value to the specified register
         """
-        # Convert port name a port address if the name is in the table. Otherwise use the argument as a port address directly.
+        # Convert port name a port address if the name is in the table.
+        # Otherwise use the argument as a port address directly.
         if register in self.REGISTER_TABLE:
             register = self.REGISTER_TABLE[register]
 

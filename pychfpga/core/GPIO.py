@@ -17,19 +17,19 @@ GPIO.py module
     2012-07-09 JFC: Assert ANT_RESET on init to allow communications through if the board is sending lots of data
     2012-07-25 JFC: Renamed from SYSMOD.py to GPIO.py
     2012-09-18 JFC: Added set_global_trig()
-    2012-09-20 JFC: Modified bitfield list into bitfield assignemnts. Added LOG2_FRAME_LENGTH and NUMBER_OF_ANTENNAS bitfields.
+    2012-09-20 JFC: Modified bitfield list into bitfield assignments. Added LOG2_FRAME_LENGTH and NUMBER_OF_ANTENNAS bitfields.
     2012-10-21 JFC: Added HOST_FRAME_READ_RATE bitfield
 """
 
-from Module import Module_base, BitField
+from .Module import Module_base, BitField
 import logging
 
 #import numpy as np
 
 class GPIO_base(Module_base):
-    """ Provides accesss to the system-level GPIO lines """
+    """ Provides access to the system-level GPIO lines """
 
-    # Create local variables for page numbers tomake the table more readable
+    # Create local variables for page numbers to make the table more readable
     CONTROL = BitField.CONTROL
     STATUS = BitField.STATUS
 
@@ -117,16 +117,13 @@ class GPIO_base(Module_base):
     CMD_RPLY_PACKET_COUNTERS   = BitField(STATUS, 35, 0, width=16, doc='Number of command and reply packets received since last FPGA configuration. MSB=Commands, LSB=Replies')
     NUMBER_OF_BP_SHUFFLE_LANES = BitField(STATUS, 36, 0, width=8, doc='Number of backplane links (including the direct internal link)')
 
-
     def __init__(self, fpga, base_address):
         super(GPIO_base, self).__init__(fpga, base_address)
         self.logger = logging.getLogger(__name__)
-        self._lock() # prevent further property creation to avoid creating attrubutes by mistake
-
-
+        self._lock() # prevent further property creation to avoid creating attributes by mistake
 
     def get_bitstream_date(self):
-        """ Returns a string containing the date-time of the currrent firmware bitstream."""
+        """ Returns a string containing the date-time of the current firmware bitstream."""
         #timestamp = self.read_bitstream_data()
         timestamp = self.TIMESTAMP
         seconds = (timestamp >> 0) & 0x3F
@@ -167,9 +164,9 @@ class GPIO_base(Module_base):
         A system-wide SYNC will therefore make the PWM signal synchronized across all boards.
         """
         self.logger.info('%r: Setting PWM generator to enable=%i, offset=%i, high_time=%i, period=%i' %
-            (self, enable, offset, high_time, period))
+                         (self, enable, offset, high_time, period))
         self.PWM_OFFSET = offset
-        self.PWM_HIGH_TIME = high_time - 1 # The actual high time is PWM_HIGH_TIME + 1
+        self.PWM_HIGH_TIME = high_time - 1  # The actual high time is PWM_HIGH_TIME + 1
         self.PWM_PERIOD = period - 1  # The actual period is PWM_PERIOD + 1
         if enable:
             if pwm_reset:
@@ -187,7 +184,7 @@ class GPIO_base(Module_base):
         'sync': 0,  # User-generated SYNC signal (sunc_out)
         'pps': 1,  # 1 PPS signal from the IRIG-B decoder (pps_out)
         'pwm': 2,  # Output from the frame-based pwm generator (pwm_out)
-        'irigb_trig': 3, # (not irigb_before_target)
+        'irigb_trig': 3,  # (not irigb_before_target)
         'bp_trig': 4,  # (bp_trig_reg)
         'bp_time': 5,  # (bp_time_reg)
         'refclk': 6,  # 10 MHz reference clock (clk10)
@@ -230,10 +227,10 @@ class GPIO_base(Module_base):
         """
         if source not in self.USER_OUTPUT_SOURCE_TABLE:
             raise AttributeError("Invalid source '%s'. Valid sources are %s." % (
-                source, ', '.join(self.USER_OUTPUT_SOURCE_TABLE.keys())))
+                source, ', '.join(list(self.USER_OUTPUT_SOURCE_TABLE.keys()))))
         if output not in self.USER_OUTPUTS:
             raise AttributeError("Invalid output '%s'. Valid outputs are %s." % (
-                output, ', '.join(str(k) for k in self.USER_OUTPUTS.keys())))
+                output, ', '.join(str(k) for k in list(self.USER_OUTPUTS.keys()))))
 
         self.write_bitfield(self.USER_OUTPUTS[output], self.USER_OUTPUT_SOURCE_TABLE[source])
 
@@ -242,11 +239,11 @@ class GPIO_base(Module_base):
 
         if output not in self.USER_OUTPUTS:
             raise AttributeError("Invalid output '%s'. Valid outputs are %s." % (
-                output, ', '.join(str(k) for k in self.USER_OUTPUTS.keys())))
+                output, ', '.join(str(k) for k in list(self.USER_OUTPUTS.keys()))))
 
         current_value = self.read_bitfield(self.USER_OUTPUTS[output])
 
-        for (source, value) in self.USER_OUTPUT_SOURCE_TABLE.items():
+        for (source, value) in list(self.USER_OUTPUT_SOURCE_TABLE.items()):
             if current_value == value:
                 return source
         raise RuntimeError('Invalid user output source number found on the FPGA')
@@ -272,7 +269,7 @@ class GPIO_base(Module_base):
         counts from the FPGA.
         """
         word = self.CMD_RPLY_PACKET_COUNTERS
-        return (word >>8, (word+1) & 0xFF)  # Add 1 for the reply packet
+        return (word >> 8, (word + 1) & 0xFF)  # Add 1 for the reply packet
 
     def init(self):
         """
@@ -281,11 +278,18 @@ class GPIO_base(Module_base):
         # reset the antenna processors. This causes them to stop sending data.
         self.ANT_RESET = 1
         self.CORR_RESET = 1
-        # In the alternate code below, we do not use self.ANT_RESET=1 to reset the antenna because this implies reading the control register, and the read data might not get through if too much data is coming in
-        #ant_reset = self.get_bitfield('ANT_RESET')
-        #self.write(ant_reset.addr, 1 << ant_reset.bit)
-        #self.write(ant_reset.addr, 0x60) # ** debug  BEWARE: This resets the DATA and CORR IP addresses to zero!!!!!***
-        self.HOST_FRAME_READ_RATE = 14  #Indicates how often the host UDP buffers are read. Used to throttle data transmision. Period = 2/125MHz*2^value
+
+        # In the alternate code below, we do not use self.ANT_RESET=1 to reset
+        # the antenna because this implies reading the control register, and
+        # the read data might not get through if too much data is coming in
+
+        # ant_reset = self.get_bitfield('ANT_RESET')
+        # self.write(ant_reset.addr, 1 << ant_reset.bit)
+        # self.write(ant_reset.addr, 0x60) # ** debug  BEWARE: This resets the DATA and CORR IP addresses to zero!!!!!***
+
+        # Indicates how often the host UDP buffers are read. Used to throttle
+        # data transmission. Period = 2/125MHz*2^value
+        self.HOST_FRAME_READ_RATE = 14
 
     def status(self):
         """ Displays the module status"""

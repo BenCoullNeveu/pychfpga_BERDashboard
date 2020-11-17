@@ -4,55 +4,90 @@
 import logging
 import time
 
-from sqlalchemy import Column, Integer
+from .ccoll import Ccoll
+from .hardware_map import register_class
+from ..icecore.hardware_assets import IceCrateBase
 
-from ..icecore import IceCrate, IceCrateHandler, Ccoll
-from ..icecore import session
-from ..icecore.handler import HandlerParentAttribute
+# from ..icecore import session
+# from ..icecore.handler import HandlerParentAttribute
 
-from lib.eeprom import eeprom as EEPROM
-from lib import ina230  # I2C Voltage and current monitor
-from lib import tmp421  # I2C temperature sensor
-from lib import pca9698  # I2C 40-bit IO Expander
-from lib import amc6821  # I2C fan Controller
-from lib import pca9575 # 1-slot backplane I2C IO Expander
-from lib import gpio
-from lib import qsfp
+from .lib.eeprom import eeprom as EEPROM
+from .lib import ina230  # I2C Voltage and current monitor
+from .lib import tmp421  # I2C temperature sensor
+from .lib import pca9698  # I2C 40-bit IO Expander
+from .lib import amc6821  # I2C fan Controller
+from .lib import pca9575  # 1-slot backplane I2C IO Expander
+from .lib import gpio
+from .lib import qsfp
+
 
 class MasterIceboardObject(object):
     def __init__(self, crate_object, iceboard_object_name):
         self._crate = crate_object
         self._iceboard_object_name = iceboard_object_name
+
     def __getattr__(self, name):
         obj = getattr(self._crate.master_iceboard, self._iceboard_object_name)
         return getattr(obj, name)
 
-@session.register_yaml_object()
-class IceCrateExt(IceCrate):
-    handler_name = 'IceCrateExtHandler'
-    __mapper_args__ = {'polymorphic_identity': 'IceCrateExt'}
-    __ipmi_part_number__ = []  # Must match part number in IPMI data
-    crate_number = Column(Integer, doc='Integer used to assign a experiment-specific unique numerical number to a crate. Used in tuples to identify links')
-
-class IceCrateExtHandler(IceCrateHandler):
-    """ IceCrate handler that provides access to the backplane through an
-    IceBoard.
-
-    This defines the attributes and methods that are available to all
-    IceCrates (including those inherited from IceCrateHandler).
-
-    Any attributes added by the user must be accessed after it has been
-    ensured that the correct IceCrate has been instantiated.
+@register_class()
+class IceCrate(IceCrateBase):
     """
-    part_number = None
-    crate_number = HandlerParentAttribute(lambda ib: ib.crate_number)
+    Provide the basic methods to operate the IceCrate.
+    """
+    _class_registry = {}  # {part_number:class}
+    _instance_registry = {}  # {(model,serial):instance}
 
-    #------------------------------------
-    # Define hardware-specific constants
-    #------------------------------------
-    NUMBER_OF_SLOTS = None  #
+    part_number = None
+    __ipmi_part_number__ = None  # Must match part number in IPMI data
+    crate_number = None
+
+    NUMBER_OF_SLOTS = 0
+
+    def __init__(self, serial=None, crate_number=None, **kwargs):
+        """ Create all the objects needed to interface the backplane hardware.
+
+        __init__ should only passively create objects. It must not attempt to
+        access methods provided by the ARM as the Crate may be created before
+        IceBoards are associated to it.
+
+        IceCrate handler that provides access to the backplane through an
+        IceBoard.
+
+        This defines the attributes and methods that are available to all
+        IceCrates (including those inherited from IceCrateHandler).
+
+        Any attributes added by the user must be accessed after it has been
+        ensured that the correct IceCrate has been instantiated.
+
+        NOTE: attempting to access an unknown attribute might cause an
+        infinite recursion loop as Tuber tries to access the master_iceboard
+        object that may not already exist.
+        """
+        super().__init__(**kwargs)
+
+        self.slot = {}  # (slot_number:iceboar_object) mapping
+        self.serial = serial  # str
+        self.crate_number = crate_number
+        self._instance_registry[(self.part_number, serial)] = self
+
+        self._logger = logging.getLogger(__name__)
+        self._logger.debug('%r: Instantiating IceCrate object' % self)
+
+    def __repr__(self):
+        # return "IceCrate(%s)" % self.get_id()[0]
+        return '%s(%s)' % (self.__class__.__name__, self.get_id())
+
+    def init(self):
+        pass
+
+    @property
+    def master_iceboard(self):
+        active_iceboards = [(slot, iceboard) for (slot, iceboard) in self.slot.items() if iceboard.hostname or iceboard.serial]
+        return sorted(active_iceboards)[0][1]
+
     _BP_RX_TO_TX_MAP = {}
-    _BP_TX_TO_RX_MAP = {tx:rx for (rx, tx) in _BP_RX_TO_TX_MAP.items()}
+    _BP_TX_TO_RX_MAP = {tx: rx for (rx, tx) in _BP_RX_TO_TX_MAP.items()}
     _BP_RX_NET_LENGTH = {}
 
     @classmethod
@@ -75,29 +110,6 @@ class IceCrateExtHandler(IceCrateHandler):
     def get_rx_net_length(cls, rx_slot_lane_tuple):
         return cls._BP_RX_NET_LENGTH[rx_slot_lane_tuple]
 
-    def __init__(self, **kwargs):
-        """ Create all the objects needed to interface the backplane hardware.
-
-        __init__ should only passively create objects. It must not attempt to
-        access methods provided by the ARM as the Crate may be created before
-        IceBoards are associated to it.
-
-        NOTE: attempting to access an unknown attribute might cause an
-        infinite recursion loop as Tuber tries to access the master_iceboard
-        object that may not already exist.
-        """
-        super(IceCrateExtHandler, self).__init__(**kwargs)
-
-        self._logger = logging.getLogger(__name__)
-        self._logger.debug('%r: Instantiating backplane hardware' % self)
-
-    def __repr__(self):
-        return "IceCrate(%s)" % self.get_id()[0]
-
-    def init(self):
-        """ Communicates with the hardware and sets it in a known state.
-        """
-        pass
 
     def get_string_id(self):
         """ Return a string composed of the backplane model and serial number
@@ -133,6 +145,7 @@ class IceCrateExtHandler(IceCrateHandler):
     def get_number_of_slots(self):
         return self.NUMBER_OF_SLOTS
 
+
 ####################################################
 #  __  __  _____ _  ________ ____  _____  __   __
 # |  \/  |/ ____| |/ /____  |  _ \|  __ \/_ | / /
@@ -143,30 +156,33 @@ class IceCrateExtHandler(IceCrateHandler):
 #
 ####################################################
 
-@session.register_yaml_object()
-class IceCrate_MGK7BP16(IceCrateExt):
-    handler_name = 'IceCrate_MGK7BP16_Handler'
-    __mapper_args__ = {'polymorphic_identity': 'IceCrate_MGK7BP16'}
-    __ipmi_part_number__ = ['MGK7BP16', 'MGK7BP']  # Must match part number in IPMI data
+
+# @session.register_yaml_object()
+# class IceCrate_MGK7BP16(IceCrateExt):
+#     handler_name = 'IceCrate_MGK7BP16_Handler'
+#     __mapper_args__ = {'polymorphic_identity': 'IceCrate_MGK7BP16'}
+#     __ipmi_part_number__ = ['MGK7BP16', 'MGK7BP']  # Must match part number in IPMI data
 
 
-class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
+@register_class()
+class IceCrate_MGK7BP16(IceCrate):
     """ IceCrate handler that provides access to the backplane through an IceBoard.
     """
     part_number = 'MGK7BP16'
+    __ipmi_part_number__ = ['MGK7BP16', 'MGK7BP']  # Must match part number in IPMI data
 
-    #------------------------------------
+    #####################################
     # Define hardware-specific constants
-    #------------------------------------
+    #####################################
     NUMBER_OF_SLOTS = 16  #
     BACKPLANE_EEPROM_DATA_ADDRESS = 0x54  # covers 0x54 - 0x57 ( 4 pages of 256 bytes, 1024 Bytes total)
     BACKPLANE_EEPROM_SERIAL_ADDRESS = 0x5C  # 16 byte serial number starting at memory address 0x80
-    BACKPLANE_EEPROM_ADDRESS_WIDTH = 10  # 2 bits are in the device address, the remaining are in the address byte following the command byte
-    BACKPLANE_EEPROM_PAGE_SIZE = 16 #
+    BACKPLANE_EEPROM_ADDRESS_WIDTH = 10  # 2 bits are in the device address,
+    #   the remaining are in the address byte following the command byte
+    BACKPLANE_EEPROM_PAGE_SIZE = 16
 
     BACKPLANE_QSFP_ADDRESS = 0x50  # QSFP standard address (it is the same for all QSFPs)
     BACKPLANE_QSFP_ADDRESS_WIDTH = 8
-
 
     _QSFP_CTRL_SETA_ADDR = 0x20
     _QSFP_CTRL_SETB_ADDR = 0x22
@@ -318,7 +334,7 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
         (16, 13): (4,   3), (16, 14): (3,   3), (16, 15): (2,   3)
     }
 
-    _BP_TX_TO_RX_MAP = {tx:rx for (rx, tx) in _BP_RX_TO_TX_MAP.items()}
+    _BP_TX_TO_RX_MAP = {tx: rx for (rx, tx) in _BP_RX_TO_TX_MAP.items()}
 
     # length of the backplane PCB traces that connect two GTXes, in mils, indexed by the (slot,
     # lane) id of the receiver node. Slot number is one-based, lane is zero-based. Lane 0 is not
@@ -402,7 +418,7 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
         (16, 0): 0,
         (16, 1): 9580.145, (16, 2): 8719.981, (16, 3): 7798.304, (16, 4): 6780.144, (16, 5): 6010.335,
         (16, 6): 5144.09, (16, 7): 1636.564, (16, 8): 4373.744, (16, 9): 11123.971, (16, 10): 15700.299,
-        (16, 11): 12557.924, (16, 12): 11689.21, (16, 13): 13797.941, (16, 14): 14954.197, (16, 15): 16081.059 }
+        (16, 11): 12557.924, (16, 12): 11689.21, (16, 13): 13797.941, (16, 14): 14954.197, (16, 15): 16081.059}
 
     @classmethod
     def get_rx_net_length(cls, rx_slot_lane_tuple):
@@ -412,7 +428,6 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
     # def _i2c(self):
     #     """ provide access to the backplane I2C device through whichever is the current master iceboard """
     #     return self.master_iceboard.i2c
-
 
     # def __getattr__(self, name):
     #     """ Fetches attributes from the master iceboard's backplane handling object 'bp'
@@ -445,17 +460,28 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
         infinite recursion loop as Tuber tries to access the master_iceboard
         object that may not already exist.
         """
-        super(IceCrateExtHandler, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
-        self._logger = logging.getLogger(__name__)
+        # self._logger = logging.getLogger(__name__)
         self._logger.debug('%r: Instantiating backplane hardware' % self)
 
         self._i2c = MasterIceboardObject(self, 'i2c')  # Indirect reference to the master Iceboard's I2C object
 
         self._logger.debug('%r: Instantiating Backplane I2C resource managers' % self)
-        self._eeprom_data = EEPROM(self._i2c, bus_name='BP', address=self.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
-        self._eeprom_serial = EEPROM(self._i2c, bus_name='BP', address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
-        self._qsfp_eeprom = EEPROM(self._i2c, bus_name='BP', address=self.BACKPLANE_QSFP_ADDRESS, address_width=self.BACKPLANE_QSFP_ADDRESS_WIDTH)
+        self._eeprom_data = EEPROM(
+            self._i2c, bus_name='BP',
+            address=self.BACKPLANE_EEPROM_DATA_ADDRESS,
+            address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH,
+            write_page_size=self.BACKPLANE_EEPROM_PAGE_SIZE)
+        self._eeprom_serial = EEPROM(
+            self._i2c, bus_name='BP',
+            address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS,
+            address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH,
+            write_page_size=self.BACKPLANE_EEPROM_PAGE_SIZE)
+        self._qsfp_eeprom = EEPROM(
+            self._i2c, bus_name='BP',
+            address=self.BACKPLANE_QSFP_ADDRESS,
+            address_width=self.BACKPLANE_QSFP_ADDRESS_WIDTH)
 
         self._logger.debug('%r: Instantiating Backplane I2C temperature sensors' % self)
         self._tmp_slot1 = tmp421.tmp421(self._i2c, self._TMP_SLOT1_ADDR, 'BP')
@@ -473,106 +499,110 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
 
         self._gpio = gpio.GPIO(gpio_table={
             # name : (expander object, byte, lsb bit number,  width)
-             'QSFP1_ModPrsL':  (self._qsfp_ctrla, 2, 0, 1),
-             'QSFP1_ResetL':   (self._qsfp_ctrla, 2, 1, 1),
-             'QSFP1_IntL':     (self._qsfp_ctrla, 2, 2, 1),
-             'QSFP1_ModSelL':  (self._qsfp_ctrla, 2, 3, 1),
+            'QSFP1_ModPrsL':  (self._qsfp_ctrla, 2, 0, 1),
+            'QSFP1_ResetL':   (self._qsfp_ctrla, 2, 1, 1),
+            'QSFP1_IntL':     (self._qsfp_ctrla, 2, 2, 1),
+            'QSFP1_ModSelL':  (self._qsfp_ctrla, 2, 3, 1),
 
-             'QSFP2_ModPrsL':  (self._qsfp_ctrla, 2, 4, 1),
-             'QSFP2_ResetL':   (self._qsfp_ctrla, 2, 5, 1),
-             'QSFP2_IntL':     (self._qsfp_ctrla, 2, 6, 1),
-             'QSFP2_ModSelL':  (self._qsfp_ctrla, 2, 7, 1),
+            'QSFP2_ModPrsL':  (self._qsfp_ctrla, 2, 4, 1),
+            'QSFP2_ResetL':   (self._qsfp_ctrla, 2, 5, 1),
+            'QSFP2_IntL':     (self._qsfp_ctrla, 2, 6, 1),
+            'QSFP2_ModSelL':  (self._qsfp_ctrla, 2, 7, 1),
 
-             'QSFP3_ModPrsL':  (self._qsfp_ctrla, 1, 0, 1),
-             'QSFP3_ResetL':   (self._qsfp_ctrla, 1, 1, 1),
-             'QSFP3_IntL':     (self._qsfp_ctrla, 1, 2, 1),
-             'QSFP3_ModSelL':  (self._qsfp_ctrla, 1, 3, 1),
+            'QSFP3_ModPrsL':  (self._qsfp_ctrla, 1, 0, 1),
+            'QSFP3_ResetL':   (self._qsfp_ctrla, 1, 1, 1),
+            'QSFP3_IntL':     (self._qsfp_ctrla, 1, 2, 1),
+            'QSFP3_ModSelL':  (self._qsfp_ctrla, 1, 3, 1),
 
-             'QSFP4_ModPrsL':  (self._qsfp_ctrla, 1, 4, 1),
-             'QSFP4_ResetL':   (self._qsfp_ctrla, 1, 5, 1),
-             'QSFP4_IntL':     (self._qsfp_ctrla, 1, 6, 1),
-             'QSFP4_ModSelL':  (self._qsfp_ctrla, 1, 7, 1),
+            'QSFP4_ModPrsL':  (self._qsfp_ctrla, 1, 4, 1),
+            'QSFP4_ResetL':   (self._qsfp_ctrla, 1, 5, 1),
+            'QSFP4_IntL':     (self._qsfp_ctrla, 1, 6, 1),
+            'QSFP4_ModSelL':  (self._qsfp_ctrla, 1, 7, 1),
 
-             'QSFP5_ModPrsL':  (self._qsfp_ctrla, 0, 0, 1),
-             'QSFP5_ResetL':   (self._qsfp_ctrla, 0, 1, 1),
-             'QSFP5_IntL':     (self._qsfp_ctrla, 0, 2, 1),
-             'QSFP5_ModSelL':  (self._qsfp_ctrla, 0, 3, 1),
+            'QSFP5_ModPrsL':  (self._qsfp_ctrla, 0, 0, 1),
+            'QSFP5_ResetL':   (self._qsfp_ctrla, 0, 1, 1),
+            'QSFP5_IntL':     (self._qsfp_ctrla, 0, 2, 1),
+            'QSFP5_ModSelL':  (self._qsfp_ctrla, 0, 3, 1),
 
-             'QSFP6_ModPrsL':  (self._qsfp_ctrla, 0, 4, 1),
-             'QSFP6_ResetL':   (self._qsfp_ctrla, 0, 5, 1),
-             'QSFP6_IntL':     (self._qsfp_ctrla, 0, 6, 1),
-             'QSFP6_ModSelL':  (self._qsfp_ctrla, 0, 7, 1),
+            'QSFP6_ModPrsL':  (self._qsfp_ctrla, 0, 4, 1),
+            'QSFP6_ResetL':   (self._qsfp_ctrla, 0, 5, 1),
+            'QSFP6_IntL':     (self._qsfp_ctrla, 0, 6, 1),
+            'QSFP6_ModSelL':  (self._qsfp_ctrla, 0, 7, 1),
 
-             'QSFP7_ModPrsL':  (self._qsfp_ctrla, 3, 0, 1),
-             'QSFP7_ResetL':   (self._qsfp_ctrla, 3, 1, 1),
-             'QSFP7_IntL':     (self._qsfp_ctrla, 3, 2, 1),
-             'QSFP7_ModSelL':  (self._qsfp_ctrla, 3, 3, 1),
+            'QSFP7_ModPrsL':  (self._qsfp_ctrla, 3, 0, 1),
+            'QSFP7_ResetL':   (self._qsfp_ctrla, 3, 1, 1),
+            'QSFP7_IntL':     (self._qsfp_ctrla, 3, 2, 1),
+            'QSFP7_ModSelL':  (self._qsfp_ctrla, 3, 3, 1),
 
-             'QSFP8_ModPrsL':  (self._qsfp_ctrla, 3, 4, 1),
-             'QSFP8_ResetL':   (self._qsfp_ctrla, 3, 5, 1),
-             'QSFP8_IntL':     (self._qsfp_ctrla, 3, 6, 1),
-             'QSFP8_ModSelL':  (self._qsfp_ctrla, 3, 7, 1),
+            'QSFP8_ModPrsL':  (self._qsfp_ctrla, 3, 4, 1),
+            'QSFP8_ResetL':   (self._qsfp_ctrla, 3, 5, 1),
+            'QSFP8_IntL':     (self._qsfp_ctrla, 3, 6, 1),
+            'QSFP8_ModSelL':  (self._qsfp_ctrla, 3, 7, 1),
 
-             'QSFP9_ModPrsL':  (self._qsfp_ctrlb, 2, 0, 1),
-             'QSFP9_ResetL':   (self._qsfp_ctrlb, 2, 1, 1),
-             'QSFP9_IntL':     (self._qsfp_ctrlb, 2, 2, 1),
-             'QSFP9_ModSelL':  (self._qsfp_ctrlb, 2, 3, 1),
+            'QSFP9_ModPrsL':  (self._qsfp_ctrlb, 2, 0, 1),
+            'QSFP9_ResetL':   (self._qsfp_ctrlb, 2, 1, 1),
+            'QSFP9_IntL':     (self._qsfp_ctrlb, 2, 2, 1),
+            'QSFP9_ModSelL':  (self._qsfp_ctrlb, 2, 3, 1),
 
-             'QSFP10_ModPrsL': (self._qsfp_ctrlb, 2, 4, 1),
-             'QSFP10_ResetL':  (self._qsfp_ctrlb, 2, 5, 1),
-             'QSFP10_IntL':    (self._qsfp_ctrlb, 2, 6, 1),
-             'QSFP10_ModSelL': (self._qsfp_ctrlb, 2, 7, 1),
+            'QSFP10_ModPrsL': (self._qsfp_ctrlb, 2, 4, 1),
+            'QSFP10_ResetL':  (self._qsfp_ctrlb, 2, 5, 1),
+            'QSFP10_IntL':    (self._qsfp_ctrlb, 2, 6, 1),
+            'QSFP10_ModSelL': (self._qsfp_ctrlb, 2, 7, 1),
 
-             'QSFP11_ModPrsL': (self._qsfp_ctrlb, 1, 0, 1),
-             'QSFP11_ResetL':  (self._qsfp_ctrlb, 1, 1, 1),
-             'QSFP11_IntL':    (self._qsfp_ctrlb, 1, 2, 1),
-             'QSFP11_ModSelL': (self._qsfp_ctrlb, 1, 3, 1),
+            'QSFP11_ModPrsL': (self._qsfp_ctrlb, 1, 0, 1),
+            'QSFP11_ResetL':  (self._qsfp_ctrlb, 1, 1, 1),
+            'QSFP11_IntL':    (self._qsfp_ctrlb, 1, 2, 1),
+            'QSFP11_ModSelL': (self._qsfp_ctrlb, 1, 3, 1),
 
-             'QSFP12_ModPrsL': (self._qsfp_ctrlb, 1, 4, 1),
-             'QSFP12_ResetL':  (self._qsfp_ctrlb, 1, 5, 1),
-             'QSFP12_IntL':    (self._qsfp_ctrlb, 1, 6, 1),
-             'QSFP12_ModSelL': (self._qsfp_ctrlb, 1, 7, 1),
+            'QSFP12_ModPrsL': (self._qsfp_ctrlb, 1, 4, 1),
+            'QSFP12_ResetL':  (self._qsfp_ctrlb, 1, 5, 1),
+            'QSFP12_IntL':    (self._qsfp_ctrlb, 1, 6, 1),
+            'QSFP12_ModSelL': (self._qsfp_ctrlb, 1, 7, 1),
 
-             'QSFP13_ModPrsL': (self._qsfp_ctrlb, 0, 0, 1),
-             'QSFP13_ResetL':  (self._qsfp_ctrlb, 0, 1, 1),
-             'QSFP13_IntL':    (self._qsfp_ctrlb, 0, 2, 1),
-             'QSFP13_ModSelL': (self._qsfp_ctrlb, 0, 3, 1),
+            'QSFP13_ModPrsL': (self._qsfp_ctrlb, 0, 0, 1),
+            'QSFP13_ResetL':  (self._qsfp_ctrlb, 0, 1, 1),
+            'QSFP13_IntL':    (self._qsfp_ctrlb, 0, 2, 1),
+            'QSFP13_ModSelL': (self._qsfp_ctrlb, 0, 3, 1),
 
-             'QSFP14_ModPrsL': (self._qsfp_ctrlb, 0, 4, 1),
-             'QSFP14_ResetL':  (self._qsfp_ctrlb, 0, 5, 1),
-             'QSFP14_IntL':    (self._qsfp_ctrlb, 0, 6, 1),
-             'QSFP14_ModSelL': (self._qsfp_ctrlb, 0, 7, 1),
+            'QSFP14_ModPrsL': (self._qsfp_ctrlb, 0, 4, 1),
+            'QSFP14_ResetL':  (self._qsfp_ctrlb, 0, 5, 1),
+            'QSFP14_IntL':    (self._qsfp_ctrlb, 0, 6, 1),
+            'QSFP14_ModSelL': (self._qsfp_ctrlb, 0, 7, 1),
 
-             'QSFP15_ModPrsL': (self._qsfp_ctrlb, 3, 0, 1),
-             'QSFP15_ResetL':  (self._qsfp_ctrlb, 3, 1, 1),
-             'QSFP15_IntL':    (self._qsfp_ctrlb, 3, 2, 1),
-             'QSFP15_ModSelL': (self._qsfp_ctrlb, 3, 3, 1),
+            'QSFP15_ModPrsL': (self._qsfp_ctrlb, 3, 0, 1),
+            'QSFP15_ResetL':  (self._qsfp_ctrlb, 3, 1, 1),
+            'QSFP15_IntL':    (self._qsfp_ctrlb, 3, 2, 1),
+            'QSFP15_ModSelL': (self._qsfp_ctrlb, 3, 3, 1),
 
-             'QSFP16_ModPrsL': (self._qsfp_ctrlb, 3, 4, 1),
-             'QSFP16_ResetL':  (self._qsfp_ctrlb, 3, 5, 1),
-             'QSFP16_IntL':    (self._qsfp_ctrlb, 3, 6, 1),
-             'QSFP16_ModSelL': (self._qsfp_ctrlb, 3, 7, 1),
+            'QSFP16_ModPrsL': (self._qsfp_ctrlb, 3, 4, 1),
+            'QSFP16_ResetL':  (self._qsfp_ctrlb, 3, 5, 1),
+            'QSFP16_IntL':    (self._qsfp_ctrlb, 3, 6, 1),
+            'QSFP16_ModSelL': (self._qsfp_ctrlb, 3, 7, 1),
 
-             'QSFP1_Led' : (self._qsfp_ctrla, 4, 0, 1),
-             'QSFP2_Led' : (self._qsfp_ctrla, 4, 1, 1),
-             'QSFP3_Led' : (self._qsfp_ctrla, 4, 2, 1),
-             'QSFP4_Led' : (self._qsfp_ctrla, 4, 3, 1),
-             'QSFP5_Led' : (self._qsfp_ctrla, 4, 4, 1),
-             'QSFP6_Led' : (self._qsfp_ctrla, 4, 5, 1),
-             'QSFP7_Led' : (self._qsfp_ctrla, 4, 6, 1),
-             'QSFP8_Led' : (self._qsfp_ctrla, 4, 7, 1),
-             'QSFP9_Led' : (self._qsfp_ctrlb, 4, 0, 1),
-             'QSFP10_Led': (self._qsfp_ctrlb, 4, 1, 1),
-             'QSFP11_Led': (self._qsfp_ctrlb, 4, 2, 1),
-             'QSFP12_Led': (self._qsfp_ctrlb, 4, 3, 1),
-             'QSFP13_Led': (self._qsfp_ctrlb, 4, 4, 1),
-             'QSFP14_Led': (self._qsfp_ctrlb, 4, 5, 1),
-             'QSFP15_Led': (self._qsfp_ctrlb, 4, 6, 1),
-             'QSFP16_Led': (self._qsfp_ctrlb, 4, 7, 1),
-             'LED1': (self._reset_ctrl, 0, 7, 1)
-        })
+            'QSFP1_Led': (self._qsfp_ctrla, 4, 0, 1),
+            'QSFP2_Led': (self._qsfp_ctrla, 4, 1, 1),
+            'QSFP3_Led': (self._qsfp_ctrla, 4, 2, 1),
+            'QSFP4_Led': (self._qsfp_ctrla, 4, 3, 1),
+            'QSFP5_Led': (self._qsfp_ctrla, 4, 4, 1),
+            'QSFP6_Led': (self._qsfp_ctrla, 4, 5, 1),
+            'QSFP7_Led': (self._qsfp_ctrla, 4, 6, 1),
+            'QSFP8_Led': (self._qsfp_ctrla, 4, 7, 1),
+            'QSFP9_Led': (self._qsfp_ctrlb, 4, 0, 1),
+            'QSFP10_Led': (self._qsfp_ctrlb, 4, 1, 1),
+            'QSFP11_Led': (self._qsfp_ctrlb, 4, 2, 1),
+            'QSFP12_Led': (self._qsfp_ctrlb, 4, 3, 1),
+            'QSFP13_Led': (self._qsfp_ctrlb, 4, 4, 1),
+            'QSFP14_Led': (self._qsfp_ctrlb, 4, 5, 1),
+            'QSFP15_Led': (self._qsfp_ctrlb, 4, 6, 1),
+            'QSFP16_Led': (self._qsfp_ctrlb, 4, 7, 1),
+            'LED1': (self._reset_ctrl, 0, 7, 1)
+            })
 
-        self.qsfp = Ccoll(qsfp.QSFP(self._i2c, 'BP', gpio_prefix='QSFP%i_' % (i + 1), gpio=self._gpio, parent=self) for i in range(self.NUMBER_OF_SLOTS))
+        self.qsfp = Ccoll(qsfp.QSFP(
+            self._i2c, 'BP',
+            gpio_prefix='QSFP%i_' % (i + 1),
+            gpio=self._gpio,
+            parent=self) for i in range(self.NUMBER_OF_SLOTS))
 
         self.SLOT_RESETS_MAP = {
             # Slot num : (expander object, ARM Register, Power Down Register, Bit number)
@@ -608,10 +638,9 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
          }
 
         self.POWER_SENSOR_TABLE = {
-             # sensor name : (ina230 object, output voltage(volts), rshunt(inductor) (mohm), typical current(amps), current tolerance (0<tol<1))
+             # sensor name : (ina230 obj, output voltage, rshunt(inductor) (mohm), typical current(amps), current tolerance (0<tol<1))
              'BP_3V3': (self._power_3v3, 3.3, 2.6, 2., 0.5),
         }
-
 
     def open(self):
         """ Establish communications with the backplane.
@@ -619,17 +648,16 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
         self.model = self._get_backplane_type()
         self.id = '%s SN%s' % (self.model, self.serial)
 
-
     def close(self):
         pass
-
 
     def init(self):
         """Initializes the backplane hardware to a known state.
 
         This requires I2C communication with the backplane.
         """
-        #return
+        super().init()
+
         self._logger.info('%r: Starting backplane initialization' % self)
         for trial in range(10):
             self._logger.info('%r: Backplane initialization trial #%i' % (self, trial))
@@ -638,23 +666,26 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
                 self._fan_ctrl_present = self._fan_ctrl.is_present()
                 self._logger.info('%r: Fan controller %s present' % (self, ('is NOT', 'IS')[self._fan_ctrl_present]))
                 # Check if the power/reset control IO expander is accessible
-                #self._reset_ctrl_present = self._reset_ctrl.is_present()
+                # self._reset_ctrl_present = self._reset_ctrl.is_present()
 
-                #self._init_qsfp_ctrl()
-                #if self._reset_ctrl_present:
-                #    self._init_reset_ctrl()  # The power I2c bus needs to be bridged to the monitor I2C bus for this to work
-                #self._init_temperature_sensors()
-                #self._init_power_sensors()
+                # self._init_qsfp_ctrl()
+                # if self._reset_ctrl_present:
+                #    self._init_reset_ctrl()  # The power I2c bus needs to be bridged
+                # #             to the monitor I2C bus for this to work
+                # self._init_temperature_sensors()
+                # self._init_power_sensors()
 
                 if self._fan_ctrl_present:
                     self._fan_ctrl.init()
-                    self.logger.info('%r: Initialized fan controller from FPGA' % (self))
+                    self._logger.info('%r: Initialized fan controller from FPGA' % (self))
                 self._logger.info('%r: Successfully completed backplane initialization' % self)
                 return
             except (IOError, RuntimeError) as e:
-                self._logger.error('%r: IO Error during backplane INIT on trial %i. retrying. Error was:\n%s' % (self, trial+1, e))
+                self._logger.error('%r: IO Error during backplane INIT on trial %i. retrying. Error was:\n%s'
+                                   % (self, trial+1, e))
             except Exception as e:
-                self._logger.info('%r: Unexpected exception during backplane INIT on trial %i. Retrying. Error was:\n%s' % (self, trial+1, e))
+                self._logger.info('%r: Unexpected exception during backplane INIT on trial %i. Retrying. Error was:\n%s'
+                                  % (self, trial+1, e))
             finally:
                 try:
                     self._i2c.select_bus([])  # Make sure we don't load the bus
@@ -672,7 +703,7 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
         140318 JM: created
         """
         if temperature_sensor_name is None:
-            temperature_sensor_name = self.TEMPERATURE_SENSOR_TABLE.keys()
+            temperature_sensor_name = list(self.TEMPERATURE_SENSOR_TABLE.keys())
         elif isinstance(temperature_sensor_name, str):
             temperature_sensor_name = [temperature_sensor_name]
 
@@ -684,20 +715,23 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
                 try:
                     tmp_object.init()
                 except IOError:
-                    self.logger.error('%r: Error initializing the Backplane temperature sensors' % self)
+                    self._logger.error('%r: Error initializing the Backplane temperature sensors' % self)
 
     def _init_power_sensors(self, power_sensor_name='BP_3V3'):
         """
         initializes current/power monitors
-        'power_sensor_name' can be a list of current/power monitor names found in POWER_SENSOR_TABLE. If power_sensor_name=None, all sensors in
-        POWER_SENSOR_TABLE are initialized.
+
+        Parameters:
+
+        power_sensor_name (str, list): Can be a list of current/power monitor
+            names found in POWER_SENSOR_TABLE. If power_sensor_name=None, all
+            sensors in POWER_SENSOR_TABLE are initialized.
 
         History:
         140320 JM: created
         """
-
         if power_sensor_name == None:
-            power_sensor_name = self.POWER_SENSOR_TABLE.keys()
+            power_sensor_name = list(self.POWER_SENSOR_TABLE.keys())
         elif isinstance(power_sensor_name, str):
             power_sensor_name = [power_sensor_name]
 
@@ -708,26 +742,35 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
                 power_sensor_list = self.POWER_SENSOR_TABLE[power_sensor]
                 power_sensor_object = power_sensor_list[0]
                 try:
-                    power_sensor_object.init(v_out=power_sensor_list[1], r_shunt=power_sensor_list[2], i_typ=power_sensor_list[3], tol_i=power_sensor_list[4])
+                    power_sensor_object.init(
+                        v_out=power_sensor_list[1],
+                        r_shunt=power_sensor_list[2],
+                        i_typ=power_sensor_list[3],
+                        tol_i=power_sensor_list[4])
                 except IOError:
-                    self.logger.error('%r: Error initializing the Backplane Power sensors.' % self)
-
+                    self._logger.error('%r: Error initializing the Backplane Power sensors.' % self)
 
     def _init_qsfp_ctrl(self):
-            """
-            initializes QSFP control
-            History:
-            141015 AJG: created
-            """
-            qsfpa_ctrl=self._qsfp_ctrla
-            qsfpb_ctrl=self._qsfp_ctrlb
+        """
+        initializes QSFP control
+        History:
+        141015 AJG: created
+        """
+        qsfpa_ctrl = self._qsfp_ctrla
+        qsfpb_ctrl = self._qsfp_ctrlb
 
-            try:
-                qsfpa_ctrl.init(cfg0_def=0x55, cfg1_def=0x55,cfg2_def=0x55,cfg3_def=0x55,cfg4_def=0xff,out0_def=0xaa, out1_def=0xaa,out2_def=0xaa,out3_def=0xaa,out4_def=0)
-                qsfpb_ctrl.init(cfg0_def=0x55, cfg1_def=0x55,cfg2_def=0x55,cfg3_def=0x55,cfg4_def=0xff,out0_def=0xaa, out1_def=0xaa,out2_def=0xaa,out3_def=0xaa,out4_def=0)
-                #By default LEDs are off (dir=inputs , outputs=0), ModPrsL and IntL (dir=input, output = 0), ResetL and ModselL (dir=output, output=1)
-            except IOError:
-                self.logger.error('%r: Error initializing the Backplane QSFP GPIO control lines' % self)
+        try:
+            qsfpa_ctrl.init(
+                cfg0_def=0x55, cfg1_def=0x55, cfg2_def=0x55, cfg3_def=0x55, cfg4_def=0xff,
+                out0_def=0xaa, out1_def=0xaa, out2_def=0xaa, out3_def=0xaa, out4_def=0)
+            qsfpb_ctrl.init(
+                cfg0_def=0x55, cfg1_def=0x55, cfg2_def=0x55, cfg3_def=0x55, cfg4_def=0xff,
+                out0_def=0xaa, out1_def=0xaa, out2_def=0xaa, out3_def=0xaa, out4_def=0)
+            # By default LEDs are off (dir=inputs , outputs=0), ModPrsL and
+            # IntL (dir=input, output = 0), ResetL and ModselL (dir=output,
+            # output=1)
+        except IOError:
+            self._logger.error('%r: Error initializing the Backplane QSFP GPIO control lines' % self)
 
     def _init_reset_ctrl(self):
         """
@@ -740,8 +783,11 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
             cfg3_def=0xFF, cfg4_def=0xFF,
             out0_def=0x15, out1_def=0xFF, out2_def=0xFF,
             out3_def=0xFF, out4_def=0xFF)
-        #By default setting all pins to inputs, with default output level logic 1 (no reset possible) for all banks except 0
-        #On bank 0, default levels are such that LED default is 0, Reset clear is active, and reset pins are functionality is maximily off
+        # By default setting all pins to inputs, with default output level
+        # logic 1 (no reset possible) for all banks except 0
+        #
+        # On bank 0, default levels are such that LED default is 0, Reset
+        # clear is active, and reset pins are functionality is maximily off
 
     def read_backplane_eeprom(self, addr, length=1, **kwargs):
         return self._eeprom_data.read(addr, length, **kwargs)
@@ -768,7 +814,6 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
         boolean value, or an array with the same length as 'led_name'
         """
         self._gpio.write(led_name, state)
-
 
     def get_led(self, led_name):
         """
@@ -806,8 +851,8 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
             140318 JM: created
         """
         temperature_dict = {}
-        if temperature_sensor_name == None:
-            temperature_sensor_name = self.TEMPERATURE_SENSOR_TABLE.keys()
+        if temperature_sensor_name is None:
+            temperature_sensor_name = list(self.TEMPERATURE_SENSOR_TABLE.keys())
         elif isinstance(temperature_sensor_name, str):
             temperature_sensor_name = [temperature_sensor_name]
 
@@ -816,7 +861,7 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
                 raise ValueError('Invalid temperature sensor name')
             else:
                 tmp_object = self.TEMPERATURE_SENSOR_TABLE[temp_sensor]
-                temperature_dict[temp_sensor]=tmp_object.get_temperature()
+                temperature_dict[temp_sensor] = tmp_object.get_temperature()
 
         return temperature_dict
 
@@ -841,8 +886,8 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
         140320 JM: created
         """
         power_dict = {}
-        if power_sensor_name == None:
-            power_sensor_name = self.POWER_SENSOR_TABLE.keys()
+        if power_sensor_name is None:
+            power_sensor_name = list(self.POWER_SENSOR_TABLE.keys())
         elif isinstance(power_sensor_name, str):
             power_sensor_name = [power_sensor_name]
 
@@ -852,17 +897,19 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
             else:
                 power_sensor_list = self.POWER_SENSOR_TABLE[power_sensor]
                 power_object = power_sensor_list[0]
-                power_dict[power_sensor]=(power_object.get_bus_voltage(), power_object.get_shunt_voltage(), power_object.get_current(), power_object.get_power())
+                power_dict[power_sensor] = (
+                    power_object.get_bus_voltage(),
+                    power_object.get_shunt_voltage(),
+                    power_object.get_current(),
+                    power_object.get_power())
 
         return power_dict
-
 
     def get_serial_number(self):
         """
         Returns the board's serial number.
         """
-        return self.get_backplane_eeprom_serial_number(); # tentative code
-
+        return self.get_backplane_eeprom_serial_number()
 
     def reset_slot(self, slots, state, reset_type='ARM'):
         """
@@ -876,44 +923,49 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
         141015 AJG & JF: created
         """
         if not self._reset_ctrl_present:
-            raise RuntimeError('The Power/Reset backplane I/O Expander was not detected at init. Was the POW I2C bus accessible?')
+            raise RuntimeError('The Power/Reset backplane I/O Expander was not '
+                               'detected at init. Was the POW I2C bus accessible?')
 
-        if slots=='ALL' and state==1:  #We wish to perform a full crate reset
+        if slots == 'ALL' and state == 1:  # We wish to perform a full crate reset
 
             if reset_type not in self.FULLBP_RESETS_MAP:
                 raise ValueError('Unknown reset type %s' % reset_type)
             else:
                 (reset_control_obj, controlreg, mask, inactive, active) = self.FULLBP_RESETS_MAP[reset_type]
-                reset_cfg_register='CFG%i' % controlreg
-                reset_output_register='OUT%i' % controlreg
+                reset_cfg_register = 'CFG%i' % controlreg
+                reset_output_register = 'OUT%i' % controlreg
 
-                self.set_led('LED1', not(self.get_led('LED1')['LED1'])) #Flipping state of LED so that we know a reset was performed
-                #not sure what the defualt LED state will be so this is a flip at the moment
+                # Flipping state of LED so that we know a reset was performed
+                self.set_led('LED1', not(self.get_led('LED1')['LED1']))
+                # not sure what the default LED state will be so this is a
+                # flip at the moment
 
-                reset_control_obj.write(reset_output_register, active, mask) #Setting output register to reset value
-                reset_control_obj.write(reset_cfg_register,  0, mask) #Setting direction register to output (this performs the reset)
+                # Setting output register to reset value
+                reset_control_obj.write(reset_output_register, active, mask)
+                # Setting direction register to output (this performs the reset)
+                reset_control_obj.write(reset_cfg_register, 0, mask)
 
-        else:  #We wish to perform individual resets
+        else:  # We wish to perform individual resets
             if isinstance(slots, int):
                 slots = [slots]
 
             if isinstance(state, (bool, int, str)):
-                    state = ([state] * len(slots))
+                state = ([state] * len(slots))
 
             if isinstance(reset_type, (str)):
-                    reset_type = ([str(reset_type)] * len(slots))
+                reset_type = ([str(reset_type)] * len(slots))
 
             for (slot, isenabled, resettype) in zip(slots, state, reset_type):
                 if slot == self.master_iceboard.slot_number:
-                    print 'Warning, will not perform reset on the controlling slot %i' % slot
+                    print('Warning, will not perform reset on the controlling slot %i' % slot)
 
                 # if isenabled and slot != self._iceboard.slot_number  :
-                elif slot not in range(1, self.NUMBER_OF_SLOTS + 1) :
+                elif slot not in range(1, self.NUMBER_OF_SLOTS + 1):
                     raise ValueError('Invalid Slot number %i' % slot)
                 else:
                     (reset_control_obj, arm_reset_reg, power_down_reg, bitnumber) = self.SLOT_RESETS_MAP[slot]
                     if resettype == 'ARM':
-                        reset_cfg_register ='CFG%i' % arm_reset_reg
+                        reset_cfg_register = 'CFG%i' % arm_reset_reg
                         reset_output_register = 'OUT%i' % arm_reset_reg
                     elif resettype == 'POWER':
                         reset_cfg_register = 'CFG%i' % power_down_reg
@@ -924,14 +976,21 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
                     mask = 1 << bitnumber
                     if isenabled == 1 or isenabled == 'pulse':  # Turning reset on
 
-                        reset_control_obj.write(reset_output_register, 0, mask) #Setting output register to logic 0 (reset active)
-                        reset_control_obj.write(reset_cfg_register, 0, mask) #Setting direction register from input to output - Performing reset
+                        #Setting output register to logic 0 (reset active)
+                        reset_control_obj.write(reset_output_register, 0, mask)
+                        # Setting direction register from input to output -
+                        # Performing reset
+                        reset_control_obj.write(reset_cfg_register, 0, mask)
 
                     if isenabled == 0 or isenabled == 'pulse':  #Turning reset off
                         if isenabled=='pulse':
                             time.sleep(2)
-                        reset_control_obj.write(reset_output_register,  mask, mask) #Setting output register to logic 1 (reset inactive) - Removing reset
-                        reset_control_obj.write(reset_cfg_register,  mask, mask) #Setting direction register from output to input - Back to default state
+                        # Setting output register to logic 1 (reset inactive)
+                        # - Removing reset
+                        reset_control_obj.write(reset_output_register,  mask, mask)
+                        # Setting direction register from output to input -
+                        # Back to default state
+                        reset_control_obj.write(reset_cfg_register,  mask, mask)
 
     def set_fan_speed(self, speed):
         """ Set the speed of the crate fan.
@@ -939,12 +998,11 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
         Parameters:
             speed (int): Percentage value from 0 to 100 that determines the fan speed.
         """
-        #if not self._fan_ctrl_present:
+        # if not self._fan_ctrl_present:
         #    raise RuntimeError('There is no fan controller connected on the backplane I2C bus')
-        #self._fan_ctrl.set_duty_cycle(speed)
+        # self._fan_ctrl.set_duty_cycle(speed)
 
         self.master_iceboard.set_fantray_duty_cycle(int(255.*speed/100))
-
 
     # def get_pcb_links(self):
     #     """
@@ -959,7 +1017,6 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
     #     tx_crate = rx_crate = self.get_id()[0]
     #     links = [('pcb', (tx_crate, tx_slot - 1, tx_lane), (rx_crate, rx_slot - 1, rx_lane))
     #               for (rx_slot, rx_lane), (tx_slot, tx_lane) in self.get_pcb_link_map()]
-
 
     def get_qsfp_cable_map(self, get_cable_id=True, use_qsfp_link_id=False):
         """
@@ -1028,8 +1085,8 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
         for qsfp_slot, qsfp in enumerate(self.qsfp):
 
             # Get the UID of the cable connected to this QSFP cage
-            if get_cable_id and qsfp.is_present(): # qsfp not accessed if get_link_uid=False (slow)
-                cable_id = qsfp.read_str('VendName') + "_" + qsfp.read_str('VenPN')+ "_" + qsfp.read_str('VenSN')
+            if get_cable_id and qsfp.is_present():  # qsfp not accessed if get_link_uid=False (slow)
+                cable_id = qsfp.read_str('VendName') + "_" + qsfp.read_str('VenPN') + "_" + qsfp.read_str('VenSN')
             else:
                 cable_id = None
 
@@ -1081,35 +1138,37 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
 # Generated with http://patorjk.com/software/taag/#p=display&f=Big Money-ne&t=MGK7BP1
 
 
+# @session.register_yaml_object()
+# class IceCrate_MGK7BP1(IceCrateExt):
+#     handler_name = 'IceCrate_MGK7BP1_Handler'
+#     __mapper_args__ = {'polymorphic_identity': 'IceCrate_MGK7BP1'}
+#     __ipmi_part_number__ = ['MGK7BP1']  # Must match part number in IPMI data
 
-@session.register_yaml_object()
-class IceCrate_MGK7BP1(IceCrateExt):
-    handler_name = 'IceCrate_MGK7BP1_Handler'
-    __mapper_args__ = {'polymorphic_identity': 'IceCrate_MGK7BP1'}
-    __ipmi_part_number__ = ['MGK7BP1']  # Must match part number in IPMI data
-
-class IceCrate_MGK7BP1_Handler(IceCrateExtHandler):
+@register_class()
+class IceCrate_MGK7BP1(IceCrate):
     """
     Provides access to the 1-slot test backplane.
     """
     part_number = 'MGK7BP1'
+    __ipmi_part_number__ = ['MGK7BP1']  # Must match part number in IPMI data
 
-    #------------------------------------
+    #####################################
     # Define hardware-specific constants
-    #------------------------------------
-    NUMBER_OF_SLOTS = 1 #
+    #####################################
+    NUMBER_OF_SLOTS = 1
     BACKPLANE_EEPROM_DATA_ADDRESS = 0x54  # covers 0x54 - 0x57 ( 4 pages of 256 bytes, 1024 Bytes total)
     BACKPLANE_EEPROM_SERIAL_ADDRESS = 0x5C  # 16 byte serial number starting at memory address 0x80
-    BACKPLANE_EEPROM_ADDRESS_WIDTH = 10  # 2 bits are in the device address, the remaining are in the address byte following the command byte
-    BACKPLANE_EEPROM_PAGE_SIZE = 16 #
+    # 2 bits are in the device address, the remaining are in the address byte following the command byte
+    BACKPLANE_EEPROM_ADDRESS_WIDTH = 10
+    BACKPLANE_EEPROM_PAGE_SIZE = 16
 
     _GPIO_CTRL_ADDR = 0b0101111
 
-    # The following dictionnary describes the connectivity of the 10 Gbps mesh.
+    # The following dictionary describes the connectivity of the 10 Gbps mesh.
     # It indicates which transmitter (slot and lane number) is feeding a specified receiver.
-    # The dictionnary is indexed by receiver number.
+    # The dictionary is indexed by receiver number.
     _BP_RX_TO_TX_MAP = {(slot, lane): (slot, lane) for slot in range(17) for lane in range(16)}
-    _BP_TX_TO_RX_MAP = {tx: rx for (rx,tx) in _BP_RX_TO_TX_MAP.items()}
+    _BP_TX_TO_RX_MAP = {tx: rx for (rx, tx) in _BP_RX_TO_TX_MAP.items()}
 
     def __init__(self, **kwargs):
         """
@@ -1121,10 +1180,10 @@ class IceCrate_MGK7BP1_Handler(IceCrateExtHandler):
                 - i2c_set_port(...) # Port number 0 (connected to the FPGA I2C switch) is used for all accesses
                 - i2c_write_read(...) # FPGA I2C engine
         """
-        super(IceCrate_MGK7BP1_Handler, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self._I2C_BACKPLANE_BUS_NAME = 'BP'
-        self._logger = logging.getLogger(__name__)
+        # self._logger = logging.getLogger(__name__)
         self._logger.debug('Initializing Iceboard hardware')
         self._i2c = MasterIceboardObject(self, 'i2c')
         # self._i2c = iceboard.i2c
@@ -1132,8 +1191,16 @@ class IceCrate_MGK7BP1_Handler(IceCrateExtHandler):
         # self._iceboard = iceboard
 
         self._logger.debug(' Instantiating Backplane I2C resource managers')
-        self._eeprom_data = EEPROM(self._i2c, bus_name='BP', address=self.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
-        self._eeprom_serial = EEPROM(self._i2c, bus_name='BP', address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
+        self._eeprom_data = EEPROM(
+            self._i2c, bus_name='BP',
+            address=self.BACKPLANE_EEPROM_DATA_ADDRESS,
+            address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH,
+            write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
+        self._eeprom_serial = EEPROM(
+            self._i2c, bus_name='BP',
+            address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS,
+            address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH,
+            write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
 
         self._logger.debug(' Instantiating Backplane I2C I/O expanders')
         self._gpio_ctrl = pca9575.pca9575(self._i2c, self._GPIO_CTRL_ADDR, 'BP')
@@ -1171,6 +1238,7 @@ class IceCrate_MGK7BP1_Handler(IceCrateExtHandler):
 
     def init(self):
         """Initializes the backplane to a known state"""
+        super().init()
         self._init_gpio_ctrl()  # The power I2c bus needs to be bridged to the monitor I2C bus for this to work
 
     def _init_gpio_ctrl(self):
@@ -1182,7 +1250,7 @@ class IceCrate_MGK7BP1_Handler(IceCrateExtHandler):
         gpio_ctrl = self._gpio_ctrl
 
         gpio_ctrl.init(cfg0_def=0xFF, cfg1_def=0xFF)
-        #By default setting all pins to inputs, with default output level logic 0
+        # By default setting all pins to inputs, with default output level logic 0
 
     def read_eeprom(self, addr, length=1):
         return self._eeprom_data.read(addr, length=length)
@@ -1209,14 +1277,15 @@ class IceCrate_MGK7BP1_Handler(IceCrateExtHandler):
         if isinstance(state, (bool, int)):
             state = [state] * len(led_name)
 
-        for (led, led_state) in zip(led_name,state):
+        for (led, led_state) in zip(led_name, state):
             if led not in self.LED_MAP:
                 raise ValueError('Invalid LED name')
             else:
                 (led_control_object, led_control_register, led_control_bitnumber) = self.LED_MAP[led]
                 mask = 1 << led_control_bitnumber
-                led_control_object.write('CFG%i' % led_control_register, 0, mask=mask) #Setting LED pin to output
-                led_control_object.write('OUT%i' % led_control_register, mask * bool(not(led_state)), mask=mask) #Turning LED on and off
+                led_control_object.write('CFG%i' % led_control_register, 0, mask=mask)  # Setting LED pin to output
+                # Turning LED on and off
+                led_control_object.write('OUT%i' % led_control_register, mask * bool(not(led_state)), mask=mask)
 
     def get_led(self, led_name):
         """
@@ -1225,42 +1294,47 @@ class IceCrate_MGK7BP1_Handler(IceCrateExtHandler):
         is the led status.
         """
         led_status = {}
-        if isinstance(led_name, (str,int)):
+        if isinstance(led_name, (str, int)):
             led_name = [led_name]
 
         for pos, name in enumerate(led_name):
             if isinstance(name, int):
                 name = 'LED%i' % name
-            led_name[pos]=name
+            led_name[pos] = name
 
         for led in led_name:
             if led not in self.LED_MAP:
                 raise ValueError('Invalid LED name')
             else:
                 (led_control_object, led_control_register, led_control_bitnumber) = self.LED_MAP[led]
-                led_control_register='IN%i' % led_control_register #Converting the resister in the map into the correct string format
-                #Note that we are cheating here, we are flipping the bits on the IO Expander from input mode to output mode, inputs are default floating
-                #Turning on the LED requires a output of 0 which is the default state in output mode
-                regout=led_control_object.read(led_control_register)
-                led_status[led]= not bool( (regout & (1<<led_control_bitnumber))>>led_control_bitnumber)
+                # Converting the resister in the map into the correct string format
+                led_control_register = 'IN%i' % led_control_register
+                # Note that we are cheating here, we are flipping the bits on
+                # the IO Expander from input mode to output mode, inputs are
+                # default floating
+
+                # Turning on the LED requires a output of 0 which is the
+                # default state in output mode
+                regout = led_control_object.read(led_control_register)
+                led_status[led] = not bool((regout & (1 << led_control_bitnumber)) >> led_control_bitnumber)
         return led_status
 
     def set_slot_addr(self, slotnum):
-            """
-            Sets the backplane slot number to the number specified slot number from 1 to 16
-            """
+        """
+        Sets the backplane slot number to the number specified slot number from 1 to 16
+        """
 
-            if slotnum not in range(1, 16 + 1):
-                    raise ValueError('Invalid slot number')
-            slotnum -= 1  # Slot 1 is binary 0000, slot 16 is binary 1111
+        if slotnum not in range(1, 16 + 1):
+            raise ValueError('Invalid slot number')
+        slotnum -= 1  # Slot 1 is binary 0000, slot 16 is binary 1111
 
-            for addr in range(0, 4):
-                (ctrlobj, reg, bitnum) = self._GPIO_CTRL_MAP['SLOTADDR%i' % addr]
-                mask = 1 << bitnum
-                ctrlobj.write('CFG%i' % reg, 0, mask=mask)  # Setting addr pin to output
+        for addr in range(0, 4):
+            (ctrlobj, reg, bitnum) = self._GPIO_CTRL_MAP['SLOTADDR%i' % addr]
+            mask = 1 << bitnum
+            ctrlobj.write('CFG%i' % reg, 0, mask=mask)  # Setting addr pin to output
 
-                bitlevel = (slotnum >> addr) & 1
-                ctrlobj.write('OUT%i' % reg, mask * bitlevel, mask=mask)  # Turning pin off
+            bitlevel = (slotnum >> addr) & 1
+            ctrlobj.write('OUT%i' % reg, mask * bitlevel, mask=mask)  # Turning pin off
 
     def get_serial_number(self):
         """
@@ -1277,11 +1351,17 @@ class IceCrate_MGK7BP1_Handler(IceCrateExtHandler):
 
     def get_qsfp_links(self, get_link_uid=True):
         """
-        Return a list describing the data links that are provided by the backplane QSFP-equivalent loopback links on this backplane, along with each UID if `get_link_uid` is True.
+        Return a list describing the data links that are provided by the
+        backplane QSFP-equivalent loopback links on this backplane, along with
+        each UID if `get_link_uid` is True.
 
-        Each link node is in the format (link_type='BP_QSFP, qsfp_link_id, bp_link_id, link_uid). Each entry represents both the receiver and transmitter that are connected on that bidirectional lane.
+        Each link node is in the format (link_type='BP_QSFP, qsfp_link_id,
+        bp_link_id, link_uid). Each entry represents both the receiver and
+        transmitter that are connected on that bidirectional lane.
 
-        `qsfp_link_id` is a tuple that describes the link from the point of view of the QSFP connector. It is in the format (crate_id, qsfp_slot, qsfp_lane).
+        `qsfp_link_id` is a tuple that describes the link from the point of
+        view of the QSFP connector. It is in the format (crate_id, qsfp_slot,
+        qsfp_lane).
 
         `bp_link_id` is a tuple that describes the link from the point of view
         of the backplane connector. It is in the format `(crate_id, bp_slot,
@@ -1304,8 +1384,10 @@ class IceCrate_MGK7BP1_Handler(IceCrateExtHandler):
         # rx_nodes = {}
         crate_id = self.get_id()
         links = []
-        cable_uid = '%s_QSFP_Loopback' % self.get_string_id() # Include crates string id so the cable UID will be unique even if multiple backplanes are in the array
-        qsfp_slot = 0 # there is only one QSFP slot on this backplane
+        # Get Cable unique ID. Include crates string id so the cable UID will
+        # be unique even if multiple backplanes are in the array
+        cable_uid = '%s_QSFP_Loopback' % self.get_string_id()
+        qsfp_slot = 0  # there is only one QSFP slot on this backplane
         for qsfp_lane in range(4):
             qsfp_link_id = (crate_id, qsfp_slot, qsfp_lane)
             bp_link_id = (crate_id, qsfp_lane, qsfp_slot + 1)
