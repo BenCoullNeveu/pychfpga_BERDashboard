@@ -2263,8 +2263,8 @@ class FPGAArray(object):
         if mode == 'shuffle256' or mode == 'shuffle512':
             errors = 0
             for (crate, slot, lane), actual_bins in self.corner_turn_frequency_bins.items():
-                  bs = bin_map[(crate, slot)]
-                  expected_bins = bs['cb1'][slot][bs['cb2'][crate]][bs['cb3'][lane]]
+                  bs = bin_map[(crate%2, slot)]
+                  expected_bins = bs['cb1'][slot][bs['cb2'][crate%2]][bs['cb3'][lane]]
                   if not all(np.equal(expected_bins, actual_bins)):
                       print('Link %r do not match: Expected bins: %r, got bins %r' % ((crate, slot, link), expected_bins, actual_bins))
                       errors += 1
