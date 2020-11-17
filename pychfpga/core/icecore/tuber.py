@@ -384,6 +384,8 @@ class TuberObject:
     _tuber_async_method_prefix = 'tuber'  # no _
     _tuber_async_method_suffix = 'async'  # no _
 
+    _tuber_getattr_in_progress = False
+
     def tuber_context(self):
         return Context(self)
 
@@ -481,6 +483,7 @@ class TuberObject:
         at tab-completion, or manually by calling `set_tuber_inspect(False)`),
         then this function returns empty lists.
         '''
+        print(f'{self!r} Fetching Tuber metadata')
 
         if self.tuber_uri in self._tuber_meta:
             return (self._tuber_meta[self.tuber_uri],
@@ -598,10 +601,24 @@ class TuberObject:
     #     print('--------------------------------------------------------')
     #     # Make sure this request corresponds to something in the underlying
     #     # TuberObject.
-        if self.tuber_uri in self._tuber_meta:
-            raise AttributeError("'%r' object has no attribute '%s'" % (self, name))
-        self._tuber_get_meta()
-        return getattr(self, name)
+        # print(f'Tuber.getattr {name}')
+
+        # We set self._tuber_getattr_in_progress during the getattr process to
+        # avoid infinite recursion in case anything we call (e.g. repr(self)
+        # etc) accesses an unknown attribute.
+        try:
+            if self._tuber_getattr_in_progress or self.tuber_uri in self._tuber_meta:
+                # return getattr(super(), name)
+                raise AttributeError("'%s' object has no attribute '%s'" % (self.__class__.__name__, name))
+                # if self._tuber_getattr_in_progress:
+                #     raise RuntimeError(f'Tuber: trying to get attribute {name} while lookup for {self._tuber_getattr_in_progress} is in progress')
+            else:
+                self._tuber_getattr_in_progress = True
+                self._tuber_get_meta()
+                return getattr(self, name)
+        finally:
+            self._tuber_getattr_in_progress = False
+
         # raise AttributeError()
         # return super().__getattr__(name)
 
