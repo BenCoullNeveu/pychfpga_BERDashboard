@@ -1186,7 +1186,7 @@ class FPGAArray(object):
                         else:
                             trial += 1
                             self.logger.error('%r: Reprogramming FPGA and trying again.' % (self))
-                            await ib.set_fpga_bitstream_async(force=True)
+                            await ib.set_fpga_bitstream_async(self.fpga_bitstream, force=True)
             await asyncio.gather(*[open_core(ib) for ib in self.ib])
 
             ########################
