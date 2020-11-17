@@ -132,7 +132,7 @@ class IceBoard(IceBoardBase):
         self.subarray = subarray
         self.mezzanine = {}
         self._instance_registry[(self.part_number, serial)] = self
-
+        self._cached_repr = None  # important to afaid infinite recursions through repr()
 
     def __repr__(self):
         """ Provides a concise string representation of this Iceboard that is
@@ -185,6 +185,7 @@ class IceBoard(IceBoardBase):
         Returns a boolean indicating whether a tuber object is available at
         the specified ARM hostname.
         """
+        print(f'{self!r} Ping_async()')
         self.logger.info('%r: Pinging %s' % (self, self.tuber_uri))
         try:
             await self._tuber_get_meta.__acall__()
