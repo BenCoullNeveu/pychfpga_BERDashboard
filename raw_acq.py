@@ -521,7 +521,7 @@ class RawAcqReceiver(object):
             self.buf and its structured references: captured packets, in random order
 
         """
-        print('Processin %i packets' % self.n)
+        # print('Processing %i packets' % self.n)
 
         # Just return if there are no packets to process
         if not self.n:
