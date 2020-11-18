@@ -373,18 +373,17 @@ class TuberObject:
     _tuber_meta = {}
     _tuber_meta_properties = {}
     _tuber_meta_methods = {}
-    _tuber_meta_async_method_names = {}
-
+    _tuber_meta_method_functions = {}  # pre-processed functions
     # Client session objects in use by each event loop.
     _client_sessions = {}
 
     # Parametrize the TCP connection limits. Can be overriden by subclasses.
     _client_connections_total = 0  # total number of simultaneous TCP connections (0 = no limit)
     _client_connections_per_host = 4  # total number of simultaneous TCP connections per host (None = no limit)
-    _tuber_async_method_prefix = 'tuber'  # no _
-    _tuber_async_method_suffix = 'async'  # no _
-
-    _tuber_getattr_in_progress = False
+    _tuber_wrapped_method_names = None
+    _tuber_async_method_names = ('tuber_', '_async')
+    _tuber_instance_attributes_populated = False  # shadowed by the instance attribute
+    _tuber_getattr_in_progress = False  # shadowed by instance attribute
 
     def tuber_context(self):
         return Context(self)
@@ -466,7 +465,8 @@ class TuberObject:
 
     @tworoutine.tworoutine
     async def _tuber_get_meta(self):
-        '''Retrieve metadata associated with the remote network resource.
+        '''Retrieve metadata associated with the remote network resource and
+        make sure the current class instance is populated with them.
 
         This data isn't strictly needed to construct "blind" JSON-RPC calls,
         except for user-friendliness:
@@ -478,71 +478,67 @@ class TuberObject:
         up properties and values (with tab-completion and docstrings)
         on-the-fly as they're needed.
 
-        If tuber inspection has been disabled (either automatically when
-        an error was encountered while calling this function in an attempt
-        at tab-completion, or manually by calling `set_tuber_inspect(False)`),
-        then this function returns empty lists.
         '''
         print(f'{self!r} Fetching Tuber metadata')
+        uri = self.tuber_uri
 
-        if self.tuber_uri in self._tuber_meta:
-            return (self._tuber_meta[self.tuber_uri],
-                    self._tuber_meta_properties[self.tuber_uri],
-                    self._tuber_meta_methods[self.tuber_uri])
+        # if we don't already have the meta info from the board at this specific URI, fetch it
+        if uri not in self._tuber_meta:
+            async with self.tuber_context() as ctx:
+                # Just specify the object type, which returns the meta info.
+                ctx._add_call()
+                meta = await ctx.__acall__()
+                meta = meta[0]
 
+                # Query info on all properties
+                for p in meta.properties:
+                    ctx._add_call(property=p)
+                prop_list = await ctx.__acall__()
 
-        async with self.tuber_context() as ctx:
-            # Just specify the object type, which returns the meta info.
-            ctx._add_call()
-            meta = await ctx.__acall__()
-            meta = meta[0]
-
-            # Query info on all properties
-            for p in meta.properties:
-                ctx._add_call(property=p)
-            prop_list = await ctx.__acall__()
-
-            for m in meta.methods:
-                ctx._add_call(property=m)
-            meth_list = await ctx.__acall__()
-            # import traceback
-            # try:
-            #     gla
-            # except Exception as err:
-
-            #     print(traceback.print_tb(err.__traceback__))
+                for m in meta.methods:
+                    ctx._add_call(property=m)
+                meth_list = await ctx.__acall__()
 
             props = dict(zip(meta.properties, prop_list))
             methods = dict(zip(meta.methods, meth_list))
+            functions = {}
+            for name, info in methods.items():
+                if self._tuber_async_method_names:
+                    new_name = self._tuber_expand_name(name, *self._tuber_async_method_names)
+                    fn = self._get_async_method(name, info)
+                    functions[new_name] = fn
+                if self._tuber_wrapped_method_names:
+                    new_name = self._tuber_expand_name(name, *self._tuber_wrapped_method_names)
+                    wrapped_fn = tworoutine.tworoutine(self._get_async_method(name, info))
+                    functions[name] = wrapped_fn
+            self._tuber_meta_properties[uri] = props
+            self._tuber_meta_methods[uri] = methods
+            self._tuber_meta[uri] = meta
+            self._tuber_meta_method_functions[uri] = functions
+
+        # Instrument the current instance class with the properties and methods if required
+        if not self._tuber_instance_attributes_populated:
+            # Add properties to class instance
+            for name, value in self._tuber_meta_properties[uri].items():
+                print(f'Adding property {name} to {self}')
+                setattr(self, name, value)
+            # Add methods to class instance
+            for name, fn in self._tuber_meta_method_functions[uri].items():
+                print(f'Adding method {name} to {self}')
+                setattr(self, name, fn.__get__(self))
+            self._tuber_instance_attributes_populated = True
+
+        return (self._tuber_meta[uri],
+                self._tuber_meta_properties[uri],
+                self._tuber_meta_methods[uri])
 
 
-        def to_async_name(name):
-            if name.startswith('_'):
-                return '_%s_%s_%s' % (self._tuber_async_method_prefix, name[1:], self._tuber_async_method_suffix)
-            else:
-                return '%s_%s_%s' % (self._tuber_async_method_prefix, name, self._tuber_async_method_suffix)
-
-
-        self._tuber_meta_properties[self.tuber_uri] = props
-        self._tuber_meta_methods[self.tuber_uri] = methods
-        self._tuber_meta[self.tuber_uri] = meta
-        # Add properties to class attributes
-        for name, value in props.items():
-            # Store as class attribute
-            print(f'Adding property {name} to {self}')
-            setattr(TuberObject, name, value)
-
-        # Add sync and async methods to class attributes
-        for name, info in methods.items():
-            async_name = to_async_name(name)
-
-            # meth = tworoutine.tworoutine(self._get_async_method(name, info))
-            # print(f'Adding method {name} to {self.__class__}')
-            # setattr(TuberObject, name, meth)
-
-            async_meth = self._get_async_method(name, info)
-            print(f'Adding method {async_name} to {self.__class__}')
-            setattr(TuberObject, async_name, async_meth)
+    @staticmethod
+    def _tuber_expand_name(name, prefix='', suffix=''):
+        if name.startswith('_'):
+            return f'_{prefix}{name[1:]}{suffix}'
+        else:
+            return f'{prefix}{name}{suffix}'
 
     @staticmethod
     def _get_async_method(name, method_info):
@@ -607,7 +603,7 @@ class TuberObject:
         # avoid infinite recursion in case anything we call (e.g. repr(self)
         # etc) accesses an unknown attribute.
         try:
-            if self._tuber_getattr_in_progress or self.tuber_uri in self._tuber_meta:
+            if self._tuber_getattr_in_progress or self._tuber_instance_attributes_populated:
                 # return getattr(super(), name)
                 raise AttributeError("'%s' object has no attribute '%s'" % (self.__class__.__name__, name))
                 # if self._tuber_getattr_in_progress:
