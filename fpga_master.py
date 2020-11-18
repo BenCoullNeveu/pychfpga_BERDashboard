@@ -1039,7 +1039,7 @@ class FPGAMaster(object):
 
         if corr_config and corr_config.enable:
             self.corr_firmware_integration_period = corr_config.firmware_integration_period
-            self.fpgas.start_correlators_async(self.corr_firmware_integration_period)
+            await self.fpgas.start_correlators_async(self.corr_firmware_integration_period)
             print('******************** Enabling corr with integ=', self.corr_firmware_integration_period)
         else:
             self.corr_firmware_integration_period = None
@@ -1226,8 +1226,6 @@ class FPGAMaster(object):
         if self.state == 'on':
             status['config'] = self.config.as_dict()
         return status
-
-
 
     async def stop(self):
         """ Stop the F-engine and the correlator data acquisition processes"""
