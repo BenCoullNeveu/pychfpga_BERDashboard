@@ -41,7 +41,7 @@ extensions = ['sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
     'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
-    'wtl_sphinx_paramlinks',
+    'wtl.sphinx_paramlinks',
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode']
 
