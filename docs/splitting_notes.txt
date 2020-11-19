@@ -283,5 +283,3 @@ some commits in other branches are missing.
   git remote remove origin
 git remote add origin git@bitbucket.org:chime/kotekan_master.git
   # clone it so it is no longer a bare repo, then work with it
-
-
