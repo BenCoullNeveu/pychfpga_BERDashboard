@@ -1,4 +1,4 @@
-__version__ = "1.0"
+__version__ = "2.0"
 
 # Git version
 def get_git_version():
