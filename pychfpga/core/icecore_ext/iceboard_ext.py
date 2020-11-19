@@ -427,13 +427,15 @@ class IceBoardPlus(IceBoard):
         explicitely specified for this IceBoard in the YAML hardware maps.
         """
 
-        icecrate_class = {}
+        icecrate_class = None
         part_number = None
         serial = None
+        slot_number = None
         if (await self.is_backplane_present_async()):
             ipmi = await self._tuber_get_backplane_ipmi_async()  # Tuber call
             part_number = ipmi.product.part_number
             serial = ipmi.product.serial_number
+            icecrate_class = get_class_by_part_number(IceCrate, part_number)
             slot_number = await self.tuber_get_backplane_slot_async()
             self.logger.debug(
                 '%r: discover_crate(): '
@@ -441,18 +443,19 @@ class IceBoardPlus(IceBoard):
                 % (self, part_number, serial)
                 )
 
-        crate_class = get_class_by_part_number(IceCrate, part_number)
 
-        if not crate_class:
+        if not icecrate_class:
             self.logger.warning(
                 "%r: discover_crate(): There is no known backplane object with "
                 "part number '%r'" % (self, part_number))
 
         if update:
             self.slot = slot_number
-            self.crate = get_unique_class_instance(crate_class, serial)
-            self.crate.slot[slot_number] = self
-        return(icecrate_class)
+            if icecrate_class:
+                self.crate = get_unique_class_instance(icecrate_class, serial)
+                self.crate.slot[slot_number] = self
+
+        return icecrate_class
 
 
     # ----------------------------
