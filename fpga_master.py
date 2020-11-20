@@ -1463,6 +1463,11 @@ class FPGAMaster(object):
               channels are remapped using the map in the config under
               ``input_number_map``.
 
+        If there is no integer slot number (None or a string), the slot number
+        is considered to be the first slot.
+
+        If there is no crate number (None or string), the crate number is
+        considered to be zero.
 
         For example:
 
@@ -1483,9 +1488,9 @@ class FPGAMaster(object):
 
         crate, slot, chan = chan_id
         args_sn = {'corr_sn': self.config.corr_sn,
-                   'crate': crate if not isinstance(crate, str) else 0,
-                   'slot': slot + 1 if not isinstance(slot, str) else 1,
-                   'slot_zero_based': slot if not isinstance(slot, str) else 0,
+                   'crate': crate if isinstance(crate, int) else 0,
+                   'slot': slot + 1 if isinstance(slot, int) else 1,
+                   'slot_zero_based': slot if isinstance(slot, int) else 0,
                    'chan': chan,
                    'input': self.config.input_number_map[chan]}
         return (self.config.input_sn % args_sn)
