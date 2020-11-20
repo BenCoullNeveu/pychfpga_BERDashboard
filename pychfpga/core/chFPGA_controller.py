@@ -252,7 +252,7 @@ class chFPGA_controller(IceBoardExt):
 
         # If init<0, we do not perform any communication with the FPGA, so we don't read the firmware configuration
         if init < 0:
-            self._logger.warn('%r: Upon user request (init < 0), communication with the FPGA are inhibited. '
+            self._logger.warning('%r: Upon user request (init < 0), communication with the FPGA are inhibited. '
                               'Initialization sequence stops here. Use this for debug only.' % self)
             return
         self._logger.info('%r:    ---> Hello! This is chFPGA! <---' % self)
@@ -2279,7 +2279,7 @@ class chFPGA_controller(IceBoardExt):
             self.logger.info('%r: Loaded gains for board %s from file %s' % (self, gain_filename))
             # ib.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
         except IOError:
-            self.logger.warn("Gain file '%s' not found for (crate,slot)= %r" % (gain_filename, self.get_id()))
+            self.logger.warning("Gain file '%s' not found for (crate,slot)= %r" % (gain_filename, self.get_id()))
             gains = None
 
         # # Fill any missing channel info with None
@@ -2312,7 +2312,7 @@ class chFPGA_controller(IceBoardExt):
             # self.logger.info('Setting gains on IceBoard SN%s, crate %s, slot %i' % (ib.serial, crate, slot))
             # ib.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
         except IOError:
-            self.logger.warn("Gain file '%s' could not be saved for (crate,slot)=%r " % (gain_filename, self.get_id()))
+            self.logger.warning("Gain file '%s' could not be saved for (crate,slot)=%r " % (gain_filename, self.get_id()))
 
     def set_gains(
             self,

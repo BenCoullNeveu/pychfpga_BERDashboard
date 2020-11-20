@@ -990,7 +990,7 @@ class FPGAArray(object):
 
         # Courtesy warning
         if not self.ic:
-            self.logger.warn('There are no IceCrates in the hardware map!')
+            self.logger.warning('There are no IceCrates in the hardware map!')
 
         #################################
         # Resolve crate slot mapping
@@ -2332,7 +2332,7 @@ class FPGAArray(object):
 
         # Check if stream IDs are unique
         if len(self.corner_turn_stream_ids) != len(set(self.corner_turn_stream_ids.values())):
-            raise self.logger.warn('%r: Stream IDs are not unique across the array')
+            raise self.logger.warning('%r: Stream IDs are not unique across the array')
 
         if ib.crate:
 
@@ -2744,7 +2744,7 @@ class FPGAArray(object):
                 if trial >= max_trials:
                     raise RuntimeError('SYNC failed after %i trials. The last exception was:\n%r'
                                        % (trial, e))
-                self.logger.warn('%r: SYNC failed on trial %i/%i due to the following error. Will retry.\n%r'
+                self.logger.warning('%r: SYNC failed on trial %i/%i due to the following error. Will retry.\n%r'
                                  % (self, trial, max_trials, e))
 
     async def set_channelizers_async(
@@ -2811,7 +2811,7 @@ class FPGAArray(object):
             stream_id_map.update(ib.get_stream_id_map())
 
         if len(stream_id_map) != len(set(stream_id_map.values())):
-            self.logger.warn('%r: Stream IDs are not unique!')
+            self.logger.warning('%r: Stream IDs are not unique!')
 
         return stream_id_map
 
@@ -3015,7 +3015,7 @@ class FPGAArray(object):
             await asyncio.sleep(0)
 
             if not board_gains:
-                self.logger.warn('%r: Neither board-specific gain file not default '
+                self.logger.warning('%r: Neither board-specific gain file not default '
                                  'gain file was found for (crate,slot)=%r' % (self, board_id))
                 array_gains[board_id] = None
             else:
@@ -4856,10 +4856,11 @@ def parse_hw_string(hw_string, remap_table={}, dut_id_patterns=ICE_PATTERNS):
 
 
 log_levels = {'info': logging.INFO, 'debug': logging.DEBUG,
-              'warn': logging.WARNING, 'error': logging.ERROR}
+              'warn': logging.WARNING, 'warning': logging.WARNING,
+              'error': logging.ERROR}
 
 
-def setup_logging(log_target='syslog', log_level='debug', sql_log_level='warn', stderr_log_level='warn'):
+def setup_logging(log_target='syslog', log_level='debug', sql_log_level='warning', stderr_log_level='warning'):
     # Make sure SQLAlchemy does not log too much
     sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
     sql_logger.setLevel(log_levels[sql_log_level])
@@ -4891,8 +4892,8 @@ def setup_logging(log_target='syslog', log_level='debug', sql_log_level='warn', 
 def add_logging_arguments(parser):
     parser.add_argument('-t', '--log_target', action='store', type=str, default='syslog', help="Logging target ('stream', 'syslog' or a filename)")
     parser.add_argument('-l', '--log_level', action='store', type=str, choices=log_levels, default='debug', help='Logging level')
-    parser.add_argument('--sql_log_level', action='store', type=str, choices=log_levels, default='warn', help='SQLAlchemy Logging level')
-    parser.add_argument('--stderr_log_level', action='store', type=str, choices=log_levels, default='warn', help='stderr (console) Logging level')
+    parser.add_argument('--sql_log_level', action='store', type=str, choices=log_levels, default='warning', help='SQLAlchemy Logging level')
+    parser.add_argument('--stderr_log_level', action='store', type=str, choices=log_levels, default='warning', help='stderr (console) Logging level')
 
 def add_fpga_array_arguments(parser):
     parser.add_argument('--if_ip',           type=str, help='IP address of adapter through which the connection to the FPGA will be established. This is used solely for direct UDP communications with the FPGA. If not specified, the system will use the same interface that communicates with the ARM processor.')
@@ -5103,16 +5104,16 @@ def create_fpga_array(args=None):
             - any other string: logs to a file specified by the string
 
         log_level : String indicating the logging level. May be 'info',
-            'error', 'warn' , 'debug'. default is 'debug'.
+            'error', 'warning' , 'debug'. default is 'debug'.
 
         sql_log_level : String indicating SQLAlchemy logging level. Same
-            values as ``log_level``. Defaults to 'warn'.
+            values as ``log_level``. Defaults to 'warning'.
 
         stderr_log_level : String indicating what messages to log on stderr
            (usually the console) in addition to the main log target. Is usually
            used to make sure that important messages (warnings and errors) are
            seen immediately by the interactive operator. Values are the same as
-           ``log_level``. Defaults to 'warn'.
+           ``log_level``. Defaults to 'warning'.
 
     """
     # -------------------------------

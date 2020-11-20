@@ -926,7 +926,7 @@ class FPGAMaster(object):
             try:
                 os.remove(self.current_folder)
             except OSError as e:
-                self.log.warn("%r: Could not remove current symlink '%s'. The error isn%s" % (self, self.current_folder, e))
+                self.log.warning("%r: Could not remove current symlink '%s'. The error isn%s" % (self, self.current_folder, e))
             try:
                 os.symlink(self.run_folder, self.current_folder)
             except OSError as e:
@@ -2202,7 +2202,7 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
             client_ip = request.remote
             self.log.info('%r: Received metrics request from %s' % (self, client_ip))
             if self.last_metrics_client and client_ip != self.last_metrics_client:
-                self.log.warn('%r: A new client at %s is pulling metrics from '
+                self.log.warning('%r: A new client at %s is pulling metrics from '
                               'this server. Previous client was %s' %
                               (self, client_ip, self.last_metrics_client))
             self.last_metrics_client = client_ip

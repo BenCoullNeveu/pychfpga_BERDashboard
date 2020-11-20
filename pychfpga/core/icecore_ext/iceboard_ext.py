@@ -294,15 +294,15 @@ class IceBoardPlus(IceBoard):
         try:
             actual_serial = str((await self.tuber_get_motherboard_serial_async()))
         except Exception as e:  #  Deal with uninitialized boards
-            self.logger.warn('%r: Error while attempring to read the board serial number. The exception is %r' % (self, e))
+            self.logger.warning('%r: Error while attempring to read the board serial number. The exception is %r' % (self, e))
             actual_serial = None
         self.logger.info('%r: got the serial number of board at %s to be %s' % (self, self.tuber_uri, actual_serial))
         await asyncio.sleep(0)
         if update:
             if not actual_serial:
-                self.logger.warn('%r: Could not read the board serial number from IPMI storage or serial number is null. Serial number is not updated.' % (self))
+                self.logger.warning('%r: Could not read the board serial number from IPMI storage or serial number is null. Serial number is not updated.' % (self))
             elif self.serial and actual_serial != self.serial:
-                self.logger.warn('%r: The discovered serial number differs from the current (hardware map) one. Updating to the discovered value.' % (self))
+                self.logger.warning('%r: The discovered serial number differs from the current (hardware map) one. Updating to the discovered value.' % (self))
             self.serial = actual_serial
         self.logger.info('%r: finished discovering the serial number of board at %s' % (self, self.tuber_uri))
         return(self.serial)
@@ -312,9 +312,9 @@ class IceBoardPlus(IceBoard):
         actual_slot = await self.tuber_get_backplane_slot_async()
         if update:
             if not actual_slot:
-                self.logger.warn('%r: The board is not connected to a backplane. Slot number is not updated.' % (self))
+                self.logger.warning('%r: The board is not connected to a backplane. Slot number is not updated.' % (self))
             elif self.slot and actual_slot != self.slot:
-                self.logger.warn('%r: The discovered slot (%s) number differs from the current (hardware map) one (%s). Updating to the discovered slot.' % (self, actual_slot, self.slot))
+                self.logger.warning('%r: The discovered slot (%s) number differs from the current (hardware map) one (%s). Updating to the discovered slot.' % (self, actual_slot, self.slot))
             self.slot = actual_slot
         return(self.slot)
 
@@ -1881,7 +1881,7 @@ class IceBoardExt(IceBoardPlus):
             # t1 = time.time()
             # while not (await self.fpga_spi_mmi_read_async(self._IRIGB_TARGET1_ADDR)) & (1 << 29):
             #                     # check refclk_sample_done
-            #     self.logger.warn('%r: Time capture was not immediately ready - this is unexpected' % self)
+            #     self.logger.warning('%r: Time capture was not immediately ready - this is unexpected' % self)
             #            # Debug. should not happen since capture should be much faster
             #            # than the time it takes to read the done flag
             #     # TImeout if it takes too long. The time should be ready within a few 10 MHz cycles.
