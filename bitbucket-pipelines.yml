@@ -15,7 +15,7 @@ pipelines:
           - DOC_REPO_URL='git@bitbucket.org:winterlandcosmology/'$DOC_REPO'.git'
           - DOC_SPHINX_ROOT_FOLDER='docs'
           - DOC_BUILD_FOLDER='build'
-          - DOC_PUBLISH_FOLDER='wtl/pychfpga/'$BITBUCKET_BRANCH
+          - DOC_PUBLISH_FOLDER='pychfpga/'$BITBUCKET_BRANCH
           # - pip install -r requirements.txt
           - pip install -e . # git+ssh://git@bitbucket.org/winterlandcosmology/wtl-sphinx-paramlinks.git#egg=wtl_sphinx_paramlinks
           - cd $DOC_SPHINX_ROOT_FOLDER
