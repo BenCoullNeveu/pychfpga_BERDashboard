@@ -1,6 +1,6 @@
 """ Handler for the IceBoard's FPGA core UDP communication and hardware management firmware.
 """
-
+# Standard Python packages
 import logging
 from datetime import datetime, timedelta
 from calendar import timegm
@@ -9,31 +9,765 @@ import struct
 import base64
 from collections import OrderedDict
 import socket
+import asyncio
 
-from ..icecore import IceBoardPlusHandler
-from ..icecore import tuber  # Used to get TuberRemoteError
-from ..icecore import Ccoll
-from ..icecore import async, async_sleep, async_return, async_moment
+import nest_asyncio
+# External private packages
+
 from wtl.metrics import Metrics
+
+# Local packages
+
+from ..icecore.hardware_assets import IceBoardBase, FMCMezzanineBase
+from ..icecore.tuber import TuberError, TuberNetworkError, TuberRemoteError
+from .hardware_map import register_class, get_class_by_part_number, get_unique_class_instance, get_all_classes
+from .icecrate_ext import IceCrate
+from .ccoll import Ccoll
 
 from .. import I2C as i2c
 from .. import GPIO as fpga_gpio
 
-from . import icecrate_ext  # this module is not referenced here, but loading it registers the handler with IceCrate.
-
-# Import IceBoard hardware handlers
 # from lib import tmp100  # I2C Temperature sensor
-from lib import pca9575  # I2C 16-bit IO Expander
-from lib import tca9548a  # I2C switch
-from lib import ina230  # I2C Voltage and current monitor
-from lib import eeprom
-from lib import qsfp
-from lib import gpio
+from .lib import pca9575  # I2C 16-bit IO Expander
+from .lib import tca9548a  # I2C switch
+from .lib import ina230  # I2C Voltage and current monitor
+from .lib import eeprom
+from .lib import qsfp
+from .lib import gpio
 
 
-class IceBoardExtHandler(IceBoardPlusHandler):
-    """ Provides basic access to the core FPGA firmware to support direct UDP
-    communication with the FPGA and access to IceBoard hardware ressources via the FPGA.
+# class HWMResource(object):
+#     """
+#     Base class for Hardware Mapper resources to share.
+#     """
+#     hwm = HardwareMap()
+
+#     def hwm(self):
+#         '''Retrieve the :class:`HardwareMap` that stores this object.'''
+#         return self.hwm
+
+def async_to_sync(fn):
+    """
+    Wraps an async coroutine function into a function that can be run synchronously (without the await statement).
+
+    This assumes there is a event loop.
+    """
+    def sync_fn(*args, **kwargs):
+        loop = asyncio.get_event_loop() # get the current loop, running or not
+        nest_asyncio.apply(loop)  # make sure we can run in an already running loop
+        return loop.run_until_complete(fn(*args, **kwargs))
+    return sync_fn
+
+
+
+@register_class()
+class FMCMezzanine(FMCMezzanineBase):
+    """
+    Provides the basic methods needed to operate a mezzanine.
+    """
+    _class_registry = {}  # {part_number:class}
+    _instance_registry = {}  # {(model,serial):instance}
+
+    part_number = None
+    __ipmi_part_number__ = None  # Must match part number in IPMI data
+
+
+    def __init__(self, serial=None, mezzanine=None, iceboard=None):
+        self.logger = logging.getLogger(__name__)
+        self.serial = serial
+        self.mezzanine = mezzanine  # mezzanine slot number on IceBoard
+        self.iceboard = iceboard  # carrier IceBoard object
+        self._instance_registry[(self.part_number, serial)] = self
+
+    def get_id(self):
+        """ Return a string that identifies uniquely the mezzanine board. Comprises the model number and the serial number.
+        """
+        return '%s_SN%s' % (self.part_number, self.serial)
+
+    async def set_mezzanine_power_async(self, state):
+        await self.iceboard.tuber_set_mezzanine_power_async(bool(state), self.mezzanine)
+
+    async def get_mezzanine_power_async(self):
+        return await self.iceboard.tuber_get_mezzanine_power_async(self.mezzanine)
+
+    # async def get_mezzanine_power(self):
+    #     return self.iceboard.get_mezzanine_power(self.mezzanine)
+
+    async def is_mezzanine_present_async(self):
+        return await self.iceboard.tuber_is_mezzanine_present_async(self.mezzanine)
+
+    def is_mezzanine_present(self):
+        return self.iceboard.is_mezzanine_present(self.mezzanine)
+
+@register_class()
+class IceBoard(IceBoardBase):
+    """ Provide the basic code needed to operate the Iceboard (i.e. Tuber-
+    provided code and a few Python wrappers)
+
+    `IceBoardHandler` can be created as a standard Python object initialized with a number of
+    parameters which set corresponding attributes (see below). If a `parent_getter` function is
+    provided, no other parameter is needed, and the value of the attributes will will be fetched
+    dynamically from the parent object. Note that any explicitely specified parameter overrides a
+    parent parameter.
+
+    Parameters:
+
+    """
+    _class_registry = {}  # {part_number:class}
+    _instance_registry = {}  # {(model,serial):instance}
+
+    part_number = 'MGK7MB'
+    __ipmi_part_number__ = 'MGK7MB'
+    tuber_objname = 'IceBoard'  # use the generic Iceboard support functions.
+
+
+    subarray = None  # Arbitrary string used to group and select subsets of Iceboard"
+
+
+    def __init__(self, hostname=None, serial=None, crate=None, slot=None, subarray=None, **kwargs):
+        self.logger = logging.getLogger(__name__)
+        super().__init__(hostname=hostname, serial=serial, **kwargs)  # pass on the remaining kwargs
+        self.crate = crate
+        self.slot = slot
+        self.subarray = subarray
+        self.mezzanine = {}
+        self._instance_registry[(self.part_number, serial)] = self
+        self._cached_repr = None  # important to afaid infinite recursions through repr()
+
+    def __repr__(self):
+        """ Provides a concise string representation of this Iceboard that is
+        informative enough to be used for logs.
+        This string is typically used in syslog tags (32 characters max,
+        alphanumeric characters only).
+        """
+
+        if self._cached_repr:
+            return self._cached_repr
+        else:
+            self._cached_repr = "%s(%s)" % (self.__class__.__name__,  self.get_id())
+            return self._cached_repr
+        # if self.crate and self.slot:
+        #     return "%s(C%s.S%02i)" % (self.__class__.__name__,
+        #                               self.crate.serial, self.slot)
+        # if self.serial:
+        #     return "%s(SN%s)" % (self.__class__.__name__,  self.serial)
+        # if self.hostname:
+        #     return "%s(%s)" % (self.__class__.__name__,  self.hostname)
+        # return "%s(?)" % (self.__class__.__name__)
+
+
+    def set_cache(self):
+        """ Caches key ORM-dependent values to prevent access to the ORM
+        object and accelerate the code.
+
+        Call this only when you know that the ORM won't change.
+        """
+        self._cached_repr = None
+
+
+    def get_id(self):
+        """ Return a string that identifies uniquely the motherboard board.
+        Comprises the model number and the serial number.
+        """
+        if self.crate and self.slot:
+            return "C%s.S%02i" % (self.crate.serial, self.slot)
+        elif self.serial:
+            return "SN%s" % (self.serial)
+        elif self.hostname:
+            return "%s" % (self.hostname)
+        else:
+            return "?"
+
+        # return '%s_SN%s' % (self.part_number, self.serial)
+
+    async def ping_async(self, timeout=0.1):
+        """
+        Returns a boolean indicating whether a tuber object is available at
+        the specified ARM hostname.
+        """
+        print(f'{self!r} Ping_async()')
+        self.logger.info('%r: Pinging %s' % (self, self.tuber_uri))
+        try:
+            await self._tuber_get_meta.__acall__()
+            await self._tuber_sleep_async(0)
+            return True
+        except TuberError as e:
+            self.logger.debug('%.32r: Tuber Ping returned an error. Board is considered to be absent. Error is \n%r' % (self, e))
+            return False
+        #     async.async_return(False)
+        # except ValueError:
+        #     logger.debug('%.32r: Tuber Ping returned a HTTP response with invalid JSON data. Board is considered to be absent.' % (self))
+        #     async.async_return(False)
+        # except Exception as e:
+        #     logger.error('%r: unhandled exception in ping: %s: %r' %(self,type(e), e ))
+        #     async.async_return(False)
+        # try:
+        #     async.async_return(not response.error)
+        # except KeyError:
+        #     logger.debug('%.32r: Tuber Ping returned valid JSON reply ("%r") but does not have the required error field. Board is considered to be absent.' % (self, response))
+        #     async.async_return(False)
+
+
+@register_class()
+class IceBoardPlus(IceBoard):
+    """ Extension to the basic Python Iceboard object .
+
+    Adds:
+
+        - Slot, crate and mezzanine self discovery
+        - Access to the memory-mapped registers in the FPGA's firmware using the ARM-FPGA SPI link
+            through the `fpga_spi_mmi_read_async()` and `fpga_spi_mmi_write_async()` methods.
+
+
+    `IceBoardPlusHandler` can be created as a standard Python object initialized with a number of
+    parameters which set corresponding attributes (see below). If a `parent_getter` function is
+    provided, the value of these attributes will instead be fetched
+    dynamically from the parent object. Note that any explicitely specified parameter overrides a
+    parent parameter.
+
+    Parameters:
+        parent_getter (func): Function that returns the dynamically return the parent object from which the following parameters will be fetched. Is `None` if there is no parent.
+        hostname (str): hostname or IP address of the ICEBoard ARM processor (mandatory)
+        serial (str): Serial number of the board. Can be provided by the ARM.
+        part_number (str): Part number of the IceBoard. Can be obtained from the ARM.
+        crate (IceCrateHandler): = object that handle the backplane on which the board is connected. `None` if the board is not connected to a backplane.
+        slot (int): Slot number in which the board is installed ona backplane. None if there is no backplane.
+        mezzanine (dict): Map {mezzanine_number: Mezzanine Handler, ...} describing the installed mezzanines. Can be obtained from the ARM.
+        tuber_objname (str): name of the set of software functions that will be provided by the ARM processor through the Tuber interface.
+
+
+
+    .. Any object provided by this this handler can be accessed at any
+    .. hierarchical level. However, objects that are probided by Tuber have these
+    .. restrictions:
+    ..
+    ..    - attributes and methods whise name begin with '_' are not accessible
+    ..    - modification to the object attributes must be done by a setter
+    ..      function provided by the object.
+    ..    - methods or attribute access can only return string or numeric values,
+    ..      or lists or dictionnary thereof
+
+
+    Notes:
+        - The SPI MMI interface is currently provided by peek/poke methods accessed through Tuber.
+          However, if one day the ARM supports it, a faster access could potentially be provided by
+          overriding the fpga_spi_mmi_read_async/write methods to send the commands to a dedicated ARM port
+          and thus bypass Tuber's HTTP/JSON overhead. Since the SPI link is relatively slow anyway, this might not be useful until a faster ARM-FPGA link is in place (such as the unused PCIe link).
+
+        - This handler does *not* define a MMI interface that uses the FPGA's
+          ethernet port directly through the SFP+ connector. Such functionnality is to be provided by a
+          subclass of this class if the firmware supports it.
+    """
+
+    handler_name = None  # Firmware-specific
+
+
+    # Core FPGA firmware registers (delete when moved to the ARM)
+    FPGA_CORE_FIRMWARE_COOKIE_ADDR        = 4 * 0
+    FPGA_APPLICATION_FIRMWARE_COOKIE_ADDR = 4 * 1
+    FPGA_APPLICATION_FLAGS_ADDR           = 4 * 2
+    FPGA_FIRMWARE_CRC32_ADDR              = 4 * 3
+    FPGA_FIRMWARE_TIMESTAMP_ADDR          = 4 * 4
+    FPGA_SERIAL_NUMBER_LSW_ADDR           = 4 * 5
+    FPGA_SERIAL_NUMBER_MSW_ADDR           = 4 * 6
+
+    NUMBER_OF_FMC_SLOTS = 2
+
+    # _bitstream_register contains a list of bitstreams that are associated
+    # with this object. Format: tag: bitstream_object
+    _bitstream_register = {}
+
+    _backplane_initialized = False  # Indicate if we have initialized the backplane access yet
+    _cached_repr = None
+
+
+
+    ###################################
+    # Auto discovery methods
+    ###################################
+
+    async def discover_serial_async(self, update=True):
+        """
+        Discover the serial number of this IceBoard from its IPMI data, and update the hardware map accordingly if `update=True`
+        """
+        self.logger.info('%r: discovering the serial number of board at %s' % (self, self.tuber_uri))
+        try:
+            actual_serial = str((await self.tuber_get_motherboard_serial_async()))
+        except Exception as e:  #  Deal with uninitialized boards
+            self.logger.warn('%r: Error while attempring to read the board serial number. The exception is %r' % (self, e))
+            actual_serial = None
+        self.logger.info('%r: got the serial number of board at %s to be %s' % (self, self.tuber_uri, actual_serial))
+        await asyncio.sleep(0)
+        if update:
+            if not actual_serial:
+                self.logger.warn('%r: Could not read the board serial number from IPMI storage or serial number is null. Serial number is not updated.' % (self))
+            elif self.serial and actual_serial != self.serial:
+                self.logger.warn('%r: The discovered serial number differs from the current (hardware map) one. Updating to the discovered value.' % (self))
+            self.serial = actual_serial
+        self.logger.info('%r: finished discovering the serial number of board at %s' % (self, self.tuber_uri))
+        return(self.serial)
+
+    async def discover_slot_async(self, update=True):
+        """ Discover the slot number of this IceBoard, and update the hardware map accordingly if `update=True`"""
+        actual_slot = await self.tuber_get_backplane_slot_async()
+        if update:
+            if not actual_slot:
+                self.logger.warn('%r: The board is not connected to a backplane. Slot number is not updated.' % (self))
+            elif self.slot and actual_slot != self.slot:
+                self.logger.warn('%r: The discovered slot (%s) number differs from the current (hardware map) one (%s). Updating to the discovered slot.' % (self, actual_slot, self.slot))
+            self.slot = actual_slot
+        return(self.slot)
+
+    async def discover_mezzanines_async(self, update=True):
+        '''Detect mezzanines attached to the Iceboard and update the hardware map accordingly if
+        update=True.
+
+        This method uses IPMI data on the mezzanine's EEPROMs to guide itself.
+        New Mezzanine objects that match the IPMI product number are added in
+        the hardware map if found.
+
+        You do NOT need to use this method if the mezzanines present in the
+        system are already explicitely specified in the YAML hardware maps.
+        '''
+        mezz_class = {}
+        for m in range(1, self.NUMBER_OF_FMC_SLOTS + 1):
+
+            # MezzClass = MissingMezzanine # Used by Graeme
+            part_number = None
+            serial = None
+            mezz_class[m] = None
+            # if there is no mezzanine in this slot, proceed to the next one
+            if not (await self.tuber_is_mezzanine_present_async(m)):
+                continue
+
+            # If a mezzanine is present, get its EEPROM data and search for the first mezzanine class that can decode it.
+            try:
+                eeprom_data = await self._mezzanine_eeprom_read_async(m)  # this does not read all eeprom for some mezzanines...
+                # eeprom_data = self.hw.read_mezzanine_eeprom(m,0,512)
+            except (TuberRemoteError, AttributeError):  # If the method does not exist
+                eeprom_data = None
+
+            # Find a registered Mezzanine class that can decode the EEPROM data
+            # This is useful to recognize legacy EEPROM data format
+            ipmi = None
+            if eeprom_data is not None:
+               for cls in get_all_classes(FMCMezzanine):
+                    if hasattr(cls, 'decode_eeprom'):
+                        ipmi = cls.decode_eeprom(eeprom_data)
+                        if ipmi:
+                            break
+            if not ipmi:
+                try:
+                    ipmi = await self._tuber_get_mezzanine_ipmi_async(m)  # Read IPMI from the ARM's cache
+                    self.logger.debug('%r: detect_mezzanines(): read Mezzanine %i EEPROM using the ARM' % (self, m))
+                except TuberRemoteError:
+                    pass
+            if not ipmi:  # If we still did not get an IPMI block, give up and proceed to the next mezzanine
+                self.logger.debug('%r: detect_mezzanines(): Could not decode the EEPROM in Mezzanine %i' % (self, m))
+                continue
+
+            # Extract the useful information from IPMI
+            part_number = ipmi.product.part_number
+            serial = ipmi.product.serial_number
+
+            self.logger.debug(
+                '%r: detect_mezzanines(): Detected Mezzanine '
+                'Model: %s Serial %s in Mezzanine %i'
+                % (self, part_number, serial, m))
+
+            # Look through the Mezzanine classes to see if one matches the model number found in the EEPROM
+            # for mapper in class_mapper(FMCMezzanine).self_and_descendants:
+            #         if mapper.class_.__ipmi_part_number__ == part_number:
+            #             mezz_class[m] = mapper.class_
+            #             break
+            mezz_class[m] = get_class_by_part_number(FMCMezzanine, part_number)
+
+            if update:
+                # if not self.hwm:
+                #     raise SystemError(
+                #         '%r: detect_mezzanines(): Attempt to add new '
+                #         'mezzanine objects while the IceBoard is not yet '
+                #         'added to the  hardware map. ' % self)
+
+                if m in self.mezzanine:
+                    del(self.mezzanine[m])
+
+            if not mezz_class[m]:
+                self.logger.warning(
+                    "%r: detect_mezzanines(): There is no known "
+                    "class for Mezzanine object of type '%r' "
+                    "in mezzanine slot %r" % (self, part_number, m))
+            elif update:
+                self.logger.debug(
+                    '%r: detect_mezzanines(): Creating Mezzanine '
+                    'Serial %s in Mezzanine %i on iceboard %r' % (self, serial, m, self))
+                # new_mezz = get_unique_class_instance(
+                #     mezz_class[m],
+                new_mezz = mezz_class[m](
+                    serial=serial,
+                    mezzanine=m,  # mezzanine number (FMC slot)
+                    iceboard=self)  # back reference to the carrier iceboard
+                new_mezz.iceboard=self
+                self.mezzanine[m] = new_mezz
+                print(f'{self!r} mezzanines on FMC {m} are {self.mezzanine[m]}')
+        return(mezz_class)
+
+    async def discover_crate_async(self, update=True):
+        """ Detect the Icecrate and slot number on which this Iceboard is
+        attached by reading the backplane IPMI data, and update the hardware
+        map accordingly if `update=True`.
+
+        The crate object is then set with the (part_number, serial_number) tuple, which is replaced later by the actual crate object.
+
+        This method does *not* use mDNS. It relies of the IPMI data stored in
+        the backplane's EEPROM, which is obtaines through the Iceboard's ARM
+        processor.
+
+        You do NOT need to use this method if the backplane is already
+        explicitely specified for this IceBoard in the YAML hardware maps.
+        """
+
+        icecrate_class = {}
+        part_number = None
+        serial = None
+        if (await self.is_backplane_present_async()):
+            ipmi = await self._tuber_get_backplane_ipmi_async()  # Tuber call
+            part_number = ipmi.product.part_number
+            serial = ipmi.product.serial_number
+            slot_number = await self.tuber_get_backplane_slot_async()
+            self.logger.debug(
+                '%r: discover_crate(): '
+                'Detected Backplane Model: %s Serial %s'
+                % (self, part_number, serial)
+                )
+
+        crate_class = get_class_by_part_number(IceCrate, part_number)
+
+        if not crate_class:
+            self.logger.warning(
+                "%r: discover_crate(): There is no known backplane object with "
+                "part number '%r'" % (self, part_number))
+
+        if update:
+            self.slot = slot_number
+            self.crate = get_unique_class_instance(crate_class, serial)
+            self.crate.slot[slot_number] = self
+        return(icecrate_class)
+
+
+    # ----------------------------
+    # Python Bitstream management
+    # ----------------------------
+    # @classmethod
+    # def register_fpga_bitstream(cls, bitstream, tag=None):
+    #     """ Register a bitstream that is associated with this application
+    #     handler.
+
+    #     'bitstream' can be any object whose str() property returns a valid
+    #           bitstream (e.g. a string, a buffer or a FpgaBitstream object).
+
+    #     This is to provide to host-based Python application a functionnality
+    #     equivalent to that of the ARM-based applications handlers which can
+    #     also access the relevant bitstream.
+    #     """
+    #     cls._bitstream_register[tag] = bitstream
+
+    async def is_fpga_programmed_async(self):
+        return await self.tuber_is_fpga_programmed_async()
+
+
+    async def set_fpga_bitstream_async(self, buf=None, tag=None, force=False):
+        '''
+        Configures the FPGA with the specified bitstream.
+
+        The bitstream associated with the current handler with the specifiec
+        'tag' will be loaded. However, if a buffer 'buf' is explicitely
+        provided, that bitstream will be used instead.,
+
+        The 'buf' can be  a ``bytes`` or object with .bytes or .base64 attributes
+        .BIT or .BIN file.
+
+        By default, the FPGA will not be reconfigured it already has a
+        bitstream with the same CRC signature. That behavior can be changed by
+        specifying the 'force' argument:
+
+            force = True: FPGA will always be configured
+            force = False: FPGA will be configured if it is not configured or
+                    if bitstream CRC differ
+            force = None: FPGA will be configured only if it is not configured
+        '''
+
+        t0 = time.time()
+        self.logger.info('%r: called set_fpga_bitstream' % self)
+
+        if hasattr(self, 'close'):
+            self.close()
+
+        # If the bitstream is not explicitely provided, ask the handler to
+        # provide it. The str() of the returned object must yield the valid
+        # bitstream buffer in a string.
+        if buf is None:
+            buf = self.get_fpga_bitstream(tag)
+        #else:
+        #    buf = str(buf)
+
+        if hasattr(buf, 'crc32'):
+            crc32 = buf.crc32
+        else:
+            crc32 =  zlib.crc32(str(buf))  # compute CRC32 of the data if it not already precomputed in the 'buf' object
+        crc32 &=  0xFFFFFFFF
+        # buf = buf.bytes()
+
+        self.logger.info('%r: getting is_programmed' % self)
+        is_fpga_programmed = await self.tuber_is_fpga_programmed_async()
+        t1 = time.time()
+        self.logger.info('%r: getting FPGA crc' % self)
+        fpga_bitstream_crc = await self.get_fpga_bitstream_crc_async()
+        self.logger.debug('%r: fpga_programmed=%s, force=%s, fpga_crc=%08X, bitstream_crc=%08X' % (self, is_fpga_programmed, force, fpga_bitstream_crc or 0, crc32 or 0))
+        t2 = time.time()
+        if not is_fpga_programmed or force \
+           or (force is not None and (fpga_bitstream_crc != crc32)):
+            self.logger.info('%r: Configuring FPGA' % self)
+            if hasattr(buf, 'base64'):
+                b64_bytes = buf.base64
+            elif hasattr(buf, 'bytes'):
+                b64_bytes = base64.b64encode(buf.bytes)
+            elif isinstance(buf, bytes):
+                b64_bytes = base64.b64encode(buf)
+            else:
+                raise TypeError('buf is not a bytes object')
+
+            # self._set_fpga_bitstream_base64(b64_bytes)
+            t3 = time.time()
+            await self._tuber_set_fpga_bitstream_base64_async(b64_bytes)
+            await self.set_fpga_bitstream_crc_async(crc32)
+            t4 = time.time()
+            self.logger.info('%r: Done configuring FPGA. It took %.3fs (%.3fs, %.3fs, %.3fs, %.3fs)' % (self, t4-t0, t1-t0, t2-t1, t3-t2, t4-t3))
+        else:
+            t4 = time.time()
+            self.logger.info(
+                '%r: FPGA is already configured. Skipping configuration. Took %.3fs' % (self, t4 - t0)
+                )
+
+    def get_fpga_bitstream(self, tag=None):
+        """ Return the bitstream associated with this handler for the supplied
+        tag as a string.
+
+        If no bitstream is registered for this Handler or if no bitstream match
+        the tag, the method attempts to obtain the bitstream through Tuber.
+        """
+        if tag in self._bitstream_register:
+            return self._bitstream_register[tag]
+        else:
+            raise ValueError("Unknown bitstream tag")
+
+    async def get_fpga_bitstream_crc_async(self):
+        """ Return the signature of the firmware currently configured in the
+        FPGA.
+
+        Returns None if the FPGA is not configured.
+        """
+        is_fpga_programmed = await self.is_fpga_programmed_async()
+        if not is_fpga_programmed:
+            return None
+        crc = await self.fpga_spi_mmi_read_async(self.FPGA_FIRMWARE_CRC32_ADDR)
+        return crc
+        # return self._bitstream_crc
+
+    async def set_fpga_bitstream_crc_async(self, crc32):
+        """ Return the signature of the firmware currently configured in the
+        FPGA.
+
+        Returns None if the FPGA is not configured.
+        """
+        if (await self.is_fpga_programmed_async()):
+            # self._bitstream_crc = crc32
+            await self.fpga_spi_mmi_write_async(self.FPGA_FIRMWARE_CRC32_ADDR, crc32)
+        else:
+            # self._bitstream_crc = None
+            await self.fpga_spi_mmi_write_async(self.FPGA_FIRMWARE_CRC32_ADDR, 0)
+
+    # def clear_fpga_bitstream(self):
+    #     """ Stop the operation of the FPGA.
+
+    #     Could be used if we detect that we don't have the right kind of
+    #     mezzanines.
+    #     """
+    #     raise NotImplementedError()
+
+
+    # ------------------------------------
+    # FPGA SPI Memory-mapped interface
+    # ------------------------------------
+
+    # *** JFC: Those methods can be updated one day to use the direct (non-
+    #     Tuber) links to the FPGA (on separate socket, forwarded to the FPGA
+    #     through SPI or PCIe). Otherwise we fallback to the slower tuber MMI
+    #     interface.
+    async def fpga_spi_mmi_read_async(self, addr):
+        """ Read a single 32-bit word from the FPGA at the specified byte
+        address. This uses the fastest interface available (currently the ARM-
+        FPGA SPI link)
+
+        Value is returned as an unsigned integer.
+        """
+        word = await self._tuber_fpga_spi_peek_async(addr)
+        return(word & 0xFFFFFFFF)
+
+    async def fpga_spi_mmi_write_async(self, addr, value):
+        """ Write a single 32-bit word to the FPGA at specified byte address.
+        This uses the fastest interface available (currently the ARM-FPGA SPI
+        link)
+        """
+        await self._tuber_fpga_spi_poke_async(addr, value)
+
+
+    # # --------------------------------------------------------------------------
+    # # ARM Core methods (Should be implemented by the ARM and removed from here)
+    # # --------------------------------------------------------------------------
+    # # *** JFC:  Suggested method renaming
+    # def _write_motherboard_spi_eeprom_ipmi(self, *args, **kwargs):
+    #     return self._eeprom_write_ipmi(*args, **kwargs)
+    # # *** JFC: Proposed renaming
+    # def _write_backplane_eeprom_ipmi(self, *args, **kwargs):
+    #     return self._backplane_eeprom_write_ipmi(*args, **kwargs)
+
+
+    # Mezzanine management
+
+    async def _mezzanine_eeprom_read_async(self, mezzanine):
+        """ Returns the contents of the specified mezzanine's EEPROM.
+        """
+        data = await self._tuber_mezzanine_eeprom_read_base64_async(mezzanine)
+        return base64.decodebytes(data.encode())
+
+    # *** JFC: method rename
+    async def _write_motherboard_spi_eeprom_base64(self, *args, **kwargs):
+        result = await self._tuber_motherboard_eeprom_write_base64_async(*args, **kwargs)
+        return(result)
+
+    # def get_motherboard_serial(self):
+    #     """ Read the motherboard serial number from the IPMI data. """
+    #     ipmi = self._get_motherboard_ipmi()
+    #     return str(ipmi.board.serial_number)
+
+    # *** JFC: We now have the equivalent ARM method. Will delete this when we
+    #     confirm it behaves the same.
+
+    async def is_backplane_present_async(self):
+        return await self.tuber_is_backplane_present_async()
+
+    async def get_slot_number(self):
+        """ Reads the GPIO to determine in which slot number this IceBoard is
+        connected.
+
+        """
+        if await self.is_backplane_present_async():  # Is this test necessary?
+            return await self.tuber_get_backplane_slot_async()
+        else:
+            return None
+
+    async def get_iceboard_clock_source_async(self):
+        return await self.tuber_get_clock_source_async()
+
+    get_iceboard_clock_source_sync = async_to_sync(get_iceboard_clock_source_async)
+
+
+    # Bitstream management
+
+    # Core firmware functions
+
+    async def get_fpga_core_cookie(self):
+        """ Return the core FPGA firmware cookie. Should always be 0xBEEFFACE.
+        """
+        if not (await self.is_fpga_programmed_async()):
+            return(None)
+        cookie = await self.fpga_spi_mmi_read_async(self.FPGA_CORE_FIRMWARE_COOKIE_ADDR)
+        return(cookie)
+
+    async def get_fpga_application_cookie(self):
+        """ Return the application-specific FPGA firmware cookie. """
+        if not (await self.is_fpga_programmed_async()):
+            return(None)
+        cookie = await self.fpga_spi_mmi_read_async(self.FPGA_APPLICATION_FIRMWARE_COOKIE_ADDR)
+        return(cookie)
+
+    async def get_fpga_serial_number(self):
+        """ Return the FPGA serial number, as read from the FPGA's core
+        firmware throught the MMI interface. """
+        fpga_serial_number = (
+            (await self.fpga_spi_mmi_read_async(self.FPGA_SERIAL_NUMBER_LSW_ADDR)) |
+            (await (self.fpga_spi_mmi_read_async(self.FPGA_SERIAL_NUMBER_MSW_ADDR) << 32))
+            )
+
+        return(fpga_serial_number)
+
+    async def get_fpga_firmware_timestamp(self):
+        """ Returns a string containing the date-time of the currrent firmware
+        bitstream.
+        """
+        timestamp = await self.fpga_spi_mmi_read_async(self.FPGA_FIRMWARE_TIMESTAMP_ADDR)
+        seconds = (timestamp >> 0) & 0x3F
+        minutes = (timestamp >> 6) & 0x3F
+        hour = (timestamp >> 12) & 0x1F
+        year = (timestamp >> 17) & 0x3F
+        month = (timestamp >> 23) & 0x0F
+        day = (timestamp >> 27) & 0x1F
+        timestamp_string = '%04i-%02i-%02i %02i:%02i:%02i' % (
+            year + 2000, month, day, hour, minutes, seconds)
+        return(timestamp_string)
+
+    async def check_tuber_version_async(self):
+        """ Check if the ARM processor provides the methods required to run this code. """
+
+        required_tuber_methods = [ # Use the unmangled name as published by the ARM
+            'is_fpga_programmed']#, '_mezzanine_eeprom_read_base64']
+
+        (meta, props, tuber_methods) = await self._tuber_get_meta.__acall__()  # get the meta info
+        if not tuber_methods:
+            raise RuntimeError("%r: The ARM does not publish any methods under the object name '%s'. Was the right Tuber object name used for this ARM firmware?" % (self, self.tuber_objname))
+
+        for method in required_tuber_methods:
+            if method not in tuber_methods:
+                raise RuntimeError("%r: The current version of the ARM firmware does not provide the method '%s' that is needed for this application" % (self, method))
+
+        return(True)
+
+    def print_tuber_methods(self):
+        """ Print all the methods and properties provided by the Iceboard's
+        ARM processor through the Tuber protocol.
+        """
+        (meta, props, methods) = self._tuber_get_meta()  # get the meta info
+        print("Methods for tuber object '%s':" % self.tuber_objname)
+        print('-----------------------------------------')
+        for method_name, method_properties in sorted(methods.items()):
+            print('%-30s: %s' % (method_name, method_properties.summary))
+        print()
+        print("Properties for tuber object '%s':" % self.tuber_objname)
+        print('-----------------------------------------')
+        for prop_name, prop_properties in sorted(props.items()):
+            try:
+                values = ', '.join('.%s' % p for p in prop_properties)
+            except TypeError:
+                values = '= %s' % prop_properties
+            print('%-30s: %s' % (prop_name, values))
+
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+#                        IceBoardPlus
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+
+@register_class()
+class IceBoardExt(IceBoardPlus):
+    """ Extends the basic IceBoard class by providing additional SPI MMI -based firmware features, direct UDP MMI
+    with the FPGA,  and methods to access to IceBoard hardware directly via the FPGA.
 
     This class provides:
 
@@ -82,8 +816,10 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         tuber_objname (str): name of the set of software functions that will be provided by the ARM
             processor through the Tuber interface.
 
-        fpga_ip_address (str): FPGA's listening IP address in the form 'xx.xx.xx.xx'. If None
-            (default), the address will be obtained by converting the ARM address using the function provided in fpga_ip_addr_fn.
+        fpga_ip_address (str): FPGA's listening IP address in the form
+            'xx.xx.xx.xx'. If None (default), the address will be obtained by
+            converting the ARM address using the function provided in
+            fpga_ip_addr_fn.
 
         fpga_ip_addr_fn (function): function (A,B,C,D) = fn(a,b,c,d) which
             generates the FPGA address (A,B,C,D) based on the ARM IP address
@@ -110,23 +846,33 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     _FPGA_CONTROL_BASE_PORT = 41000
     _BROADCAST_BASE_PORT = 41000
 
-    _SYSTEM_BASE_ADDR      = 0x00000 # This is always at zero so we can gather info from the FPGA before we know the number of antennas etc.
+    # Base address is always at zero so we can gather info from the FPGA
+    # before we know the number of channelizers etc.
+    _SYSTEM_BASE_ADDR = 0x00000
     _SYSTEM_GPIO_BASE_ADDR = _SYSTEM_BASE_ADDR + 0x00000
-    _SYSTEM_I2C_BASE_ADDR  = _SYSTEM_BASE_ADDR + 0x05000
+    _SYSTEM_I2C_BASE_ADDR = _SYSTEM_BASE_ADDR + 0x05000
 
     # Match those with what is used by Module
     _CONTROL_BASE_ADDR = 0x000000
-    _STATUS_BASE_ADDR  = 0x080000
-    _RAM_BASE_ADDR     = 0x100000
+    _STATUS_BASE_ADDR = 0x080000
+    _RAM_BASE_ADDR = 0x100000
 
-    _CHFPGA_COOKIE = 0x42 # Expected cookie value for chFPGA, both on the SPI and UDP MMI
+    _CHFPGA_COOKIE = 0x42  # Expected cookie value for chFPGA, both on the SPI and UDP MMI
 
     # GPIO Register addresses
-    _GPIO_COOKIE_REG         = _STATUS_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR  # Register address of the firmware cookie
-    _FPGA_TIMESTAMP_ADDR     = _STATUS_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 7
+    _GPIO_COOKIE_REG = _STATUS_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR  # Register address of the firmware cookie
+    _FPGA_TIMESTAMP_ADDR = _STATUS_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 7
     _FPGA_SERIAL_NUMBER_ADDR = _STATUS_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 12
-    _FPGA_IP_SETUP_BASE_ADDR = _CONTROL_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 13 # (13-18): target MAC, (19-22): target IP, (23-24): target_base_port, (25-32) = Target FPGA serial, (33): bit 7 = trigger, bits 3:2: mac source select, 1:0: broadcast group
-    # _GPIO_IPCONFIG_REG       = _CONTROL_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 0x08D # Register address of the first byte of the IP config word
+    _FPGA_IP_SETUP_BASE_ADDR = _CONTROL_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 13
+    # Unused addresses:
+    #   (13-18): target MAC,
+    #   (19-22): target IP,
+    #   (23-24): target_base_port,
+    #   (25-32) = Target FPGA serial,
+    #   (33): bit 7 = trigger, bits 3:2: mac source select, 1:0: broadcast group
+
+    # # Register address of the first byte of the IP config word
+    # _GPIO_IPCONFIG_REG       = _CONTROL_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 0x08D
 
     # SPI Application registers
     _FPGA_MAC_ADDR_LSW_ADDR         = 4 * 7
@@ -153,7 +899,9 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     # ---------------------------------------
 
     interface_ip_addr = None  # Is automatically detected by opening a TCP connection to the ARM
-    zero_target_irigb_year_and_day = False # If True, target IRIGB yead and day will always be written as zero binary values to me compatible with the IRIG-B generator
+    zero_target_irigb_year_and_day = False  # If True, target IRIGB year and
+    #   day will always be written as zero binary values to me compatible with
+    #   the IRIG-B generator
 
     class AutoOpen(object):
         """ Automatcally call the specified 'open' method that creates an
@@ -164,36 +912,34 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             self._attribute_name = attribute_name
 
         def __get__(self, obj, class_):
-            getattr(obj, self._open_method)()  # Execute the open method. This normally overrites the attribute, so this will not be called again.
+            getattr(obj, self._open_method)()  # Execute the open method.
+            #     This normally overrites the attribute, so this will not be called again.
             return getattr(obj, self._attribute_name)  # Get target object
 
-    mmi       = AutoOpen('mmi',       'open_core')
-    i2c       = AutoOpen('i2c',       'open_core')
+    mmi = AutoOpen('mmi', 'open_core')
+    i2c = AutoOpen('i2c', 'open_core')
     core_gpio = AutoOpen('core_gpio', 'open_core')
-    core_i2c  = AutoOpen('core_i2c',  'open_core')
-    hw        = AutoOpen('hw',        'open_hw'  )
+    core_i2c = AutoOpen('core_i2c', 'open_core')
+    hw = AutoOpen('hw', 'open_hw')
     # bp        = AutoOpen('open_bp', 'bp')
 
+    def __init__(
+            self,
+            # Parameters that can be provided by the parent object
+            hostname=None,
+            serial=None,
+            crate=None,
+            slot=None,
+            subarray=None,
 
-    def __init__(self,
-                # Parameters that can be provided by the parent object
-                 parent_getter=None,
-                 hostname=None,
-                 serial=None,
-                 part_number=None,
-                 crate=None,
-                 slot=None,
-                 mezzanine={},
-                 tuber_objname='IceBoard',
-
-                 # Parameters that are always local
-                 fpga_ip_addr=None,
-                 fpga_ip_addr_fn=lambda a, b, c, d: (a, b, 3, d),
-                 udp_retries = 10,
-                 fpga_port_number=None,
-                 local_port_number=None,
-                 interface_ip_addr=None
-                 ):
+            # Parameters that are always local
+            fpga_ip_addr=None,
+            fpga_ip_addr_fn=lambda a, b, c, d: (a, b, 3, d),
+            udp_retries=10,
+            fpga_port_number=None,
+            local_port_number=None,
+            interface_ip_addr=None
+            ):
         """
         Creates an Iceboard that is accessed through the networking parameters
         specified in the database.
@@ -201,18 +947,15 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         The created object does not have any fpga or hardware handlers yet.
         Those will be created when the Iceboard is opened.
         """
-        super(IceBoardExtHandler, self).__init__(
-            parent_getter=parent_getter,
+        super().__init__(
             hostname=hostname,
             serial=serial,
-            part_number=part_number,
             crate=crate,
             slot=slot,
-            mezzanine=mezzanine,
-            tuber_objname=tuber_objname)
+            subarray=subarray)
         self.logger = logging.getLogger(__name__)
 
-        # Store opbject-specific local paramaters
+        # Store object-specific local paramaters
 
         self.fpga_ip_addr = fpga_ip_addr
         self.fpga_ip_addr_fn = fpga_ip_addr_fn
@@ -228,7 +971,6 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         self._is_hw_open = None
         # self._is_bp_open = None
         self._is_open = None
-
 
     # ------------------------------------------------------------------
     # CHIME-specific MMI interface
@@ -250,23 +992,11 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         FPGA."""
         self.mmi.write(*args, **kwargs)
 
-    # def spi_mmi_read(self, addr):
-        # """ Read a single 32-bit word at specified
-        #     byte address through the ARM<->FPGA SPI link."""
-        # return self._fpga_spi_peek(addr)
-
-    # def spi_mmi_write(self, addr, value): """ Write a single 32-bit word at
-    #     specified byte address through the ARM<->FPGA SPI link."""
-    #     self._fpga_spi_poke(addr, value)
-
-    @async
-    def open_core(self, udp_retries=None, fpga_ip_addr_fn=None, interface_ip_addr=None):
+    async def open_core(self, udp_retries=None, fpga_ip_addr_fn=None, interface_ip_addr=None):
         """
         Establishes the direct UDP connection with the FPGA and instantiate
         the basic objects that are essential to communicate with the FPGA
         firmware and the board hardware, including I2C link through the FPGA.
-
-
 
         Parameters:
 
@@ -290,12 +1020,12 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # Check if core communications with the FPGA was already opened
         if self.is_core_open():
             if any(x is not None for x in [udp_retries, fpga_ip_addr_fn, interface_ip_addr]):
-                raise RuntimeError('Attempting to re-open an already-open UDP communication channel with new parameters')
+                raise RuntimeError('Attempting to re-open an already-open '
+                                   'UDP communication channel with new parameters')
             self.logger.debug(
                 '%r: Attempting to open core while it is already opened. '
                 'Ignoring.' % (self))
             return
-
 
         # Overrides communication parameter defaults if specified
         if udp_retries is not None:
@@ -307,17 +1037,17 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         if interface_ip_addr is not None:
             self.interface_ip_addr = interface_ip_addr
 
-
-        if not (yield self.is_fpga_programmed.async()):
+        if not (await self.is_fpga_programmed_async()):
             raise RuntimeError(
                 "%r: The FPGA is not programmed with a bitstream . "
                 'Direct UDP link to FPGA cannot be established ' % (self))
 
         # Check the FPGA firmware cookie obtained through the ARM SPI interface to the FPGA
-        cookie = yield self.get_fpga_application_cookie.async()
+        cookie = await self.get_fpga_application_cookie()
         if cookie != self._CHFPGA_COOKIE:
             raise RuntimeError(
-                '%r: The firmware currently configured on the FPGA is not chFPGA (got cookie 0x%04X instead of 0x%04X). '
+                '%r: The firmware currently configured on the FPGA is not '
+                'chFPGA (got cookie 0x%04X instead of 0x%04X). '
                 'Direct UDP link to FPGA and other chFPGA-specific methods and '
                 'resources are not available.' % (self, cookie, self._CHFPGA_COOKIE))
 
@@ -336,53 +1066,60 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             else:
                 self.interface_ip_addr = None
 
-
         # Compute the IP address to use for the FPGA UDP interface For now, we
         # replace a.b.c.d by a.b.3.d. We need to find a more generic mechanism
         # for this (like obtaining another IP from the DHCP server)
         if not self.fpga_ip_addr:
-            ip_packed = socket.inet_aton(self._get_arm_ip())
-            ip_tuple = tuple(ord(c) for c in ip_packed)
-            ip_packed = ''.join(chr(x) for x in self.fpga_ip_addr_fn(*ip_tuple))
+            ip_packed = socket.inet_aton(await self._tuber_get_arm_ip_async())
+            ip_tuple = tuple(c for c in ip_packed)
+            ip_packed = bytes(self.fpga_ip_addr_fn(*ip_tuple))
             # ip_packed = ip_packed[:2] + chr(3) + ip_packed[3]
             self.fpga_ip_addr = socket.inet_ntoa(ip_packed)
 
-        # Compute the local port number if requested (self.local_port_number is None) and if possible (there is a slot and crate number)
+        # Compute the local port number if requested (self.local_port_number
+        # is None) and if possible (there is a slot and crate number)
         if self.local_port_number is None:
             if not self.slot or not self.crate or self.crate.crate_number is None:
                 self.local_port_number = 0
-                self.logger.debug('%r: Cannot use slot/crate_number-based UDP port number for UDP control channel. There is no slot or crate_number info. Using OS-assigned random port' % self)
+                self.logger.debug(
+                    '%r: Cannot use slot/crate_number-based UDP port number '
+                    'for UDP control channel. There is no slot or crate_number'
+                    ' info. Using OS-assigned random port' % self)
             else:
                 self.local_port_number = self._FPGA_CONTROL_BASE_PORT + 16*self.crate.crate_number + (self.slot-1)
-                # self.logger.info('%r: Replies will be sent to %s:%i' % (self, self.interface_ip_addr, self.local_port_number))
-
-
-
+                # self.logger.info('%r: Replies will be sent to %s:%i'
+                #                  % (self, self.interface_ip_addr, self.local_port_number))
 
         # -------------------------------------------------------------------------
         # Open the UDP MMI interface
         # -------------------------------------------------------------------------
         from .lib import fpga_mmi
-        self.logger.info('%r: Opening FPGA MMI with FPGA=(%s:%s),  local=(%s:%s)' % (self, self.fpga_ip_addr, self.fpga_port_number, self.interface_ip_addr, self.local_port_number))
+        self.logger.info(
+            '%r: Opening FPGA MMI with FPGA=(%s:%s),  local=(%s:%s)' % (
+                self,
+                self.fpga_ip_addr,
+                self.fpga_port_number,
+                self.interface_ip_addr,
+                self.local_port_number))
+
         self.mmi = fpga_mmi.FpgaMmi(
             fpga_ip_addr=self.fpga_ip_addr,
-            fpga_port_number=self.fpga_port_number, # none or 0: use local port number
+            fpga_port_number=self.fpga_port_number,  # none or 0: use local port number
             interface_ip_addr=self.interface_ip_addr,
-            local_port_number=self.local_port_number, # 0 = randomly assigned by os
+            local_port_number=self.local_port_number,  # 0 = randomly assigned by os
             udp_retries=self.udp_retries,
             parent=self)
+
         self.mmi.open()
         self.local_port_number = self.mmi.local_port_number
         self.fpga_port_number = self.mmi.fpga_port_number
-        # print('opened fpga (%s:%s) local (%s:%s)' % (self.fpga_ip_addr, self.fpga_port_number, self.interface_ip_addr, self.local_port_number))
-        # print('opened fpga (%s:%i) local (%s:%i)' % (self.fpga_ip_addr, self.fpga_port_number, self.interface_ip_addr, self.local_port_number))
 
         # Select the fpga port number
-        #if not self.fpga_port_number:
+        # if not self.fpga_port_number:
         #    self.fpga_port_number = self.local_port_number
 
         # Set-up the FPGA networking parameters using the ARM-SPI link to the FPGA
-        self.fpga_mac_addr = yield self.set_fpga_control_networking_parameters.async(
+        self.fpga_mac_addr = await self.set_fpga_control_networking_parameters_async(
             fpga_ip_addr=self.fpga_ip_addr,
             fpga_port_number=self.fpga_port_number)
 
@@ -397,39 +1134,54 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # the cookie correspond to the chFPGA firmware.
         # -------------------------------------------------------------------------
         self.logger.info("%r: Clearing FPGAs UDP communication stack" % self)
-        yield self.reset_fpga_udp_stack.async()
+        await self.reset_fpga_udp_stack()
         self.mmi.flush()
 
-        # yield self.clear_fpga_udp_errors.async(force=True, no_reset=True) # Try to prevent initial error on first command
-        self.logger.debug("%r: Attempting to communicate with the FPGA over direct Ethernet link" % self)
+        self.logger.debug(
+            "%r: Attempting to communicate with the FPGA over direct "
+            "Ethernet link" % self)
         try:
-            cookie = yield self.get_fpga_firmware_cookie.async(resync=True)  # Read the firmware version cookie from the GPIO subsystem (this is provided by the FPGA core firmware which is always present on all versions of the FPGA)
+            # Read the firmware version cookie from the GPIO subsystem (this
+            # is provided by the FPGA core firmware which is always present on
+            # all versions of the FPGA)
+            cookie = await self.get_fpga_firmware_cookie(resync=True)
         except IOError as e:
-            error_message = "%r: Unable to communicate with the FPGA at address %s:%i due to the following exception: %s" % (self, self.fpga_ip_addr, self.fpga_port_number, repr(e))
+            error_message = (
+                "%r: Unable to communicate with the FPGA at address %s:%i "
+                "due to the following exception: %s" % (
+                    self,
+                    self.fpga_ip_addr,
+                    self.fpga_port_number,
+                    repr(e)))
             self.close()
             self.logger.error(error_message)
             raise
 
         if cookie != self._CHFPGA_COOKIE:
-            error_message = '%r: The firmware at %s:%i is not chFPGA. The magic cookie returned by the FPGA is 0x%02X, whereas we expected 0x%02X' % (self, self.fpga_ip_addr, self.fpga_port_number, cookie, self._CHFPGA_COOKIE)
+            error_message = (
+                '%r: The firmware at %s:%i is not chFPGA. The magic cookie '
+                'returned by the FPGA is 0x%02X, whereas we expected 0x%02X' % (
+                    self, self.fpga_ip_addr, self.fpga_port_number, cookie, self._CHFPGA_COOKIE))
             self.logger.error(error_message)
             self.close()
             raise RuntimeError(error_message)
 
-        self.logger.debug("%r: Established a UDP/Ethernet connection with the FPGA at %s:%i" % (self, self.fpga_ip_addr, self.fpga_port_number))
+        self.logger.debug(
+            "%r: Established a UDP/Ethernet connection with the FPGA at %s:%i"
+            % (self, self.fpga_ip_addr, self.fpga_port_number))
 
         # -------------------------------------------------------------------------
         # Open FPGA's I2C interfaces
         # -------------------------------------------------------------------------
         self.core_i2c = i2c.I2C_base(self, self._SYSTEM_I2C_BASE_ADDR)
-        yield async_moment
+        await asyncio.sleep(0)
         # Create standardized I2C interface
         self.i2c = I2CInterface(
-            write_read_fn=self.fpga_i2c_write_read, # write-read function
+            write_read_fn=self.fpga_i2c_write_read,  # write-read function
             port_select_fn=self.fpga_i2c_set_port,
             bus_table=IceBoardHardware.FPGA_I2C_BUS_LIST,
             switch_addr=IceBoardHardware._FPGA_I2C_SWITCH_ADDR,
-            parent=self) # parent object, whose repr() is used to tag messages
+            parent=self)  # parent object, whose repr() is used to tag messages
 
         self._is_core_open = True
 
@@ -448,12 +1200,11 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # return self.iceboard_pk in type(self)._active_instances
         return bool(self._is_core_open)
 
-    @async
-    def open_hw(self):
+    async def open_hw(self):
         # Open IceBoard hardware manager object
         self.hw = IceBoardHardware(iceboard=self)
         self._is_hw_open = True
-        yield self.hw.open.async()
+        await self.hw.open()
 
     def close_hw(self):
         if self._is_hw_open:
@@ -461,16 +1212,15 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             del self.hw
             self._is_hw_open = False
 
-    @async
-    def open(self, **kwargs):
+    async def open(self, **kwargs):
 
         self.logger.debug('%r: open() is called' % (self))
-        yield self.open_core.async(**kwargs)
+        await self.open_core(**kwargs)
         self.core_gpio.set_channelizer_reset(True)  # stop the channelizer from sending data while we initialize
-        yield self.open_hw.async()
-        yield self.hw.init.async()
-        yield self.hw.set_led.async('GP_LED2', 1)  # Hardware link is on
-        yield self.hw.set_led.async('GP_LED1', 0)  # Full FPGA firmware is not yet on
+        await self.open_hw()
+        await self.hw.init()
+        await self.hw.set_led('GP_LED2', 1)  # Hardware link is on
+        await self.hw.set_led('GP_LED1', 0)  # Full FPGA firmware is not yet on
 
         self._is_open = True
 
@@ -481,10 +1231,10 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     def is_open(self):
         return self._is_open
 
-    def ping_fpga(self, timeout=0.3):
+    async def ping_fpga_async(self, timeout=0.3):
         # Open the core right now if needed so we don't mask IOError exceptions this could generate
         if not self.is_core_open():
-            self.open_core()
+            await self.open_core()
         try:
             self.mmi_read(self._GPIO_COOKIE_REG, timeout=timeout)
             return True
@@ -498,13 +1248,12 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             ('sfp_remote_fault', 13, 1),
             ('sfp_duplex_mode', 12, 1),
             ('sfp_speed', 10, 2),
-            ('rxnotintable',6, 1 ),
+            ('rxnotintable',6, 1),
             ('rxdisperr', 5, 1),
             ('link_sync', 1, 1),
             ('link_status', 0, 1)]
 
-    @async
-    def get_fpga_udp_metrics(self):
+    async def get_fpga_udp_metrics_async(self):
         metrics = Metrics(
             type='GAUGE',
             slot=(self.slot or 0) - 1,
@@ -513,31 +1262,28 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             crate_number=self.crate.crate_number if self.crate else None)
 
         if not self.is_open():
-            async_return(metrics)
+            return(metrics)
         try:
-            # yield self.check_command_count.async(reset=True)
+            # await self.check_command_count_async(reset=True)
             metrics.add('fpga_udp_error_current_count', value=self.mmi.error_counter)
-            vect = yield self.fpga_mmi_read.async(self._SFP_STATUS_ADDR)
+            vect = await self.fpga_spi_mmi_read_async(self._SFP_STATUS_ADDR)
             for name, pos, width in self.UDP_STATUS_VECT_BITS:
-                metrics.add('fpga_udp_'+ name, value= (vect >> pos) & (2**width-1))
+                metrics.add('fpga_udp_' + name, value= (vect >> pos) & (2**width-1))
         except IOError as e:
             self.logger.error('%r: Error getting FPGA udp metrics. Error is %r' % (self, e))
-        async_return(metrics)
+        return(metrics)
 
-    @async
-    def get_udp_status(self):
-        vect = yield self.fpga_mmi_read.async(self._SFP_STATUS_ADDR)
-        async_return({name: ((vect >> pos) & (2**width-1)) for name, pos, width in self.UDP_STATUS_VECT_BITS})
+    async def get_udp_status_async(self):
+        vect = await self.fpga_spi_mmi_read_async(self._SFP_STATUS_ADDR)
+        return {name: ((vect >> pos) & (2**width-1)) for name, pos, width in self.UDP_STATUS_VECT_BITS}
 
-
-    @async
-    def clear_fpga_udp_errors(self, force=False, no_reset=False, max_trials=3):
+    async def clear_fpga_udp_errors(self, force=False, no_reset=False, max_trials=3):
         """ Attempts to clear the FPGA UDP communication errors.
 
         Parameters:
 
             force (bool): If True, the UDP stack is reset whether of not the
-                current number of communicatoin errors exceed the threshold or
+                current number of communication errors exceed the threshold or
                 not.
 
         """
@@ -547,10 +1293,10 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                 self.logger.info('%r: Resetting FPGA UDP stack (trial #%i/%i)' % (self, trial, max_trials))
 
                 if not no_reset:
-                    yield self.reset_sfp.async()
-                    yield async_sleep(0.1)
-                    yield self.reset_fpga_udp_stack.async()
-                    yield async_sleep(0.1)
+                    await self.reset_sfp()
+                    await asyncio.sleep(0.1)
+                    await self.reset_fpga_udp_stack()
+                    await asyncio.sleep(0.1)
                 self.logger.info('%r: Trying to read from FPGA UDP stack' % self)
                 try:
                     self.mmi.flush()
@@ -563,19 +1309,25 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                     break
                 except IOError:
                     if trial >= max_trials:
-                        # raise IOError('%r: cannot communicate with FPGA port after %i FPGA UDP stack resets' % (self, trial))
-                        self.logger.error('%r: cannot communicate with FPGA port after %i FPGA UDP stack resets' % (self, trial))
+                        # raise IOError(
+                        #      '%r: cannot communicate with FPGA port after '
+                        #      '%i FPGA UDP stack resets' % (self, trial))
+                        self.logger.error(
+                            '%r: cannot communicate with FPGA port after %i '
+                            'FPGA UDP stack resets' % (self, trial))
                         break
                     else:
-                        self.logger.info('%r: Still obtaining FPGA UDP errors after %i FPGA UDP stack reset. Retrying...' % (self, trial))
+                        self.logger.info(
+                            '%r: Still obtaining FPGA UDP errors after %i '
+                            'FPGA UDP stack reset. Retrying...' % (self, trial))
                     trial += 1
                 finally:
                     self.mmi.error_counter = 0
                     self.logger.info('%r: Finished to attempt clearing FPGA UDP errors.' % self)
             else:
                 break
-    @async
-    def check_command_count(self, reset=False):
+
+    async def check_command_count_async(self, reset=False):
         """ Check UDP communication command/reply synchronization and optionally reset counts.
 
         Checks if the number of command and replies sent to/from the FPGA
@@ -600,47 +1352,56 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         for trial in range(2):
             try:
-                yield async_moment
+                await asyncio.sleep(0)
                 self.logger.info('%r: Checking command counters' % (self))
                 (cmd, rply) = self.core_gpio.get_command_count()
-                yield async_moment
+                await asyncio.sleep(0)
                 valid = (cmd == self.mmi.send_counter & 0xFF) and (rply == self.mmi.recv_counter & 0xFF)
                 if not valid:
-                    self.logger.warning('%r: Command counters differ cmd/rply in FPGA is (%i, %i), Python MMI is (%i, %i)' % (self, cmd, rply, self.mmi.send_counter & 0xFF, self.mmi.recv_counter & 0xFF))
+                    self.logger.warning(
+                        '%r: Command counters differ cmd/rply in FPGA is (%i, %i), '
+                        'Python MMI is (%i, %i)'
+                        % (self, cmd, rply, self.mmi.send_counter & 0xFF,
+                           self.mmi.recv_counter & 0xFF))
                 if reset:
                     self.mmi.send_counter = cmd
                     self.mmi.recv_counter = rply
                     valid = True
                 break
             except IOError as e:
-                self.logger.error("%r: UDP communinication error. Attempting to reset FPGA's UDP stack via the ARM processor (trial %i).The error is:\n %s" % (self, trial+1, e))
-                yield self.reset_fpga_udp_stack.async()
+                self.logger.error(
+                    "%r: UDP communinication error. Attempting to reset FPGA's"
+                    " UDP stack via the ARM processor (trial %i).The error is:\n %s"
+                    % (self, trial+1, e))
+                await self.reset_fpga_udp_stack()
                 valid = False
                 reset = True
             except Exception as e:
-                self.logger.error("%r: Unhandled error during UDP communinication check. The error is:\n %r" % (self, e))
+                self.logger.error(
+                    "%r: Unhandled error during UDP communinication check. "
+                    "The error is:\n %r" % (self, e))
                 raise
-        else: # executes if we exhausted the for loop iterations, i.e  no break
-            errmsg = "%r: Could not re-establish UDP communinication with the FPGA. Raising an exception" % (self)
+        else:  # executes if we exhausted the for loop iterations, i.e  no break
+            errmsg = "%r: Could not re-establish UDP communinication with " \
+                     "the FPGA. Raising an exception" % (self)
             self.logger.error(errmsg)
             raise IOError(errmsg)
-        async_return(valid)
+        return(valid)
 
-    @async
-    def reset_fpga_udp_stack(self):
+    async def reset_fpga_udp_stack(self):
         # self.logger.warning("%r: Resetting %s FPGA's UDP communication stack" % (self, self.hostname))
-        yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 3 << 30)
-        yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 0 << 30)
+        await self.fpga_spi_mmi_write_async(self._SFP_STATUS_ADDR, 3 << 30)
+        await self.fpga_spi_mmi_write_async(self._SFP_STATUS_ADDR, 0 << 30)
         self.mmi.send_counter = 0
 
-    @async
-    def reset_sfp(self):
-        self.logger.warning("%r: Temporarily disconnecting the SFP to reset the %s FPGA's UDP communication stack" % (self, self.hostname))
-        yield self.set_pci_switch_direction.async('SEL_ARM')
-        yield self.set_pci_switch_direction.async('SEL_SFP')
+    async def reset_sfp(self):
+        self.logger.warning(
+            "%r: Temporarily disconnecting the SFP to reset the %s FPGA's "
+            "UDP communication stack" % (self, self.hostname))
+        await self.tuber_set_pci_switch_direction_async('SEL_ARM')
+        await self.tuber_set_pci_switch_direction_async('SEL_SFP')
 
-    @async
-    def set_fpga_control_networking_parameters(
+    async def set_fpga_control_networking_parameters_async(
             self,
             fpga_mac_addr=None,
             fpga_ip_addr=None,
@@ -720,44 +1481,44 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # mac = socket.inet_aton(self._get_arm_mac())  #
         if fpga_mac_addr is None:
             mac_packed = struct.pack('>H4s', 0x1234, ip_packed)
-            fpga_mac_addr = ':'.join(['%02X' % ord(c) for c in mac_packed])
+            fpga_mac_addr = ':'.join(['%02X' % c for c in mac_packed])
         else:
-            mac_packed = [chr(int(s, 16)) for s in fpga_mac_addr.split(':')]
+            mac_packed = bytes([int(s, 16) for s in fpga_mac_addr.split(':')])
 
         # self.fpga_mac_addr = fpga_mac_addr
         # self.fpga_port_number = fpga_port_number
         # self.fpga_ip_addr = fpga_ip_addr
 
         # Set the FPGA Networking parameters over the ARM-FPGA SPI interface
-        yield self.fpga_mmi_write.async(self._FPGA_MAC_ADDR_LSW_ADDR, struct.unpack('>I', mac_packed[2:6])[0])
-        yield self.fpga_mmi_write.async(self._FPGA_MAC_ADDR_MSW_IP_PORT_ADDR, (struct.unpack('>H', mac_packed[0:2])[0] << 16) | fpga_port_number)
-        yield self.fpga_mmi_write.async(self._FPGA_IP_ADDR_ADDR, struct.unpack('>I', ip_packed)[0])
+        await self.fpga_spi_mmi_write_async(self._FPGA_MAC_ADDR_LSW_ADDR, struct.unpack('>I', mac_packed[2:6])[0])
+        await self.fpga_spi_mmi_write_async(
+            self._FPGA_MAC_ADDR_MSW_IP_PORT_ADDR,
+            (struct.unpack('>H', mac_packed[0:2])[0] << 16) | fpga_port_number)
+        await self.fpga_spi_mmi_write_async(self._FPGA_IP_ADDR_ADDR, struct.unpack('>I', ip_packed)[0])
 
-        async_return(fpga_mac_addr)
+        return fpga_mac_addr
 
-    @async
-    def set_local_data_port_number(self, port):
+    async def set_local_data_port_number(self, port):
         """
         Sets the port number to which the FPGA is sending the data for UDP channel 1. Use
         `set_data_target_address` instead.
 
         Parameters:
 
-            port (int); target port number. If port==0, the data is sent to the source port number of the last received valid packet  + 1.
+            port (int); target port number. If port==0, the data is sent to
+                the source port number of the last received valid packet  + 1.
 
         Does not change the target MAC or IP address.
         """
-        word = yield self.fpga_mmi_read.async(self._REMOTE_IP_PORT_ADDR)
-        yield self.fpga_mmi_write.async(self._REMOTE_IP_PORT_ADDR, (word & 0xFFFF) | (port << 16))
+        word = await self.fpga_spi_mmi_read_async(self._REMOTE_IP_PORT_ADDR)
+        await self.fpga_spi_mmi_write_async(self._REMOTE_IP_PORT_ADDR, (word & 0xFFFF) | (port << 16))
 
-    @async
-    def get_local_data_port_number(self):
+    async def get_local_data_port_number_async(self):
         """ Return the port number to which the FPGA is sending its captured data stream on the control network.
         """
-        async_return((yield self.fpga_mmi_read.async(self._REMOTE_IP_PORT_ADDR)) >> 16)
+        return((await self.fpga_spi_mmi_read_async(self._REMOTE_IP_PORT_ADDR)) >> 16)
 
-    @async
-    def set_data_target_address(self, ip_addr=None, port=None, mac_addr=None):
+    async def set_data_target_address_async(self, ip_addr=None, port=None, mac_addr=None):
         """
         Sets the IP address, port number and MAC address to which data is sent back to the host comptuter.
 
@@ -809,27 +1570,25 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         if not ip_addr:
             ip_addr_int = 0
         else:
-            ip_addr_int = struct.unpack('>L',socket.inet_aton(ip_addr))[0] # Ip address, as an integer
+            ip_addr_int = struct.unpack('>L', socket.inet_aton(ip_addr))[0]
 
         if not mac_addr:
             mac_addr_int = 0
         else:
             mac_addr_int = sum(int(s, 16) << (8 * i) for i, s in enumerate(reversed(mac_addr.split(':'))))
 
-        self.logger.debug('%r: setting data target address to ip=%r(%r), port=%r(%r), mac=%r(%r)' % (self, ip_addr, ip_addr_int, port, port, mac_addr, mac_addr_int))
+        self.logger.debug(
+            '%r: setting data target address to ip=%r(%r), port=%r(%r), mac=%r(%r)'
+            % (self, ip_addr, ip_addr_int, port, port, mac_addr, mac_addr_int))
         # Set the UDP transmit channel 1 IP and MAC addresses
         self.core_gpio.TARGET_MAC_ADDR = mac_addr_int
         self.core_gpio.TARGET_IP_ADDR = ip_addr_int
 
         # Set the UDP  Channel 1 outgoing packet destination port number, on the ARM-FPGA SPI registers
-        word = yield self.fpga_mmi_read.async(self._REMOTE_IP_PORT_ADDR)
-        yield self.fpga_mmi_write.async(self._REMOTE_IP_PORT_ADDR, (word & 0xFFFF) | (port << 16))
+        word = await self.fpga_spi_mmi_read_async(self._REMOTE_IP_PORT_ADDR)
+        await self.fpga_spi_mmi_write_async(self._REMOTE_IP_PORT_ADDR, (word & 0xFFFF) | (port << 16))
 
-
-
-
-    @async
-    def get_fpga_firmware_cookie(self, resync=False):
+    async def get_fpga_firmware_cookie(self, resync=False):
         """
         Get the FPGA firmware cookie.
 
@@ -841,8 +1600,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         sequence number to the value known by the FPGA. This should be is used
         by the first command sent to the FPGA to reset the communication link.
         """
-        yield async_moment
-        async_return((self.mmi_read(self._GPIO_COOKIE_REG, resync=resync) & 0x7F))
+        await asyncio.sleep(0)
+        return((self.mmi_read(self._GPIO_COOKIE_REG, resync=resync) & 0x7F))
 
     def get_fpga_firmware_version(self):
         """
@@ -875,9 +1634,10 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         """
         return self.core_i2c.set_port(*args, **kwargs)
 
-    @async
-    def _mezzanine_eeprom_read(self, mezzanine):
-        """ Reads the EEPROM on the specified mezzanine using the FPGA if the ARM firmware does not provide the functionnality.
+    async def _mezzanine_eeprom_read_async(self, mezzanine):
+        """
+        Reads the EEPROM on the specified mezzanine using the FPGA if the ARM
+        firmware does not provide the functionality.
 
         This method is a 'temporary' patch that overrides the same method in
         IceBoardPlus to allow proper operations of systems with old ARM
@@ -897,19 +1657,27 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         reading the IPMI standard data decoded by the ARM.
                 """
         try:
-            data = yield self._mezzanine_eeprom_read_base64.async(mezzanine)
-            async_return(base64.decodestring(data))
-        except (tuber.TuberRemoteError, AttributeError):
-            self.logger.debug("%r: Cannot read the Mezzanine %i EEPROM through the ARM's _mezzanine_eeprom_read_base64() method. Attempting to read the Mezzanine EEPROM through the FPGA." % (self, mezzanine))
+            data = await self._tuber_mezzanine_eeprom_read_base64_async(mezzanine)
+            return base64.decodebytes(data.encode())
+        except (TuberRemoteError, AttributeError):
+            self.logger.debug(
+                "%r: Cannot read the Mezzanine %i EEPROM through the ARM's "
+                "_mezzanine_eeprom_read_base64() method. Attempting to read "
+                "the Mezzanine EEPROM through the FPGA." % (self, mezzanine))
 
-        fpga_programmed = yield self.is_fpga_programmed.async()
+        fpga_programmed = await self.is_fpga_programmed_async()
         if not fpga_programmed:
-            self.logger.debug("%r: FPGA is not programmed, so cannot read the Mezzanine %i EEPROM through the FPGA." % (self, mezzanine))
-            async_return(None)
+            self.logger.debug(
+                "%r: FPGA is not programmed, so cannot read the Mezzanine %i "
+                "EEPROM through the FPGA." % (self, mezzanine))
+            return(None)
 
         eeprom_data = self.hw.read_mezzanine_eeprom(mezzanine, 0, 1)
         if ord(eeprom_data[0]) == 0x0d:  # if this is McGill format
-            self.logger.debug("%r: EEPROM in Mezzanine %i is McGill format. The FPGA will be reading only bytes until the terminator character. " % (self, mezzanine))
+            self.logger.debug(
+                "%r: EEPROM in Mezzanine %i is McGill format. The FPGA will "
+                "be reading only bytes until the terminator character. "
+                % (self, mezzanine))
             # Read the eeprom block by block until we detect the end of the
             # dictionary
             block_size = 32
@@ -920,16 +1688,16 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                 string += data_block
                 if ('}' in data_block) or (chr(255) in data_block):
                     break
-            async_return(string)
+            return(string)
         else:  # If not McGill format,
-            self.logger.debug("%r: EEPROM in Mezzanine %i is not McGill format. The FPGA will *NOT* read the EEPROM contetnt " % (self, mezzanine))
-            async_return(None)
+            self.logger.debug(
+                "%r: EEPROM in Mezzanine %i is not McGill format. The FPGA "
+                "will *NOT* read the EEPROM contetnt " % (self, mezzanine))
+            return(None)
 
     # ---------------------------------------------------------
     # IRIG-B time support methods
     # ---------------------------------------------------------
-
-
 
     class _IrigTimestamp(object):
         """ Represents the date/time that is obtained from and sent to th IRIG-B subsystem down to a 10 ns resolution.ns
@@ -950,11 +1718,11 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         _IRIGB_TIME_FORMAT = {
             'raw': lambda ts: ts,
             'datetime': lambda ts: ts.datetime,
-            'nano' : lambda ts: ts.nano,
+            'nano': lambda ts: ts.nano,
             'datetime+': lambda ts: (ts.datetime, ts.nano % 1000000000)
             }
 
-        nano = None # time in nanoseconds since epoch.
+        nano = None  # time in nanoseconds since epoch.
 
         def __str__(self):
             return self.isoformat()
@@ -964,15 +1732,15 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             """
             if arg is None:
                 pass
-            elif isinstance(arg, basestring):
+            elif isinstance(arg, str):
                 if arg.lower() == 'now':
                     self.nano = self.datetime_to_nano(datetime.now())
                 else:
                     raise AttributeError('Cannot convert string to nano time')
             elif isinstance(arg, datetime):
-                    self.nano = self.datetime_to_nano(arg)
+                self.nano = self.datetime_to_nano(arg)
             elif isinstance(arg, int):
-                    self.nano = arg
+                self.nano = arg
 
         def datetime_to_nano(self, d, nano_offset=0):
             """
@@ -1003,7 +1771,6 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                 n.minute,
                 n.second + (self.nano % 1000000000) / 1e9)  # See note above
 
-
         def astype(self, format):
             return self._IRIGB_TIME_FORMAT[format](self)
 
@@ -1017,45 +1784,43 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         ('bp_sma', 6)
         ])
 
-    @async
-    def set_irigb_source(self, source):
+    async def set_irigb_source_async(self, source):
         """ Set the source of the IRIG-B signal."""
         if source not in self._IRIGB_SOURCE_TABLE:
-            raise ValueError('Invalid IRIG-B source name. Valid names are %s' % ', '.join(self._IRIGB_SOURCE_TABLE.keys()))
+            raise ValueError(
+                'Invalid IRIG-B source name. Valid names are %s'
+                % ', '.join(self._IRIGB_SOURCE_TABLE.keys()))
         src = self._IRIGB_SOURCE_TABLE[source]
-        w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
-        self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, (w2 & 0x3FFFFFFF) | ((src & 0b011) << 30))
-        w2 = yield self.fpga_mmi_read.async(self._IRIGB_TARGET0_ADDR)
-        self.fpga_mmi_write(self._IRIGB_TARGET0_ADDR, (w2 & 0x7FFFFFFF) | ((src >> 2) << 31))
+        w2 = await self.fpga_spi_mmi_read_async(self._IRIGB_SAMPLE2_ADDR)
+        await self.fpga_spi_mmi_write_async(self._IRIGB_SAMPLE2_ADDR, (w2 & 0x3FFFFFFF) | ((src & 0b011) << 30))
+        w2 = await self.fpga_spi_mmi_read_async(self._IRIGB_TARGET0_ADDR)
+        await self.fpga_spi_mmi_write_async(self._IRIGB_TARGET0_ADDR, (w2 & 0x7FFFFFFF) | ((src >> 2) << 31))
 
-    @async
-    def get_irigb_source(self):
+    async def get_irigb_source_async(self):
         """ Get the name of the current source of the IRIG-B signal."""
-        w1 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
-        w2 = yield self.fpga_mmi_read.async(self._IRIGB_TARGET0_ADDR)
+        w1 = await self.fpga_spi_mmi_read_async(self._IRIGB_SAMPLE2_ADDR)
+        w2 = await self.fpga_spi_mmi_read_async(self._IRIGB_TARGET0_ADDR)
 
-        source = ((w1 >> 30) & 0b011) | (((w2 >> 31) & 0b001 ) << 2)
+        source = ((w1 >> 30) & 0b011) | (((w2 >> 31) & 0b001) << 2)
 
         for (source_name, source_number) in self._IRIGB_SOURCE_TABLE.items():
             if source == source_number:
-                async_return(source_name)
+                return(source_name)
         raise ValueError('The IRIG-B module has an unknown source number %i' % source)
 
-    @async
-    def detect_irigb_source(self, set_source=False):
+    async def detect_irigb_source_async(self, set_source=False):
         """ Returns the name of the first input on which valid IRIG-B time is detected. """
-        old_source = yield self.get_irigb_source.async()
+        old_source = await self.get_irigb_source_async()
         valid_source = None
         for source in self._IRIGB_SOURCE_TABLE.keys():
-            yield self.set_irigb_source.async(source)
-            if (yield self.get_irigb_time.async(noerror=True)):
+            await self.set_irigb_source_async(source)
+            if (await self.get_irigb_time_async(noerror=True)):
                 valid_source = source
                 break
-        yield self.set_irigb_source.async(valid_source if set_source else old_source)
-        async_return(valid_source)
+        await self.set_irigb_source_async(valid_source if set_source else old_source)
+        return(valid_source)
 
-    @async
-    def _get_irigb_time(self, trig=True, noerror=False):
+    async def _get_irigb_time_async(self, trig=True, noerror=False):
         """ Reads the Reference clock and IRIG-B time and returns an object
         that contains all the time information gathered from it. Optionally
         trigger the capture of a new reference clock & IRIG-B time if `trig`
@@ -1089,11 +1854,6 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         """
 
-        # if format not in self._IRIGB_TIME_FORMAT:
-        #     raise ValueError('Invalid time format. Valid formats are: %s' % (', '.join(self._IRIGB_TIME_FORMAT.keys())))
-        # ts = self._IrigTimestamp()
-
-
         # Optionally trigger time capture, and check that the IRIG-B time is
         # captured AND to be valid. IF we trig, try to get a valid time until
         # a timeout has elapsed, otherwise fail immediately if the time was
@@ -1103,29 +1863,35 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
             # Trigger the capture of the reference counter and IRIG-B time
             if trig:
-                w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
+                w2 = await self.fpga_spi_mmi_read_async(self._IRIGB_SAMPLE2_ADDR)
                 # trigger time capture by creating a rising edge on `refclk_sample_trig`
-                yield self.fpga_mmi_write.async(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 29))
-                yield self.fpga_mmi_write.async(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 29))
-                yield async_moment
+                await self.fpga_spi_mmi_write_async(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 29))
+                await self.fpga_spi_mmi_write_async(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 29))
+                await asyncio.sleep(0)
 
             # Wait for the time capture to complete by monitoring
             # `refclk_sample_done`. Time is captured on the next 10 MHz
             # reference clock edge, so that should be quick, but we need
             # to make sure we have stable values. Timeout if it takes too long.
-            t1 = time.time()
+
             # JFC: Commented out  until I fix the firmware
-            # while not (yield self.fpga_mmi_read.async(self._IRIGB_TARGET1_ADDR)) & (1 << 29): # check refclk_sample_done
-            #     self.logger.warn('%r: Time capture was not immediately ready - this is unexpected' % self)  # Debug. should not happen since capture should be much faster than the time it takes to read the done flag
+            # t1 = time.time()
+            # while not (await self.fpga_spi_mmi_read_async(self._IRIGB_TARGET1_ADDR)) & (1 << 29):
+            #                     # check refclk_sample_done
+            #     self.logger.warn('%r: Time capture was not immediately ready - this is unexpected' % self)
+            #            # Debug. should not happen since capture should be much faster
+            #            # than the time it takes to read the done flag
             #     # TImeout if it takes too long. The time should be ready within a few 10 MHz cycles.
             #     if time.time() - t1 > 0.1: # 0.1s = 1,000,000 clock cycles of the 10 MHz clock. That is way enough
-            #         raise RuntimeError('Timeout while waiting for the reference clock counter and IRIG-B time capture to complete. Was the capture triggered?')
+            #         raise RuntimeError(
+            #            'Timeout while waiting for the reference clock counter '
+            #            'and IRIG-B time capture to complete. Was the capture triggered?')
 
             # # At this point we have a stable IRIG-B timestamp ready to be read,
             # but we still don't know if the time within it is valid.
 
             # check the time valid (recent) flag
-            w1 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE1_ADDR) # this will also be used later
+            w1 = await self.fpga_spi_mmi_read_async(self._IRIGB_SAMPLE1_ADDR)  # this will also be used later
             recent = (w1 >> 29) & 1
             # If we get a updated time, we're good: exit the loop
             if recent:
@@ -1133,29 +1899,34 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             # If we don't have a valid timestamp, and have been waiting for
             # too long or are not allowed to trig to re-check the time, then
             # raise an error unless instructed not to.
-            if not trig or time.time() - t0 > 2.5: # Wait a little bit more than one second in case the IRIG-B signal just became valie (e.g. we just set the source)
+            #
+            # Wait a little bit more than one second in case the IRIG-B signal
+            # just became valid (e.g. we just set the source)
+            if not trig or time.time() - t0 > 2.5:
                 if noerror:
-                    async_return(None)
+                    return(None)
                 else:
-                    raise RuntimeError('%.32r: Could not get a recently updated IRIG-B time. Check your cabling and the IRIG-B source selection.' % self)
+                    raise RuntimeError(
+                        '%.32r: Could not get a recently updated IRIG-B time. '
+                        'Check your cabling and the IRIG-B source selection.' % self)
 
         ts = self._IrigTimestamp()
         ts.system_time_before = time.time()
 
-        ts.refclk_counter = yield self.fpga_mmi_read.async(self._IRIGB_REFCLK_SAMPLE)
+        ts.refclk_counter = await self.fpga_spi_mmi_read_async(self._IRIGB_REFCLK_SAMPLE)
 
         # Read the (other) IRIG-B capture registers. We assume nobody is callung
         # concurrent instances at the same same time, so we do this
         # asynchronously because each read is slow.
-        w0 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE0_ADDR)
+        w0 = await self.fpga_spi_mmi_read_async(self._IRIGB_SAMPLE0_ADDR)
         # w1 was read when checkiing for a valid IRIG-B capture
-        w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
+        w2 = await self.fpga_spi_mmi_read_async(self._IRIGB_SAMPLE2_ADDR)
 
         # check if the time is valid
-        # t0 = self.fpga_mmi_read(self._IRIGB_TARGET0_ADDR)
-        # t1 = self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR)
-        # t2 = self.fpga_mmi_read(self._IRIGB_TARGET2_ADDR)
-        # e0 = self.fpga_mmi_read(self._IRIGB_EVENT_CTR_ADDR)
+        # t0 = self.fpga_spi_mmi_read_async(self._IRIGB_TARGET0_ADDR)
+        # t1 = self.fpga_spi_mmi_read_async(self._IRIGB_TARGET1_ADDR)
+        # t2 = self.fpga_spi_mmi_read_async(self._IRIGB_TARGET2_ADDR)
+        # e0 = self.fpga_spi_mmi_read_async(self._IRIGB_EVENT_CTR_ADDR)
 
         ts.system_time = time.time()
 
@@ -1173,7 +1944,9 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         ts.s = (w1 >> 0) & ((1 << 7) - 1)
         ts.ss = (w2 >> 0) & ((1 << 28) - 1)
         ts.pps = (w0 >> 26) & ((1 << 6) - 1)
-        ts.sbs = (w0 >> 8) & ((1 << 18) - 1)  # "straight binary seconds" since 00:00 on the current day (0-86399, not BCD). Not necessarily supported by the GPS.
+        # "straight binary seconds" since 00:00 on the current day (0-86399,
+        # not BCD). Not necessarily supported by the GPS.
+        ts.sbs = (w0 >> 8) & ((1 << 18) - 1)
         ts.source = (w1 >> 30) & ((1 << 2) - 1)
         ts.recent = recent
         # ts.before_target = (t1 >> 31) & 1
@@ -1189,18 +1962,22 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # Compute a datetime object, one second in the future. We use
         # timedelta because ts.d > 31, and ts.s may be > 59 because of the
         # added second and possibly leap seconds
-        ts.datetime = dt = (datetime(ts.y + 2000, 1, 1) +
+        ts.datetime = dt = (
+            datetime(ts.y + 2000, 1, 1) +
             timedelta(days=ts.d - 1, hours=ts.h, minutes=ts.m,
                       seconds=ts.s + 1, microseconds=ts.ss // 100))
         # compute a timestamp, one second in the future
-        timestamp = timegm((ts.y + 2000, 1, ts.d, ts.h, ts.m, ts.s + 1))  # unix timestamp = seconds since 1 Jan 1970 UTC
+        # unix timestamp = seconds since 1 Jan 1970 UTC
+        timestamp = timegm((ts.y + 2000, 1, ts.d, ts.h, ts.m, ts.s + 1))
         ts.nano = int(timestamp * 1e9) + ts.ss * 10  # nanoseconds since 1 Jan 1970 UTC
-        ts.time = ts.nano / 1e9  # Unix timestamp, as a float with as much resolution as the float can provide (not necessarily to the nanosecond)
+        # Unix timestamp, as a float with as much resolution as the float can
+        # provide (not necessarily to the nanosecond)
+        ts.time = ts.nano / 1e9
         # Compute an modified time structure (a tuple) that contains the time
         # elements including fractional nicroseconds
         tt = time.gmtime(timestamp)
         ts.time_struct = [tt.tm_year, tt.tm_mon, tt.tm_mday, tt.tm_hour,
-            tt.tm_min, tt.tm_sec, (ts.nano % 1000000000) / 1000.0]
+                          tt.tm_min, tt.tm_sec, (ts.nano % 1000000000) / 1000.0]
 
         # alternate of computing nano, to check if is is ok to pass days>31 and seconds>59 to timegm.
         ts.nano2 = (int(timegm((ts.y + 2000, 1, 1, 0, 0, 0)) * 1e9) +
@@ -1211,17 +1988,16 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         ts.time2 = ts.nano2 / 1e9
         ts.time_struct2 = [dt.year, dt.month, dt.day, dt.hour, dt.minute,
-                dt.second, (ts.nano2 % 1000000000) / 1000.0]
+                           dt.second, (ts.nano2 % 1000000000) / 1000.0]
         # ts.event_ctr = e0
 
         if not (ts.nano == ts.nano2 and
                 ts.time == ts.time2 and
                 ts.time_struct == ts.time_struct2):
             self.logger.error("%r: IRIGB time computation error" % self)
-        async_return(ts)
+        return(ts)
 
-    @async
-    def set_irigb_trigger_time(self, datetime_=None, delay=None):
+    async def set_irigb_trigger_time_async(self, datetime_=None, delay=None):
         """ Sets the time at which the IRIG-B module will generate a trigger
         that can be used to synchronize boards.
 
@@ -1248,7 +2024,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         """
         if datetime_ is None:
-            ts = self._get_irigb_time(trig=True)  # do this synchronously to we get an accurate time
+            ts = await self._get_irigb_time_async(trig=True)  # do this synchronously to we get an accurate time
             dt = ts.astype('datetime')
             self.logger.debug('%r: Current IRIGB time is %s' % (self, ts.isoformat()))
             if delay is None:
@@ -1260,7 +2036,9 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         nano_delay = int(delay * 1e9) % 1000  # Get submicrosecond delay in nanosecond units
         delay = int(delay * 1e6) / 1e6  # Round delay to the microsecond
-        dt += timedelta(0, delay) # add delay in integer microseconds (datetime does not support more than the microsecond accuracy)
+        # add delay in integer microseconds (datetime does not support more
+        # than the microsecond accuracy)
+        dt += timedelta(0, delay)
         self.logger.debug('%r: Setting IRIGB target time to %s + %3i ns' % (self, dt.isoformat(), nano_delay))
         if self.zero_target_irigb_year_and_day:
             y = 0
@@ -1273,39 +2051,38 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         s = dt.second
         ss = dt.microsecond * 100 + int(nano_delay / 10)
 
-        self.logger.debug('%r: Setting IRIGB target time with y=%i, d=%i, h=%i, m=%i, s=%i, ss=%i' % (self, y, d, h, m, s, ss))
+        self.logger.debug(
+            '%r: Setting IRIGB target time with y=%i, d=%i, h=%i, '
+            'm=%i, s=%i, ss=%i' % (self, y, d, h, m, s, ss))
 
-        t0 = (yield self.fpga_mmi_read.async(self._IRIGB_TARGET0_ADDR)) & 0xFFFFFF00
+        t0 = (await self.fpga_spi_mmi_read_async(self._IRIGB_TARGET0_ADDR)) & 0xFFFFFF00
         t0 |= (y << 0)
         t1 = (d << 20) | (h << 14) | (m << 7) | (s << 0)
         t2 = (1 << 31) | (ss << 0)
 
-
-        yield self.fpga_mmi_write.async(self._IRIGB_TARGET0_ADDR, t0)
-        yield self.fpga_mmi_write.async(self._IRIGB_TARGET1_ADDR, t1)
-        yield self.fpga_mmi_write.async(self._IRIGB_TARGET2_ADDR, t2)
+        await self.fpga_spi_mmi_write_async(self._IRIGB_TARGET0_ADDR, t0)
+        await self.fpga_spi_mmi_write_async(self._IRIGB_TARGET1_ADDR, t1)
+        await self.fpga_spi_mmi_write_async(self._IRIGB_TARGET2_ADDR, t2)
 
         # return the time at which the sync event is scheduled for
         ts = self._IrigTimestamp()
         ts.datetime = dt
         ts.nano = int(timegm((2000 + y, 1, d, h, m, s + 1)) * 1e9) + ss*10
-        async_return(ts)
+        return(ts)
 
-    @async
-    def is_irigb_before_trigger_time(self):
+    async def is_irigb_before_trigger_time_async(self):
         """ Is true if the current IRIGB is before the target trigger time that was previously set-up.
         """
-        t1 = yield self.fpga_mmi_read.async(self._IRIGB_TARGET1_ADDR)
-        async_return(bool((t1 >> 31) & 1))
+        t1 = await self.fpga_spi_mmi_read_async(self._IRIGB_TARGET1_ADDR)
+        return(bool((t1 >> 31) & 1))
 
-    @async
-    def capture_frame_time(self, trig=True, format='nano', timeout=5):
+    async def capture_frame_time_async(self, trig=True, format='nano', timeout=5):
         """ Captures the IRIG-B of the first sample of the next frame coming
         out of the ADC data acquisition module.
 
         The returned time is (frame_number, time), where frame_number is the
         number of the frame that was measured, and time is the IRIG-B time in
-        a format specified by 'format' (see get_irigb_time() for available
+        a format specified by 'format' (see get_irigb_time_async() for available
         formats).
 
         NOTE1: floats do not have enough resolution to represent the current
@@ -1321,62 +2098,78 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         delay).
         """
         if trig:
-            w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
-            yield self.fpga_mmi_write.async(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 28))
-            yield self.fpga_mmi_write.async(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 28))
+            w2 = await self.fpga_spi_mmi_read_async(self._IRIGB_SAMPLE2_ADDR)
+            await self.fpga_spi_mmi_write_async(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 28))
+            await self.fpga_spi_mmi_write_async(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 28))
             t0 = time.time()
-            while not (yield self.fpga_mmi_read.async(self._IRIGB_TARGET1_ADDR)) & (1 << 30):
-                    if time.time() - t0 > timeout:
-                        raise RuntimeError('Timeout while waiting for a Frame. Is data flowing out of the ADC data acquisition module?')
-        event_number = yield self.fpga_mmi_read.async(self._IRIGB_EVENT_CTR_ADDR)
-        event_number += (yield self.fpga_mmi_read.async(self._IRIGB_EVENT_CTR_ADDR2)) << 32
+            while not (await self.fpga_spi_mmi_read_async(self._IRIGB_TARGET1_ADDR)) & (1 << 30):
+                if time.time() - t0 > timeout:
+                    raise RuntimeError(
+                        'Timeout while waiting for a Frame. Is data flowing '
+                        'out of the ADC data acquisition module?')
+        event_number = await self.fpga_spi_mmi_read_async(self._IRIGB_EVENT_CTR_ADDR)
+        event_number += (await self.fpga_spi_mmi_read_async(self._IRIGB_EVENT_CTR_ADDR2)) << 32
 
-        ts = yield self._get_irigb_time.async(trig=0)  # The event trigger will automatically trig IRIGB
+        ts = await self._get_irigb_time_async(trig=0)  # The event trigger will automatically trig IRIGB
         captured_time = ts.astype(format)
-        async_return((event_number, captured_time))
+        return((event_number, captured_time))
 
-    @async
-    def get_frame_number(self):
+    async def get_frame_number_async(self):
         """
         Return the number of the next frame passing through the system.
         """
-        w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
-        yield self.fpga_mmi_write.async(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 28))
-        yield self.fpga_mmi_write.async(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 28))
+        w2 = await self.fpga_spi_mmi_read_async(self._IRIGB_SAMPLE2_ADDR)
+        await self.fpga_spi_mmi_write_async(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 28))
+        await self.fpga_spi_mmi_write_async(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 28))
         t0 = time.time()
-        while not (yield self.fpga_mmi_read.async(self._IRIGB_TARGET1_ADDR)) & (1 << 30):
+        while not (await self.fpga_spi_mmi_read_async(self._IRIGB_TARGET1_ADDR)) & (1 << 30):
             if time.time() - t0 > 1:
-                raise RuntimeError('Timeout while waiting for a Frame. Is data flowing out of the ADC data acquisition module?')
-        event_number = yield self.fpga_mmi_read.async(self._IRIGB_EVENT_CTR_ADDR)
-        async_return(event_number)
+                raise RuntimeError(
+                    'Timeout while waiting for a Frame. Is data flowing out '
+                    'of the ADC data acquisition module?')
+        event_number = await self.fpga_spi_mmi_read_async(self._IRIGB_EVENT_CTR_ADDR)
+        return(event_number)
 
-    @async
-    def capture_refclk_time(self, trig=True, format='nano'):
+    async def capture_refclk_time_async(self, trig=True, format='nano'):
         """ Measures the time at which the next 10MHz reference clock rising
         edge occurs.
 
         The method returns the reference clock edge number (from a 32-bit
         counter that wraps around) and the time in the specified format (see
-        get_irigb_time() for available formats).
+        get_irigb_time_async() for available formats).
 
         This method can be used to measure the drift of the 10 MHz reference clock relative to
         the IRIG-B time.
         """
-        ts = yield self._get_irigb_time.async(trig=trig)
-        async_return((ts.refclk_counter, ts.astype(format)))  # Return
+        ts = await self._get_irigb_time_async(trig=trig)
+        return((ts.refclk_counter, ts.astype(format)))  # Return
 
-    @async
-    def get_irigb_time(self, trig=True, format='datetime', noerror=False):
+    async def get_irigb_time_async(self, trig=True, format='datetime', noerror=False):
         """ Return the current time as decoded on the IRIG-B input. The time
         is returned in a format specified by 'format':
 
-        'raw': A object containing all the data fields read directly from the IRIG-B decoder and preprocessed datetime and nano values
-        'datetime': Python 'datetime' object (with a microsecond resolution)
-        'datetime+': A (dt,nano) tuple where dt is a datetime object, and nano is the number of nanoseconds within the second.
-        'nano': An integer representing the number of nanoseconds since Jan 1st 2000.
+        - 'raw': A object containing all the data fields read directly from
+          the IRIG-B decoder and preprocessed datetime and nano values
+        - 'datetime': Python 'datetime' object (with a microsecond resolution)
+        - 'datetime+': A (dt,nano) tuple where dt is a datetime object, and
+          nano is the number of nanoseconds within the second.
+        - 'nano': An integer representing the number of nanoseconds since Jan
+          1st 2000.
         """
-        ts = yield self._get_irigb_time.async(trig=trig, noerror=noerror)
-        async_return(ts.astype(format))
+        ts = await self._get_irigb_time_async(trig=trig, noerror=noerror)
+        return(ts.astype(format))
+
+
+
+    # provide sync-wrapped functions for convenience
+
+    get_irigb_time_sync = async_to_sync(get_irigb_time_async)
+    capture_refclk_time_sync = async_to_sync(capture_refclk_time_async)
+    get_frame_number_async = async_to_sync(get_frame_number_async)
+    is_irigb_before_trigger_time_sync = async_to_sync(is_irigb_before_trigger_time_async)
+    set_irigb_trigger_time_sync= async_to_sync(set_irigb_trigger_time_async)
+    set_irigb_source_sync = async_to_sync(set_irigb_source_async)
+    get_irigb_source_sync = async_to_sync(get_irigb_source_async)
 
 
 class I2CInterface(object):
@@ -1436,12 +2229,17 @@ class I2CInterface(object):
         selected_switch_port_numbers = []
         for bus_name in bus_names:
             if bus_name not in self._I2C_BUS_LIST:
-                self._logger.error("%r: I2C bus '%s' is not part of the available buses. Valid values are %s" % (self, bus_name, ','.join(str(self._I2C_BUS_LIST.keys()))) )
+                self._logger.error(
+                    "%r: I2C bus '%s' is not part of the available buses. "
+                    "Valid values are %s"
+                    % (self, bus_name, ','.join(str(self._I2C_BUS_LIST.keys()))))
             (fpga_port_number, switch_port_number) = self._I2C_BUS_LIST[bus_name]
             if selected_fpga_port_number is None:
                 selected_fpga_port_number = fpga_port_number
             elif selected_fpga_port_number != fpga_port_number:
-                self._logger.error("%r: I2C bus '%s' is not on the same FPGA port as the other buses" % (self, bus_name) )
+                self._logger.error(
+                    "%r: I2C bus '%s' is not on the same FPGA port as "
+                    "the other buses" % (self, bus_name))
             selected_switch_port_numbers.append(switch_port_number)
             # self._logger.debug("Enabling I2C bus %s" % bus_name)
 
@@ -1483,11 +2281,10 @@ class I2CInterface(object):
         if bus_name:
             self.select_bus(bus_name, retry=3)
         try:
-            self.write_read(addr, data=[], read_length=0, retry=0) #dummy I2C acces
+            self.write_read(addr, data=[], read_length=0, retry=0)  # dummy I2C acces
         except IOError:
             return False
         return True
-
 
 
 class IceBoardHardware(object):
@@ -1509,9 +2306,9 @@ class IceBoardHardware(object):
     interface.
     """
 
-    #------------------------------------
+    # ------------------------------------
     # Define hardware-specific constants
-    #------------------------------------
+    # ------------------------------------
     NUMBER_OF_FMC_SLOTS = 2  # Indicates the number of FMC slots supported by this platform
 
     # I2C switch addresses (visible on all buses on a specific port)
@@ -1540,20 +2337,22 @@ class IceBoardHardware(object):
     _FMC_EEPROM_PAGE_SIZE = 8  #
 
     # Oversize , non-FMC-standard EEPROM found on some McGill Mezzanines
-    _MCGILL_FMC_EEPROM_ADDR_WIDTH = 17  # FMC EEPROM internal addresses are is 17 bits wide. (2 bytes as data, 1 bit in lsb of I2C address)
+
+    # FMC EEPROM internal addresses are is 17 bits wide. (2 bytes as data, 1 bit in lsb of I2C address)
+    _MCGILL_FMC_EEPROM_ADDR_WIDTH = 17
     _MCGILL_FMC_EEPROM_PAGE_SIZE = 256  #
 
     # Motherboard EEPROM
     _MOTHERBOARD_EEPROM_DATA_ADDR = 0x57  #
     _MOTHERBOARD_EEPROM_SERIAL_ADDR = 0x5F  #
-    _MOTHERBOARD_EEPROM_ADDR_WIDTH = 7  # EEPROM internal addresses are is 17 bits wide. (2 bytes as data, 1 bit in lsb of I2C address)
+    # EEPROM internal addresses are is 17 bits wide. (2 bytes as data, 1 bit in lsb of I2C address)
+    _MOTHERBOARD_EEPROM_ADDR_WIDTH = 7
     _MOTHERBOARD_EEPROM_PAGE_SIZE = 8  #
 
-
     # IO Expanders, on GPIO bus
-    _GPIO_POWER_I2C_ADDR    = 0b0100000  # 0x20
+    _GPIO_POWER_I2C_ADDR = 0b0100000  # 0x20
     _GPIO_SFP_QSFP_I2C_ADDR = 0b0100001  # 0x21
-    _GPIO_SW_LEDS_ADDR      = 0b0100010  # 0x22
+    _GPIO_SW_LEDS_ADDR = 0b0100010  # 0x22
     _GPIO_ARM_PHY_LEDS_ADDR = 0b0100011  # 0x23
 
     # # Temperature sensors, on GPIO bus
@@ -1564,12 +2363,12 @@ class IceBoardHardware(object):
 
     # # Power monitors, on SMPS bus
     # _POWER_ICEVADJ_I2C_ADDR   = 0b1000011 #0x43
-    _POWER_ICE12V0_I2C_ADDR   = 0b1000111 #0x47
+    _POWER_ICE12V0_I2C_ADDR = 0b1000111  # 0x47
     # _POWER_ICE5V0_I2C_ADDR    = 0b1001000 #0x48
     # _POWER_ICE3V3_I2C_ADDR    = 0b1001001 #0x49
     # _POWER_ICE1V5_I2C_ADDR    = 0b1001100 #0x4C
     # _POWER_ICE1V2_I2C_ADDR    = 0b1001101 #0x4D
-    _POWER_ICE1V0_I2C_ADDR    = 0b1001110 #0x4E
+    _POWER_ICE1V0_I2C_ADDR = 0b1001110  # 0x4E
     # _POWER_ICE1V8_I2C_ADDR    = 0b1001011 #0x4B
     # _POWER_ICE1V0GTX_I2C_ADDR = 0b1001111 #0x4F
 
@@ -1602,8 +2401,14 @@ class IceBoardHardware(object):
         self._iceboard = iceboard
         self._i2c = self._iceboard.i2c
         self._logger.debug('%r: Instantiating Motherboard EEPROM managers' % self._iceboard)
-        self._motherboard_eeprom_data = eeprom.eeprom(self._i2c, self._MOTHERBOARD_EEPROM_DATA_ADDR, 'GPIO', self._MOTHERBOARD_EEPROM_ADDR_WIDTH, self._MOTHERBOARD_EEPROM_PAGE_SIZE)
-        self._motherboard_eeprom_serial = eeprom.eeprom(self._i2c, self._MOTHERBOARD_EEPROM_SERIAL_ADDR, 'GPIO', self._MOTHERBOARD_EEPROM_ADDR_WIDTH, self._MOTHERBOARD_EEPROM_PAGE_SIZE)
+        self._motherboard_eeprom_data = eeprom.eeprom(
+            self._i2c, self._MOTHERBOARD_EEPROM_DATA_ADDR, 'GPIO',
+            self._MOTHERBOARD_EEPROM_ADDR_WIDTH,
+            self._MOTHERBOARD_EEPROM_PAGE_SIZE)
+        self._motherboard_eeprom_serial = eeprom.eeprom(
+            self._i2c, self._MOTHERBOARD_EEPROM_SERIAL_ADDR, 'GPIO',
+            self._MOTHERBOARD_EEPROM_ADDR_WIDTH,
+            self._MOTHERBOARD_EEPROM_PAGE_SIZE)
 
         self._logger.debug('%r:  Instantiating FMC EEPROM managers' % self._iceboard)
 
@@ -1619,30 +2424,36 @@ class IceBoardHardware(object):
         # address.
         if self._i2c.is_present(self._FMC_EEPROM_ADDR+1, bus_name='FMCA'):
             self._logger.debug('%r: Detected multipage EEPROM on FMCA. Assuming >16-bit addressing.' % self._iceboard)
-            self._fmca_eeprom = eeprom.eeprom(self._i2c, self._FMC_EEPROM_ADDR, 'FMCA', self._MCGILL_FMC_EEPROM_ADDR_WIDTH, self._MCGILL_FMC_EEPROM_PAGE_SIZE)
+            self._fmca_eeprom = eeprom.eeprom(
+                self._i2c, self._FMC_EEPROM_ADDR, 'FMCA',
+                self._MCGILL_FMC_EEPROM_ADDR_WIDTH,
+                self._MCGILL_FMC_EEPROM_PAGE_SIZE)
         else:
-            self._fmca_eeprom = eeprom.eeprom(self._i2c, self._FMC_EEPROM_ADDR, 'FMCA', self._FMC_EEPROM_ADDR_WIDTH, self._FMC_EEPROM_PAGE_SIZE)
+            self._fmca_eeprom = eeprom.eeprom(
+                self._i2c, self._FMC_EEPROM_ADDR, 'FMCA',
+                self._FMC_EEPROM_ADDR_WIDTH,
+                self._FMC_EEPROM_PAGE_SIZE)
 
         if self._i2c.is_present(self._FMC_EEPROM_ADDR+1, bus_name='FMCB'):
             self._logger.debug('%r: Detected multipage EEPROM on FMCB. Assuming >16-bit addressing.' % self._iceboard)
-            self._fmcb_eeprom = eeprom.eeprom(self._i2c, self._FMC_EEPROM_ADDR, 'FMCB', self._MCGILL_FMC_EEPROM_ADDR_WIDTH, self._MCGILL_FMC_EEPROM_PAGE_SIZE)
+            self._fmcb_eeprom = eeprom.eeprom(
+                self._i2c, self._FMC_EEPROM_ADDR, 'FMCB',
+                self._MCGILL_FMC_EEPROM_ADDR_WIDTH, self._MCGILL_FMC_EEPROM_PAGE_SIZE)
         else:
-            self._fmcb_eeprom = eeprom.eeprom(self._i2c, self._FMC_EEPROM_ADDR, 'FMCB', self._FMC_EEPROM_ADDR_WIDTH, self._FMC_EEPROM_PAGE_SIZE)
+            self._fmcb_eeprom = eeprom.eeprom(
+                self._i2c, self._FMC_EEPROM_ADDR, 'FMCB',
+                self._FMC_EEPROM_ADDR_WIDTH, self._FMC_EEPROM_PAGE_SIZE)
 
         self._FMC_EEPROM_TABLE = {
             1: self._fmca_eeprom,
             2: self._fmcb_eeprom
             }
 
-
         self._logger.debug('%r: Instantiating I2C GPIO manager' % self._iceboard)
         self._gpio_power = pca9575.pca9575(self._i2c, self._GPIO_POWER_I2C_ADDR, 'GPIO')
         self._gpio_sw_leds = pca9575.pca9575(self._i2c, self._GPIO_SW_LEDS_ADDR, 'GPIO')
         self._gpio_arm_phy_leds = pca9575.pca9575(self._i2c, self._GPIO_ARM_PHY_LEDS_ADDR, 'GPIO')
         self._gpio_sfp_qsfp = pca9575.pca9575(self._i2c, self._GPIO_SFP_QSFP_I2C_ADDR, 'GPIO')
-
-
-
 
         self._gpio = gpio.GPIO(gpio_table={
             # name : (expander object, byte, lsb bit number,  width)
@@ -1726,7 +2537,6 @@ class IceBoardHardware(object):
         # self._power_fmcb_3v3 = ina230.ina230(self._i2c, self._POWER_FMCB3V3_I2C_ADDR, 'SMPS')
         # self._power_fmcb_vadj = ina230.ina230(self._i2c, self._POWER_FMCBVADJ_I2C_ADDR, 'SMPS')
 
-
         # self.TEMPERATURE_SENSOR_TABLE = {
         #     # sensor name: tmp object
         #     'TEMP_POWER': self._tmp_power,
@@ -1757,8 +2567,7 @@ class IceBoardHardware(object):
     def __repr__(self):
         return "%r.%s" % (self._iceboard, self.__class__.__name__)
 
-    @async
-    def open(self):
+    async def open(self):
         """
         """
         pass
@@ -1768,12 +2577,11 @@ class IceBoardHardware(object):
         if self._i2c:
             self._i2c = None
 
-    @async
-    def init(self):
+    async def init(self):
         """Initializes the motherboard hardware to a known state.
         This will turn off FMC power.
         """
-        yield async_moment
+        await asyncio.sleep(0)
         self._init_gpio_expanders()
         # self._init_temperature_sensors()
         # self.set_fmc_power()
@@ -1781,9 +2589,9 @@ class IceBoardHardware(object):
 
         # Initialize the QSFPs. This sets the reset and LowPower mode. Some
         # QSFP+ modules (like the 3M AOCs) will not work without this.
-        yield async_moment
+        await asyncio.sleep(0)
         self._qsfpa.init()
-        yield async_moment
+        await asyncio.sleep(0)
         self._qsfpb.init()
 
     def _init_gpio_expanders(self):
@@ -1799,7 +2607,13 @@ class IceBoardHardware(object):
                               cfg1_def=0b10101000,
                               out0_default=None,
                               out1_default=None,
-                              bken0=0b00,  # We need to disable 100K internal pull-ups/down so the PG_M2C can work properly (there is another external 100K pull up to VCC3V3 which pulls to GND when there is no power. Pulling up doesn't work when board is off , pull down doesn't work when board is ON)
+                              bken0=0b00,  # We need to disable 100K internal
+                              #       pull-ups/down so the PG_M2C can work
+                              #       properly (there is another external 100K
+                              #       pull up to VCC3V3 which pulls to GND
+                              #       when there is no power. Pulling up
+                              #       doesn't work when board is off , pull
+                              #       down doesn't work when board is ON)
                               bken1=0b00,
                               pupd0=0b00001000,  # don't care, pullups not enabled
                               pupd1=0b00001000
@@ -1834,17 +2648,20 @@ class IceBoardHardware(object):
         eeprom_object = self._FMC_EEPROM_TABLE[mezzanine]
         return eeprom_object.write(addr, data, **kwargs)
 
-    @async
-    def set_mezzanine_power(self, fmc_number=range(NUMBER_OF_FMC_SLOTS), state=[True]*NUMBER_OF_FMC_SLOTS):
+    async def set_mezzanine_power_async(self, fmc_number=list(range(NUMBER_OF_FMC_SLOTS)), state=[True]*NUMBER_OF_FMC_SLOTS):
         """
         Enables or disables power of the specified FMC slot.
-        Proper power sequencing is done to prevent the FMC board switchers to create too much a current spike when enabled.
+
+        Proper power sequencing is done to prevent the FMC board switchers to
+        create too much a current spike when enabled.
 
         History:
             140223 JFC: Modified to use register names.
-            140304 JM: Modified it so a state for every fmc can be specified. For now, state is either a boolean or a list of booleans with the same length as 'fmc_number'
-        Todo:
-            140223 JFC: used masked writes to avoid side effects.
+
+            140304 JM: Modified it so a state for every fmc can be specified.
+                For now, state is either a boolean or a list of booleans with
+                the same length as 'fmc_number' Todo: 140223 JFC: used masked
+                writes to avoid side effects.
         """
         if isinstance(fmc_number, int):
             fmc_number = [fmc_number]
@@ -1853,12 +2670,13 @@ class IceBoardHardware(object):
             state = [state] * len(fmc_number)
 
         for (fmc, fmc_state) in zip(fmc_number, state):
-            if fmc not in range(self.NUMBER_OF_FMC_SLOTS):
+            if fmc not in list(range(self.NUMBER_OF_FMC_SLOTS)):
                 raise ValueError('FMC number %i is not a valid value' % fmc)
             else:
                 # out_reg = 'OUT%i' % fmc # sets the register name to access based on the FMC number
                 # cfg_reg = 'CFG%i' % fmc
-                # self._gpio_power.write(out_reg, 0b00000000) # Turn off all power signals before we enable the GPIO outputs
+                # Turn off all power signals before we enable the GPIO outputs
+                # self._gpio_power.write(out_reg, 0b00000000)
                 # self._gpio_power.write(cfg_reg, 0b10101000)
 
                 # Bits are:
@@ -1871,28 +2689,34 @@ class IceBoardHardware(object):
                 #  1: FMC_EN_3V3
                 #  0: FMC_EN_12V
                 if fmc_state:
-                    self._gpio_power.write(fmc, 0b00000010, mask=0b00000010)  # Turn on 12V, 3.3V and VADJ power to board
-                    # self._gpio_power.write(fmc, 0b00000110, mask=0b00000110)  # Turn on 12V, 3.3V and VADJ power to board
-                    yield async_sleep(0.010)
-                    self._gpio_power.write(fmc, 0b00000100, mask=0b00000100)  # Turn on 12V, 3.3V and VADJ power to board
-                    yield async_sleep(0.100)
-                    self._gpio_power.write(fmc, 0b00000001, mask=0b00000001)  # Turn on 12V, 3.3V and VADJ power to board
-                    yield async_sleep(0.050)
-                    self._gpio_power.write(fmc, 0b01010000, mask=0b01010000)  # Set Power Good (start switcher) and CLKDIR to 1
-                    yield async_sleep(0.050)
+                    # Turn on 12V, 3.3V and VADJ power to board
+                    self._gpio_power.write(fmc, 0b00000010, mask=0b00000010)
+                    # self._gpio_power.write(fmc, 0b00000110, mask=0b00000110)
+                    await asyncio.sleep(0.010)
+                    # Turn on 12V, 3.3V and VADJ power to board
+                    self._gpio_power.write(fmc, 0b00000100, mask=0b00000100)
+                    await asyncio.sleep(0.100)
+                    # Turn on 12V, 3.3V and VADJ power to board
+                    self._gpio_power.write(fmc, 0b00000001, mask=0b00000001)
+                    await asyncio.sleep(0.050)
+                    # Set Power Good (start switcher) and CLKDIR to 1
+                    self._gpio_power.write(fmc, 0b01010000, mask=0b01010000)
+                    await asyncio.sleep(0.050)
                 else:
-                    self._gpio_power.write(fmc, 0b00000000, mask=0b01010000)  # Stop mezzanine switcher (PG=0)
-                    yield async_sleep(0.030)
-                    self._gpio_power.write(fmc, 0b00000000, mask=0b00000001)  # Turn off 12V
-                    yield async_sleep(0.030)
-                    self._gpio_power.write(fmc, 0b00000000, mask=0b00000010)  # Turn off rail
-                    yield async_sleep(0.030)
-                    self._gpio_power.write(fmc, 0b00000000, mask=0b00000100)  # Turn off rail
-                    yield async_sleep(0.100)
+                    # Stop mezzanine switcher (PG=0)
+                    self._gpio_power.write(fmc, 0b00000000, mask=0b01010000)
+                    await asyncio.sleep(0.030)
+                    # Turn off 12V
+                    self._gpio_power.write(fmc, 0b00000000, mask=0b00000001)
+                    await asyncio.sleep(0.030)
+                    # Turn off rail
+                    self._gpio_power.write(fmc, 0b00000000, mask=0b00000010)
+                    await asyncio.sleep(0.030)
+                    # Turn off rail
+                    self._gpio_power.write(fmc, 0b00000000, mask=0b00000100)
+                    await asyncio.sleep(0.100)
 
-
-    @async
-    def set_led(self, led_name, state):
+    async def set_led(self, led_name, state):
         """
         Set the LED(s) specified in 'led_name' to the the 'state'.
         'led_name' can be a list of LED names found in
@@ -1905,12 +2729,11 @@ class IceBoardHardware(object):
         if isinstance(state, (bool, int)):
             state = [state] * len(led_name)
 
-        yield async_moment
+        await asyncio.sleep(0)
         for (led, led_state) in zip(led_name, state):
             self._gpio.write(led, led_state)
 
-    @async
-    def get_led(self, led_name):
+    async def get_led(self, led_name):
         """
         Returns the status of specified LED(s) in a dictionary
         led_status where each key is a led_name and the respective value
@@ -1923,7 +2746,7 @@ class IceBoardHardware(object):
         for led in led_name:
             led_status[led] = self._gpio.read(led)
 
-        async_return(led_status)
+        return(led_status)
 
     # def _init_temperature_sensors(self, temperature_sensor_name=None, bit_resolution=12):
     #     """ Initialize temperature sensors.
@@ -1948,19 +2771,25 @@ class IceBoardHardware(object):
 
     #         for temp_sensor in temperature_sensor_name:
     #             if temp_sensor not in self.TEMPERATURE_SENSOR_TABLE:
-    #                 raise ValueError('Invalid temperature sensor name. Valid names are %s' % ','.join(self.TEMPERATURE_SENSOR_TABLE.keys()))
+    #                 raise ValueError(
+    #                      'Invalid temperature sensor name. Valid names are %s'
+    #                       % ','.join(self.TEMPERATURE_SENSOR_TABLE.keys()))
     #             else:
     #                 tmp_object = self.TEMPERATURE_SENSOR_TABLE[temp_sensor]
     #                 try:
     #                     tmp_object.init(bit_resolution)
     #                 except:
-    #                     self._logger.info('%r: Temperature sensor %s failed to initialize.' % (self._iceboard, temp_sensor))
+    #                     self._logger.info(
+    #                         '%r: Temperature sensor %s failed to initialize.'
+    #                          % (self._iceboard, temp_sensor))
 
     # def _init_power_sensors(self, power_sensor_name=None):
     #     """
     #     initializes current/power monitors
-    #     'power_sensor_name' can be a list of current/power monitor names found in POWER_SENSOR_TABLE. If power_sensor_name=None, all sensors in
-    #     POWER_SENSOR_TABLE are initialized.
+    #
+    #     'power_sensor_name' can be a list of current/power monitor names
+    #     found in POWER_SENSOR_TABLE. If power_sensor_name=None, all sensors
+    #     in POWER_SENSOR_TABLE are initialized.
 
     #     History:
     #     140320 JM: created
@@ -1972,14 +2801,15 @@ class IceBoardHardware(object):
 
     #     for power_sensor in power_sensor_name:
     #         if power_sensor not in self.POWER_SENSOR_TABLE:
-    #            raise ValueError('Invalid power sensor name. Valid names are %s' % ','.join(self.POWER_SENSOR_TABLE.keys()))
+    #            raise ValueError(
+    #                'Invalid power sensor name. Valid names are %s'
+    #                % ','.join(self.POWER_SENSOR_TABLE.keys()))
     #         else:
     #             power_sensor_object, v_out, r_shunt, i_typ, tol_i = self.POWER_SENSOR_TABLE[power_sensor]
     #             try:
     #                 power_sensor_object.init(v_out=v_out, r_shunt=r_shunt, i_typ=i_typ, tol_i=tol_i)
     #             except:
     #                 self._logger.info('%r: Power sensor %s failed to initialize.' % (self._iceboard, power_sensor))
-
 
     # def get_temperature(self, temperature_sensor_name=None):
     #     """
@@ -2039,7 +2869,9 @@ class IceBoardHardware(object):
 
     #     for power_sensor in power_sensor_name:
     #         if power_sensor not in self.POWER_SENSOR_TABLE:
-    #             raise ValueError('Invalid power sensor name. Valid names are %s.' % ','.join(self.POWER_SENSOR_TABLE.keys()))
+    #             raise ValueError(
+    #                    'Invalid power sensor name. Valid names are %s.'
+    #                    % ','.join(self.POWER_SENSOR_TABLE.keys()))
     #         else:
     #             power_sensor_object = self.POWER_SENSOR_TABLE[power_sensor][0]
 
@@ -2057,7 +2889,6 @@ class IceBoardHardware(object):
 
     #     return power_dict
 
-
     # def get_serial_number(self):
     #     """
     #     Returns the board's serial number. which is actually the FPGA's
@@ -2071,7 +2902,6 @@ class IceBoardHardware(object):
 
     # def status(self):
     #     """Displays the status of the motherboard"""
-
 
 
 # vim: sts=4 ts=4 sw=4 tw=80 smarttab expandtab

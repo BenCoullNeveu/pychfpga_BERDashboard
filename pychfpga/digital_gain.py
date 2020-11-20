@@ -1,6 +1,6 @@
+import logging
 import os
 import glob
-import re
 import datetime
 import time
 from calendar import timegm
@@ -10,8 +10,9 @@ import numpy as np
 
 from wtl.archive import Hdf5Archive
 
-__version__ = u'0.5'
-__archive_version__ = u'3.2.0'
+__version__ = '0.5'
+__archive_version__ = '3.2.0'
+
 
 class DigitalGainArchive(Hdf5Archive):
     """Interface to an Hdf5Archive containing digital gains.
@@ -22,14 +23,14 @@ class DigitalGainArchive(Hdf5Archive):
 
     _axes = {
         'update_time': {'dtype': np.float64},
-        'freq':  {'dtype': [('centre', '<f8'), ('width', '<f8')]},
-        'input': {'dtype': [('chan_id', 'u2'), ('correlator_input', 'S32')]},
+        'freq':  {'dtype': np.dtype([('centre', '<f8'), ('width', '<f8')])},
+        'input': {'dtype': np.dtype([('chan_id', 'u2'), ('correlator_input', 'U32')])},
     }
 
     _dataset_spec = {
         'update_id': {
             'axes': ['update_time', ],
-            'dtype': h5py.special_dtype(vlen=bytes),
+            'dtype': h5py.special_dtype(vlen=str),
             'metric': False,
         },
         'compute_time': {
@@ -64,7 +65,7 @@ class DigitalGainArchive(Hdf5Archive):
         Parameters
         ----------
         output_dir :  str
-            Directory where the digital gain acquisitions will be saved.
+            Directory where the digital gain acquisitions will be saved. There is no "~" or named-field expansion.
         output_suffix : str
             Suffix appended to the acquisition name.
         instrument_name :  str
@@ -79,12 +80,16 @@ class DigitalGainArchive(Hdf5Archive):
         max_file_size : int
             Maximum size in bytes of a single file.
         """
+
+        self.log = logging.getLogger(__name__)
+
         # Save axes
         self.axes = {}
         for ax in self._axes.keys():
             if ax != self._grow_ax:
                 if ax in kwargs:
-                    self.axes[ax] = kwargs.pop(ax)
+                    dtype = self._axes[ax]['dtype']
+                    self.axes[ax] = kwargs.pop(ax).astype(dtype)
                 else:
                     ValueError("Must pass the axis %s as a keyword arg when initializing %s." %
                                (ax, self))
@@ -92,11 +97,13 @@ class DigitalGainArchive(Hdf5Archive):
         # Set parameters that specify output file format
         self.output_dir = output_dir or '.'
         self.output_suffix = output_suffix
+        self.log.info(f'{self!r}: Digital gain output directory is {self.output_dir}')
 
         # Search for previous files
         if search:
-            search_pathname = os.path.join(self.output_dir,
-                              '*' + instrument_name + '_' + self.output_suffix, '*.h5')
+            search_pathname = os.path.join(
+                self.output_dir,
+                '*' + instrument_name + '_' + self.output_suffix, '*.h5')
             candidate_files = sorted(glob.glob(search_pathname))
 
             # Only use files with the same axes
@@ -106,15 +113,17 @@ class DigitalGainArchive(Hdf5Archive):
                 with h5py.File(cf, 'r') as hf:
 
                     valid = True
-                    for key, val in self.axes.iteritems():
+                    for key, val in self.axes.items():
+                        dtype = self._axes[key]['dtype']
                         valid = (valid and (key in hf['index_map']) and
                                  (hf['index_map'][key].size == val.size) and
-                                 np.all(hf['index_map'][key][:] == val))
+                                 np.all(hf['index_map'][key][:].astype(dtype) == val))
 
                     if valid:
-                         output_files.append(cf)
+                        output_files.append(cf)
 
             output_files = output_files or None
+            self.log.info(f'{self!r}: Searched for previous gain files.  Candidates are: {output_files}')
 
         else:
             output_files = None
@@ -128,14 +137,14 @@ class DigitalGainArchive(Hdf5Archive):
         if 'attrs' not in kwargs:
             kwargs['attrs'] = {}
 
-        for key, val in attrs.iteritems():
+        for key, val in attrs.items():
             if key not in kwargs['attrs']:
                 kwargs['attrs'][key] = val
 
         # Call superclass
-        super(DigitalGainArchive, self).__init__(archive_files=output_files,
-                                                 max_num=max_num, max_file_size=max_file_size,
-                                                 *args, **kwargs)
+        super().__init__(archive_files=output_files,
+                         max_num=max_num, max_file_size=max_file_size,
+                         *args, **kwargs)
 
         # Initialize the gain buffer
         self.buffer = {}
@@ -149,7 +158,7 @@ class DigitalGainArchive(Hdf5Archive):
 
         # Save the last update to the buffer
         if self.current_file is not None:
-            lastup = self.last_update
+            lastup = self.last_update_id
             for dset in datasets:
                 self.buffer[dset] = self.read(lastup, dset)
 
@@ -176,9 +185,8 @@ class DigitalGainArchive(Hdf5Archive):
         start_time = timegm(datetime.datetime.strptime(base_prefix, "%Y%m%dT%H%M%SZ").timetuple())
 
         # Determine directory
-        output_dir = os.path.join(self.output_dir, '_'.join([base_prefix,
-                                                             self.attrs['instrument_name'],
-                                                             self.output_suffix]))
+        output_dir = os.path.join(self.output_dir, '_'.join(
+            [base_prefix, self.attrs['instrument_name'], self.output_suffix]))
         try:
             os.makedirs(output_dir)
         except OSError:
@@ -234,11 +242,11 @@ class DigitalGainArchive(Hdf5Archive):
             kwargs[key] = value
 
         if 'update_id' not in kwargs:
-            kwargs['update_id'] = '_'.join([self.output_suffix,
-                                            datetime.datetime.utcfromtimestamp(smp).strftime("%Y%m%dT%H%M%S.%fZ")])
+            kwargs['update_id'] = '_'.join(
+                [self.output_suffix, datetime.datetime.utcfromtimestamp(smp).strftime("%Y%m%dT%H%M%S.%fZ")])
 
         # Call superclass
-        super(DigitalGainArchive, self).write(smp, **kwargs)
+        super().write(smp, **kwargs)
 
     def set_gain(self, gain, compute_time=None):
         """ Update the buffer with new gains.
@@ -282,10 +290,12 @@ class DigitalGainArchive(Hdf5Archive):
             Dictionary of format {'input_serial_number': [gain_coeff, gain_exp], ...}.
         compute_time : dict
             Dictionary of format {'input_serial_number': gain_timestamp, ...}
+
+        The ``input_serial_number`` values are unicode strings (not bytes, as in the archive)
         """
 
         if update_id is None:
-            update_id = self.last_update
+            update_id = self.last_update_id
 
         gain_coeff = self.read(update_id, 'gain_coeff')
         gain_exp = self.read(update_id, 'gain_exp')
@@ -293,7 +303,7 @@ class DigitalGainArchive(Hdf5Archive):
 
         gain, compute_time = {}, {}
         for ii, inp in enumerate(self.axes['input']['correlator_input']):
-
+            # str_inp = inp.decode()
             gain[inp] = [gain_coeff[:, ii], gain_exp[ii]]
             compute_time[inp] = gain_timestamp[ii]
 
@@ -301,11 +311,19 @@ class DigitalGainArchive(Hdf5Archive):
 
     @property
     def chan_id(self):
-        """Mapping between correlator input serial number and index into the input axis."""
+        """Mapping between correlator input serial number and index into the input axis.
+
+        Format is
+
+            {correlator_input_serial_number: numeric_channel_id}
+
+        where ``correlator_input_serial_number`` is a bytearray , and ``numeric_channel_id`` is an integer.
+
+        """
         try:
             return self._chan_id
 
         except AttributeError:
-            self._chan_id = {inp['correlator_input']:inp['chan_id']
+            self._chan_id = {inp['correlator_input']: inp['chan_id']
                              for inp in self.axes['input']}
             return self._chan_id

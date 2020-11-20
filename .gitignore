@@ -13,5 +13,6 @@ out_*/
 /nbproject/
 /src/
 /venv/
+/.venv/
 \.DS_Store
 /*.egg-info/

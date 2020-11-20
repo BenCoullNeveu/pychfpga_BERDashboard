@@ -1,4 +1,4 @@
-__version__ = "1.0"
+__version__ = "2.0"
 
 # Git version
 def get_git_version():
@@ -10,7 +10,7 @@ def get_git_version():
     try:
         return subprocess.check_output(
             'git describe --all --dirty --long'.split(),
-            cwd = os.path.dirname(PROGRAM)).strip()
+            cwd = os.path.dirname(PROGRAM)).decode().strip()
     except WindowsError:
         print('GIT was not found')
         return 'unknown' # JFC: To allow tests in windows

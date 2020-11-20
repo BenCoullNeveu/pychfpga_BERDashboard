@@ -1,6 +1,4 @@
 #!/usr/bin/python
-# Disable pylint Line too long (=C0301)
-# pylint: disable=C0301
 
 """
 CORR.py module
@@ -9,13 +7,12 @@ CORR.py module
  History:
  2017-05-04 : JFC : Created
 """
-# import ACC
 import time
 import logging
 import numpy as np
 import socket
 
-from Module import Module_base, BitField
+from .Module import Module_base, BitField
 
 #############################################
 # Basic Geometry of the firmware correlator
@@ -27,20 +24,21 @@ NBINS_TOTAL = 1024  # Number of frequency bins to process
 NPROD_PER_CMAC = 512  # Number of products per CMAC, limited by BRAM size (512 x (18+18) bits for the accumulator & capture RAM)
 NCLOCKS_PER_BIN = 4  # Number of clocks that in which all products of one bin must be computed. This matches how many clocks is needed to receive all the channels of one bin
 NBYTES_PER_PROD = 5  # 5 bytes for each product
-NBYTES_PER_HEADER = 12 # Number of bytes in correlator frame header
+NBYTES_PER_HEADER = 12  # Number of bytes in correlator frame header
 
 # Derived parameters
-NI_CLOCKS_PER_BIN = NCHAN / 2  # Clocks per bin of a straight Non-interleaved correlator architecture using the minimal amount of CMACs
+NI_CLOCKS_PER_BIN = NCHAN // 2  # Clocks per bin of a straight Non-interleaved correlator architecture using the minimal amount of CMACs
 NI_CMAC_PER_CORR = (NCHAN + 1)  # number of CMACs per correlator if computations are done in NI_CLOCKS_PER_BIN clocks
-NPROD_TOTAL = NCHAN * (NCHAN + 1) / 2  # Total number of products per correlator frame
-CMAC_INTERLEAVE_FACTOR = NI_CLOCKS_PER_BIN / NCLOCKS_PER_BIN
-NCMAC_PER_CORR = CMAC_INTERLEAVE_FACTOR * NI_CMAC_PER_CORR # Number of interleaved CMACs per core needed to make the computations in the target number of clocks
-NBINS_PER_CMAC = NPROD_PER_CMAC / NCLOCKS_PER_BIN  # Number of bins per CMAC. =512/4=128
-NBINS_PER_CORR = NBINS_PER_CMAC # = 128
-NCORR = NBINS_TOTAL / NBINS_PER_CORR  # = 8
+NPROD_TOTAL = NCHAN * (NCHAN + 1) // 2  # Total number of products per correlator frame
+CMAC_INTERLEAVE_FACTOR = NI_CLOCKS_PER_BIN // NCLOCKS_PER_BIN
+NCMAC_PER_CORR = CMAC_INTERLEAVE_FACTOR * NI_CMAC_PER_CORR  # Number of interleaved CMACs per core needed to make the computations in the target number of clocks
+NBINS_PER_CMAC = NPROD_PER_CMAC // NCLOCKS_PER_BIN  # Number of bins per CMAC. =512/4=128
+NBINS_PER_CORR = NBINS_PER_CMAC  # = 128
+NCORR = NBINS_TOTAL // NBINS_PER_CORR  # = 8
 
 raw_to_matrix_map = None
 raw_to_vector_map = None
+
 
 class CORR_core(Module_base):
     """ Implements interface to one of the correlator"""
@@ -50,16 +48,16 @@ class CORR_core(Module_base):
 
     # Control registers
     SOFT_RESET         = BitField(CONTROL, 0x00, 7, doc="Resets this correlator core.")
-    AUTOCORR_ONLY         = BitField(CONTROL, 0x00, 6, doc="Force the correlator input to be 0x10101010")
-    NO_ACCUM         = BitField(CONTROL, 0x00, 5, doc="Disables accumulation - only the last result is saved")
+    AUTOCORR_ONLY      = BitField(CONTROL, 0x00, 6, doc="Force the correlator input to be 0x10101010")
+    NO_ACCUM           = BitField(CONTROL, 0x00, 5, doc="Disables accumulation - only the last result is saved")
     USER_ID            = BitField(CONTROL, 0x00, 0, width=4, doc="USER ID used in the correlator packet header")
     INTEGRATION_PERIOD = BitField(CONTROL, 0x04, 0, width=32, doc="Duration of te integration period -1")
     BINS_PER_FRAME     = BitField(CONTROL, 0x05, 0, width=8, doc="Number of frequency bins per frame")
 
     # Status registers
-    STATUS_BYTE = BitField(STATUS, 0x00, 0, width=8, doc="Status byte")
-    IN_FRAME_CTR          = BitField(STATUS, 0x01, 0, width=8, doc="Input frame counter")
-    OUT_FRAME_CTR          = BitField(STATUS, 0x02, 0, width=8, doc="Output frame counter")
+    STATUS_BYTE   = BitField(STATUS, 0x00, 0, width=8, doc="Status byte")
+    IN_FRAME_CTR  = BitField(STATUS, 0x01, 0, width=8, doc="Input frame counter")
+    OUT_FRAME_CTR = BitField(STATUS, 0x02, 0, width=8, doc="Output frame counter")
 
     def __init__(self, fpga_instance, base_address, instance_number, verbose=0):
         super(CORR_core, self).__init__(fpga_instance, base_address, instance_number)
@@ -68,17 +66,12 @@ class CORR_core(Module_base):
 
     def init(self):
         """ Inisializes all modules of a correlator block."""
-        # self.CH_DIST.init()
-        # self.ACC.init()
-        # self.SOFT_RESET = self.instance_number!=0
         self.INTEGRATION_PERIOD = 16384-1
 
     def status(self):
         """Displays the status of al the correlator blocks"""
-        print '======= CORR.core[%i] =============' % self.instance_number
+        print('======= CORR.core[%i] =============' % self.instance_number)
         # self.CH_DIST.status()
-
-
 
 
 class CORR(object):
@@ -96,54 +89,62 @@ class CORR(object):
         """    Returns the correlator instance specified by the index"""
         return self.corr[key]
 
-
-
     def init(self):
         """ Initializes all correlators"""
         self.NUMBER_OF_CORRELATED_CHANNELS = 16
-        self.NUMBER_OF_CMACS_PER_CORRELATOR = 2*(self.NUMBER_OF_CORRELATED_CHANNELS + 1) # per correlator
-        self.PRODUCTS_PER_BIN = self.NUMBER_OF_CORRELATED_CHANNELS / 4  # per CMAC
+        self.NUMBER_OF_CMACS_PER_CORRELATOR = 2 * (self.NUMBER_OF_CORRELATED_CHANNELS + 1)  # per correlator
+        self.PRODUCTS_PER_BIN = self.NUMBER_OF_CORRELATED_CHANNELS // 4  # per CMAC
 
         for corr in self.corr:
             corr.init()
-
 
     def status(self):
         """ Displays the status of all correlators"""
         for corr in self.corr:
             corr.status()
 
-    def start_correlator(self, integration_period=16384, autocorr_only=False, correlators=None, bandwidth_limit=0.5e9, verbose=1):
+    def start_correlator(
+            self,
+            integration_period=16384,
+            autocorr_only=False,
+            correlators=None,
+            bandwidth_limit=0.5e9,
+            verbose=1):
         """ Start the correlator with specified parameters.
 
         """
 
         if correlators is None:
-            correlators = range(self.fpga.NUMBER_OF_CORRELATORS)
+            correlators = list(range(self.fpga.NUMBER_OF_CORRELATORS))
 
-        Ncorr = len(set(correlators)) # Number of active correlators
+        Ncorr = len(set(correlators))  # Number of active correlators
         Ncmac = 4 if autocorr_only else self.NUMBER_OF_CMACS_PER_CORRELATOR
-        Nprod = self.PRODUCTS_PER_BIN * self.fpga.FRAME_LENGTH / 2 / self.fpga.NUMBER_OF_CORRELATORS  # assumes the CROSSBAR is setup this way...
+        # Compute number of products. Assumes the CROSSBAR is setup this way...
+        Nprod = self.PRODUCTS_PER_BIN * self.fpga.FRAME_LENGTH // 2 // self.fpga.NUMBER_OF_CORRELATORS
         frame_rate = self.fpga.FRAME_RATE
         integ_rate = frame_rate / integration_period
-        cmac_frame_size = (42 + 12 + 5*Nprod) # for all specified correlators, in bytes
-        all_corr_frame_size = Ncorr * Ncmac * cmac_frame_size # for all specified correlators, in bytes
+        cmac_frame_size = (42 + 12 + 5 * Nprod)  # for all specified correlators, in bytes
+        all_corr_frame_size = Ncorr * Ncmac * cmac_frame_size  # for all specified correlators, in bytes
 
         bit_rate = integ_rate * all_corr_frame_size * 8
-        min_integ_period = frame_rate / (bandwidth_limit/8/all_corr_frame_size)
+        min_integ_period = frame_rate / (bandwidth_limit / 8 / all_corr_frame_size)
         autocorr_only_bit_rate = integ_rate * Ncorr * 4 * cmac_frame_size
         if verbose:
-            print 'Integration rate: %.1f integ/s (%.3fs/integ)' % (integ_rate, 1/integ_rate)
-            print 'Bit rate =%.3f Gbps' % ( bit_rate/ 1e9)
+            print('Integration rate: %.1f integ/s (%.3fs/integ)' % (integ_rate, 1 / integ_rate))
+            print('Bit rate =%.3f Gbps' % (bit_rate / 1e9))
         if bit_rate > bandwidth_limit:
-            raise ValueError('The correlator setting would make it produce %.3f Gbps of data, which exceeds the specified bandwith '
-                             'limit of %.3f Gbps. Try using a longer integration period (%i frames min).'
-                             'Note that sending only the autocorrlation products with autocorr_only=True will produce %.3f Gbps)' %
-                             (bit_rate/1e9, bandwidth_limit/1e9, min_integ_period, autocorr_only_bit_rate/1e9))
+            raise ValueError(
+                'The correlator setting would make it produce %.3f Gbps of data, which exceeds the specified bandwith '
+                'limit of %.3f Gbps. Try using a longer integration period (%i frames min).'
+                'Note that sending only the autocorrlation products with autocorr_only=True will produce %.3f Gbps)' % (
+                    bit_rate / 1e9,
+                    bandwidth_limit / 1e9,
+                    min_integ_period,
+                    autocorr_only_bit_rate / 1e9))
 
         self.fpga.set_corr_reset(1)
         for i, corr in enumerate(self.corr):
-            corr.SOFT_RESET = 1 # make sure we stop sending readouts in progres
+            corr.SOFT_RESET = 1  # make sure we stop sending readouts in progres
             corr.INTEGRATION_PERIOD = integration_period - 1
             corr.AUTOCORR_ONLY = autocorr_only
             corr.SOFT_RESET = i not in correlators
@@ -158,6 +159,7 @@ class CORR(object):
 ###################################################
 # Functions to support correlator data processing
 ###################################################
+
 
 def get_raw_corr_map():
     """
@@ -248,15 +250,11 @@ def get_raw_corr_map():
     """
 
     N = NCHAN
-    Ncmac = NI_CMAC_PER_CORR # Number of CMACs (before interleaving)
     Ncorr = NCORR
-    Nbins_per_corr = NBINS_PER_CORR # Number of bins processed by each correlator
-    Nprods = NPROD_PER_CMAC # NI_CLOCKS_PER_BIN * Nbins_per_corr # total number of products in a CMAC (before interleaving)
-    raw_map = np.zeros((Ncorr, Ncmac, Nprods, 3), int) - 1  # each element if raw_map[corr,cmac,prod] is a (bin, ch_x, ch_y) array
-    interleaved_raw_map = np.empty((Ncorr, Ncmac*2, Nprods/2, 3), int)
 
     # Create the arrays that will be used to index the raw data into the target array
-    # The first dimension is for the 3 indexes of the array (CORR, CMAC, PROD) and will be used to index the raw data with::
+    # The first dimension is for the 3 indexes of the array (CORR, CMAC, PROD)
+    # and will be used to index the raw data with::
     #
     #   raw_data(map[0], map[1], map[2])
     #
@@ -267,11 +265,11 @@ def get_raw_corr_map():
     raw_to_matrix_map = np.empty((3, NBINS_TOTAL, N, N), np.int16)
     raw_to_vector_map = np.empty((3, NBINS_TOTAL, NPROD_TOTAL), np.int16)
 
-    # We will first compute the corelator output as if we don't interleave the CMACs.
+    # We will first compute the correlator output as if we don't interleave the CMACs.
     # This means that the products for each bin are computed in N/2 clocks.
 
     # The vectors X & Y contain the data to be correlated.  X rotates down on each clock. Y does not.
-    # Each column describe the sample number aftec each NI_CLOCKS_PER_BIN = N/2 clocks
+    # Each column describe the sample number after each NI_CLOCKS_PER_BIN = N/2 clocks
     # X & Y shapes are (N, N/2)
     # X = [[0, 15, 14, 13 ... 9],
     #      [1, 0, 15, 14, ... 10],
@@ -281,11 +279,12 @@ def get_raw_corr_map():
     #      [1,1,1,1 ...],
     #      ...
     #      [15, 15, 15, 15]]
-    X = (np.arange(N)[:,None] - np.arange(NI_CLOCKS_PER_BIN)) % N
+    X = (np.arange(N)[:, None] - np.arange(NI_CLOCKS_PER_BIN)) % N
     Y = np.tile(np.arange(N)[:, None], (1, NI_CLOCKS_PER_BIN))
 
     # ni_i and ni_j are i,j index of the product that are outputted by each CMAC on each clock.
-    # Those have a dimension of (CMAC, clock). This covers only one bin, as all bins have the same order and will be tiled later.
+    # Those have a dimension of (CMAC, clock). This covers only one bin,
+    # as all bins have the same order and will be tiled later.
     # There are ordered in the order they arrive and are *written* in the CMAC
     # [(7,7), (6,6), (5,5), (4,4), (3,3), (2,2), (1,1), (0,0)]
     # [(15,15), (14,14), (13,13), (12,12), (11,11), (10,10), (9,9), (8,8)]
@@ -298,12 +297,12 @@ def get_raw_corr_map():
     ni_j = np.zeros((NI_CMAC_PER_CORR, NI_CLOCKS_PER_BIN), dtype=int)
 
     # First handle non-rotated elements
-    ni_i[0] = ni_j[0] = X[N / 2 - 1]
+    ni_i[0] = ni_j[0] = X[N // 2 - 1]
     ni_i[1] = ni_j[1] = X[N - 1]
     ni_i[2:] = X[:N - 1]
     ni_j[2:] = Y[1:]
 
-    # Handle rotated-in i indices: they use different indices and are compelx conjugate
+    # Handle rotated-in i indices: they use different indices and are complex conjugate
     for clock in range(NI_CLOCKS_PER_BIN):
         ni_j[2:2 + clock, clock] = Y[:clock, clock]
 
@@ -338,9 +337,8 @@ def get_raw_corr_map():
     ii_i = np.fliplr(ii_i)
     ii_j = np.fliplr(ii_j)
 
-    # Procuct number, in the order they are received
+    # Product number, in the order they are received
     # [0, 1, 2... 511]
-
 
     corr_vector = np.arange(Ncorr, dtype=int)
     cmac_vector = np.arange(NCMAC_PER_CORR, dtype=int)
@@ -352,7 +350,8 @@ def get_raw_corr_map():
     prod_matrix = np.broadcast_to(prod_vector[None, None, :], shape)
 
     # Compute the bin number that correspond to each bin index.
-    # By default, each correlator gets 1/8th of the bins, so the bin_number is bin_index * 8, offseted by the correlator number.
+    # By default, each correlator gets 1/8th of the bins, so the bin_number
+    # is bin_index * 8, offset by the correlator number.
     # [1016,1016,1016,1016, 1008,1008,1008,1008, ... 0,0,0,0]
     # [1016,1016,1016,1016, 1008,1008,1008,1008, ... 0,0,0,0]
     # ...
@@ -364,14 +363,13 @@ def get_raw_corr_map():
     # broadcast those when they appear in a tuple.
     raw_to_matrix_map[:, freq_bin, ii_i, ii_j] = (
         corr_matrix,  # int scalar, broadcasted to all elements
-        cmac_matrix,  # 1xNCMAC column, broadcasted to evert product
-        prod_matrix # NPROD x NCMAC array indicating the product number
+        cmac_matrix,  # 1xNCMAC column, broadcasted to every product
+        prod_matrix  # NPROD x NCMAC array indicating the product number
         )
 
-
-    # Copy the (corr,cmax,prod) coordinate from the upper to the lower
+    # Copy the (corr,cmac,prod) coordinate from the upper to the lower
     # triangle so the data will appear both at (i,j) and (j,i)
-    i, j = np.triu_indices(N, 1) # don't include diagonal
+    i, j = np.triu_indices(N, 1)  # don't include diagonal
     raw_to_matrix_map[..., j, i] = raw_to_matrix_map[..., i, j]
 
     # Compute to map that convert the raw data into a linearized list of products in the order
@@ -402,8 +400,6 @@ def get_raw_to_vector_map():
 
     return raw_to_vector_map
 
-
-
 # def imap(self, shape):
 #     """ Return an array of shape `shape` where each element is a 3-element tuple containing the index on that element.
 #     """
@@ -423,57 +419,59 @@ def get_raw_to_vector_map():
 
 
 class CorrFrameReceiver(object):
-    """ Pure Python socket receiver to capture the data from the FPGA-based
-        16-channel full N-square firmware correlator and integrates it in real
-        time.
-
-        Note that the packets are larger than 1500 bytes, which requires the
-        networking equipment and the computer interface to be configured to
-        receive Jumbo frames.
-
-        The receiver is fast enough to capture data that is integrated in firmware
-        down to a rate of about 10 ms/integrated frame, that is, exceeding 500
-        Mbits/s, provided the system provides a suffienctly big UDP buffer to hold
-        the data until the receiver method is called to process it.
-
-        The receiver can perform real-time software integration of the data. A
-        specific number of software-integrated frames can be returned, or data can
-        be saved to disk indefinitely until stopped.
-
-        Parameters:
-
-            socket (socket.socket): An opened and bound UDP socket to which the
-                FPGA correlator data will be sent. The socket will not be closed
-                when the call is completed.
-
-        System Requirements:
-
-        The transmit rate must be fast enough to accomodate the desired bandwidth
-        by setting ib.GPIO.HOST_FRAME_READ_RATE = rate. rate=16 limits to about
-        260 Mbps but is slow enough to allow python to process the data with a
-        small standard UDP buffer. ``rate``=15 is good for about 500 Mbps, and
-        ``rate``=16 is good for the full Gigabit bandwidth. The latetr two require
-        bigger UDP buffers. See below::
-
-            ib.GPIO.HOST_FRAME_READ_RATE = 14
-
-        The Ethernet interface must be set to receive Jumbo frames::
-
-            sudo ifconfig eno1 mtu 9000
-
-        The UDP buffers shall be increased to reduce packet loss to a minimum::
-            sudo sysctl -w net.core.rmem_max=26214400
-            sudo sysctl -w net.core.rmem_default=26214400
-            sudo sysctl -w net.ipv4.udp_mem='26214400 26214400 26214400'
-            sudo sysctl -w net.ipv4.udp_rmem_min=26214400
-
-        Check udp buffers::
-            sysctl -a | grep mem
-
-        Monitor UDP buffer::
-
-            watch -cd -n .5 "grep :A6  /proc/net/udp"
     """
+    Pure Python socket receiver to capture the data from the FPGA-based
+    16-channel full N-square firmware correlator and integrates it in real
+    time.
+
+    Note that the packets are larger than 1500 bytes, which requires the
+    networking equipment and the computer interface to be configured to
+    receive Jumbo frames.
+
+    The receiver is fast enough to capture data that is integrated in firmware
+    down to a rate of about 10 ms/integrated frame, that is, exceeding 500
+    Mbits/s, provided the system provides a sufficiently big UDP buffer to hold
+    the data until the receiver method is called to process it (see below).
+
+    The receiver can perform real-time software integration of the data. A
+    specific number of software-integrated frames can be returned, or data can
+    be saved to disk indefinitely until stopped.
+
+    Parameters:
+
+        socket (socket.socket): An opened and bound UDP socket to which the
+            FPGA correlator data will be sent. The socket will not be closed
+            when the call is completed.
+
+    System Requirements:
+
+    The transmit rate must be fast enough to accommodate the desired bandwidth
+    by setting ib.GPIO.HOST_FRAME_READ_RATE = rate. rate=16 limits to about
+    260 Mbps but is slow enough to allow python to process the data with a
+    small standard UDP buffer. ``rate``=15 is good for about 500 Mbps, and
+    ``rate``=16 is good for the full Gigabit bandwidth. The latetr two require
+    bigger UDP buffers. See below::
+
+        ib.GPIO.HOST_FRAME_READ_RATE = 14
+
+    The Ethernet interface must be set to receive Jumbo frames::
+
+        sudo ifconfig eno1 mtu 9000
+
+    The UDP buffers shall be increased to reduce packet loss to a minimum::
+        sudo sysctl -w net.core.rmem_max=26214400
+        sudo sysctl -w net.core.rmem_default=26214400
+        sudo sysctl -w net.ipv4.udp_mem='26214400 26214400 26214400'
+        sudo sysctl -w net.ipv4.udp_rmem_min=26214400
+
+    Check udp buffers::
+        sysctl -a | grep mem
+
+    Monitor UDP buffer::
+
+        watch -cd -n .5 "grep :A6  /proc/net/udp"
+    """
+
     def __init__(self, socket, packets_per_chunk=1*34*8):
 
         self.NCHAN = NCHAN
@@ -499,7 +497,6 @@ class CorrFrameReceiver(object):
             ('ts', '<u4', 1),
             ('data', self.product_dtype, self.NPROD)])
 
-
         # Pre-allocate buffers
         # Buffer in which recv_into() will put the data directly
         self.buf = np.empty((self.NPACKETS, self.PACKET_SIZE), dtype=np.uint8)
@@ -508,17 +505,15 @@ class CorrFrameReceiver(object):
 
         # Various views of the buffer to allow quick and easy access to the packet contents
         self.buf_struct = self.buf.view(self.packet_dtype)
-        self.buf_data_h = self.buf_struct['data'][:,0]['h']
-        self.buf_data_l = self.buf_struct['data'][:,0]['l']
-        self.buf_data_sat = self.buf_struct['data'][:,0]['sat']
-        self.buf_ts = self.buf_struct['ts'][:,0]
-        self.buf_corr = self.buf_struct['corr'][:,0]
-        self.buf_cmac = self.buf_struct['cmac'][:,0]
+        self.buf_data_h = self.buf_struct['data'][:, 0]['h']
+        self.buf_data_l = self.buf_struct['data'][:, 0]['l']
+        self.buf_data_sat = self.buf_struct['data'][:, 0]['sat']
+        self.buf_ts = self.buf_struct['ts'][:, 0]
+        self.buf_corr = self.buf_struct['corr'][:, 0]
+        self.buf_cmac = self.buf_struct['cmac'][:, 0]
 
         # Temporary storage to extract the real/imaginary part from the 5-byte packed product
         self.temp32 = np.empty((self.NPACKETS, self.NPROD), dtype=np.int32)
-
-
 
     def flush(self, timeout=0.001, timestamp_jump_threshold=2):
         """ Flush the UDP buffer until the timout occurs or the packet timestamp jumps by more `threshold` or more.
@@ -549,16 +544,21 @@ class CorrFrameReceiver(object):
                 if ts != self.last_ts:
                     if self.last_ts is not None and ts-self.last_ts >= jump:
                         if jump == 1:
-                            print('    Flushing stopped because we found a timestamp jump from %i to %i' % (self.last_ts, ts) )
+                            print('    Flushing stopped because we found a timestamp jump from %i to %i' % (
+                                self.last_ts,
+                                ts))
                             self.last_ts = ts
                             self.n = 1
                             break
                         else:
-                            print('    Detected a timestamp jump from %i to %i. Now flushing the rest of the packets with the same timestamp' % (self.last_ts, ts) )
+                            print('    Detected a timestamp jump from %i to %i. '
+                                  'Now flushing the rest of the packets with the same timestamp' % (
+                                    self.last_ts,
+                                    ts))
                             self.last_ts = ts
                             jump = 1
                             continue
-                    print('    Flushing correlator timestamp %i' % ts)
+                    print(('    Flushing correlator timestamp %i' % ts))
                     self.last_ts = ts
                 flushed_packets += 1
                 flushed_bytes += s
@@ -566,14 +566,17 @@ class CorrFrameReceiver(object):
                 print('    Flushing stopped because no data has been received for the timeout period ')
                 break
         self.socket.settimeout(old_timeout)
-        print('Flushed %i UDP packets in total (%.1f kbytes)' % (flushed_packets, flushed_bytes / 1024.))
+        print(('Flushed %i UDP packets in total (%.1f kbytes)' % (flushed_packets, flushed_bytes / 1024.)))
 
     def align(self):
-        """ Flush packets until we receive the packet that is part of the first frame of the specified integration period.
+        """
+        Flush packets until we receive the packet that is part of the first
+        frame of the specified integration period.
 
         This first packet is left in the buffer.
         """
-        #If the first packet in the buffer is already on an integration boundary, we don't need to drop packets to align
+        # If the first packet in the buffer is already on an integration
+        # boundary, we don't need to drop packets to align
         if self.n and not (self.buf_ts[0] % self.soft_integ_period):
             print("align: We're already aligned, no need to flush packets!")
             return
@@ -581,20 +584,32 @@ class CorrFrameReceiver(object):
         print('Waiting for first frame of the specified integration period')
         while True:
             try:
-                s = self.socket.recv_into(self.buf[0])
+                self.socket.recv_into(self.buf[0])
                 ts = self.buf_ts[0]
-                if ts != self.last_ts: # we have a new timestamp
+                if ts != self.last_ts:  # we have a new timestamp
                     self.last_ts = ts
                     integ_index = ts % self.soft_integ_period
-                    if integ_index == 0: # if the new frame is on an integration period
+                    if integ_index == 0:  # if the new frame is on an integration period
                         self.n = 1
                         break
-                    print('   Discarding correlator timestamp %i (integration index %i/%i)' % (ts, integ_index, self.soft_integ_period))
+                    print('   Discarding correlator timestamp %i (integration index %i/%i)' % (
+                            ts,
+                            integ_index,
+                            self.soft_integ_period))
             except socket.timeout:
                 continue
 
 
-    def read_corr_frames(self,  soft_integ_period=1, number_of_results=1, filename=None, flush=True, align=True, data_timeout=0.001, flush_timeout=0.001, return_format='raw'):
+    def read_corr_frames(
+            self,
+            soft_integ_period=1,
+            number_of_results=1,
+            filename=None,
+            flush=True,
+            align=True,
+            data_timeout=0.001,
+            flush_timeout=0.001,
+            return_format='raw'):
         """
 
         Parameters:
@@ -616,9 +631,6 @@ class CorrFrameReceiver(object):
 
 
         """
-
-
-
         # integration_period = self.CORR[0].INTEGRATION_PERIOD + 1
         # integration_time = 2.56e-6 * integration_period
 
@@ -631,7 +643,6 @@ class CorrFrameReceiver(object):
 
         # print 'Correlator is sending data at %.3f Gb/s, correlator frame period= %i channelizer frames = %.3f ms, minimum transmit time = %.3f' % (average_data_rate/1e9, integration_period, integration_time*1000, min_transmit_time*1000)
         # print 'We expect around %.1f packets and %.1f correlator frames in the requested integration period of %.3fs' % (expected_packets, expected_corr_frames, integ_time)
-
 
         if return_format not in ('raw', 'matrix', 'vector'):
             raise ValueError('Invalid return format "%s"' % return_format)
@@ -678,7 +689,9 @@ class CorrFrameReceiver(object):
         # discard_if_incomplete = True
         # first_integ = True
 
-        # acquirte frames. Check timestamp. drop frames until we have an almost full first frame. Drop frames until we get the first frame of a soft frame.
+        # acquire frames. Check timestamp. drop frames until we have an
+        # almost full first frame. Drop frames until we get the first frame of
+        # a soft frame.
 
         # Clear the software packet buffer
         # self.n = 0
@@ -706,13 +719,13 @@ class CorrFrameReceiver(object):
         if align:
             self.align()
 
-
         current_integ = self.last_ts // self.soft_integ_period
         integ_number = 0
         packets = 0
         timeouts = 0
         bad_packets = 0
-        print('Accumulating software frame #%i, starting with correlator frame number %i (%i/%i)' % (current_integ, self.last_ts, self.last_ts % self.soft_integ_period, self.soft_integ_period))
+        print('Accumulating software frame #%i, starting with correlator frame number %i (%i/%i)' % (
+            current_integ, self.last_ts, self.last_ts % self.soft_integ_period, self.soft_integ_period))
         while True:
             try:
                 s = self.socket.recv_into(self.buf[self.n])
@@ -733,7 +746,7 @@ class CorrFrameReceiver(object):
             if ts != self.last_ts:
                 if self.n:
                     self.accumulate_data(self.n, integ_number, self.last_ts)
-                    self.buf[0,:] = self.buf[self.n, :]
+                    self.buf[0, :] = self.buf[self.n, :]
                 self.n = 1
                 self.last_ts = ts
                 # If the timestamp change imply and integration period change,
@@ -759,11 +772,11 @@ class CorrFrameReceiver(object):
             # l=empty((1*8*34,512), dtype=np.int32)
             # h=a.view(t)[:,0]['data']['h'].copy();np.left_shift(h,4,h);np.right_shift(h,14,h);np.add(z,h,out=z)
         # print 'Got %i packets in %i chunks with %i timeouts total and %i data timeouts. Processing took on average %i packets/chunk at %.3f ms/chunk, %.1f bytes/packet' % (packets, chunks, timeouts, data_timeouts, float(self.NPACKETS)/chunks, (float(dt) / chunks) * 1000, float(size)/packets)
-        print('Received %i packets, %i no-data-available events' % (packets, timeouts))
-        print('Got %.1f%% of the packets, and between %.1f%% and %.1f%% of the correlator frames' % (
+        print(('Received %i packets, %i no-data-available events' % (packets, timeouts)))
+        print(('Got %.1f%% of the packets, and between %.1f%% and %.1f%% of the correlator frames' % (
                 float(packets)/(self.NCORR * self.NCMAC * self.soft_integ_period * number_of_results) * 100,
                 np.min(self.count)/float(self.soft_integ_period) * 100,
-                np.max(self.count)/float(self.soft_integ_period) * 100))
+                np.max(self.count)/float(self.soft_integ_period) * 100)))
         # self.sat.real /= 32.
         # self.sat.imag /= 16.
         self.sat_cplx.real = self.sat[..., 0] / 32.
@@ -774,7 +787,7 @@ class CorrFrameReceiver(object):
             return (self.data, self.count, self.sat_cplx)
         elif return_format == 'matrix':
             m = get_raw_to_matrix_map()
-            matrix = self.data[:,m[0], m[1], m[2]]
+            matrix = self.data[:, m[0], m[1], m[2]]
             # conjugate the lower triangle
             (i, j) = np.triu_indices(self.NCHAN)
             matrix[..., j, i] = matrix[..., i, j].conjugate()
@@ -837,13 +850,14 @@ class CorrFrameReceiver(object):
             dt1 = t2 - t1
             dt2 = t3 - t2
             dt = t3 - t1
-            print('Processing & accumulating %i packets for software frame %i from correlator frame %i (%i/%i);  took %.3f ms (%.3f ms/corr frame) (%.3f + %.3f ms)' % (
-                number_of_packets,
-                integ_number,
-                ts,
-                ts % self.soft_integ_period,
-                self.soft_integ_period,
-                dt * 1000,
-                (float(dt) / (self.NCORR * self.NCMAC) * 1000),
-                dt1 * 1000,
-                dt2 * 1000))
+            print('Processing & accumulating %i packets for software frame %i from correlator frame %i (%i/%i);  '
+                  'took %.3f ms (%.3f ms/corr frame) (%.3f + %.3f ms)' % (
+                        number_of_packets,
+                        integ_number,
+                        ts,
+                        ts % self.soft_integ_period,
+                        self.soft_integ_period,
+                        dt * 1000,
+                        (float(dt) / (self.NCORR * self.NCMAC) * 1000),
+                        dt1 * 1000,
+                        dt2 * 1000))

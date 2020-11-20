@@ -19,17 +19,30 @@ with open(path.join(here, 'pychfpga', '_version.py')) as f:
 with open(path.join(here, 'requirements.txt')) as f:
     requirements = [line.split(';')[0].rstrip() for line in f]
 
+# Load the long description from the README file
+with open("README", "r", encoding='utf-8') as f:
+    long_description = f.read()
 
 # Install the python packages.
-setup(name = "pychfpga",
-      version = __version__,
+setup(
+      name="pychfpga",
+      version=__version__,
       description=('Control and monitors a array of ICEBoard '
                    'running the chfpga (X-Engine + corner-turn) '
-                   'or sifpga (F-Engine + 16-channel X-Engine) FGPA firmware'),
+                   'or sifpga (F-Engine + 16-channel X-Engine) FPGA firmware'),
+      long_description=long_description,
+      long_description_content_type="text/x-rst",
       url='https://bitbucket.org/winterlandcosmology/pychfpga',
       author='McGill University',
       author_email='jfcliche@jfcliche.com',
       packages=find_packages(),
+      classifiers=[
+              "Programming Language :: Python :: 3",
+              "Operating System :: OS Independent",
+              "Topic :: Scientific/Engineering :: Astronomy",
+              "Intended Audience :: Science/Research",
+          ],
+      python_requires='>=3.7',
       install_requires=requirements,
       include_package_data=True,
       entry_points = {'fm': ['fm=fpga_master:main']},

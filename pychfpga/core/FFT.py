@@ -13,7 +13,7 @@ History:
 """
 #import time
 import numpy as np
-from Module import Module_base, BitField
+from .Module import Module_base, BitField
 
 
 class FFT_base(Module_base):
@@ -59,11 +59,11 @@ class FFT_base(Module_base):
 
     def status(self):
         """ Displays the status of the data capture module"""
-        print '-------------- ANT[%i].FFT STATUS --------------' % self.instance_number
-        print ' FFT Bypass: %s' % (bool(self.BYPASS))
-        print ' FFT SHIFT schedule: 0x%X' % (self.FFT_SHIFT)
-        print ' CASPER block pipeling delay: Measured=%i, set point=%i:  clocks' % (self.MEASURED_PIPELINE_DELAY, self.PIPELINE_DELAY)
-        print ' Number of FFT overflows: %i' % (self.OVERFLOW_COUNT)
+        print('-------------- ANT[%i].FFT STATUS --------------' % self.instance_number)
+        print(' FFT Bypass: %s' % (bool(self.BYPASS)))
+        print(' FFT SHIFT schedule: 0x%X' % (self.FFT_SHIFT))
+        print(' CASPER block pipeling delay: Measured=%i, set point=%i:  clocks' % (self.MEASURED_PIPELINE_DELAY, self.PIPELINE_DELAY))
+        print(' Number of FFT overflows: %i' % (self.OVERFLOW_COUNT))
 
     def pfb_fft(self, data, N=4):
         """
@@ -72,11 +72,11 @@ class FFT_base(Module_base):
         # Compute window function
         frame_length = len(data[0])
         number_of_frames = len(data)
-        sinc_window = np.sinc((np.arange(-frame_length * N/2, frame_length * N/2) + 0.5) / frame_length)
+        sinc_window = np.sinc((np.arange(-frame_length * N // 2, frame_length * N // 2) + 0.5) / frame_length)
         hamming_window = np.hamming(frame_length * N)
         window = np.reshape((sinc_window * hamming_window * 512), (4, -1))
 
-        windowed_data = [np.sum(data[n:n+4, :] * window, axis=0) for n in range(0, number_of_frames-4+1)]
+        windowed_data = [np.sum(data[n: n+4, :] * window, axis=0) for n in range(0, number_of_frames - 4 + 1)]
         fft = np.fft.rfft(windowed_data)
         return fft
 

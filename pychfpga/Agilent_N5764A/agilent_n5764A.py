@@ -1,59 +1,17 @@
-"""Hardware map object for the Agilent N5764A power supply.
+"""Object for the Agilent N5764A power supply.
 """
 
-# import tornado.gen
-# import select
-# import socket
-# import contextlib
-# import logging
-# import functools
 import time
 
-from sqlalchemy import Column, Integer, String, ForeignKey
-from sqlalchemy import UniqueConstraint, CheckConstraint
-from sqlalchemy.orm import relationship, backref
-from sqlalchemy.orm.collections import attribute_mapped_collection
-
-from pychfpga.core.icecore import hardware_map
-
-from pychfpga.core.icecore import handler
-from pychfpga.core.icecore import session
-from agilent_N5700 import agilent_N5700
-# from hw import ipmi_fru
-# import datetime
-# import base64
-
-@session.register_yaml_object()
-class AgilentN5764A(hardware_map.HWMResource, handler.HandlerObject):
-    handler_name = 'AgilentN5764AHandler'
-    __tablename__ = 'AgilentN5764A'
-    # __table_args__ = (
-    #     UniqueConstraint('serial'),
-    # )
-    __mapper_args__ = {'polymorphic_identity': 'AgilentN5764A',
-                       'polymorphic_on':'_polymorphic_key'}
-    __ipmi_part_number__ = None  # Must match part number in IPMI data
-
-    _pk = Column(Integer, primary_key=True)
-    _polymorphic_key = Column(String)  # Needed to allow multiple types of power supplies
-
-    hostname = Column(String,
-                    doc="The hostname (ip address or name of the power supply")
-
-    # serial = Column(String,
-    #                 doc="The serial number written on the board (e.g. '001')")
-
-    def __repr__(self):
-        return "%s(%s)" % (self.__class__.__name__, self.hostname)
+from .agilent_N5700 import agilent_N5700
 
 
-class AgilentN5764AHandler(handler.Handler):
+class AgilentN5764A:
     """
     Provide the basic methods to operate an Agilent N5700-series power supply.
     """
-    __handler_for__ = AgilentN5764A
 
-    hostname = handler.HandlerParentAttribute(lambda ib: ib.hostname)
+    hostname = None
 
     def __init__(self, hostname=None, port=5025, timeout=0.5,  **kwargs):
         """
@@ -62,12 +20,12 @@ class AgilentN5764AHandler(handler.Handler):
         Arguments:
             hostname (str): the hostname or IP address of the power supply
         """
-        super(AgilentN5764AHandler, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.hostname = hostname
         self.port = port
         self.timeout = timeout
         self.locked = True
-        self.ps = None  # The actual power supply object is created oply during open() to defer actual communications with the unit.
+        self.ps = None  # The actual power supply object is created only during open() to defer actual communications with the unit.
 
     def open(self):
         if self.ps:

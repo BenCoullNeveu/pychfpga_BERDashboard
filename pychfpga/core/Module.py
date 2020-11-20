@@ -8,11 +8,18 @@ Module.py module
 #
 # History:
     2011-08-03 JFC : Created from ANT.py
+
     2011-09-25 JFC: Added read_DRP and read_RAM
-    2012-06-23 JFC: Added bitfield_property to introduce a new way to define bitfields (allows these bitfields to be more easily referred to as function arguments, and makes pylint happier)
-        Fixed class name printing when raising exception when attempting to write to a locked attribute
-    2012-07-23 JFC: Fixed read_ and write_bitfield to correctly handle data as big endian (MSB at lower address).
-        Added 32-bit field support.
+
+    2012-06-23 JFC: Added bitfield_property to introduce a new way to define
+        bitfields (allows these bitfields to be more easily referred to as
+        function arguments, and makes pylint happier) Fixed class name
+        printing when raising exception when attempting to write to a locked
+        attribute
+
+    2012-07-23 JFC: Fixed read_ and write_bitfield to correctly handle data as
+        big endian (MSB at lower address). Added 32-bit field support.
+
     2012-07-25 JFC: added bitfield() to facilitate access to bitfield properties and methods
 """
 
@@ -21,7 +28,7 @@ import time
 
 _CONTROL_BASE_ADDR = 0x000000
 _STATUS_BASE_ADDR = 0x080000
-_RAM_BASE_ADDR = 0x100000
+_RAM_BASE_ADDR = 0x100000  # also used for DRP access
 
 
 # Page values
@@ -30,10 +37,21 @@ STATUS = 1  # STATUS bytes (read only)
 RAM = 2  # RAM or FIFO
 DRP = 3  # Dynamic Reconfiguration Port
 
+# Match the page number with the corresponding address offset
+PAGE_OFFSET = {
+    CONTROL: _CONTROL_BASE_ADDR,
+    STATUS: _STATUS_BASE_ADDR,
+    RAM: _RAM_BASE_ADDR,
+    DRP: _RAM_BASE_ADDR
+    }
+
+
 class BitField(object):
     """
-    Holds the definition of a memory-mapped variable
-    It is implemented as a data descriptor that calls the read_bitfield() and write_field() properties of the parent object when accessed.
+    Holds the definition of a memory-mapped variable.
+
+    It is implemented as a data descriptor that calls the read_bitfield() and
+    write_field() properties of the parent object when accessed.
     """
     # Page values
     CONTROL = CONTROL  # Control bytes (read/write)
@@ -41,38 +59,117 @@ class BitField(object):
     RAM = RAM  # RAM or FIFO
     DRP = DRP  # Dynamic Reconfiguration Port
 
+    data_types = {  # bit_width: numpy_data_type
+        1: np.dtype('>u1'),
+        2: np.dtype('>u2'),
+        4: np.dtype('>u4'),
+        8: np.dtype('>u8')}
 
     def __init__(self, page, addr, bit, width=1, default=None, doc='No documentation available'):
+
+        if page not in PAGE_OFFSET:
+            raise ValueError('Unknown page %i' % page)
+
         self.page = page
-        self._addr = addr
+        self._addr = addr  # relative address of the last control byte within the page
         self.bit = bit
         self.width = width
         self.default = default
         self.doc = doc
 
+        # Pre-process some readout parameters to improve speed
+        self.lsb_addr = addr - bit // 8  # rightmost byte address
+        self.msb_addr = addr - (bit + width - 1) // 8  # leftmost byte address
+        self.number_of_bytes = self.lsb_addr - self.msb_addr + 1
+
     def __set__(self, obj, value):
-        obj.write_bitfield(self, value)
+        self.write(obj, value)
 
     def __get__(self, obj, obj_type):
-        if obj is not None:  # if accesed from an instance
-            return obj.read_bitfield(self)
-        else:
+        if obj is None:  # if not accessed from an instance
             return self
+        else:
+            return self.read(obj)
 
-    def get_addr(self):
-        """
-        Returns the Memory-mapped address corresponding to the bit field
-        """
-        if self.page == self.CONTROL:
-            return _CONTROL_BASE_ADDR + (self._addr & 0x07F)
+    def write(self, obj, value):
+        # obj.write_bitfield(self, value)
+        if (value >= 2 ** self.width) or value < 0:
+            raise Exception('Bad value %r for memory-mapped property %s' % (value, self.get_name(obj)))
+
+        if self.page == self.DRP:
+            old_data = obj.read_drp(self._addr)  # read 16-bit value
+            mask = (2 ** self.width - 1) << self.bit
+            new_data = old_data & ~mask
+            new_data |= ((value << self.bit) & mask)
+            obj.write_drp(self._addr, new_data)
+        elif self.page == self.CONTROL:
+            number_of_bytes = (self.bit + self.width - 1) // 8 + 1
+            mask_bytes = np.array(((1 << self.width)-1) << self.bit, '>u8').tobytes()
+            data_bytes = np.array(value << self.bit, '>u8').tobytes()
+
+
+            obj.write_control(self.msb_addr,
+                              data_bytes[-number_of_bytes:],
+                              mask=mask_bytes[-number_of_bytes:])
+
         elif self.page == self.STATUS:
-            return _STATUS_BASE_ADDR + (self._addr & 0x07F)
+            raise RuntimeError('Cannot write to a STATUS register')
         elif self.page == self.RAM:
-            return _RAM_BASE_ADDR + (self._addr & 0x1FF)
-        elif self.page == self.DRP:
-            return _RAM_BASE_ADDR + ((self._addr << 1) & 0x1FF)
+            raise RuntimeError('Cannot use a bitfield to write to a RAM page')
+        else:
+            raise RuntimeError('Unknown page %i' % self.page)  # Should never happen, was tested in __init__
 
-    addr = property(get_addr, doc='Returns the memory-mapped address of the current bitfield item')
+    def read(self, obj):
+        if self.number_of_bytes not in self.data_types:
+            raise ValueError(
+                'Unsupported byte width %i. The bitfield must '
+                'span exactly 1, 2, 4 or 8 bytes' % self.number_of_bytes)
+        data_type = self.data_types[self.number_of_bytes]
+
+        if self.page == self.DRP:
+            value = obj.read_drp(self._addr)  # read 16-bit value
+        elif self.page == self.CONTROL:
+            value = obj.read_control(self.msb_addr, type=data_type)
+        elif self.page == self.STATUS:
+            value = obj.read_status(self.msb_addr, type=data_type)
+        elif self.page == self.RAM:
+            value = obj.read_ram(self.msb_addr, type=data_type)
+        else:
+            raise RuntimeError('Unknown page %i' % self.page)  # Should never happen, was tested in __init__
+
+        # if verbose:
+        #     print('Read base address %05X, addr: %i - %i, bit %i, width=%i, value=%i' % (obj.base_address, msb_addr, lsb_addr, self.bit, self.width, data))
+        # print 'Read bit at port %i, bit=%i, data: %X' % (bit_name,  bit_def.addr,bit_def.bit, data)
+
+        # Extract the desired bits
+        return (int(value) >> self.bit) & ((1 << self.width)-1)
+
+    def get_name(self, obj):
+        """
+        Return the name of the current bitfield by searching the parent object
+        attributes for ``self``
+
+        Parameters:
+
+            obj: instance of the class that contains the bitfield
+
+        Returns:
+
+            Name (str) of the attribute that matches this bitfield.
+
+        Notes:
+
+            This is a slow but convenient function that is meant to be used to
+            clarify error messages. It is not meant to be used for
+            time-sensitive operations.
+        """
+        matching_names = [name for name, value in vars(obj).items() if value is self]
+        if len(matching_names) == 1:
+            return matching_names[0]
+        elif not len(matching_names):
+            raise RuntimeError('Could not find the name of the bitfield %r in %r'  % (self, obj))
+        else:
+            raise RuntimeError('Object %r has multiple bitfields matching %r'  % (obj, self))
 
 class Module_base(object):
     """ Implements basic interfaces to a module. It is intended to be inherited by a subclass that specializes to specific modules"""
@@ -112,7 +209,7 @@ class Module_base(object):
 #            print 'setting ',name
             object.__setattr__(self, name, value)
         else:
-            print "Class '%s' is locked: cannot assign new attribute '%s'" % (self, name)
+            print("Class '%s' is locked: cannot assign new attribute '%s'" % (self, name))
             raise AttributeError("This instance of class '%s' is locked: cannot assign new attribute '%s'" % (self.__class__.__name__, name)) # 120623 JFC
 
     def __getitem__(self, index):
@@ -144,81 +241,67 @@ class Module_base(object):
         internal devices (PLL, SYSMON, MGT etc). 'addr' is the 16-bit DRP
         register address.
         """
-        return self.read(_RAM_BASE_ADDR + 2*addr, type=np.dtype('<u2'))
+        if not 0 <= 2* addr <= 0x1FF:
+            raise RuntimeError('%r: Invalid DRP address %i' % (self, addr))
+        return self.read(_RAM_BASE_ADDR + 2 * addr, type=np.dtype('<u2'))
 
     def read_ram(self, addr, *args, **kwargs):
         """
         Reads a byte from the RAM space
         """
+        if not 0 <= addr <= 0x1FF:
+            raise RuntimeError('%r: Invalid RAM address %i' % (self, addr))
         return self.read(_RAM_BASE_ADDR + addr, *args, **kwargs)
 
     def read_status(self, addr, *args, **kwargs):
         """
         Reads byte(s) from the STATUS registers
         """
+
+        if not 0 <= addr <= 0x07F:
+            raise RuntimeError('%r: Invalid STATUS register address %i' % (self, addr))
         return self.read(_STATUS_BASE_ADDR + addr, *args, **kwargs)
+
+    def read_control(self, addr, *args, **kwargs):
+        """
+        Reads byte(s) from the STATUS registers
+        """
+
+        if not 0 <= addr <= 0x07F:
+            raise RuntimeError('%r: Invalid CONTROL register address %i' % (self, addr))
+        return self.read(_CONTROL_BASE_ADDR + addr, *args, **kwargs)
 
     def read_bitfield(self, bitfield, verbose=0):
         """ Reads the field identified by the name 'bit_name' which is looked
         up in the BITS table to find the bit definition (port, bit position
         etc). Returns a boolean."""
 
-        if isinstance(bitfield, basestring):
+        if isinstance(bitfield, str):
             bitfield = self.get_bitfield(bitfield)
 
-        if bitfield.page == BitField.DRP:
-            data = self.read_drp(bitfield._addr) # read 16-bit value
-            return (data >> bitfield.bit) & ((1 << bitfield.width)-1)
-
-        word_width = 8
-        lsb_addr = bitfield.addr - int(bitfield.bit // word_width)
-        msb_addr = bitfield.addr - int((bitfield.bit + bitfield.width - 1) // word_width)
-        number_of_bytes = lsb_addr - msb_addr + 1
-        data_type = {1: np.dtype('>u1'),
-                     2: np.dtype('>u2'),
-                     4: np.dtype('>u4'),
-                     8: np.dtype('>u8')}[number_of_bytes]
-        data = int(self.read(msb_addr, type=data_type))
-        if verbose:
-            print 'Read base address %05X, addr: %i - %i, bit %i, width=%i, value=%i' % (self.base_address, msb_addr, lsb_addr, bitfield.bit, bitfield.width, data)
-        #print 'Read bit at port %i, bit=%i, data: %X' % (bit_name,  bit_def.addr,bit_def.bit, data)
-        return (data >> bitfield.bit) & ((1 << bitfield.width) - 1)
+        return bitfield.read(self)
 
     def write_bitfield(self, bitfield, data):
         """ Writes 'data' to the bitfield.
-        ``bitfield`` can be either a bitfield object or a string containing the
-        name of the bitfield.
+
+        Parameters:
+
+            bitfield (bitfield or str): bitfield object to write to. `bitfield` can be either a bitfield object or a string containing the
+                name of the bitfield.
+
+            data (int): Value to be written as a zero or positive integer
         """
 
-        if isinstance(bitfield, basestring):
+        if isinstance(bitfield, str):
             bitfield = self.get_bitfield(bitfield)
 
-        if (data >= 2**bitfield.width) or data < 0:
-            raise Exception('Bad value %r for memory-mapped property %s' % (data, bitfield))
-
-        if bitfield.page == BitField.DRP:
-            old_data = self.read_drp(bitfield._addr)  # read 16-bit value
-            mask = (2**bitfield.width-1) << bitfield.bit
-            new_data = old_data & ~mask
-            new_data |= ((data << bitfield.bit) & mask)
-            self.write_drp(bitfield._addr, new_data)
-            return
-
-        # word_width = 8
-        # lsb_addr = bitfield.addr - int(bitfield.bit / word_width)
-        number_of_bytes = (bitfield.bit + bitfield.width-1) // 8 + 1
-         # = lsb_addr - msb_addr + 1
-        mask_string = np.array(((1 << bitfield.width)-1) << bitfield.bit, '>u8').tostring()
-        data_string = np.array(data << bitfield.bit, '>u8').tostring()
-        self.write(bitfield.addr - number_of_bytes + 1,
-                   data_string[-number_of_bytes:],
-                   mask=mask_string[-number_of_bytes:])
+        bitfield.write(self, data)
 
     # write_field = write_bitfield # for backwards compatibility
 
     def write(self, addr, data, *args, **kwargs):
         """
-        Writes bytes to the FPGA memory-mapped address space. Address ``addr`` is
+        Writes an array of bytes to the FPGA memory-mapped address space. Address ``addr`` is
         relative to the base address of the current MMI module.
 
         The MSBs of ``addr`` determines the page in which data is written
@@ -232,20 +315,49 @@ class Module_base(object):
         """
         Writes within the RAM/FIFO address space of the module. Simply calls the write() function with the appropriate address offset.
         """
+
+        if not 0 <= addr <= 0x1FF:
+            raise RuntimeError('%r: Invalid RAM address %i' % (self, addr))
         return self.write(_RAM_BASE_ADDR + addr, data, *args, **kwargs)
 
     def write_control(self, addr, data, *args, **kwargs):
         """
-        Writes to control register(s).
+        Writes data bytes to control register(s).
+
+        Parameters:
+
+            addr (int): Address of the first control byte relative to the base address of the current module instance
+
+            data (bytes or ndarray): data bytes to write
+
+            args, kwargs: additional arguments passed to fpga_mmi_write, including mask
+
         """
+        if not 0 <= addr <= 0x07F:
+            raise RuntimeError('%r: Invalid CONTROL register address %i' % (self, addr))
         return self.write(_CONTROL_BASE_ADDR + addr, data, *args, **kwargs)
+
 
     def write_drp(self, addr, data):
         """
-        Writes a DRP (Dynamic Reconfigurable Port) of the FPGA internal devices (PLL, SYSMON, MGT etc).
-        'addr' is the 16-bit DRP register address.
+        Writes a 16-bit value `data` to a register of a DRP (Dynamic Reconfigurable Port) of the FPGA internal devices (PLL, SYSMON, MGT etc).
+
+        Parameters:
+
+            addr (int): Address of the 16-bit DRP register word (the address is internally multiplied by 2 to convert it to a byte address)
+
+            data (int): 16-bit value to be written
+
+        Notes:
+
+            - The DRP and RAM pages use the same address space. Either one or the other is connected to the module.
+            - The DRP values are stored as little endians
         """
-        return self.write(_RAM_BASE_ADDR + 2*addr, [data & 0xFF, (data >> 8) & 0xFF])
+        if not 0 <= 2 * addr <= 0x1FF:
+            raise RuntimeError('%r: Invalid DRP address %i' % (self, addr))
+        if not 0 <= data <= 65535:
+            raise AttributeError('%r: Invalid unsigned 16-bit DRP register value %i' % (self, data))
+        return self.write(_RAM_BASE_ADDR + 2 * addr, bytes([data & 0xFF, (data >> 8) & 0xFF]))
 
     write_DRP = write_drp
 
@@ -256,15 +368,18 @@ class Module_base(object):
         self.write(addr, old_value & ~mask)
         self.write(addr, old_value | mask)
 
-    def write_mask(self, addr, mask, data):
-        old_value = self.read(addr)
-        self.write(addr, (old_value & ~mask) | (data & mask))
+    # def write_mask(self, addr, mask, data):
+    #     old_value = self.read(addr)
+    #     self.write(addr, (old_value & ~mask) | (data & mask))
 
     def get_bitfield(self, bitfield_name):
         """
         Returns the bitfield object with name 'bitfield_name'.
         This is used to access the attributes and methods of the bitfield objects, since this is a python data descriptor and direct access calls its fget() method instead of returning the object.
         """
+        if not isinstance(bitfield_name, str):
+            raise TypeError('The bitfield name must be a string')
+
         try:
             bitfield = getattr(type(self), bitfield_name)
             if not isinstance(bitfield, BitField):
@@ -275,38 +390,38 @@ class Module_base(object):
 
     def get_addr(self, bitfield_name):
         """
-        Returns the address of the register containing the specified bitfield.
+        Returns the address of the bitfield relative to the base address,
+        including the page offset. To be used directly with the read() and
+        write() methods.
+
+        Parameters:
+
+            bitfild_name (str): name of the bitfield
+
+        Returns:
+
+            address (int), relative to the current  module base address. The
+            address includes the page (CONTROL/STATUS/RAM/DRP) offset.
         """
-        return self.get_bitfield(bitfield_name).get_addr()
+        bitfield = self.get_bitfield(bitfield_name)
+        return bitfield._addr + PAGE_OFFSET[bitfield.page]
 
     def pulse_bit(self, bitfield_name, bit=0):
         """
         Pulses the bitfield specified by the string ``bitfield_name`` to '1' then back to '0'.
         """
 
-        if not isinstance(bitfield_name, str):
-            raise TypeError('The bitfield name must be a string')
-
         bitfield = self.get_bitfield(bitfield_name)
-
         if bitfield.width != 1:
             raise TypeError('The bitfield must be a single bit (width=1)')
-
-        self.write_bitfield(bitfield,1)
-        self.write_bitfield(bitfield,0)
-
-        # mask = (1<<bit)
-        # old_value = self.read(addr)
-        # self.write(addr, old_value | mask) # Set bit to '1'
-        # self.write(addr, old_value & ~mask) # Set bit to '0'
+        bitfield.write(self, 1)
+        bitfield.write(self, 0)
 
     def wait_for_bit(self, bitfield_name, timeout=1, target_value=1, no_error=False):
         """
         Wait for the bitfield specified by the string ``bitfield_name`` to return the value ``target_value``.
         ``True`` is returned when the value is found before ``timeout`` seconds, otherwise a RuntimeError exception is raised if ``no_error`` is False, or ``False`` is returned if ``no_error`` is True.
         """
-        if not isinstance(bitfield_name, str):
-            raise TypeError('The bitfield name must be a string')
 
         bitfield = self.get_bitfield(bitfield_name)
 
@@ -330,7 +445,7 @@ class Module_base(object):
         """
         def entries():  # generator to list all the bitfield values
             for (name, bitfield) in vars(type(self)).items():
-                if type(bitfield) is BitField:
+                if isinstnce(bitfield, BitField):
                     value = getattr(self, name)
                     entry = {'name': name,
                              'page': bitfield.page,
@@ -342,7 +457,7 @@ class Module_base(object):
                              'doc' : bitfield.doc,
                              'value': value,
                              'bin_value': ('{0:0%ib}' % bitfield.width).format(value),
-                             'hex_value': ('{0:0%iX}' % int((bitfield.width+3)/4)).format(value)
+                             'hex_value': ('{0:0%iX}' % (bitfield.width + 3) // 4).format(value)
                              }
                     yield entry
         table = list(entries())

@@ -39,15 +39,21 @@ class AMC6821(object):
         pass
 
     def init(self):
-        """Initializes the backplane hardware to a known state"""
+        """Initializes the fan controller"""
         # self.write('START', 1)
+
         # bit 7 : THERMOVIE : Thermistor Overtemp Interrupt Enable
-        # bit 6:5 : FDRC : Fan driver control mode: 11: Max speed calculated control, 10: auto remote temp control, 00: software duty cycle, 01: software RPM control
+        # bit 6:5 : FDRC : Fan driver control mode:
+        #         0b11: Max speed calculated control,
+        #         0b10: auto remote temp control,
+        #         0b00: software duty cycle,
+        #         0b01: software RPM control
         # bit 4: FAN-Fault-EN: When 1, enables FAN fault pin.
         # bit 3: PWMINV: PWM invert bit. When 0, PWM is low at 100%. When 1, PWM is high at 100%.
         # bit 2 : FANIE : FAN RPM Interrupt Enable
         # bit 0:
-        self.write(0x00, 0b00001001)  # Set software duty cycle mode, invert PWM polarity (high=ON), start temperature & PWM monitoring
+        # Set software duty cycle mode, invert PWM polarity (high=ON), start temperature & PWM monitoring
+        self.write(0x00, 0b00001001)
         self.write(0x01, 0b00111111)  # Set TACH mode to 1, for dc powered 4-wire fan
         self.set_duty_cycle(100)
 
@@ -96,7 +102,7 @@ class AMC6821(object):
             self._i2c.write_read(self._address, data=[register, value])
         else:
             mask = ((1 << width)-1) << bit
-            old_value = self._i2c.write_read(self._address, data=[register], read_length=1)  #self.i2c.write_read(self.address, read_length=1)
+            old_value = self._i2c.write_read(self._address, data=[register], read_length=1)
             new_value = (old_value & (~ mask)) | (value & mask)
             self._i2c.write_read(self._address, data=[register, new_value])
         self._i2c.select_bus('GPIO')    # close bus to fan controller i2c to avoid problems with the arm accessing it
@@ -108,10 +114,12 @@ class AMC6821(object):
         self.write('DutyCycle', int(duty/100.*255.))
 
     def get_local_temperature(self):
-        return round(np.int16((self.read('LocalTempLSB') << 5) + (self.read('LocalTempMSB') << 8))/256., 3)  # LSB must be read first
+        return round(np.int16((self.read('LocalTempLSB') << 5)
+                     + (self.read('LocalTempMSB') << 8)) / 256., 3)  # LSB must be read first
 
     def get_remote_temperature(self):
-        return round(np.int16((self.read('RemoteTempLSB') << 5) + (self.read('RemoteTempMSB') << 8))/256., 3)  # LSB must be read first
+        return round(np.int16((self.read('RemoteTempLSB') << 5)
+                     + (self.read('RemoteTempMSB') << 8))/256., 3)  # LSB must be read first
 
     def get_fan_speed(self):
         return 100000*60/(self.read(0x08)+self.read(0x09)*256)  # returns fan speed in rpm
