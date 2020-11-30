@@ -37,7 +37,7 @@ from wtl.metrics import Metrics
 
 # from .icecore.session import load_session as load_yaml
 # from .icecore import load_yaml  # Py3: non-database version
-from .icecore_ext.iceboard_ext import IceBoardExt, async_to_sync, register_class
+from .icecore_ext.iceboard_ext import IceBoardExt, async_to_sync
 
 from .chFPGA_receiver import chFPGA_receiver
 # from pychfpga.common import util  # Py3: does not seem to be used
@@ -72,7 +72,6 @@ class chFPGA_config(object):
         return '\n'.join(['%s = %s' % (key, repr(value)) for (key, value) in sorted(vars(self).items())])
 
 
-@register_class()
 class chFPGA_controller(IceBoardExt):
     """
     Creates an object that connects to an IceBoard motherboard and its chFPGA firmware and provides
@@ -167,9 +166,9 @@ class chFPGA_controller(IceBoardExt):
             self,
             hostname=None,
             serial=None,
-            crate=None,
             subarray=None,
-            slot=None):
+            slot=None,
+            fpga_ip_addr=None):
         """
         Creates an empty IceBoard/chFPGA handler object, but do not interact with the board yet.
 
@@ -201,10 +200,10 @@ class chFPGA_controller(IceBoardExt):
         super().__init__(
             hostname=hostname,
             serial=serial,
-            crate=crate,
             slot=slot,
             subarray=subarray,
-            local_port_number=None  # 0: always select randomly,  `None`:use crate/slot if available else randomly
+            fpga_ip_addr=fpga_ip_addr,
+            local_control_port_number=None  # 0: always select randomly,  `None`:use crate/slot if available else randomly
             )
 
         # Initialize basic instance attributes, but don;t do anything that involve talking to the IceBoard.
@@ -246,7 +245,7 @@ class chFPGA_controller(IceBoardExt):
                 the `init` parameter is 1.
         """
 
-        await super(chFPGA_controller, self).open()  # Open UDP communication link
+        await super().open()  # Open UDP communication link
 
         self.logger.debug('%r: Instantiating chFPGA firmware handlers objects' % (self))
 
@@ -716,10 +715,10 @@ class chFPGA_controller(IceBoardExt):
         config.system_platform_id = self.PLATFORM_ID
         config.system_interface_ip_address = self.interface_ip_addr
         config.system_fpga_ip_address = self.fpga_ip_addr
-        config.system_fpga_port_number = self.fpga_port_number
-        config.system_local_command_port_number = self.local_port_number
+        config.system_fpga_port_number = self.fpga_control_port_number
+        config.system_local_command_port_number = self.local_control_port_number
         config.system_local_data_port_number = await self.get_local_data_port_number_async()
-        config.system_local_corr_port_number = self.local_port_number + self.GPIO.CORR_IP_PORT_OFFSET
+        config.system_local_corr_port_number = self.local_control_port_number + self.GPIO.CORR_IP_PORT_OFFSET
 
         config.number_of_antennas = self.NUMBER_OF_ANTENNAS
         config.system_list_of_antennas_with_channelizers = self.LIST_OF_ANTENNAS_WITH_FFT
@@ -4226,7 +4225,7 @@ class chFPGA_controller(IceBoardExt):
             return self.hostname
 
     def __repr__(self):
-        return "chFPGA%s" % (self.get_id(),)  # watch out, get_id() returns a tuple...
+        return f"chFPGA{self.get_id()}"
 
     def get_id(self, lane=None, default_crate=None, default_slot=None, numeric_only=False):
         """ Returns a (crate, slot) tuple representing a unique IceBoard ID,
