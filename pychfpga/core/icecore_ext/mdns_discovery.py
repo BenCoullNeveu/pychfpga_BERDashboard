@@ -2,13 +2,13 @@
 """
 import logging
 import functools  # Used in iceboard discovery
-import tornado  # Used in iceboard discovery
+# import tornado  # Used in iceboard discovery
 import time  # Used in iceboard discovery
 import socket  # used in iceboard discovery (itoa())
 
-from .async import async, async_return, async_moment
+# from .async import async, async_return, async_moment
 from .hardware_map import HardwareMap
-from .hwm_assets import IceBoard, FMCMezzanine, IceCrate
+from . import IceBoard, FMCMezzanine, IceCrate
 # from .hwm_assets import IceBoard, IceBoardHandler, FMCMezzanine, IceCrate, IceCrateHandler
 
 def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_ip=True):
@@ -19,23 +19,39 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
     used to query and further filter the discovered objects before adding them
     to a final hardware map.
 
-    If ``iceboards`` is specified,  all the IceBoards with the serial number
-    found in the ``iceboards`` list are selected. If None or an empty list, no
-    board is added. If ``iceboards='*'``, all discovered Iceboards are added.
+    Parameters:
 
-    If ``icecrates`` is specified,  all the IceBoards that are on crates
-    having the model number and serial number listed in ``icecrates`` are
-    selected. ''icecrates'' is in the format [(model1, [serial1, serial2 ...],
-    (model2, [serial3, serial4, ...]), ...]
+        hwm: (obsolete)
 
-    If ``icecrates`` is None or an empty list, no crate is added.
+        icecrates: If ``icecrates`` is specified,  all the IceBoards that
+            are on crates having the model number and serial number listed in
+            ``icecrates`` are selected.
 
-    If ``icecrates='*'``, all discovered Iceboards from all crates are added.
+            ''icecrates''   can be in the format
 
-    If 'resolve_ip' is True, the hostname published by mDNS (e.g.
-    iceboard0007.local) is resolved into its associated IP address. This
-    accelerates Tuber accesses since every Tuber call does not have to resolve
-    it on every tuber call (this is especially needed on Windows).
+                [(model1, [serial1, serial2 ...]), (model2, [serial3, serial4, ...]), ...]
+
+                [(model1, serial1), (model2, serial2), ...]
+
+                [serial1, serial2, ...] # will match any crate model
+
+                "*" # will match any crate
+
+
+            If ``icecrates`` is None or an empty list, no crate is added.
+
+            If ``icecrates='*'``, all discovered Iceboards from all crates are added.
+
+        iceboards:  If ``iceboards`` is specified,  all the IceBoards with the
+            serial number found in the ``iceboards`` list are selected. If
+            None or an empty list, no board is added. If ``iceboards='*'``,
+            all discovered Iceboards are added.
+
+        resolve_ip (bool): If 'resolve_ip' is True, the hostname published by
+            mDNS (e.g. iceboard0007.local) is resolved into its associated IP
+            address. This accelerates Tuber accesses since every Tuber call
+            does not have to resolve it on every tuber call (this is
+            especially needed on Windows).
     """
     import pybonjour  # only needed here, and not always installed
 
