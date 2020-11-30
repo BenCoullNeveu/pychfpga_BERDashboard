@@ -309,7 +309,8 @@ class FPGAMaster(object):
                 data_folder=self.data_folder,
                 run_folder=self.run_folder,
                 run_name=self.run_name,
-                corr_name=self.corr_name
+                corr_name=self.corr_name,
+                fft_offset_encoding=self.config.fpga.channelizer_params.offset_binary_encoding  # scaler output encoding
                 )
             for server_name, raw_acq_server in self.raw_acq.items()])
 
@@ -370,25 +371,27 @@ class FPGAMaster(object):
 
 
 
-    async def set_fpga_data_capture(self, chan_ids=None, capture_rate=23, source=None):
+    async def set_fpga_data_capture(self, targets=None, capture_rate=23, source=None):
         """
         Sets the data source and capture rate for the specified channels. This
         can be called at any time after array initializationand does not
         require sync.
 
 
-        chan_id: channels to be configured. Is processed through ca.get_iceboards()
+        Parameters:
 
+            targets: channels to be configured. Is processed through ca.get_iceboards()
+
+            capture_rate (int): sets the sub-period capture rate, which is faster than the base capture rate. It corresponds to 2**capture_rate frame.
+
+            source (str): 'adc' or 'scaler'. If None, the config default (`fpga.raw_data_capture.capture_source`) will be used.
 
         """
-
-        if isinstance(source, str):
-            source = str(source) # make sure we don't have unicode
 
         conf = self.config.fpga.raw_data_capture
         capture_source = source or conf.capture_source
 
-        ib_chans = self.fpgas.get_iceboards(chan_ids, lane_type='chan').items() # Py3: This is now a dictview
+        ib_chans = self.fpgas.get_iceboards(targets, lane_type='chan').items() # Py3: This is now a dictview
 
         for (ib, channels) in ib_chans:
             ib.set_data_capture(channels=channels, sub_period=capture_rate, source=capture_source)
@@ -494,12 +497,14 @@ class FPGAMaster(object):
             self.log.error(f'{self!r}: No target board was found for the specified targets {targets}. Available boards are {[ib.get_id() for ib in self.fpgas.ib]}')
             raise RuntimeError('No target board was found for the specified patterns')
 
-        self.log.info('%r: *** Gain calculator : Starting compute_gains() on the following channels: %s' % (self, ', '.join(str(ib.get_id()) + str(ch) for ib,ch in ib_chans)))
+        self.log.info('%r: *** Gain calculator : Starting compute_gains() on the following channels: %s' % (self, ', '.join(str(ib.get_id()) + str(ch) for ib, ch in ib_chans)))
 
         # Set the source and data capture rate for target channels
 
-        for (ib, channels) in ib_chans:
-            ib.set_data_capture(channels=channels, sub_period=capture_rate, source='scaler')
+        # for (ib, channels) in ib_chans:
+        #     ib.set_data_capture(channels=channels, sub_period=capture_rate, source='scaler')
+
+        await self.set_fpga_data_capture(targets=targets, capture_rate=capture_rate, source='scaler')
 
         if noise_injection is not None:
             raise AttributeError('Noise injection settings are not yet supported for gain computations')
@@ -614,8 +619,8 @@ class FPGAMaster(object):
         await asyncio.gather(*[iterate_gains(raw_acq_server, server_channel_ids[raw_acq_server_name], server_stream_ids[raw_acq_server_name])
                for raw_acq_server_name, raw_acq_server in self.raw_acq.items()])
 
-        # Return the data capture of the selected channels to the adc source and baseline capture rate
-        await self.set_fpga_data_capture(targets)
+        # Return the data capture of the selected channels to the source set in the config and to the baseline capture rate
+        await self.set_fpga_data_capture(targets=targets, source=None)
 
         # If requested save the gains
         if save_gains:
@@ -1074,7 +1079,7 @@ class FPGAMaster(object):
         # Set default initial gains. Will be overriden below
         if 'initial_gains' in conf.fpga:
             # Get a {iceboard:[list_of_channels]} dict of selected channels
-            self.log.info("%r: Overiding the following gains: %r" % (self, conf.fpga.initial_gains))
+            self.log.info("%r: Overriding the following gains: %r" % (self, conf.fpga.initial_gains))
             await self.set_gains(gains=conf.fpga.initial_gains)
 
 
@@ -1086,11 +1091,6 @@ class FPGAMaster(object):
         if conf.fpga.load_initial_gains and self.gain_hdf5:
             await self.load_gains(update_id=None, bank=0, when='now')
 
-        # Enable offset encoding for gain calculation
-        if corr_config and corr_config.enable:
-            self.log.info("*** Enabling offset encoding for gain calculation")
-            # self.fpgas.ib.set_gains((0,0), bank=0, when='now')
-            await self.fpgas.set_offset_binary_encoding_async(True)
 
         # Compute new gains if requested
         await self.compute_gains(**conf.fpga.compute_gains)
@@ -1112,7 +1112,7 @@ class FPGAMaster(object):
         if corr_config and corr_config.enable:
             self.log.info("*** Disabling offset encoding")
             # self.fpgas.ib.set_gains((0,0), bank=0, when='now')
-            await self.fpgas.set_offset_binary_encoding_async(False)
+            await self.fpgas.set_offset_binary_encoding_async(True)
 
             self.log.info("Starting Correlator HDF5 data capture")
             await self.start_corr_hdf5_capture()
