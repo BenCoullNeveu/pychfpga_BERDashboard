@@ -2121,7 +2121,7 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
             self.metrics.add('ch_master_node_mem_used', value=mem.used)
             self.metrics.add('ch_master_node_mem_free', value=mem.free)
             proc_mem = self.process.memory_info().rss
-            self.log.info('%r: Python kernel mem usage is %i bytes' % (self, proc_mem))
+            self.log.info(f'{self!r}: Python kernel mem usage is {proc_mem/1024/1024:.0f} Mbytes')
             self.metrics.add('ch_master_node_process_mem_used', value=proc_mem)  # in bytes
 
             # Get CPU-related metrics
@@ -2138,7 +2138,7 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
                 run_time = time.time() - self.chime_master.start_time
             self.metrics.add('ch_master_run_time', value=run_time)
 
-            await asyncio.sleep(10)
+            await asyncio.sleep(1)
 
 
     async def _get_arm_metrics(self):
@@ -2210,12 +2210,13 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
             # handler.set_header('Content-Type', 'text/plain')
             # handler.set_header('Content-Encoding', 'gzip')
             # handler.write(self.metrics.pop().get_gzip())
+            metrics = self.metrics.pop()
             response = aiohttp.web.Response(
-                body=self.metrics.pop().get_gzip(),
+                body=metrics.get_gzip(),
                 headers={'Content-Encoding': 'gzip'})
 
-            self.log.info('%r: Returning %i FPGA metrics (compression ratio %.0f%%)' %
-                (self, number_of_metrics, self.metrics.last_compression_ratio * 100))
+            self.log.info(f'{self!r}: Returning {number_of_metrics} FPGA metrics '
+                          f'(compression ratio {metrics.last_compression_ratio * 100:.1f}%)')
 
             # handler.write(self.metrics.pop().get_gzip())
             self.log.info('%r: Metrics request took %.3f seconds to execute' %
@@ -2481,7 +2482,7 @@ class FPGAMasterAsyncRESTClient(AsyncRESTClient):
         if 'nonce' in r and nonce == int(r['nonce']):
             print("ok")
             return
-        self.print("internal error!. Server reply was: \n%s" % '\n'.join('%s:%s' % (k,v) for (k,v) in r.items()))
+        self.print("internal error!. Server reply was: \n%s" % '\n'.join('%s:%s' % (k, v) for (k, v) in r.items()))
 
 
     async def set_state(self, state):
@@ -2506,16 +2507,17 @@ class FPGAMasterAsyncRESTClient(AsyncRESTClient):
             try:
                 status = await self.status() # raise exception if start failed
 
-                print('%r:  Current state is: %s, is_ready=%s' % (self, status['state'], status['is_ready']))
+                self.log.info(f"{self!r}:  Current state is: {status['state']}, is_ready={status['is_ready']}")
                 if status['is_ready']:
                     self.log.info('%r: start process is completed' % self)
                     return status['start_result']
             except RuntimeError as e:
+                status = dict(state='RuntimeError while polling fpga_master status')
                 print('*** %r Client get_status got an exception:%r\n.' % (self, e))
-                if 'timeout' not in str(e).lower():
-                    status = dict(state='HTTP error')
+                if 'timeout' in str(e).lower():
+                    print("This is apparently a timeout. We'll ignore it...\n")
+                else:
                     raise e
-                print("This is apparently a timout. We'll ignore it...\n")
             self.log.info('%r: Waiting for the START process to complete. Current state is: %s' % (self, status['state']))
             await asyncio.sleep(1)
 
