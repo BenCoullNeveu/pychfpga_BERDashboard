@@ -1702,7 +1702,7 @@ class FPGAArray(object):
             self.corner_turn_frequency_bins = None
             for ib in self.ib:
                 ib.init_crossbars(mode, frames_per_packet=1, bin_map=bin_map[ib.get_id()])
-            self.ib.set_offset_binary_encoding(False)  # The firmware correlator engine expects 1's complement encoding
+            self.ib.set_offset_binary_encoding(True)  # The firmware correlator engine expects offset encoding
             if integration_period:
                 self.ib.start_correlator(integration_period=integration_period)
         else:
