@@ -51,8 +51,7 @@ def async_to_sync(fn):
     return sync_fn
 
 
-
-@register_class()
+class FMCMezzanine(FMCMezzanineBase, HardwareMap):
     """
     Provides the basic methods needed to operate a mezzanine.
     """
@@ -66,10 +65,10 @@ def async_to_sync(fn):
         self.serial = serial
         self.mezzanine = mezzanine  # mezzanine slot number on IceBoard
         self.iceboard = iceboard  # carrier IceBoard object
-        self._instance_registry[(self.part_number, serial)] = self
 
     def get_id(self):
-        """ Return a string that identifies uniquely the mezzanine board. Comprises the model number and the serial number.
+        """ Return a string that identifies uniquely the mezzanine board.
+        Comprises the model number and the serial number.
         """
         return '%s_SN%s' % (self.part_number, self.serial)
 
