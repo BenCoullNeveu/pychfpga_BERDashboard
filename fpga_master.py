@@ -2138,7 +2138,7 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
                 run_time = time.time() - self.chime_master.start_time
             self.metrics.add('ch_master_run_time', value=run_time)
 
-            await asyncio.sleep(1)
+            await asyncio.sleep(10)
 
 
     async def _get_arm_metrics(self):
