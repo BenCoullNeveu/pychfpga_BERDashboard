@@ -442,8 +442,8 @@ class TuberObject:
     # Parametrize the TCP connection limits.
     _tuber_client_connections_total = 0  # total number of simultaneous TCP connections (0 = no limit)
     _tuber_client_connections_per_host = 4  # total number of simultaneous TCP connections per host (None = no limit)
-    _tuber_connection_timeout = 1800  # Not used yet
-    _tuber_request_timeout = 1800 # Not used yet
+    _tuber_connection_timeout = 1.8
+    _tuber_request_timeout = 1.8
 
     # Customize remote method names
     _tuber_wrapped_method_names = None
@@ -550,10 +550,14 @@ class TuberObject:
             print(f'Running in new loop {id(loop)}. Creating new session')
             connector = aiohttp.TCPConnector(
                 limit=self._tuber_client_connections_total,
-                limit_per_host=self._tuber_client_connections_per_host)
+                limit_per_host=self._tuber_client_connections_per_host,
+                )
             session = aiohttp.ClientSession(
                 # json_serialize=simplejson.dumps,
-                connector=connector)
+                connector=connector,
+                # timeout=aiohttp.ClientTimeout(connect=self._tuber_connection_timeout,
+                #                               sock_read=self._tuber_request_timeout)
+                )
             self._tuber_client_sessions[loop] = session
             return session
 
@@ -601,25 +605,18 @@ class TuberObject:
 
         Parameters:
 
-            requests (list): list of requests in the form::
-                    [{ "method":name, "args":args, "kwargs":kwargs}, ...]
-
-                The list is modified in-place to add the object type.
+            requests (list of dict): list of requests, where each request is a dictionary. The list is modified in-place to add the object type.
 
         Returns:
 
             Results for each request as a list of `TuberResults` objects, with the attributes:
                 .result: result of the command
                 .error: present only if there is an error.
-
         """
-
         if not requests:
             return []
 
         # Add and/or check object names
-
-        request_size = 0
         for r in requests:
             objname = r.setdefault('object', self.tuber_objname)
             assert objname == self.tuber_objname, \
@@ -638,13 +635,11 @@ class TuberObject:
                 results = await resp.json(
                         loads=self._tuber_json_decode,
                         content_type=None)
-                # print(f'result: {json_out}')
         except aiohttp.ClientConnectorError as e:
             print('Network error')
             raise TuberNetworkError(e)
 
         return results
-
 
     async def _tuber_get_meta_async(self):
         """Retrieve metadata associated with the remote network resource and

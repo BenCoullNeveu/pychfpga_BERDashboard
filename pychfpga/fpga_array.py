@@ -1581,11 +1581,8 @@ class FPGAArray(object):
 
             mode (str): operational mode string.
 
-                - 'chan8': Corner-turn engine is mostly bypassed and raw 8-bit data from 8
-                  channelizers is sent directly to the 8 CT-Engine outputs.
-
-                - 'chan4': Corner-turn engine is mostly bypassed and raw 8-bit data from 16
-                  channelizers is sent directly to the 8 CT-Engine outputs.
+                - 'chan8': Corner-turn engine is bypassed and raw 8-bit data from 8
+                  channelizers is sent directly to the 8 10G Ethernet links.
 
                 - 'shuffle16': Acquire, channelize and shuffle data within each Iceboard individually and
                   send the data through the IceBoard QSFP+ ports. There is no data shuffling between boards.
@@ -1660,15 +1657,24 @@ class FPGAArray(object):
                 raise RuntimeError('The following IceBoards are not configured to use the backplane clock: %s' % (
                     ', '.join(repr(ib) for (ib, cs) in clock_sources.items() if cs != target_clock_source)))
 
-        if mode == 'raw_time':
+        if mode == 'chan8':
             self.ib.set_fft_bypass(True)
             self.ib.set_scaler_bypass(True)
-            self.corner_turn_stream_ids = self.init_corner_turn(
-                mode='chan8',
-                frames_per_packet=frames_per_packet,
-                send_flags=send_flags,
-                chan8_channel_map=np.hstack((chan8_channel_map, chan8_channel_map)),
-                tx_power=tx_power)
+            # self.corner_turn_stream_ids = self.init_corner_turn(
+            #     mode='chan8',
+            #     frames_per_packet=frames_per_packet,
+            #     send_flags=send_flags,
+            #     chan8_channel_map=np.hstack((chan8_channel_map, chan8_channel_map)),
+            #     tx_power=tx_power)
+            self.corner_turn_frequency_bins = {}
+            self.corner_turn_stream_ids = {}
+            for ib in self.ib:
+                stream_ids = ib.init_crossbars(
+                    mode='chan8',
+                    frames_per_packet=frames_per_packet)
+                for lane, stream_id in enumerate(stream_ids):
+                    self.corner_turn_stream_ids[ib.get_id(lane)] = stream_id
+
 
         elif mode in ['shuffle256', 'shuffle512', 'shuffle16']:
             if not all(self.ib.CROSSBAR2) or not all(self.ib.CROSSBAR3):
