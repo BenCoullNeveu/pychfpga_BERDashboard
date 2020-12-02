@@ -1674,6 +1674,7 @@ class FPGAArray(object):
                     frames_per_packet=frames_per_packet)
                 for lane, stream_id in enumerate(stream_ids):
                     self.corner_turn_stream_ids[ib.get_id(lane)] = stream_id
+            self.sync()
 
 
         elif mode in ['shuffle256', 'shuffle512', 'shuffle16']:
