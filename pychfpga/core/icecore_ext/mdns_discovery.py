@@ -2,16 +2,15 @@
 """
 import logging
 import functools  # Used in iceboard discovery
-# import tornado  # Used in iceboard discovery
 import time  # Used in iceboard discovery
 import socket  # used in iceboard discovery (itoa())
+import asyncio
 
-# from .async import async, async_return, async_moment
+
 from .hardware_map import HardwareMap
-from . import IceBoard, FMCMezzanine, IceCrate
-# from .hwm_assets import IceBoard, IceBoardHandler, FMCMezzanine, IceCrate, IceCrateHandler
+from . import IceBoard, IceCrate
 
-def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_ip=True):
+async def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_ip=True):
     """ Automatically detect IceBoards and IceCrates on the network using mDNS
     and update hardware map ``hwm`` accordingly.
 
@@ -56,8 +55,8 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
     import pybonjour  # only needed here, and not always installed
 
 
-    if hwm is None:
-        hwm = HardwareMap()
+    # if hwm is None:
+    #     hwm = HardwareMap()
 
     # if isinstance(icecrates, (str, int):
     #     icecrates = [icecrates]
@@ -70,7 +69,7 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
 
     # Create a local, captive IOLoop. We use this to epoll() on
     # Bonjour file descriptors.
-    io_loop = tornado.ioloop.IOLoop()
+    io_loop = asyncio.get_event_loop()
 
     # Normalize iceboard and icecrate target lists to the [ (model,[serial1, serial2]), ...] format
     if isinstance(iceboards, str): # include '*'
@@ -93,24 +92,23 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
         closed properly when discovery is complete.
         """
         fds.append(ref)
-        io_loop.add_handler(
-            ref.fileno(),
-            lambda fd, events: pybonjour.DNSServiceProcessResult(ref),
-            io_loop.READ)
+        io_loop.add_reader(
+            ref.fileno(), pybonjour.DNSServiceProcessResult, ref)
 
     def close_mdns_processes():
         """Close all mDNS processs that have been opened during discovery.
         """
         for fd in fds:
+            io_loop.remove_reader(fd)
             fd.close()
 
-    def add_object(iface, host, txtRecord):
+    def add_object(iface, host, txtRecord, fullname=None):
         """ Add iceboard and icecrate object to the hardware map if it matches the search criteria.
 
         """
 
         # Parse TXT records. That's where the IceBoard publishes data.
-        tr = pybonjour.TXTRecord.parse(txtRecord)
+        tr = pybonjour.TXTRecord.parse(txtRecord, encoding='utf-8')
 
         # Check if the required TXT motherboard serial and model fields exist, otherwise punt
         if 'motherboard-serial' not in tr or 'motherboard-part' not in tr:
@@ -120,11 +118,11 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
         ib_part_number = tr['motherboard-part']
 
         # If a motherboard with the same serial is already in the hardware map, exit.
-        existing_ib = [ib for ib in hwm.query(IceBoardPlus) if ib.serial == ib_serial]
-        if existing_ib.count():
-            logger.warning("DNS-SD: IceBoard at %s with serial %s already exists "
-                           "in the hardware map. No action is taken." % (host, ib_serial))
-            return
+        # existing_ib = [ib for ib in hwm.query(IceBoardPlus) if ib.serial == ib_serial]
+        # if existing_ib.count():
+        #     logger.warning("DNS-SD: IceBoard at %s with serial %s already exists "
+        #                    "in the hardware map. No action is taken." % (host, ib_serial))
+        #     return
 
         bp_slot = tr['backplane-slot'] if 'backplane-slot' in tr else None
         bp_part_number = tr['backplane-part'] if 'backplane-part' in tr else None
@@ -170,75 +168,45 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
         # Add the motherboard and backplane objects if we have an iceboard or backplane match
         if icecrate_match or iceboard_match:
             # Add a generic IceBoard to the hwm. The user will have to be replace those  with application-specific objects
-            if (ib_part_number, ib_serial) in hwm:
-                logger.debug('DNS-SD: Iceboard (%s, %s) was already in the hardware map. It was replaced by a new object'
-                             % (ib_part_number, ib_serial))
-            ib_cls = HardwareMap.get_class(ib_part_number)
-            ib_obj = ib_cls(hostname=host, serial=ib_serial)
-            hwm[(ib_part_number, ib_serial)] = ib_obj
+            # if (ib_part_number, ib_serial) in hwm:
+            #     logger.debug('DNS-SD: Iceboard (%s, %s) was already in the hardware map. It was replaced by a new object'
+            #                  % (ib_part_number, ib_serial))
+            # ib_cls = HardwareMap.get_class(ib_part_number)
+            # ib_obj = ib_cls(hostname=host, serial=ib_serial)
+            # hwm[(ib_part_number, ib_serial)] = ib_obj
+
+            if ib_part_number and ib_serial:
+                # ib_cls = IceBoard.get_class_by_ipmi_part_number(ib_part_number)
+                ib_obj = IceBoard.get_unique_instance(serial=ib_serial)
+                print(f'ib obj {ib_obj} has hostnme {ib_obj.hostname}')
+
 
             # Add the backplane if it does not already exist
             if bp_part_number and bp_serial:
-                if (bp_part_number, bp_serial) in hwm:
-                    bp_obj = hwm[(bp_part_number, bp_serial)]
-                else:
-                    bp_cls = HardwareMap.get_class(bp_part_number)
-                    bp_obj = bp_cls(serial=bp_serial)
-                    hwm[(bp_part_number, bp_serial)] = bp_obj
-                # if the slot number is known, assign the board to the crate and set the board slot number
+                bp_cls = IceCrate.get_class_by_ipmi_part_number(bp_part_number)
+                bp_obj = bp_cls.get_unique_instance(serial=bp_serial)
                 if slot:
-                    bp_obj.slot[slot] = ib_obj
-                    ib_obj.slot = slot
+                    ib_obj.update_instance(crate=bp_obj, slot=slot)
 
-            # # Find is there is IceCrate-derived superclass that handles the
-            # # reported crate part number
-            # icecrate_class = None
-            # for mapper in class_mapper(IceCrate).self_and_descendants:
-            #     supported_part_numbers = mapper.class_.__ipmi_part_number__
-            #     # If the part number is None or an empty list, this means
-            #     # there is no supported part number, so skip this class
-            #     if not supported_part_numbers:
-            #         continue
-            #     # Convert a single part number into a one-element list
-            #     if not isinstance(supported_part_numbers, (list, tuple)):
-            #         supported_part_numbers = [supported_part_numbers]
-            #     logger.debug('DNS-SD: IceCrate class search: checking in %r if part number %s is in supported PN %s' % (mapper.class_, bp_part_number, supported_part_numbers))
-            #     if bp_part_number in supported_part_numbers:
-            #         icecrate_class = mapper.class_
-            # # If so, create the IceCrate if needed, and fill in the IceBoard's crate and slot fields
-            # if icecrate_class:  # Check if a crate with the same serial number already exists
-            #     existing_crate = hwm.query(icecrate_class).filter_by(serial=bp_serial)
-            #     if existing_crate.count():  # If so, assign it to this iceboard
-            #         new_crate = existing_crate.one()
-            #         logger.debug('DNS-SD: IceCrate Model %s SN%s (class %s) is already in the hardware map. Associating IceBoard SN%s with it on slot %s.' % (bp_part_number, bp_serial, new_crate.__class__.__name__, ib_serial, bp_slot))
-            #         ib.slot = bp_slot  # Add slot before adding crate
-            #         ib.crate = new_crate
-            #         hwm.flush()
-            #     else:  # Otherwise create a new one and assign it
-            #         logger.debug('DNS-SD: Creating IceCrate Model %s SN%s using class %s and associating IceBoard SN%s with it on slot %s.' % (bp_part_number, bp_serial, icecrate_class.__name__, ib_serial, bp_slot))
-            #         ib.slot = bp_slot # Add slot before adding crate
-            #         new_crate = icecrate_class(serial=bp_serial)
-            #         ib.crate = new_crate
-            #         hwm.add(new_crate)
-            #         hwm.flush() # make sure the board will pop up in queries so we can know if the board already exist in the hwm
-            # else:  # oops, we did not find any class to handle that IceCrate part number...
-            #     logger.warning('DNS-SD: Could not find an IceCrate-derived class to represent IceCrate Model %s. The IceBoard is added without an associated crate.' % (bp_part_number))
 
 
             # Now try to resolve the hostname into an IP address to accelerate Tuber accesses
             if resolve_ip or True:
                 def a_query_callback(sdRef, flags, interfaceIndex, errorCode, fullname,
                                      rrtype, rrclass, rdata, ttl, ib):
+                    print(f'********* IP resolving for {ib} = {"ib_ip_addr"} on interface {iface} yielded  {rdata}')
                     if errorCode == pybonjour.kDNSServiceErr_NoError:
                         ib_ip_addr = socket.inet_ntoa(rdata)
                         logger.debug("DNS-SD: IceBoard SN%s hostname %s was resolved and updated to %s" % (ib.serial, ib.hostname, ib_ip_addr))
-                        ib.hostname = ib_ip_addr
-
+                        ib.update_instance(hostname=ib_ip_addr)
+                    else:
+                        print(f'error in resolving ip')
+                print(f'Starting query for A field on iface={iface}, host={host}, fullname={fullname}')
                 add_mdns_process(pybonjour.DNSServiceQueryRecord(
                     interfaceIndex=iface,
                     fullname=host,
                     rrtype=pybonjour.kDNSServiceType_A,
-                    callBack=functools.partial(a_query_callback, ib=ib)))
+                    callBack=functools.partial(a_query_callback, ib=ib_obj)))
         else:
             logger.debug("DNS-SD: IceBoard SN%s (crate %s SN%s slot %s) was detected but was not added because it did not match the IceBoard serial %s or crate serial %s" % (ib_serial, bp_part_number, bp_serial, bp_slot, iceboards, icecrates))
 
@@ -251,7 +219,7 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
     #     add_object(iface, host, txtRecord)
 
     def txt_query_callback(sdRef, flags, iface, err, fullname,
-                         rrtype, rrclass, rdata, ttl, io_loop, host):
+                           rrtype, rrclass, rdata, ttl, host):
         """ Callback that is called when a mDNS TXT Query process received a
         record.
 
@@ -261,11 +229,11 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
         if err != pybonjour.kDNSServiceErr_NoError:
             return
         logger.debug('DNS-SD: TXT query got the results: fullname=%s, rrtype=%s, rrclass=%s, rdata=%r)' % (fullname, rrtype, rrclass, rdata))
-        add_object(iface, host, rdata)
+        add_object(iface, host, rdata, fullname=fullname)
 
 
-    def browse_callback(sdRef, flags, iface, err, service,
-                        regtype, replyDomain, io_loop):
+    def query_txt_record(sdRef, flags, iface, err, service,
+                         regtype, replyDomain):
         """ Callback that is called when the mDNS browser discovers a board that has the target service type.
 
         When a board is found, the TXT record for that board is requested.
@@ -287,20 +255,21 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
             fullname=pybonjour.DNSServiceConstructFullName(service, regtype, replyDomain),
             rrtype=pybonjour.kDNSServiceType_TXT,
             rrclass=pybonjour.kDNSServiceClass_IN,
-            callBack=functools.partial(txt_query_callback, io_loop=io_loop, host=hostname)))
+            callBack=functools.partial(txt_query_callback, host=hostname)))
 
     add_mdns_process(pybonjour.DNSServiceBrowse(
         regtype='_tuber-jsonrpc._tcp',
-        callBack=functools.partial(browse_callback, io_loop=io_loop)))
+        callBack=query_txt_record))
 
 
     # Add a timeout and start the IOloop to monitor all the ongoing mDNS processes
-    io_loop.add_timeout(time.time() + timeout, lambda: io_loop.stop())
+    # io_loop.add_timeout(time.time() + timeout, lambda: io_loop.stop())
     logger.debug("DNS-SD: Starting mDNS discovery")
-    io_loop.start()  # Go!
+    await asyncio.sleep(timeout)
+    # io_loop.start()  # Go!
     logger.debug("DNS-SD: mDNS discovery has ended")
 
     # Clean up after Bonjour
     close_mdns_processes()
 
-    return hwm
+    return IceBoard.get_all_instances(), IceCrate.get_all_instances()
