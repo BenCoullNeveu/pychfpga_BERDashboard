@@ -21,8 +21,7 @@ matplotlib  # was ==2.2.3, now testing 3.3.2
 PyYAML  # was 3.13, testing 5.3.1
 psutil  # was ==5.4.7, now testing 5.7.3
 netifaces   # was not specified, now using 0.10.9
-#pybonjour @ git+git@github.com:depl0y/pybonjour-python3.git  # Python 3 commit on Oct 2 2013 (version 1.1.1, original was on 2008-05-08). Testing 2c8283f0f97897c46570d20e6aa482f69fe3ca13
-
+zeroconf  # new, was tested with 0.28.7
 
 # For testing
 docutils  # was ==0.14, now testing 0.16
