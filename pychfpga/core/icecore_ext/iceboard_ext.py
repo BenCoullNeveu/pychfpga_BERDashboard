@@ -213,7 +213,7 @@ class IceBoard(IceBoardBase, HardwareMap):
         if self.crate and self.crate.crate_number is not None and self.slot:
             return f"({self.crate.crate_number},{self.slot-1})"
         if self.crate and self.crate.part_number and self.crate.serial and self.slot:
-            return f"(({self.crate.part_number}_SN{self.crate.serial},{self.slot-1})"
+            return f"({self.crate.part_number}_SN{self.crate.serial},{self.slot-1})"
         elif self.serial:
             return f"{self.part_number}_SN{self.serial}"
         elif self.hostname:
@@ -599,6 +599,7 @@ class IceBoard(IceBoardBase, HardwareMap):
         """ Synchronous wrapper to return motherboard temperature sensor value.
         """
         return run_async(self.tuber_get_motherboard_temperature_async(sensor))
+
 
 ########################################################################################################
 ########################################################################################################
@@ -1085,12 +1086,18 @@ class IceBoardExt(IceBoardPlus):
             #     This normally overrites the attribute, so this will not be called again.
             return getattr(obj, self._attribute_name)  # Get target object
 
-    mmi = AutoOpen('mmi', 'open_core')
-    i2c = AutoOpen('i2c', 'open_core')
-    core_gpio = AutoOpen('core_gpio', 'open_core')
-    core_i2c = AutoOpen('core_i2c', 'open_core')
-    hw = AutoOpen('hw', 'open_hw')
+    # mmi = AutoOpen('mmi', 'open_core')
+    # i2c = AutoOpen('i2c', 'open_core')
+    # core_gpio = AutoOpen('core_gpio', 'open_core')
+    # core_i2c = AutoOpen('core_i2c', 'open_core')
+    # hw = AutoOpen('hw', 'open_hw')
     # bp        = AutoOpen('open_bp', 'bp')
+
+    mmi = None
+    i2c = None
+    core_gpio = None
+    core_i2c = None
+    hw = None
 
     def __init__(
             self,
