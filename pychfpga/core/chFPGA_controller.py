@@ -2838,6 +2838,7 @@ class chFPGA_controller(IceBoardExt):
             errors,
             float(errors) / float(trials) * 100))
 
+
     def get_temperatures(self):
         """ Return the core temperature of the fpga and the ADC chips.
 
@@ -3092,10 +3093,10 @@ class chFPGA_controller(IceBoardExt):
             dest_slot = self.crate.get_matching_rx(tx)[0]
             return dest_slot
 
-        def get_src_slot_for_dest_lane(dest_lane):
-            rx = (self.slot, dest_lane)
-            src_slot = self.crate.get_matching_tx(rx)[0]
-            return src_slot
+        # def get_src_slot_for_dest_lane(dest_lane):
+        #     rx = (self.slot, dest_lane)
+        #     src_slot = self.crate.get_matching_tx(rx)[0]
+        #     return src_slot
 
         if frames_per_packet < 1 or frames_per_packet > 4:
             raise ValueError('Number of frames per packet must be between 1 and 4')
