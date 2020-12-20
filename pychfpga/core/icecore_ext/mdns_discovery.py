@@ -7,7 +7,7 @@ import functools  # Used in iceboard discovery
 import time  # Used in iceboard discovery
 import socket  # used in iceboard discovery (itoa())
 import asyncio
-
+import threading
 
 # PyPI packages
 from zeroconf import IPVersion, ServiceBrowser, ServiceStateChange, Zeroconf
@@ -20,19 +20,35 @@ def _to_int(v):
         return int(v)
     except (TypeError, ValueError):
         return None
+
 def _get_txt_field(tr, key):
     value = tr.get(key.encode('ascii'), None)
     if isinstance(value, bytes):
         value = value.decode('utf-8')
     return value
 
-async def mdns_discover(icecrates=None, iceboards=None, timeout=None, clear_hardware_map=False):
-    """ Automatically detect IceBoards and IceCrates on the network using mDNS
-    and update hardware map ``hwm`` accordingly.
+class ThreadData:
+    def __init__(self,**kwargs):
+        self._lock = threading.RLock()
+        self.__dict__.update(kwargs)
+    def __enter__(self):
+        self._lock.acquire()
+        return self
+    def __exit__(self, type, value, traceback):
+        self._lock.release()
 
-    If no hardware map is provided, a new empty one is created. This can be
-    used to query and further filter the discovered objects before adding them
-    to a final hardware map.
+# How many time the longest delay betwen mdns replies do we wait until we
+# call it quits?
+AUTO_TIMEOUT_DELAY_FACTOR = 5
+
+async def mdns_discover(
+    icecrates=None,
+    iceboards=None,
+    timeout=None,
+    auto_timeout=10,
+    clear_hwm=False):
+    """ Automatically detect IceBoards and IceCrates on the network using mDNS
+    and add them to the hardware map.
 
     Parameters:
 
@@ -59,10 +75,19 @@ async def mdns_discover(icecrates=None, iceboards=None, timeout=None, clear_hard
             serial number found in the ``iceboards`` list are selected. If
             None or an empty list, no board is added. If ``iceboards='*'``,
             all discovered Iceboards are added.
+
+
+        auto_timeout (int or float): If non-zero, mDNS search will stop when the delay
+            since the last reply  exceeds either :
+               1) AUTO_TIMEOUT_DELAY_FACTOR times the longest delay between replies so far
+               2) `auto_timeout`
+
+
+
     """
     logger = logging.getLogger(__name__)
 
-    if clear_hardware_map:
+    if clear_hwm:
         IceBoard.clear_hardware_map()
 
     # Normalize iceboard and icecrate target lists to the [ (model,[serial1, serial2]), ...] format
@@ -77,10 +102,11 @@ async def mdns_discover(icecrates=None, iceboards=None, timeout=None, clear_hard
     icecrates = [(model, serials if isinstance(serials, (list, tuple)) else [serials]) for model, serials in icecrates]
 
     t0 = time.time()
-    time_info = dict(last_time=t0, dt_max=0)
+    time_info = ThreadData(t0=t0, last_time=t0, dt_max=0, n=0)
 
     def on_service_state_change(zeroconf: Zeroconf, service_type: str,
-                                name: str, state_change: ServiceStateChange, time_info=time_info) -> None:
+                                name: str, state_change: ServiceStateChange,
+                                time_info=time_info) -> None:
         # print("Service %s of type %s state changed: %s" % (name, service_type, state_change))
 
         if state_change is not ServiceStateChange.Added:
@@ -139,18 +165,26 @@ async def mdns_discover(icecrates=None, iceboards=None, timeout=None, clear_hard
                 f"but was not added because it did not match the IceBoard serial {iceboards} "
                 f"or crate serial {icecrates}")
         t = time.time()
-        time_info['dt_max'] = max(time_info['dt_max'], t - time_info['last_time'])
-        time_info['last_time'] = t
-
-    zeroconf = Zeroconf(ip_version=IPVersion.V4Only)
-    services = ["_tuber-jsonrpc._tcp.local."]
-    browser = ServiceBrowser(zeroconf, services, handlers=[on_service_state_change])
+        with time_info as ti:
+            ti.dt_max = max(ti.dt_max, t - ti.last_time)
+            ti.last_time = t
+            ti.n += 1
     try:
+        zeroconf = Zeroconf(ip_version=IPVersion.V4Only)
+        browser = ServiceBrowser(
+            zeroconf,
+            '_tuber-jsonrpc._tcp.local.',
+            handlers=[on_service_state_change])
         while True:
-            print(f'{time_info}')
             t = time.time()
-            if (timeout and t - t0 > timeout) or (not timeout and time_info['dt_max'] and (t-time_info['last_time'] > 10 * time_info['dt_max'])):
-                break
+            with time_info as ti:
+                print(f'elapsed={t-t0:.1f}, elapsed since last time={t-ti.last_time:.1f}, dt_max={ti.dt_max}, n={ti.n}, last_time={ti.last_time}')
+                if (timeout and t - t0 > timeout):
+                    break
+                if auto_timeout and ti.n and t-ti.last_time > auto_timeout:
+                    break
+                # if (auto_timeout and ti.n > 1 and ti.dt_max and (t - ti.last_time > AUTO_TIMEOUT_DELAY_FACTOR * ti.dt_max)):
+                #     break
             await asyncio.sleep(.1)
     finally:
         zeroconf.close()
