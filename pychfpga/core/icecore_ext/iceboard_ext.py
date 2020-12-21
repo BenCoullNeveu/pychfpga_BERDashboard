@@ -286,6 +286,9 @@ class IceBoard(IceBoardBase, HardwareMap):
         Update the class, serial or hostname info of specified IceCrate
         subclass instance. If the class needs to be changed, a new class
         instance is created and the IceBoard references are updated to the new class.
+
+        Paremeters:
+
         """
         serial = serial or self.serial
         hostname = hostname or self.hostname
@@ -519,7 +522,7 @@ class IceBoard(IceBoardBase, HardwareMap):
         if icecrate_class and update:
             crate_number = self.crate.crate_number if self.crate else None
             crate = IceCrate.get_unique_instance(new_class=icecrate_class, serial=serial, crate_number=crate_number)
-            self.update_instance(crate_number=crate_number, crate=crate) # update crate info and repr
+            self.update_instance(crate=crate) # update crate info and repr
             print(f"{self} now has crate {self.crate}")
             # if slot_number:
             #     self.crate.slot[slot_number] = self
