@@ -88,11 +88,13 @@ class IceCrate(IceCrateBase, HardwareMap):
         Creates a new IceCrate instance if one with matching crate_number or
         serial number does not exist, otherwise return an existing one
         augmented with the new serial or crate_number information.
+
         """
         matching_crates = [
             c for c in cls._instance_registry
             if (crate_number is not None and c.crate_number == crate_number)
-            or ((new_class or cls).part_number and serial and c.part_number == (new_class or cls).part_number and c.serial == serial)]
+            or ((new_class or cls).part_number and serial and c.part_number == (new_class or cls).part_number and c.serial == serial)
+            ]
         print(f'Found crates {matching_crates}')
         if not len(matching_crates):  # no matching crate, create one
             return (new_class or cls)(serial=serial, crate_number=crate_number)
@@ -101,11 +103,17 @@ class IceCrate(IceCrateBase, HardwareMap):
         else:
             raise RuntimeError('Multiple IceCrates with same keys (should never happen)')
 
-    def update_instance(self, new_class=None, serial=None, crate_number=None):
+    def update_instance(self, new_class=None,  serial=None, crate_number=None):
         """
         Update the class, serial or crate_number info of specified IceCrate
         subclass instance. If the class needs to be changed, a new class
         instance is created and the IceBoard references are updated to the new class.
+
+        Parameters:
+
+            new_class
+
+
         """
         new_args = dict(
             serial=serial or self.serial,
