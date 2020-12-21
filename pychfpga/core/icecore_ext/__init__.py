@@ -14,6 +14,6 @@ from .icecrate_ext import IceCrate
 from .iceboard_ext import IceBoard, IceBoardPlus, IceBoardExt
 from .iceboard_ext import FMCMezzanine
 from .fpga_bitstream import FpgaBitstream
-# from .mdns_discovery import mdns_discover
+from .mdns_discovery import mdns_discover
 from .ccoll import Ccoll
 # from .myasync import myasync, async_sleep, async_return, async_moment

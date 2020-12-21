@@ -27,6 +27,9 @@ def _get_txt_field(tr, key):
         value = value.decode('utf-8')
     return value
 
+def match(target, value):
+    return target == '*' or target == value
+
 class ThreadData:
     def __init__(self,**kwargs):
         self._lock = threading.RLock()
@@ -91,16 +94,21 @@ async def mdns_discover(
         IceBoard.clear_hardware_map()
 
     # Normalize iceboard and icecrate target lists to the [ (model,[serial1, serial2]), ...] format
-    if isinstance(iceboards, str): # include '*'
-        iceboards = [('*', [iceboards])]
-    iceboards = [entry if isinstance(entry, (list, tuple)) else ('*', [entry]) for entry in iceboards or []]
-    iceboards = [(model, serials if isinstance(serials, (list, tuple)) else [serials]) for model, serials in iceboards]
+    if iceboards == '*':
+        iceboards = [('*', '*')]
+    # if isinstance(iceboards, str): # include '*'
+    #     iceboards = [('*', [iceboards])]
+    # iceboards = [entry if isinstance(entry, (list, tuple)) else ('*', [entry]) for entry in iceboards or []]
+    # iceboards = [(model, serials if isinstance(serials, (list, tuple)) else [serials]) for model, serials in iceboards]
 
-    if isinstance(icecrates, str): # include '*'
-        icecrates = [('*', [icecrates])]
-    icecrates = [entry if isinstance(entry, (list, tuple)) else ('*', [entry]) for entry in icecrates or []]
-    icecrates = [(model, serials if isinstance(serials, (list, tuple)) else [serials]) for model, serials in icecrates]
+    # if isinstance(icecrates, str): # include '*'
+    #     icecrates = [('*', [icecrates])]
+    if icecrates == '*':
+        icecrates = [('*', '*')]
+    # icecrates = [entry if isinstance(entry, (list, tuple)) else ('*', [entry]) for entry in icecrates or []]
+    # icecrates = [(model, serials if isinstance(serials, (list, tuple)) else [serials]) for model, serials in icecrates]
 
+    print(f'looking for ib={iceboards}, ic={icecrates}')
     t0 = time.time()
     time_info = ThreadData(t0=t0, last_time=t0, dt_max=0, n=0)
 
@@ -137,15 +145,15 @@ async def mdns_discover(
 
         # Check if the motherboard matches the search criteria
         iceboard_match = ib_part_number and ib_serial and any(
-            (target_model == '*' or ib_part_number == target_model) and
-            ('*' in target_serials or ib_serial in target_serials or int_ib_serial in target_serials)
-            for target_model, target_serials in iceboards)
+            match(target_model, ib_part_number)
+            and (match(target_serial, ib_serial) or match(target_serial, int_ib_serial))
+            for target_model, target_serial in iceboards)
 
         # Check if the backplane matches the search criteria
         icecrate_match = bp_part_number and bp_serial and any(
-            (target_model == '*' or bp_part_number == target_model) and
-            ('*' in target_serials or bp_serial in target_serials or int_bp_serial in target_serials)
-            for target_model, target_serials in icecrates)
+            match(target_model, bp_part_number)
+            and (match(target_serial, bp_serial) or match(target_serial, int_bp_serial))
+            for target_model, target_serial in icecrates)
 
         if icecrate_match or iceboard_match:
             if ib_part_number and ib_serial:
@@ -156,9 +164,9 @@ async def mdns_discover(
             # Add the backplane if it does not already exist
             if bp_part_number and bp_serial:
                 bp_cls = IceCrate.get_class_by_ipmi_part_number(bp_part_number)
-                bp_obj = bp_cls.get_unique_instance(serial=bp_serial)
-                if slot:
-                    ib_obj.update_instance(crate=bp_obj, slot=slot)
+                crate_number = ib_obj.crate.crate_number if ib_obj.crate else None
+                bp_obj = bp_cls.get_unique_instance(new_class=bp_cls, serial=bp_serial, crate_number =crate_number)
+                ib_obj.update_instance(crate=bp_obj, slot=slot)
         else:
             logger.debug(
                 f"DNS-SD: IceBoard SN{ib_serial} (crate {bp_part_number} SN{bp_serial} slot {bp_slot}) was detected "
