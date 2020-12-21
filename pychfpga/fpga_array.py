@@ -56,7 +56,7 @@ except ImportError:
 
 from pychfpga.core.icecore_ext import Ccoll
 # from pychfpga.core.icecore import HardwareMap, HWMResource
-# from pychfpga.core.icecore import mdns_discover
+from pychfpga.core.icecore_ext import mdns_discover
 
 # from pychfpga.core.icecore import IceBoardPlus
 from pychfpga.core.icecore_ext import IceBoard, IceBoardPlus, IceCrate
@@ -135,7 +135,6 @@ class FPGAArray(object):
             icecrates=[],
             mezzanines=[],
             exclude_iceboards=[],
-            virtual_slot_map={},
             ignore_missing_boards=False,
 
             subarrays=None,
@@ -212,13 +211,6 @@ class FPGAArray(object):
                   Iceboards that fail the `ping` test and do not meet the
                   ``subarray`` criteria.
 
-
-            virtual_slot_map (dict): Maps board model/serial number or hostname string to
-                a virtual slot number.
-
-                Examples:
-                     {"MGK7MB_SN123": 5, ...}
-                     {"10.10.10.220": 3, ...}
 
             iceboards (list of str) : Iceboard to add to the hardware map,
                 specified as an IP address, hostname, or serial number. The
@@ -432,7 +424,6 @@ class FPGAArray(object):
              icecrates=icecrates,
              mezzanines=mezzanines,
              exclude_iceboards=exclude_iceboards,
-             virtual_slot_map=virtual_slot_map,
              ignore_missing_boards=ignore_missing_boards,
              subarrays=subarrays, ping=ping,
              mdns_timeout=mdns_timeout,
@@ -503,7 +494,6 @@ class FPGAArray(object):
             icecrates=[],
             mezzanines=[],
             exclude_iceboards=[],
-            virtual_slot_map={},
             ignore_missing_boards=False,
 
             subarrays=None, ping=True,
@@ -853,52 +843,50 @@ class FPGAArray(object):
         ###########################################################################
         # We add the boards/crates that are specified by serial number
         # The serial and slot numbers will be set based on the data returned by the MDNS TXT fields
-        ib_to_discover = [(ib.part_number, ib.serial) for ib in IceBoard.get_all_instances() if ib.serial and not ib.hostname ]
+        ib_to_discover = [(ib.part_number, ib.serial) for ib in IceBoard.get_all_instances() if ib.serial and not ib.hostname]
         ic_to_discover = [(ic.part_number, ic.serial) for ic in IceCrate.get_all_instances() if ic.serial and not ic.slot]
+        # Remove iceboards with wildcard serial numbers
+        for ib in IceBoard.get_all_instances():
+            if ib.serial == '*':
+                ib.delete_instance()
         if ib_to_discover or ic_to_discover:
             self.logger.info('%r: Discovering IceBoards and Icecrates specified by serial number using mDNS' % self)
             self.logger.info('%r:     IceBoards to find: %s' % (self, ib_to_discover))
             self.logger.info('%r:     IceCrates to find: %s' % (self, ic_to_discover))
             self.print_flush()
             # Perform mDNS discovery. This is done on a separate ioloop, which locks up the current loop for a while
-            await mdns_discover(self.hwm,
-                          icecrates=ib_to_discover,
-                          iceboards=ic_to_discover,
-                          timeout=mdns_timeout)
+            await mdns_discover(
+                          iceboards=ib_to_discover,
+                          icecrates=ic_to_discover,
+                          auto_timeout=mdns_timeout)
 
         ###########################################################################
         # Exclude boards
         ###########################################################################
-        # Remove iceboards to be excluded (by serial number)
-        if exclude_iceboards:
-            self.logger.info('%r: Removing IceBoards based on exclusion list: %s'
-                             % (self, exclude_iceboards))
-            for ib in list(self.hwm): # make a copy because we remove elements of hwm
-                try:
-                    serial = str(int(ib.serial))
-                except (TypeError, ValueError):
-                    serial = ib.serial
-                if serial in exclude_iceboards or ib.serial in exclude_iceboards:
+        for ib in IceBoard.get_all_instances():
+            if ib.serial and exclude_iceboards:
+                int_serial = self._to_int(ib.serial)
+                if ib.serial in exclude_iceboards or int_serial in exclude_iceboards:
                     ib.delete_instance()
+                    self.logger.info(
+                        f'{self!r}: Removing IceBoard {ib} based on '
+                        f'exclusion list: {exclude_iceboards}')
 
         ###########################################################################
-        # Assign virtual slot numbers
+        # Cleanup hardware map
         ###########################################################################
-        # Reassign slot numbers of boards with specific model/serial numbers.
-        # This is mostly useful for standalone boards.
-        if virtual_slot_map:
-            for ib in self.hwm:
-                sid = ib.get_string_id()
-                if sid in virtual_slot_map:
-                    slot = virtual_slot_map[sid]
-                elif ib.hostname in virtual_slot_map:
-                    slot = virtual_slot_map[ib.hostname]
-                else:
-                    slot = None
-                if slot:
-                    self.logger.info('%r: Reassigning slot number %i to board %s/%s (was %s)'
-                                     % (self, slot, sid, ib.hostname, ib.slot))
-                    ib.slot = slot
+        used_icecrates = {ib.crate for ib in IceBoard.get_all_instances()}
+        unused_icecrates = set(IceCrate.get_all_instances()) - used_icecrates
+        for ic in unused_icecrates:
+            self.logger.warning(f'{self!r}: Removing unused IceCrate {ic}(part_number={ic.part_number}, serial={ic.serial}, crate_number={ic.crate_number})')
+            ic.delete_instance()
+
+        unresolved_iceboards = [ib for ib in IceBoard.get_all_instances() if not ib.hostname]
+        if unresolved_iceboards:
+            for ib in unresolved_iceboards:
+                self.logger.info(f'{self!r}: Unresolved {ib}(part_number={ib.part_number}, serial={ib.serial}, hostname={ib.hostname})')
+            raise RuntimeError(f'Unresolved IceBoards {unresolved_iceboards}')
+
 
         self.logger.info('%r: Hardware map is complete' % self)
 
@@ -910,10 +898,10 @@ class FPGAArray(object):
         #################################
 
         # Fill the slot information in all crates
-        for ib in self.hwm:
-            if ib.crate and ib.slot and ib.crate.slot[ib.slot] is not ib:
-                self.logger.warning(f'{self!r}: Had to assign {ib} to slot {ib.slot} of crate {ib.crate}')
-                ib.crate.slot[ib.slot] = ib
+        # for ib in self.hwm:
+        #     if ib.crate and ib.slot and ib.crate.slot[ib.slot] is not ib:
+        #         self.logger.warning(f'{self!r}: Had to assign {ib} to slot {ib.slot} of crate {ib.crate}')
+        #         ib.crate.slot[ib.slot] = ib
 
         #################################
         # Set the crate numbers
@@ -921,25 +909,25 @@ class FPGAArray(object):
         # ... using whatever map we could determine from the parameters
 
         # self.set_crate_numbers(crate_number_map, strict=False)
-        print('Crates:')
-        for ic in IceCrate.get_all_instances():
-            print(f'{ic}(serial={ic.serial}, crate_number={ic.crate_number}')
+        # print('Crates:')
+        # for ic in IceCrate.get_all_instances():
+        #     print(f'{ic}(serial={ic.serial}, crate_number={ic.crate_number}')
 
         #################################
         # Check if all the hardware we wanted is present
         #################################
-        # List all the crates we know about along with their model/serial tuple
-        # Format: {icecrate_object : (model, integer_serial),...}
-        current_crates = {c: (c.part_number, self._to_integer(c.serial)) for c in IceCrate.get_all_instances()}
+        # # List all the crates we know about along with their model/serial tuple
+        # # Format: {icecrate_object : (model, integer_serial),...}
+        # current_crates = {c: (c.part_number, self._to_integer(c.serial)) for c in IceCrate.get_all_instances()}
 
-        # Find if explicitely requested crates were not found
-        missing_crates = [(ic.part_number, ic.serial) for ic in IceCrate.get_all_instances()
-                          if not ic.slot or not all(ib.hostname for ib in ic.slot.values())]
-        if missing_crates:
-            raise RuntimeError(
-                '%r: The following crates are missing: %s'
-                % (self, ', '.join('%s SN%s' % (model, serial)
-                                   for (model, serial) in missing_crates)))
+        # # Find if explicitely requested crates were not found
+        # missing_crates = [(ic.part_number, ic.serial) for ic in IceCrate.get_all_instances()
+        #                   if not ic.slot or not all(ib.hostname for ib in ic.slot.values())]
+        # if missing_crates:
+        #     raise RuntimeError(
+        #         '%r: The following crates are missing: %s'
+        #         % (self, ', '.join('%s SN%s' % (model, serial)
+        #                            for (model, serial) in missing_crates)))
 
         # Check for missing boards in explicitely-specified crates
         missing_slots = {
@@ -1422,7 +1410,9 @@ class FPGAArray(object):
         if isinstance(hw_string, (list, tuple)):
             hw_string = ' '.join(str(s) for s in hw_string)
 
-
+        if hw_string == '*':
+            IceBoard.get_unique_instance(serial='*')
+            return
         # Split the string in ' '- or '_'-separated elements
         elements = str(hw_string).replace('_', ' ').strip().split(' ')
 
@@ -1446,12 +1436,12 @@ class FPGAArray(object):
 
         current_class = None
         for el in elements:
-            if '.' in el:
+            if '.' in el:  # if hostname
                 hostname, slot, crate_number = split_fields(el, 3)
                 print(f'Adding IceBoard {hostname}, {slot}, {crate_number}')
                 ib = IceBoard.get_unique_instance(hostname=hostname, slot=slot, crate_number=crate_number)
                 current_class = None
-            elif el[0].isdigit():
+            elif el[0].isdigit(): # if a serial
                 if not current_class:
                     raise RuntimeError('A part number must be specified before a target serial number')
                 if issubclass(current_class, IceBoard):
@@ -1463,7 +1453,7 @@ class FPGAArray(object):
                     IceCrate.get_unique_instance(new_class=current_class, serial=serial, crate_number=crate_number)
                 else:
                     raise TypeError(f'Trying to create object {current_class} that is other than IceBoard or IceCrate')
-            else:
+            else: # otherwise, assume it is a part number
                 matching_classes = [c for c in [IceBoard] + IceCrate.get_all_classes() if c.part_number and c.part_number.upper().endswith(el.upper())]
                 if not matching_classes:
                     raise RuntimeError(f'Cannot find a part number that ends in {el}')
