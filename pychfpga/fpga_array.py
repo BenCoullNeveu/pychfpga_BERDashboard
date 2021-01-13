@@ -1017,7 +1017,8 @@ class FPGAArray(object):
         #################################
         print(f'New HWM={self.hwm}')
         for ib in self.hwm:
-            print(f"{ib}, crate={ib.crate}(serial={ib.crate.serial}, crate_number={ib.crate.crate_number})")
+            crate_info = f"{ib.crate}(serial={ib.crate.serial}, crate_number={ib.crate.crate_number})" if ib.crate else None
+            print(f"{ib}, crate={crate_info}")
         self.print_iceboard_table(
             lambda ib: '%s\n%s' % (get_mezz_name(ib, 1), get_mezz_name(ib, 2)),
             row_labels=['Mezz1\nMezz2'],
