@@ -45,6 +45,13 @@ setup(
       python_requires='>=3.7',
       install_requires=requirements,
       include_package_data=True,
-      entry_points = {'fm': ['fm=fpga_master:main']},
-#      cmdclass = {'build_ext': build_ext},
+      entry_points={
+          "console_scripts": [
+              "fpga_master=fpga_master:main",
+              "chime_gps=gps:main",
+              "chime_raw_acq=raw_acq:main",
+              "chime_rx_ps=ps:main",
+          ]
+      },
+      # cmdclass = {'build_ext': build_ext},
      )
