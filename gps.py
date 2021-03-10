@@ -115,7 +115,8 @@ class SpectrumInstrumentsTM4D(SocketContext):
                     reply = ''
                     while True:
                         s = self.recv(16384)
-                        print(f'Received {s!r} (CRLF={'\r\n' in s})')
+                        has_crlf = '\r\n' in s
+                        print(f"Received {s!r} (CRLF={has_crlf})")
                         reply += s
                         if '\r\n' in reply:
                             break
