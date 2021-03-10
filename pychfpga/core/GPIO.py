@@ -176,9 +176,14 @@ class GPIO_base(Module_base):
             self.PWM_RESET = 1  # stops the PWM generator
 
     def get_pwm(self):
-        """ Return the current settings of the PWM generator as a
-        tuple."""
-        return (self.PWM_OFFSET, self.PWM_HIGH_TIME, self.PWM_PERIOD)
+        """ Return the current settings of the PWM generator.
+
+        Returns:
+
+            A tuple containing the offset, high time, period and reset state.
+
+        """
+        return (self.PWM_OFFSET, self.PWM_HIGH_TIME, self.PWM_PERIOD, self.PWM_RESET)
 
     USER_OUTPUT_SOURCE_TABLE = {
         'sync': 0,  # User-generated SYNC signal (sunc_out)

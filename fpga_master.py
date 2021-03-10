@@ -1154,7 +1154,6 @@ class FPGAMaster(object):
         self.config.fpga.channelizer_params = NameSpace(params)
 
 
-
     def setup_noise_injection(self, ni_params):
         """
         Setup the noise gating PWM signals for all the boards specified in `ni_params`.
@@ -1171,54 +1170,32 @@ class FPGAMaster(object):
                 if source_params.board:
                     self.fpgas.set_noise_injection(local_sync=True, **source_params)
 
+    async def get_noise_injection_state(self, source_name):
+        """ Return the actual configuration of the spcified noise injection source.
+
+        Parameters:
+
+            source_name (str): name of the noise injection source, as defined
+                in the configuration file under the fpga.noise_injection
+                configuration group. Is case sensitive.
+
+        Returns:
+
+            A dict containing the configuration and state of the specified
+            noise injection source. See
+            `fpga_array.get_noise_injection_async()` for the format.
+
+        """
+
+        ni_params = self.config.fpga.noise_injection
+        if source_name not in ni_params:
+            raise RuntimeError(f"Unknown noise injection source name. Valid sources are: {','.join(ni_params.keys())}")
+        p = ni_params[source_name]
+        return await self.fpgas.get_noise_injection_async(p.board, p.output)
+
     ###################################
     # Gains management
     ###################################
-
-
-    # def get_next_gain_switch_frame(self):
-    #     """ Get the frame number of first frame of the next integration period and the remaining time before this frame occurs.
-
-    #     JFC: Method is non functional (missing next_frame_number variable). Method might be obsolete. See switch_gains() below.
-    #     """
-    #     ib = self.fpgas.ib[0]
-    #     # Get how much extra time do we need to set-up the gains before
-    #     # switching, expressed in NUMBER_OF_FRAMES
-    #     gain_switch_delay = self.config.fpga.gain_switch_delay
-    #     # get integration period, expressed in NUMBER OF FRAMES
-    #     gpu_integration_period = self.config.gpu.gpu_integration_period
-
-    #     current_frame_number = ib.get_frame_number()
-    #     #
-    #     next_gain_switch_frame = (1 + (current_frame_number + gain_switch_delay) // gpu_integration_period) * gpu_integration_period
-    #     time_until_switch = (next_gain_switch_frame - current_frame_number) * self.SECONDS_PER_FRAME
-    #     return (next_frame_number, time_until_switch)
-
-
-    # async def switch_gains(self, gain_map):
-    #     """ Start using the specified gain map for the next available integration period and inform CHRX of the new gains.
-
-    #     JFC: Method MAY BE OBSOLETE
-    #     """
-    #     if self.state != 'on':
-    #         return dict(error='not started')
-
-    #     # get the currently inactive active gain bank from one single board. We want all boards to
-    #     # use the same bank number to make the system more robust to gain qdesynchronization (if one
-    #     # board misses its gain switch for instance).
-    #     next_bank = self.fpgas.get_next_gain_bank()
-
-    #     # Set the gains in the unused gain bank, but don't switch to them yet. This will take some unknown time
-    #     await self.fpgas.set_gains_async(gain_map, bank=next_bank)
-
-    #     # Now that all the gains are stored, find out when we can switch them in.
-    #     # This will be the next integer number of interation period. This includes a guard period to leave us time to instruct the FPGAs when to switch.
-    #     (next_gain_switch_frame_number, time_until_switch) = self.get_next_gain_switch_frame()
-
-    #     # Tell all the channels to switch to the currently unused bank at that frame number. That should be done within the guard period.
-    #     await self.fpgas.switch_gains_async(bank=next_bank, when=next_gain_switch_frame_number)
-
-
 
     def status(self):
         """ Get the operational status of the telescope as a dictionary"""
@@ -1707,6 +1684,26 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
 
         return dict(message='Resetted %i boards' % len(actual_board_ids), board_ids=actual_board_ids)
 
+    @endpoint('get-noise-injection-state')
+    async def get_noise_injection_state(self, source_name):
+        """ REST endpoint to return the state of the specified noise injection source
+
+        Parameters:
+
+            source_name (str): name of the noise injection source as found in the fpga.noise_injection configuration block.
+
+        Returns:
+
+            Dictionary describing the configuration and state of the noise injection generator.
+
+        Example::
+
+            curl -d '{"source_name": "26m"}' -H "Content-Type: application/json" -X POST http://localhost:54321/get-noise-injection-state
+        """
+        if not (self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas):
+            self.log.warning(f"{self}: FPGA array is not ready to accept command")
+            return dict(message="FPGA not ready", board_ids=[])
+        return await self.chime_master.get_noise_injection_state(source_name)
 
     @endpoint('compute-gains')
     async def compute_gains(self, **params):

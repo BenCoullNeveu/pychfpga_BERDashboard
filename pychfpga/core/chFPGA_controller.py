@@ -2744,6 +2744,17 @@ class chFPGA_controller(IceBoardExt):
         if local_sync:
             self.sync()
 
+    def get_pwm(self):
+        """ Return the state of the PWM generator
+
+        Returns:
+
+            A tuple containing the offset, high time, period and reset state.
+        """
+
+        return self.GPIO.get_pwm()
+
+
     def set_adc_mask(self, mask=0xFF, channels=None):
         """ Set the mask that is applied on the ADC data on the specified channel.
 

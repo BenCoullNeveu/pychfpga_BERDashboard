@@ -2886,17 +2886,86 @@ class FPGAArray(object):
             output='bp_sma'):
         """ Configure noise injection gating signal.
 
-        ``board`` is either the serial number (as a string) of the target board, or is the target IceBoard object.
+        Parameters:
 
-        A sync event is necessary to restart the counters so the gating signal will be generated properly.
+            board:  is either the serial number (as a string) of the target
+                board, or is the target IceBoard object. If board evaluates to False (empty string), the noise injection setup is skipped.
+
+
+        Notes:
+
+            A sync event is necessary to restart the counters so the gating signal will be generated properly.
 
         """
-        board = self.get_iceboard(board)
+        if not board:
+            return
+
+        ib = self.get_iceboard(board)
 
         if enable:
-            board.set_user_output_source('pwm', output=output)
+            ib.set_user_output_source('pwm', output=output)
 
-        board.set_pwm(enable=enable, offset=offset, high_time=high_time, period=period, local_sync=local_sync)
+        ib.set_pwm(enable=enable, offset=offset, high_time=high_time,
+                   period=period, local_sync=local_sync)
+
+    async def get_noise_injection_async(self, board, output='bp_sma'):
+        """ Get the current configuration of the noise injection gating signal.
+
+        Parameters:
+
+            board (tuple/list, str, IceBoard):  is either a 2-element tuple or
+                list describing the board, or a string containing the board's
+                serial number or hostname.
+
+            output (str): name of the user output to which the noise injection
+                hardware is connected. This will be used to verify if the PWM
+                signal is actually sent to that output.
+
+        Returns:
+
+            A dict containing the following fields:
+
+                board (str or tuple/list): the target board, as specified in the `board` parameter
+
+                offset (int): the PWM waveform offset from frame 0, in frames
+
+                high_time (int): the high time of the PWM waveform, in frames
+
+                period (int): the period of the PWM waveform, in frames
+
+                enable (bool): True when the PWM is not in reset
+
+                output (str): output to which the noise injection electronics
+                    is connected, as specified by the `output` parameter.
+
+                output_source (str): name of the source driving the specified
+                    'output'. Should be 'pwm' if the PWM generator is to be
+                    seen at that output.
+
+                pwm_output_selected (bool): True if the specified `output` is set to
+                    output the PWM signal (i.e. output_source='pwm').
+
+            If `board` evaluates to False, the fields return zero/False, and
+            output_source is set to '(unknown)'.
+
+        """
+        if board:
+            ib = self.get_iceboard(board)
+            output_source = ib.get_user_output_source(output)
+            offset, high_time, period, reset = ib.get_pwm()
+        else:
+            offset = high_time = period = 0
+            reset = True
+            output_source = '(unknown)'
+
+        return dict(board=board,
+                    offset=offset,
+                    high_time=high_time,
+                    period=period,
+                    enable=not reset,
+                    output=output,
+                    output_source=output_source,
+                    pwm_output_selected=(output_source=='pwm'))
 
     # def get_current_gain_bank(self):
     #     return [ib.get_current_gain_bank() for ib in self.ib]
@@ -2935,7 +3004,19 @@ class FPGAArray(object):
     def get_iceboard(self, board):
         """ Return the ICEBoard specified by tuple or serial number.
 
-        If board is already an IceBoard object, it should be returned.
+        Parameters:
+
+            board (tuple, str or IceBoard): board identifier.
+
+                - If `board` is a str, it will be matched with either the
+                  board serial number string (with leading zeros) or with the
+                  board hostname.
+                - If `board` is a tuple or a list,  describing a (crate,
+                  slot), it will be matched with the board ID as return by the
+                  board's get_id().
+                - If `board` is already an IceBoard object, `board` is
+                  returned directly. An exception is raised if there are
+                  multiple matches.
         """
         if not self.ib:
             raise RuntimeError('There are no Iceboard to select in the current array')
