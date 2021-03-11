@@ -185,6 +185,11 @@ class GPIO_base(Module_base):
         """
         return (self.PWM_OFFSET, self.PWM_HIGH_TIME, self.PWM_PERIOD, self.PWM_RESET)
 
+    def get_user_bits(self):
+        """ Returns the status of the two user-controlled bits that can be routed to any of the user outputs
+        """
+        return self.USER_BIT0, self.USER_BIT1
+
     USER_OUTPUT_SOURCE_TABLE = {
         'sync': 0,  # User-generated SYNC signal (sunc_out)
         'pps': 1,  # 1 PPS signal from the IRIG-B decoder (pps_out)

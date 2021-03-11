@@ -2754,6 +2754,15 @@ class chFPGA_controller(IceBoardExt):
 
         return self.GPIO.get_pwm()
 
+    def get_user_bits(self):
+        """ Return the state of the user-programmable bits that can be routed to any of the user outputs.
+
+        Returns:
+
+            A tuple containing the status of (user_bit0, user_bit1).
+        """
+
+        return self.GPIO.get_user_bits()
 
     def set_adc_mask(self, mask=0xFF, channels=None):
         """ Set the mask that is applied on the ADC data on the specified channel.

@@ -2908,8 +2908,9 @@ class FPGAArray(object):
         ib.set_pwm(enable=enable, offset=offset, high_time=high_time,
                    period=period, local_sync=local_sync)
 
-    async def get_noise_injection_async(self, board, output='bp_sma'):
-        """ Get the current configuration of the noise injection gating signal.
+    async def get_user_output_state_async(self, board, output='bp_sma'):
+        """ Get the current state of the specified user output and the
+        information about its source.
 
         Parameters:
 
@@ -2927,48 +2928,48 @@ class FPGAArray(object):
 
                 board (str or tuple/list): the target board, as specified in the `board` parameter
 
-                offset (int): the PWM waveform offset from frame 0, in frames
-
-                high_time (int): the high time of the PWM waveform, in frames
-
-                period (int): the period of the PWM waveform, in frames
-
-                enable (bool): True when the PWM is not in reset
-
                 output (str): output to which the noise injection electronics
                     is connected, as specified by the `output` parameter.
 
                 output_source (str): name of the source driving the specified
-                    'output'. Should be 'pwm' if the PWM generator is to be
-                    seen at that output.
+                    'output'.
 
-                pwm_output_selected (bool): True if the specified `output` is set to
-                    output the PWM signal (i.e. output_source='pwm').
+                pwm_offset (int): the PWM generator waveform offset from frame 0, in frames
 
-            If `board` evaluates to False, the fields return zero/False, and
-            output_source is set to '(unknown)'.
+                pwm_high_time (int): the high time of the PWM generator waveform, in frames
+
+                pwm_period (int): the period of the PWM generator waveform, in frames
+
+                pwm_enabled (bool): True when the PWM generator is not in reset. Useful when output_source is 'pwm'.
+
+                user_bit0 (int): State of the user bit 0. Useful when output_source is 'user_bit0'.
+
+                user_bit1 (int): State of the user bit 1. Useful when output_source is 'user_bit1'.
+
+
+            If `board` evaluates to False, only the first 3 fields are returned, with
+            output_source set to None.
 
         """
-        if board:
-            ib = self.get_iceboard(board)
-            output_source = ib.get_user_output_source(output)
-            offset, high_time, period, reset = ib.get_pwm()
-        else:
-            offset = high_time = period = 0
-            reset = True
-            output_source = '(unknown)'
+        status = dict(board=board,
+                      output=output,
+                      output_source=None)
+        if not board:
+            return status
 
-        return dict(board=board,
-                    offset=offset,
-                    high_time=high_time,
-                    period=period,
-                    enable=not reset,
-                    output=output,
-                    output_source=output_source,
-                    pwm_output_selected=(output_source=='pwm'))
-
-    # def get_current_gain_bank(self):
-    #     return [ib.get_current_gain_bank() for ib in self.ib]
+        ib = self.get_iceboard(board)
+        output_source = ib.get_user_output_source(output)
+        offset, high_time, period, reset = ib.get_pwm()
+        user_bit0, user_bit1 = ib.get_user_bits()
+        status.update(
+            output_source=output_source,
+            pwm_offset=offset,
+            pwm_high_time=high_time,
+            pwm_period=period,
+            pwm_enabled=not reset,
+            user_bit0=user_bit0,
+            user_bit1=user_bit1)
+        return status
 
     def get_stream_id_map(self):
         """ Return the stream_ids if every channel of the array, indexed by channel_id.

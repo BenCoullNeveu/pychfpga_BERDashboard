@@ -1204,12 +1204,12 @@ class FPGAMaster(object):
                 if source_params.board:
                     self.fpgas.set_noise_injection(local_sync=True, **source_params)
 
-    async def get_noise_injection_state(self, source_name):
-        """ Return the actual configuration of the spcified noise injection source.
+    async def get_noise_injection_status(self, name):
+        """ Return the actual configuration of the specified noise injection source.
 
         Parameters:
 
-            source_name (str): name of the noise injection source, as defined
+            name (str): name of the noise injection configuration, as defined
                 in the configuration file under the fpga.noise_injection
                 configuration group. Is case sensitive.
 
@@ -1217,15 +1217,18 @@ class FPGAMaster(object):
 
             A dict containing the configuration and state of the specified
             noise injection source. See
-            `fpga_array.get_noise_injection_async()` for the format.
+            `FPGAArray.get_user_output_state_async()` for the format.
 
         """
 
         ni_params = self.config.fpga.noise_injection
-        if source_name not in ni_params:
+        if name not in ni_params:
             raise RuntimeError(f"Unknown noise injection source name. Valid sources are: {','.join(ni_params.keys())}")
-        p = ni_params[source_name]
-        return await self.fpgas.get_noise_injection_async(p.board, p.output)
+        p = ni_params[name]
+        status = await self.fpgas.get_user_output_state_async(p.board, p.output)
+        enabled = status['output_source'] == 'pwm' and status['pwm_enabled']
+        status.update(name=name, pwm_selected_and_enabled=enabled)
+        return status
 
     ###################################
     # Gains management
@@ -1654,26 +1657,54 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
             message=f'Resetted {len(actual_board_ids)} boards',
             board_ids=actual_board_ids)
 
-    @endpoint('get-noise-injection-state')
-    async def get_noise_injection_state(self, source_name):
+    @endpoint('get-noise-injection-status')
+    async def get_noise_injection_status(self, name):
         """ REST endpoint to return the state of the specified noise injection source
 
         Parameters:
 
-            source_name (str): name of the noise injection source as found in the fpga.noise_injection configuration block.
+            source_name (str): name of the noise injection source as found in
+                the fpga.noise_injection configuration block.
 
         Returns:
 
-            Dictionary describing the configuration and state of the noise injection generator.
+            Dictionary describing the configuration and state of the noise injection output.
+
+                name: Name of the noise injection configuration, as found in the config file
+
+                board: board the generates the noise injection signal
+
+                output: output used to output the noise injection signal
+
+                output_source: current source of the signal routed to the output.
+
+                pwm_selected_and_enabled: Convenience field that is True if
+                    the PWM generator is enabled AND is routed to the output.
+                    Be aware that a False value does not necessarily guarantee that the
+                    noise injection output is low or is not toggling if another source than 'pwm'
+                    is selected.
+
+                pwm_offset (int): the PWM waveform offset from frame 0, in frames
+
+                pwm_high_time (int): the high time of the PWM waveform, in frames
+
+                pwm_period (int): the period of the PWM waveform, in frames
+
+                pwm_enabled (bool): True when the PWM is not in reset
+
+                user_bit0 (int): State of the user bit 0. Useful when output_source is 'user_bit0'.
+
+                user_bit1 (int): State of the user bit 1. Useful when output_source is 'user_bit1'.
+
 
         Example::
 
-            curl -d '{"source_name": "26m"}' -H "Content-Type: application/json" -X POST http://localhost:54321/get-noise-injection-state
+            curl http://localhost:54321/get-noise-injection-status -d '{"name": "26m"}'
         """
         if not (self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas):
             self.log.warning(f"{self}: FPGA array is not ready to accept command")
-            return dict(message="FPGA not ready", board_ids=[])
-        return await self.chime_master.get_noise_injection_state(source_name)
+            return dict(message="FPGA not ready")
+        return await self.chime_master.get_noise_injection_status(name)
 
     @endpoint('compute-gains')
     async def compute_gains(self, **params):
@@ -2148,6 +2179,7 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
                     await self.chime_master.fpgas.get_fpga_metrics_async(
                         self.metrics,
                         reset=self.chime_master.config.fpga.reset_stats)
+                    await self._get_noise_injection_metrics(self.metrics)
                 except Exception as e:
                     self.log.warning(
                         f'{self!r}: Error getting FPGA metrics. '
@@ -2163,6 +2195,22 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
                 f'We now have {len(self.metrics)} pending metrics.')
             await asyncio.sleep(10)
 
+    async def _get_noise_injection_metrics(self, metrics):
+        """ Adds metrics on the noise injection sources
+        """
+        for ni_name, p in self.chime_master.config.fpga.noise_injection.items():
+            # skip noise injection sources that don't specify a board
+            if not p.board:
+                continue
+            status = await self.chime_master.get_noise_injection_status(ni_name)
+            self.metrics.add(
+                'fpga_noise_injection_pwm_selected_and_enabled',
+                value=status['pwm_selected_and_enabled'],
+                ni_name=ni_name,
+                board=status['board'],
+                output=status['output'],
+                source=status['output_source'])
+            self.metrics.add('fpga_noise_injection_pwm_period', value=status['pwm_period'], ni_name=ni_name)
 
     @endpoint('get-monitoring-data')
     async def get_monitoring_data(self, request):
