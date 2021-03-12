@@ -10,16 +10,16 @@ import datetime
 from util import NameSpace
 import textwrap
 
-util.add_paths('../..')  # needed to find icecore
+util.add_paths('../pychfpga/core')  # needed to find icecore
 from icecore import XReport as xr
 from icecore.tests.xreport import test_report
 from icecore.hw import ipmi_fru
 
-util.add_paths('../../..')  # needed to find fpga_array
-util.add_paths('../../../..') # needed to find pychfpga
+util.add_paths('../pychfpga')  # needed to find fpga_array
+util.add_paths('../') # needed to find pychfpga
 from fpga_array import FPGAArray
 
-TEST_CONFIG_FILE = './mgk7bp16_test_config.yaml'
+TEST_CONFIG_FILE = './MGK7BP16/mgk7bp16_test_config.yaml'
 
 def input(message):
     key = xr.input(message).lower()
@@ -78,7 +78,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
             for ib in ca.ib:
                 raw_clk_freq = ib.FreqCtr.read_frequency('RAW_CLK')
                 print 'Slot %02i: %.6f MHz' % (ib.slot, raw_clk_freq)
-                clock.append(ib.FreqCtr.read_frequency('RAW_CLK'))
+                clock.append(raw_clk_freq)
 
             if irigb_source == '1' or irigb_source == '3':
                 print '\nTime Readout:'
@@ -113,8 +113,6 @@ class MGK7BP16CrateTests(unittest.TestCase):
         cfg = self.cfg.crate_tests.sensor_test
 
         ca = FPGAArray(icecrates = xr.params.serial, prog = self.cfg.debug.force_fpga_prog, open = 1)
-        ca.set_sync_method('local_soft_trigger')
-        ca.set_operational_mode('shuffle256', frames_per_packet=2)
 
         xr.header('Test-Results')
 
@@ -288,19 +286,34 @@ class MGK7BP16CrateTests(unittest.TestCase):
         ca = FPGAArray(icecrates = serials, prog = self.cfg.debug.force_fpga_prog, open = 1)
 
         xr.header('Begin Testing')
+        bad_lanes = []
+        result = []
         try:
-            result = ca.get_ber(period = cfg.period, print_ = False, tx_power = 13)
+            # for ib in ca.ib:
+            #     ib.set_irigb_source('bp_time')
+
+            # if numberOfCrates == '1':
+            #     ca.init_corner_turn(mode = 'shuffle256')
+            # else:
+            #     ca.init_corner_turn(mode = 'shuffle512')
+            
+            link_map = {}
+            link_map.update(ca.get_backplane_pcb_link_map())
+            link_map.update(ca.get_backplane_qsfp_link_map())
+            link_map = {link: gtxes for link, gtxes in link_map.items() if (('int' not in gtxes) and (None not in gtxes))}
+
+            result = ca.get_ber(link_list = link_map, period = cfg.period, print_ = True, tx_init_power=2, tx_power=6, tx_qsfp_power=14, minerrors_toprint=0)
             bp_rate = True
             qsfp_rate = True
             #gpu_rate = True
             bad_lanes = []
 
             for key in result.keys():
-                if key[0] == 'BP':
+                if key[0] == 'pcb':
                     if result[key] >= cfg.bp_limit:
                         bp_rate = False
                         bad_lanes.append((key, result[key]))
-                elif key[0] == 'BP_QSFP':
+                elif key[0] == 'qsfp':
                     if result[key] >= cfg.qsfp_limit:
                         qsfp_rate = False
                         bad_lanes.append((key, result[key]))
@@ -329,93 +342,6 @@ class MGK7BP16CrateTests(unittest.TestCase):
             xr.save_data(result)
             xr.params.test_locals = locals()
 
-
-    def shuffle_test(self):
-        cfg = self.cfg.crate_tests.shuffle_test
-
-        def searchErrDict(dic):
-            if dic == {}:
-                yield 0
-            for key in dic.keys():
-                if type(dic[key]) == type({}):
-                    for value in searchErrDict(dic[key]):
-                        yield value
-                elif type(dic[key]) == type([]):
-                    for item in dic[key]:
-                        for value in searchErrDict(item):
-                            yield value
-                else:
-                    yield 1
-
-        while True:
-            shuffleType = raw_input('Do you want to perform the 256 shuffle test (1 crate), or the 512 shuffle test (2 crates)?\nEnter "1" or "2" for respective choices. ')
-            if shuffleType == '1':
-                serials = xr.params.serial
-                shuffle = 'shuffle256'
-                break
-
-            elif shuffleType == '2':
-                crate2 = raw_input('What is the serial number of the second crate you want to use for this test? ')
-                serials = [xr.params.serial, crate2]
-                shuffle = 'shuffle512'
-                break
-
-            else:
-                print 'Wrong input!'
-
-        ca = FPGAArray(icecrates = serials, prog = 2, open = 1)
-
-        xr.header('Begin Testing')
-        ca.set_sync_method(method = 'distributed_time', source = cfg.time_source)
-        time.sleep(2)
-        for i,c in enumerate(ca.ic): c.handler.crate_number = i
-        if shuffleType == '2':
-            ca.ib.CROSSBAR2.SOF_WINDOW_STOP = 70
-            ca.ib.CROSSBAR2.TIMEOUT_PERIOD = 0
-
-        xr.header('Test-Results')
-        try:
-            for i in range(cfg.repeat):
-                ca.set_operational_mode(shuffle, frames_per_packet=2)
-                ca.print_shuffle_status(reset_stats = True, verbose = 1)
-                status = ca.get_shuffle_status()
-                errors = sum(searchErrDict(status))
-                assert not errors, 'Found %d errors in data shuffle!' % errors
-
-        finally:
-            #xr.save_data(status)
-            xr.params.test_locals = locals()
-
-
-    def set_adc_delays(self, ib):
-        # Timing for ADCs. Calculate proper offsets for this board.
-        trial = 0
-        while True:
-            delay_table, stuck_bits, bitposgood, problem = ib.compute_adc_delay_offsets(channels=range(8))
-            print "Computed delay table:"
-            for ch, dt in delay_table.items():
-                print '   Channel %02i: %s' % (ch, dt)
-
-            print "Stuck bit flags"
-            for ch, dt in stuck_bits.items():
-                print '   Channel %02i: Stuck bits %s' % (ch, dt)
-
-            print 'Bit positions validity'
-            for ch, dt in bitposgood.items():
-                print '   Channel %02i: Bit position good %s' % (ch, dt)
-
-            stuck_ok = not any(stuck_bits.values())
-            bitpos_ok = all(all(v) for v in bitposgood.values())
-            if stuck_ok and bitpos_ok:
-                break
-            trial += 1
-            assert trial < 6, 'Could not compute ADC delays'
-            print 'Could not compute ADC delays. Retrying...'
-        # Set ADC delays
-        ib.set_adc_delays(delay_table)
-        return delay_table
-
-
     def mezzRamp_test(self):
         cfg = self.cfg.crate_tests.mezzRamp_test
 
@@ -435,9 +361,12 @@ class MGK7BP16CrateTests(unittest.TestCase):
                     print 'initializing mezzanine...'
                     mezz.init()
 
-                    print 'Computing ADC delays...'
-                    delay_table = self.set_adc_delays(ib)
+                print 'Computing ADC delays for board serial number: ' + ib.serial
+                ib.set_adc_delays(source='default', compute_delays=1, save_delays=False, check_sync_delays=True, check_adc_delays=20, verbose=0, retry=5)
 
+                for mezz in ib.mezzanine.values():
+                    
+                    delay_table= ib.get_adc_delays()
                     print 'Opening data receiver socket'
                     receiver = ib.get_data_receiver()
 
@@ -453,6 +382,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
                     print 'Getting data frames...'
                     receiver.read_frames(flush=1, frames=3)  # flush
                     data = receiver.read_frames(1)
+                    ib.stop_data_capture()
 
                     result[board].data.append(data)
                     plt.figure(1)

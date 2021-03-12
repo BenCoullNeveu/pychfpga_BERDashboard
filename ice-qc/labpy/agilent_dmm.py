@@ -28,7 +28,7 @@ class agilent_dmm(GPIB.GPIB):
         - Agilent 34980A Multifunction Switch/Measure Mainframe and Modules
     """
 
-    def __init__(self, interface = 'lan', gpib_addr=14, ip_addr='192.168.0.138', ip_port = 5025, timeout=0.5):
+    def __init__(self, interface = 'lan', gpib_addr=14, ip_addr='192.168.0.138', ip_port = 5025, timeout=2):
 
         super(agilent_dmm, self).__init__(interface= interface, gpib_addr=gpib_addr, ip_addr=ip_addr, ip_port = ip_port, timeout = timeout)
 
@@ -180,8 +180,7 @@ class agilent_dmm(GPIB.GPIB):
         """
         MEASure:RESistance? [{<range>|AUTO|MIN|MAX|DEF} [,{<resolution>|MIN|MAX|DEF}] ]
         """
-
-        return self.get_measure('RES', channel_list)
+        return self.query_float('read?')
 
     def select_resistance_measurement(self):
         self.command('CONF:RES')
@@ -201,8 +200,10 @@ class agilent_dmm(GPIB.GPIB):
 
     def local(self):
         if not self.is_gpib:
-            raise RuntimeError('the LOCAL command is only supported through the GPIB interface')
-        super(agilent_dmm, self).local()
+            #raise RuntimeError('the LOCAL command is only supported through the GPIB interface')
+            pass
+        else:
+            super(agilent_dmm, self).local()
         # self.command('SYST:LOC')  # Not supported
         # self.command('DIAG:LOCAL')  # Works only with VXI
 

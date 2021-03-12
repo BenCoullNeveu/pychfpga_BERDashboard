@@ -25,7 +25,7 @@ class agilent_N5700(GPIB.GPIB):
     A class to communicate with an Agilent N5700 power supply
     """
 
-    def __init__(self, interface = 'lan', gpib_addr=14, ip_addr='10.10.10.220', ip_port = 5025, timeout=0.5):
+    def __init__(self, interface = 'lan', gpib_addr=14, ip_addr='10.10.10.220', ip_port = 5025, timeout=2):
 
         super(self.__class__, self).__init__(interface= interface, gpib_addr=gpib_addr, ip_addr=ip_addr, ip_port = ip_port, timeout = timeout)
 

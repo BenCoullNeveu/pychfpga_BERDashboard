@@ -25,7 +25,7 @@ class AgilentPS(GPIB.GPIB):
         - Agilent E3648A Dual output power supply.
     """
 
-    def __init__(self, interface = 'prologix_eth', gpib_addr=5, ip_addr='10.10.10.137', timeout=0.5):
+    def __init__(self, interface = 'prologix_eth', gpib_addr=5, ip_addr='10.10.10.137', timeout=2):
 
         # self.dummy = (interface =='dummy') # save a dummy flag for use my the methods of this class
         super(AgilentPS, self).__init__(interface= interface, gpib_addr=gpib_addr, ip_addr=ip_addr, timeout = timeout)
@@ -59,7 +59,7 @@ class AgilentPS(GPIB.GPIB):
         Returns the power supply setpoint voltage
         """
 
-        self.flush_interface(timeout=0.01)
+        self.flush_interface(timeout=0.1)
         self.select_output(output)
         if voltage is not None:
             if voltage > 21 or voltage < 0:

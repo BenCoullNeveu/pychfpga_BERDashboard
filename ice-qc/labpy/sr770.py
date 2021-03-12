@@ -33,7 +33,7 @@ class sr770(GPIB.GPIB):
         'PRESET': 7,
         }         
     
-    def __init__(self,  interface='usb', gpib_addr=10, ip_addr='192.168.0.37', usb_port='COM4:', timeout=0.5):
+    def __init__(self,  interface='usb', gpib_addr=10, ip_addr='192.168.0.37', usb_port='COM4:', timeout=2):
         super(self.__class__, self).__init__(interface=interface, gpib_addr=gpib_addr, ip_addr=ip_addr, usb_port=usb_port, timeout=timeout)
 
         print 'Initializing instrument'

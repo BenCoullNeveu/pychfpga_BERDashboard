@@ -9,36 +9,31 @@ comment: |
         this is indented more
 
 # test_results_folder: './test_results'
-test_results_folder: '../../../../../adc_mezz_qc'
+test_results_folder: '../test_results/adc_mezz_qc'
 mgadc08_model_number: ['MGADC08']
 xformat: ['pdf']  # Output formats for the test reports. xml is always saved.
 
-# DEBUGGING options
-debug:
-    default_model: 'MGADC08'
-    default_serial: None
-    no_date: false
-
+default_model: 'MGADC08'
+default_serial: null
 
 instruments:
-    dmm:       {labpy_object: 'agilent_dmm', interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 22} # Agilent 34410A multimeter (we don't use the LAN connection so we can go back in local mode remotely)
-    ps12v:     {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 5}  # Agilent E3648A dual output power supply  12V on output 1, output 2 not used
-    ps3v3_2v5: {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 6}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
-    na:        {labpy_object: 'hp8753e',     interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 14} # HP8753E Network Analyzer
+    dmm:       {labpy_object: 'agilent_dmm', interface: 'prologix_eth', ip_addr: '11.11.11.130', gpib_addr: 22} # Agilent 34410A multimeter (we don't use the LAN connection so we can go back in local mode remotely)
+    ps12v:     {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '11.11.11.130', gpib_addr: 5}  # Agilent E3648A dual output power supply  12V on output 1, output 2 not used
+    ps3v3_2v5: {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '11.11.11.130', gpib_addr: 6}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
+    na:        {labpy_object: 'hp8753e',     interface: 'prologix_eth', ip_addr: '11.11.11.130', gpib_addr: 15} # HP8753E Network Analyzer
+    ps18v:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '11.11.11.73', gpib_addr: 5}  # Agilent N5764A power supply
 
 ?: &default_fpga_array
-    iceboards: 183
-    mdns_delay: 1
-
+    iceboards: ['0387']
 
 test_list:
     # This list all the tests that will be done my the test software, in the proper order
     # path is the argument given to nose to find the test fucntion, in the form of module_path:function or module_path:class.method
     # This path is also the path used by XReport to identify tests results, with the exception that the semicolon ':' is replaced by a dot '.'
     - [ 'imp', {description: 'Impedance test (needs S/N)',   path: 'mgadc08_bench_tests:MGADC08BenchTests.impedance_test', required: yes, require_serial_number: yes, dependencies: null}]
-    - [ 'smk', {description: 'Power up test (needs S/N)',    path: 'mgadc08_bench_tests:MGADC08BenchTests.smoke_test',     required: yes, require_serial_number: yes, dependencies: imp}]
+    - [ 'smk', {description: 'Smoke test (needs S/N)',       path: 'mgadc08_bench_tests:MGADC08BenchTests.smoke_test',     required: yes, require_serial_number: yes, dependencies: imp}]
     - [ 'eep', {description: 'EEPROM Programming and test (needs S/N)',  path: 'mgadc08_bench_tests:MGADC08CarrierTests.eeprom_test',  required: yes, require_serial_number: yes, dependencies: smk}]
-    - [ 'pow', {description: 'Carrier power test',           path: 'mgadc08_bench_tests:MGADC08CarrierTests.power_test',   required: yes, require_serial_number: no, dependencies: smk}]
+    - [ 'pow', {description: 'Power test',                   path: 'mgadc08_bench_tests:MGADC08CarrierTests.power_test',   required: yes, require_serial_number: no, dependencies: smk}]
     - [ 'spi', {description: 'SPI & PLL test',               path: 'mgadc08_bench_tests:MGADC08CarrierTests.spi_pll_test', required: yes, require_serial_number: no, dependencies: smk}]
     - [ 'rmp', {description: 'Ramp test',                    path: 'mgadc08_bench_tests:MGADC08CarrierTests.ramp_test',    required: yes, require_serial_number: no, dependencies: smk}]
     - [ 's11', {description: 'S11 test',                     path: 'mgadc08_bench_tests:MGADC08CarrierTests.s11_test',     required: yes, require_serial_number: no, dependencies: smk}]
@@ -65,9 +60,11 @@ menu:
     - { key: 'R', description: 'Generate summary of all tests',                       type: summary}
     - { key: 'Q', description: 'Exit',                                                type: exit}
     - {           description: "or Enter or scan board's serial number or menu item", type: text}
-    - { regex: '29821-0000-(\d{4})',                                                  type: board_info, model: 'MGADC08', serial: '{0}', next_key: '1'}  # 29821-000-nnnn are MGADC08 Serial nnnn
-    - { regex: '35896-0000-(\d{4})',                                                  type: board_info, model: 'MGADC08', serial: '{0}', next_key: '1'}  # 29821-000-nnnn are MGADC08 Serial nnnn
+    - { regex: '29821-0000-(\d{4})',                                                  type: board_info, model: 'MGADC08', serial: '{0}', next_key: '1'}  # 29821-0000-nnnn are MGADC08 Serial nnnn
+    - { regex: '35896-0000-(\d{4})',                                                  type: board_info, model: 'MGADC08', serial: '{0}', next_key: '1'}  # 35896-0000-nnnn are MGADC08 Serial nnnn
+    - { regex: '38161-0000-(\d{4})',                                                  type: board_info, model: 'MGADC08', serial: '{0}', next_key: '1'}  # 38161-0000-nnnn are MGADC08 Serial nnnn
     - { regex: '(0\d{3})',                                                            type: board_info, model: 'MGADC08', serial: '{0}', next_key: '1'}  # 0nnn are MGADC08 Serial nnnn
+    - { regex: '(\d+\-\d+)', type: range, input: '{0}'} # regex to select a range of options 
 
 
 ##################################
@@ -92,31 +89,35 @@ bench_tests:
            - ['J7-3 (2.5V)',    {delay: 0.1, zmin: 500}]
            - ['J7-4 (3.3V)',    {delay: 0.1, zmin: 500}]
            - ['3V3 test point', {delay: 0.1, zmin: 500}]
-           - ['1V8 test point', {delay: 0.1, zmin: 500}]
+           - ['1V8 test point', {delay: 0.1, zmin: 300}]
 
     smoke_test:
         rails:
             vcc12v: {vmin: 11.9, vmax: 12.1, imin: 0.010, imax: 0.120} # ps12v, Output 1
-            vcc3v3: {vmin: 3.2,  vmax: 3.4,  imin: 2.400, imax: 2.800} # ps3v3_2v5, Output 1
+            vcc3v3: {vmin: 3.2,  vmax: 3.4,  imin: 2.000, imax: 2.800} # ps3v3_2v5, Output 1
             vcc2v5: {vmin: 2.4,  vmax: 2.6,  imin: 0.090, imax: 0.120} # ps3v3_2v5, Output 2
 
         min_test_voltage: 0.1   # voltage below which we ask the user to try again a voltage measurmenet
 
         test_points:
-           - ['3V3 test point', {vmin: 3.20, vmax: 3.40}]  # We use a list to preserve the order of the items presentd to the operator
-           - ['1V8 test point', {vmin: 1.7, vmax: 1.9}]
+           - ['3V3 test point', {vmin: 3.20, vmax: 3.50}]  # We use a list to preserve the order of the items presentd to the operator
+           - ['1V8 test point', {vmin: 1.7, vmax: 1.95}]
 
 carrier_tests:
     setup:
         fmc_slot: 1 # This is the FMC slot where we expect the Mezzanine to be
+        instruments: [ps18v]
+        vlt: 18
+        curlmt: 5
+        fpga_array: {<<: *default_fpga_array, no_mezz: True, prog: 0,  open: 0, mdns_timeout: 30}
 
     eeprom_test:
         instruments: [dmm] # Subset of instruments we use in these tests
-        fpga_array: {<<: *default_fpga_array, no_mezz: True, prog: 1,  open: 1}
+        fpga_array: {<<: *default_fpga_array, no_mezz: False, prog: 1,  open: 1}
         revision_table:
             2: {sn_min: 0, sn_max: 42}
             3: {sn_min: 43, sn_max: 1000}
-        overwrite: false  # true, false, ask
+        overwrite: ask  # true, false, ask
 
     power_test:
         # instruments: [dmm] # Subset of instruments we use in these tests
@@ -150,12 +151,12 @@ carrier_tests:
 
     ramp_test:
         # instruments: [dmm] # Subset of instruments we use in these tests
-        fpga_array: {<<: *default_fpga_array, no_mezz: 1, prog: 1,  open: 1}
+        fpga_array: {<<: *default_fpga_array, prog: 1,  open: 1}
 
     s11_test:
         instruments: [na] # Subset of instruments we use in these tests
         dummy_instruments: no
-        fpga_array: {<<: *default_fpga_array, no_mezz: 1, prog: 1,  open: 1}
+        fpga_array: {<<: *default_fpga_array, prog: 1,  open: 1}
         s11_max : -15 # in dB
         adc_trim_value: 15  # 0-15, default is 8. Applies to all channels.
 

@@ -16,14 +16,14 @@ import unittest
 # considered to be a package so from ../pgk does not work)
 
 import util
-util.add_paths('..', '../..')
+util.add_paths('../pychfpga/core/icecore', '../pychfpga/core')
 
 from icecore import IceBoardPlus
 from icecore import load_yaml
 from icecore import Xreport as xr
 import labpy
 
-TEST_CONFIG_FILE = './mgadc08_test_config.yaml'
+TEST_CONFIG_FILE = './MGADC08/mgadc08_test_config.yaml'
 
 
 # import inspectiontest
