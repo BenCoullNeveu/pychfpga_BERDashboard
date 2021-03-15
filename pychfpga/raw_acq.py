@@ -35,7 +35,7 @@ except ImportError:
     comet = None
 
 # Local imports
-from ._version import get_git_version
+from . import __version__
 from .core import CORR
 
 
@@ -2388,7 +2388,6 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
         self.add_periodic_callback(self.receiver.ping_sources_async, 20000) # ping the raw_acq data sources periodically to ensure the switches tables always know how to route the packets to here
         self.add_periodic_callback(self.receiver.check_ioloop_response_time_async, 3000)
         self.startup_time = datetime.datetime.utcnow()
-        self.GIT_VERSION = get_git_version()
 
 
 
@@ -2428,7 +2427,7 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
                 raise RuntimeError('Cannot start comet broker: %s' % (msg))
             comet_manager = comet.Manager(comet_host, comet_port)
             try:
-                comet_manager.register_start(self.startup_time, self.GIT_VERSION)
+                comet_manager.register_start(self.startup_time, __version__)
                 comet_manager.register_config(config.copy())
             except comet.CometError as exc:
                 msg = "Comet failed registering raw_acq start and initial config. " \
