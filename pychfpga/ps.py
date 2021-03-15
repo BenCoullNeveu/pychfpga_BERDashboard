@@ -5,10 +5,11 @@ REST Server and clients for the CHIME receiver hut power supplies.
 """
 
 # Python Standard Library packages
-import sys
-import argparse
-import time
 import aiohttp
+import argparse
+import asyncio
+import sys
+import time
 
 # PyPi packages
 
