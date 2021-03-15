@@ -35,8 +35,8 @@ except ImportError:
     comet = None
 
 # Local imports
-from pychfpga import get_git_version
-from pychfpga.core import CORR
+from ._version import get_git_version
+from .core import CORR
 
 
 class RawAcqReceiver(object):
