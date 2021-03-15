@@ -11,6 +11,6 @@ def get_git_version():
         return subprocess.check_output(
             'git describe --all --dirty --long'.split(),
             cwd = os.path.dirname(PROGRAM)).decode().strip()
-    except WindowsError:
+    except Exception:
         print('GIT was not found')
         return 'unknown' # JFC: To allow tests in windows

@@ -19,7 +19,7 @@ import numpy as np
 # from wtl.rest import RunSyncWrapper  # For testing
 
 # local imports
-import raw_acq # this assumed that '..' has been put into the search path
+from . import raw_acq # this assumed that '..' has been put into the search path
 
 class GainCalc(object):
 

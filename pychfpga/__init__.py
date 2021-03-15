@@ -8,3 +8,7 @@ from wtl.config import load_yaml_config
 from ._version import __version__, get_git_version
 from .core.icecore_ext import Ccoll
 from .fpga_array import FPGAArray
+from . import fpga_master
+from . import ps
+from . import raw_acq
+from . import gps

@@ -47,10 +47,10 @@ setup(
       include_package_data=True,
       entry_points={
           "console_scripts": [
-              "fpga_master=fpga_master:main",
-              "chime_gps=gps:main",
-              "chime_raw_acq=raw_acq:main",
-              "chime_rx_ps=ps:main",
+              "fpga_master=pychfpga:fpga_master.main",
+              "chime_gps=pychfpga:gps.main",
+              "chime_raw_acq=pychfpga.raw_acq.main",
+              "chime_rx_ps=pychfpga:ps.main",
           ]
       },
       # cmdclass = {'build_ext': build_ext},
