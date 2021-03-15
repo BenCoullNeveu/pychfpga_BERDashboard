@@ -28,7 +28,7 @@ except ImportError:
     comet = None
 
 # Local imports
-from ._version import get_git_version
+from . import __version__
 
 class SpectrumInstrumentsTM4D(SocketContext):
     """
@@ -802,7 +802,6 @@ class GPSAsyncRESTServer(AsyncRESTServer):
         self.metrics = Metrics(latest_only=True)
         self.add_periodic_callback(self._get_metrics, 1000, stop_on_errors=False)
         self.startup_time = datetime.datetime.utcnow()
-        self.GIT_VERSION = get_git_version()
 
 
 
@@ -864,7 +863,7 @@ class GPSAsyncRESTServer(AsyncRESTServer):
                 return msg
             comet_manager = comet.Manager(comet_host, comet_port)
             try:
-                comet_manager.register_start(self.startup_time, self.GIT_VERSION)
+                comet_manager.register_start(self.startup_time, __version__)
                 comet_manager.register_config(config)
             except comet.CometError as exc:
                 msg = 'Comet failed registering GPS server start and initial config: {}'\

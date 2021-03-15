@@ -45,7 +45,7 @@ except ImportError:
 from . import FPGAArray
 from . import calculate_gains # Gain computation engine
 from . import digital_gain  # Load/save gains from disk
-from . import __version__, get_git_version
+from . import __version__
 # from ps import PowerSupplyAsyncRESTClient
 from .raw_acq import RawAcqAsyncRESTClient
 
@@ -181,11 +181,10 @@ class FPGAMaster(object):
         self.power_supply_servers = None # power supply REST server
 
         self.PROGRAM = os.path.realpath(__file__) # absolute path name to this module
-        self.GIT_VERSION = get_git_version()
         self.startup_time = datetime.datetime.utcnow()
 
         self.log.info("program %s" % self.PROGRAM)
-        self.log.info("version %s" % self.GIT_VERSION)
+        self.log.info("version %s" % __version__)
 
         self.gain_calc_metrics = Metrics()
         self.gain_hdf5 = None
@@ -833,7 +832,7 @@ class FPGAMaster(object):
             try:
                 # register start and config
                 self.comet_dataset_start = self.comet_manager.register_start(
-                    self.startup_time, self.GIT_VERSION, config, register_datasets=True)
+                    self.startup_time, __version__, config, register_datasets=True)
                 # comet_manager.register_config(config)
             except comet.CometError as exc:
                 msg = 'Comet failed registering fpga_master start and initial config: {}'.format(exc)
@@ -1439,7 +1438,7 @@ class FPGAMaster(object):
         self.gain_hdf5 = digital_gain.DigitalGainArchive(
             freq=freq, input=inputs,
             instrument_name=self.config.corr_name,
-            attrs={'git_version_tag': self.GIT_VERSION},
+            attrs={'git_version_tag': __version__},
             **hdf5_conf)
 
     def _chan_id_to_serial_number(self, chan_id):
