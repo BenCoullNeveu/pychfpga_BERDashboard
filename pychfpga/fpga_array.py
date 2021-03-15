@@ -1284,7 +1284,7 @@ class FPGAArray(object):
     def get_hwm_info(self):
         string = '%s object with the following hardware map:\n' % self.__class__.__name__
         for i in self.ib:
-            mezz = ['%s SN%s' % (m.__ipmi_part_number__, m.serial) if m else 'None'
+            mezz = ['%s SN%s' % (m.part_number, m.serial) if m else 'None'
                     for m in [i.mezzanine.get(1, None), i.mezzanine.get(2, None)]]
             string += '   Crate SN%s, slot %2i: Iceboard SN%s at %s (ping =%s), Mezz1=%s, Mezz2=%s\n' % (
                 i.crate.serial if i.crate else None,
@@ -1324,7 +1324,7 @@ class FPGAArray(object):
                 serial=str(ib.serial),
                 mezzanines=[dict(
                     slot=i,
-                    model=m.__ipmi_part_number__ if m else None,
+                    model=m.part_number if m else None,
                     serial=str(m.serial) if m else None)
                         for i, m in enumerate((ib.mezzanine.get(1, None), ib.mezzanine.get(2, None)))]
                     )
