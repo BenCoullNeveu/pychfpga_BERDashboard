@@ -1,24 +1,24 @@
 #!/usr/bin/python
-# Disable pylint Line too long (=C0301)
-# pylint: disable=C0301
 
 """
-CH_DIST.py module
+chan_bin_sel.py module
  Implements interface to the channel filter
+
+Was CH_DIST.PY in the old days.
 #
 # History:
 # 2011-07-12 JFC : Created from test code in chFPGA.py
-# 2012-05-29 JFC: Extracted frm ANT.py
+# 2012-05-29 JFC: Extracted from ANT.py
 # 2012-07-23 JFC: Adapted to new firmware version now part of the correlator block
 """
-#import time
+
 import numpy as np
-from Module import Module_base, BitField
+from .Module import Module_base, BitField
 import logging
 
 
 class ChanBinSel(Module_base):
-    """ Implements interface to the FR_DIST within a procecessor pipeline"""
+    """ Implements interface to the FR_DIST within a processor pipeline"""
     # Create local variables for page numbers to make the bitfield table more readable
     CONTROL = BitField.CONTROL
     STATUS = BitField.STATUS
@@ -57,7 +57,6 @@ class ChanBinSel(Module_base):
     # ADC_FLAG_FIFO_OVERFLOW   = BitField(STATUS, 0x04, 5, doc="Debug")
     # DATA_FIFO_RD_EN          = BitField(STATUS, 0x04, 6, doc="Debug")
 
-
     def __init__(self, fpga_instance, base_address, instance_number):
         # self.parent = parent
         # self.fpga = fpga_instance
@@ -67,83 +66,56 @@ class ChanBinSel(Module_base):
         self.NUMBER_OF_CROSSBAR_OUTPUTS = self.fpga.NUMBER_OF_CROSSBAR_OUTPUTS
         self.cached_bin_select_table = None
         self._lock()
+
     def reset(self):
         """Performs the soft reset of the CH_DIST module."""
         self.RESET = 1
         self.RESET = 0
 
-    # def select_words(self, words_to_enable):
-    #     """
-    #     Selects which frequency channels are going to be passed to this correlator.
-    #     A correlator normally process only a subset of the frequency channels because it receives those channels from all antennas but it has a limited computational bandwidth.
-    #     The correlation of all frequency channels is therefore usually spread over many correlator blocks, each processing a different range of frequency channels.
-
-    #     Due to the internal architecture of the system, the frequency channels are selected in pairs: an even and odd bin.
-    #     Each pair is contained in a 32-bit word. This function selects which word to transmit.
-
-    #     In order to deal with a decreased buffer size, the number of contiguous words has been decreased to 16.  Default behavior
-    #     should be to have every Nth word selected where N is the number of antennas to be correlated.
-
-    #     If 'words_to_enable' is an integer, words 0 to (words_to_enable-1) are transmitted. (i.e channels 0 to 2*words_to_enable-1 are selected )
-    #         select_words(4) selects words 0,1,2 and 3. and freq channels [0,1,2,3,4,5,6,7]
-    #     If 'words_to_enable' is an array, the word numbers indicated in the arrays are selected.
-    #         select_words([0,1,2,3]) selects words 0,1,2 and 3. and freq channels [0,1,2,3,4,5,6,7]
-
-    #     If the FFT is bypassed, each word contains 4 8-bit ADC samples instead of a pair of frequency channels.
-    #     """
-    #     # Initialize filter mask (8 flags per word)
-    #     mask = np.zeros(self.fpga.FRAME_LENGTH/4/8, np.uint8) # frequency_bins_per_frame (FRAME_LENGTH/2) * words_per_frequency_bins (1/2) * mask_byte_per_word (1/8)
-
-    #     if isinstance(words_to_enable, int):
-    #         words_to_enable = range(words_to_enable)
-
-    #     # Set the bits in mask
-    #     for j in words_to_enable:
-    #         #print 'setting bit %i of byte %i' % ((j % 8), j//8)
-    #         mask[j//8] |= (1<<(j % 8))
-    #     # verbose = False
-    #     # if verbose: print (words_to_enable)
-    #     self.logger.debug('Configuring lane %i of the crossbar to capture the following frequency bin pairs: %s' %(self.instance_number, repr(words_to_enable)))
-    #     self.NUMBER_OF_SELECTED_WORDS = len(words_to_enable)
-
-    #     self.write_ram(0x00, mask) # Enable transmission of selected bytes
-
     def select_bins(self, bins_to_enable):
         """
-        Selects which frequency bins are going to be passed to this laner.
+        Selects which frequency bins are going to be passed to this lane.
 
         Default behavior is to have every Nth bin selected where N is the number of crossbar inputs.
 
-        If 'bins_to_enable' is an integer, words 0 to (bins_to_enable-1) are transmitted. (i.e channels 0 to 2*bins_to_enable-1 are selected )
+        Parameters:
+
+        bins_to_enable (int or array):
+
+            If 'bins_to_enable' is an integer, words 0 to (bins_to_enable-1) are transmitted.
+            (i.e channels 0 to 2*bins_to_enable-1 are selected )
+
             select_words(4) selects words 0,1,2 and 3. and freq channels [0,1,2,3,4,5,6,7]
-        If 'bins_to_enable' is an array, the word numbers indicated in the arrays are selected.
+
+            If 'bins_to_enable' is an array, the word numbers indicated in the arrays are selected.
+
             select_words([0,1,2,3]) selects words 0,1,2 and 3. and freq channels [0,1,2,3,4,5,6,7]
 
         If the FFT is bypassed, each word contains 4 8-bit ADC samples instead of a pair of frequency channels.
         """
 
         if isinstance(bins_to_enable, int):
-            bins_to_enable = range(bins_to_enable)
-
-        # try this:
-        # bin_map = zeros(1024, np.uint8)
-        # bin_map[bins_to_enable] = 1
-        # mask = np.packbits(bin_map[::-1])[::-1]
+            bins_to_enable = list(range(bins_to_enable))
 
         # Initialize filter mask (8 flags per word)
-        mask = np.zeros(self.fpga.FRAME_LENGTH/2/8, np.uint8) # frequency_bins_per_frame (FRAME_LENGTH/2) *  mask_byte_per_word (1/8)
+        # frequency_bins_per_frame (FRAME_LENGTH/2) *  mask_byte_per_word (1/8)
+        mask = np.zeros(self.fpga.FRAME_LENGTH // 2 // 8, np.uint8)
         # Set the bits in mask
         for j in bins_to_enable:
-            #print 'setting bit %i of byte %i' % ((j % 8), j//8)
+            # print 'setting bit %i of byte %i' % ((j % 8), j//8)
             mask[j // 8] |= (1 << (j % 8))
         # verbose = False
         # if verbose: print (bins_to_enable)
-        self.logger.debug('%r: CROSSBAR0.BIN_SEL[%i] Configuring to capture %i frequency bins: %s...' % (self.fpga, self.instance_number, len(bins_to_enable), repr(bins_to_enable[:10])))
+        self.logger.debug('%r: CROSSBAR0.BIN_SEL[%i] Configuring to capture %i frequency bins: %s...' % (
+            self.fpga,
+            self.instance_number,
+            len(bins_to_enable),
+            repr(bins_to_enable[:10])))
         # self.logger.debug('Mask pattern is: %s' % ( ' '.join('%02X'% byte for byte in mask)))
         self.NUMBER_OF_SELECTED_WORDS = len(bins_to_enable)
 
         self.cached_bin_select_table = mask
-        self.write_ram(0x00, mask) # Enable transmission of selected bytes
+        self.write_ram(0x00, mask)  # Enable transmission of selected bytes
 
     def set_selected_bins(self, bins_to_enable):
         self.select_bits(bins_to_enable)
@@ -153,17 +125,13 @@ class ChanBinSel(Module_base):
         if use_cache and self.cached_bin_select_table is not None:
             mask = self.cached_bin_select_table
         else:
-            mask = self.read_ram(0x00, length =self.fpga.FRAME_LENGTH/2/8)
+            mask = self.read_ram(0x00, length=self.fpga.FRAME_LENGTH // 2 // 8)
 
         bin_map = np.unpackbits(mask[::-1])[::-1]
         return np.where(bin_map)[0]
 
     def init(self):
-        """ Initializes CH_DIST."""
-        #self.select_words(self.fpga.FRAME_LENGTH//4) # enable tranmission of all words by default
-        #array doesn't seem to work here....
-#        frequency_bins_per_correlator = 124 # 202-5chan correlator # must be even, max 1010 / number of correlated antennas 124-8 channel.  Should get this from config
-        #self.select_words(range(words_per_correlator)) # enable tranmission 8 words, 16 freq channels by default
+        """ Initializes the channel bin selector."""
         self.COMBINE_DATA_FLAGS = 0
 
     def status(self):
@@ -173,15 +141,23 @@ class ChanBinSel(Module_base):
         self.logger.debug('   FIFO EMPTY: %i' % self.FIFO_EMPTY)
         self.logger.debug('   FIFO OVERFLOW: %i' % self.FIFO_OVERFLOW)
 
-
     def map(self, input_data, header=False):
-        """ Reorders the data based on the configurationof the bin selector.
-        input data: {channel_number: [data, ...]}
-        output_data: [data, data]
+        """ Reorders the data based on the configuration of the bin selector.
+
+        Parameters:
+            input data: {channel_number: [data, ...]}
+
+            header (bool): if True, includes header information in the returned data
+
+        Returns:
+            output_data: [data, data]
         """
 
         if self.BYPASS:
             raise RuntimeError('%.32s: CHAN_BIN_SEL cannot yet provide maps in BYPASS mode')
+
+        channels = list(range(self.FIRST_FIFO_NUMBER * 4, self.LAST_FIFO_NUMBER * 4 + 3 + 1))
+        bins = self.get_selected_bins()
 
         if header:
             header = dict(
@@ -195,16 +171,14 @@ class ChanBinSel(Module_base):
                 bypass=self.BYPASS,
                 frames_per_packet=self.GROUP_FRAMES,
                 bins_per_frame=self.NUMBER_OF_SELECTED_WORDS,
-                words_per_bin=len(channels)/4 if self.FOUR_BITS else len(channels)/2,
+                words_per_bin=len(channels) // 4 if self.FOUR_BITS else len(channels) // 2,
                 ancillary=None,
                 timestamp=0,
                 )
         else:
             header = None
 
-        channels = range(self.FIRST_FIFO_NUMBER * 4, self.LAST_FIFO_NUMBER * 4 + 3 + 1)
-        bins = self.get_selected_bins()
-        output_data = [input_data[ch][bin_number]  for bin_number in bins for ch in channels]
+        output_data = [input_data[ch][bin_number] for bin_number in bins for ch in channels]
         output_dict = dict(
             header=header,
             data=output_data,
@@ -217,7 +191,11 @@ class ChanBinSel(Module_base):
     def get_sim_output(self, input_lanes):
         """ Compute the channelizer bin selector output packets.
 
-        ``chan_outputs`` is an array of frame arrays (one frame array per input lane). A frame array must have at least ``frames_per_packet`` frames.
+        Parameters:
+
+            chan_outputs: array of frame arrays (one frame array per input
+                lane). A frame array must have at least ``frames_per_packet``
+                frames.
         """
 
         number_of_lanes = len(input_lanes)
@@ -237,10 +215,17 @@ class ChanBinSel(Module_base):
         bypass = self.BYPASS
         lane_number = self.instance_number
         # Build the header words
-        for frame_number in range(number_of_frames/4):
+        for frame_number in range(number_of_frames // 4):
             header_words = np.zeros(4, int)
             header_words[0] = 0x000014CF | (self.STREAM_ID << 20) | (lane_number << 16)
-            header_words[1] = (self.FOUR_BITS << 31) | (self.USE_OFFSET_BINARY << 30) | (self.SEND_FLAGS << 29) | (self.BYPASS << 28) | (frames_per_packet << 24) | (self.NUMBER_OF_SELECTED_WORDS << 12) | (self.NUMBER_OF_LANES <<0 )
+            header_words[1] = (
+                (self.FOUR_BITS << 31) |
+                (self.USE_OFFSET_BINARY << 30) |
+                (self.SEND_FLAGS << 29) |
+                (self.BYPASS << 28) |
+                (frames_per_packet << 24) |
+                (self.NUMBER_OF_SELECTED_WORDS << 12) |
+                (self.NUMBER_OF_LANES << 0))
             header_words[2] = 0
             header_words[3] = frame_number
 
@@ -248,5 +233,5 @@ class ChanBinSel(Module_base):
                 data = np.concat(input_lanes[lane_number][frame_number: frame_number+4])
                 return np.concat((header_words, data))
 
-            selected_bins = self.get_selected_bins()
+            # selected_bins = self.get_selected_bins()
             RuntimeError('Channelizer Bin selector non-bypass mode is not supported yet')

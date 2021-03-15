@@ -3,9 +3,9 @@
 """
 AmbTemp.py module
  Implements the interface to the FMC Ambient Temperature monitor chip
-#
-# History:
-# 2011-07-09 : JFC : Created from test code in chFPGA.py
+
+History:
+    2011-07-09 : JFC : Created from test code in chFPGA.py
 """
 import numpy as np
 import logging
@@ -25,7 +25,7 @@ class AmbTemp_base(object):
         Reads the raw word from the SPI Ambient temperature monitor on the ADC FMC
         """
         brd = self.adc_board
-        return brd.spi_read_write(brd.SPI_AMB_TEMP_ADDR, [0,0], type=np.dtype('>u2')) # Read 16 bit word
+        return brd.spi_read_write(brd.SPI_AMB_TEMP_ADDR, [0, 0], type=np.dtype('>u2'))  # Read 16 bit word
 
     def get_temperature(self):
         """
@@ -33,9 +33,9 @@ class AmbTemp_base(object):
         """
         data = self.read()
         data = np.int16(data << 2) >> 2  # sign-extend bit 13 to bits 14 and 15 to obtain a 16-bit signed value
-        temp = data / 32.0
+        temp = data / 32
         if self.verbose:
-            print 'FMC Board Temperature is %.2f C' % (temp)
+            print('FMC Board Temperature is %.2f C' % (temp))
         return temp
 
     temperature = property(get_temperature)

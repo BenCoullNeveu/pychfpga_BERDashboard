@@ -1,10 +1,10 @@
 """qsfp.py module: Provides a class to read/write to a QSFP cable
 """
 
-# import iceboard as ib
 import logging
 import numpy as np
 from .eeprom import eeprom as EEPROM
+
 
 class QSFP(object):
     """ Class defining the interface to a QSFP+ cable.
@@ -63,11 +63,13 @@ class QSFP(object):
          ##The other pages don't seem useful to us at all.
     }
 
-
     def __init__(self, i2c, bus_name, gpio_prefix, gpio, address=0x50, parent=None):
         """ Create a QSFP object.
 
-        `control_bits` is a dictionary defining:  {control_bit_name: (io_expander_object, register_number, bit_number, default), ... }
+        `control_bits` is a dictionary defining:
+
+            {control_bit_name: (io_expander_object, register_number, bit_number, default), ... }
+
         Valid control bit names are: 'ModPrsL', 'ResetL', 'IntL', 'ModSelL', 'LPMode', 'Led'
         """
         self._logger = logging.getLogger(__name__)
@@ -81,7 +83,11 @@ class QSFP(object):
 
         self._logger.debug('%r: Instantiating QSFP+ object' % self)
 
-        self._qsfp_eeprom = EEPROM(self._i2c, bus_name=self._bus_name, address=self._address, address_width=8, write_page_size=256)
+        self._qsfp_eeprom = EEPROM(
+            self._i2c, bus_name=self._bus_name,
+            address=self._address,
+            address_width=8,
+            write_page_size=256)
 
     def __repr__(self):
         return "%r.%s" % (self.parent, self.__class__.__name__)
@@ -95,7 +101,8 @@ class QSFP(object):
     def init(self, enable_i2c=False):
         """Initializes the QSFP module to a known state (enable it)"""
         self.reset()
-        self.enable_i2c(enable_i2c)  # Note: Enable by default only of this is the only device at that address on the bus
+        # Note: Enable by default only of this is the only device at that address on the bus
+        self.enable_i2c(enable_i2c)
         self.set_power_mode(0)  # Low power
 
     def set_control_bit(self, name, value, select=True):
@@ -168,14 +175,13 @@ class QSFP(object):
         if page:
             self._qsfp_eeprom.write(addr=127, data=page, length=1)  # Writing to page select register
 
-        self._qsfp_eeprom.write(addr, data) # Writing at specified address
+        self._qsfp_eeprom.write(addr, data)  # Writing at specified address
 
         if page:
             self._qsfp_eeprom.write(addr=127, data=0, length=1)  # Putting page back to 0
 
         if enable:
             self.enable_i2c(False)
-
 
     def read(self, addr, length=1, page=0, enable=True):
         """
@@ -189,12 +195,12 @@ class QSFP(object):
             (__, addr, length, page) = self.QSFP_EEPROM_MAP[addr]
 
         if page:
-            self._qsfp_eeprom.write(addr=127, data=page, length=1) #Writing to page select register
+            self._qsfp_eeprom.write(addr=127, data=page, length=1)  # Writing to page select register
 
-        data = self._qsfp_eeprom.read(addr=addr, length=length) #Reading at specified address
+        data = self._qsfp_eeprom.read(addr=addr, length=length)  # Reading at specified address
 
         if page:
-            self._qsfp_eeprom.write(addr=127, data=0, length=1)  #Putting page back to 0
+            self._qsfp_eeprom.write(addr=127, data=0, length=1)  # Putting page back to 0
 
         if enable:
             self.enable_i2c(False)
@@ -227,7 +233,7 @@ class QSFP(object):
 
     def get_rx_power(self):
         """ Return the optical power (in Watts) received by each of the 4 channels"""
-        return [self.read_word('RxPow%i' % chan) * 0.1e-6 for chan in [1 , 2, 3, 4]]
+        return [self.read_word('RxPow%i' % chan) * 0.1e-6 for chan in [1, 2, 3, 4]]
 
     def get_uid(self):
         if not self.is_present():
@@ -306,29 +312,30 @@ class QSFP(object):
             0x0C: 'QSFP',
             0x0D: 'QSFP+',
             }
-        print 'Hardware lines'
-        print '--------------'
-        print 'Module is Present: %s' % bool(self.is_present())
-        print 'Module I2C is Responding: %s' % bool(self._qsfp_eeprom.is_present())
-        print 'Module type: %s' % ['Low power', 'High power'][self.get_power_mode() or 0]
-        print 'I2C info'
-        print '--------------'
-        print '   Module temperature: %0.1f C' % self.get_temperature()
-        print '   Module supply voltage: %0.2f V' % self.get_supply_voltage()
-        print '   Received optical power: %s' % ', '.join(['Ch%i=%0.3f mW' % (i+1, rx_pow/1e-3) for (i,rx_pow) in enumerate(self.get_rx_power())])
-        print '   Manufacturer: %s' % self.read_str('VendName')
-        print '   Model: %s Revision %s' % (self.read_str('VenPN'), self.read_str('VenRev'))
-        print '   Serial Number: %s' % (self.read_str('VenSN'))
-        print '   Cable length (if copper): %im' % self.read_byte('CopperLength')
-        print '   Device Technology: %s' % tech_table[self.read_byte('DeviceTech') >> 4]
-        print '   Connector type: %s, %s' % (identifier_table.get(self.read_byte('Identifier2', 'Unknown')),
-                                             connector_types.get(self.read_byte('Connector', 'Unknown')))
+        print('Hardware lines')
+        print('--------------')
+        print('Module is Present: %s' % bool(self.is_present()))
+        print('Module I2C is Responding: %s' % bool(self._qsfp_eeprom.is_present()))
+        print('Module type: %s' % ['Low power', 'High power'][self.get_power_mode() or 0])
+        print('I2C info')
+        print('--------------')
+        print('   Module temperature: %0.1f C' % self.get_temperature())
+        print('   Module supply voltage: %0.2f V' % self.get_supply_voltage())
+        print('   Received optical power: %s'
+              % ', '.join(['Ch%i=%0.3f mW' % (i+1, rx_pow/1e-3) for (i, rx_pow) in enumerate(self.get_rx_power())]))
+        print('   Manufacturer: %s' % self.read_str('VendName'))
+        print('   Model: %s Revision %s' % (self.read_str('VenPN'), self.read_str('VenRev')))
+        print('   Serial Number: %s' % (self.read_str('VenSN')))
+        print('   Cable length (if copper): %im' % self.read_byte('CopperLength'))
+        print('   Device Technology: %s' % tech_table[self.read_byte('DeviceTech') >> 4])
+        print('   Connector type: %s, %s' % (identifier_table.get(self.read_byte('Identifier2', 'Unknown')),
+                                             connector_types.get(self.read_byte('Connector', 'Unknown'))))
 
         data = {}
-        for (key, (datatype, addr, length, page)) in self.QSFP_EEPROM_MAP.items():
-            if datatype == 'str': #String detected, converting to readable characters
+        for (key, (datatype, addr, length, page)) in list(self.QSFP_EEPROM_MAP.items()):
+            if datatype == 'str':  # String detected, converting to readable characters
                 data[key] = self.read(addr=addr, length=length, page=page)
-            else: #assuming binary
+            else:  # assuming binary
                 data[key] = self.read(addr=addr, length=length, page=page)
         return data
 

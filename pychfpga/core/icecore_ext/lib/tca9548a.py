@@ -1,6 +1,4 @@
 #!/usr/bin/python
-# Disable pylint Line too long (=C0301)
-# pylint: disable=C0301
 
 """
 tca9548a.py module
@@ -9,8 +7,6 @@ Defines a class that implements the interface to the TCA9548A I2C switch.
  History:
  2013-08-08 : JFC : Created
 """
-# MGADC08 FMC ADC board device handlers
-import logging
 
 
 class tca9548a(object):
@@ -22,10 +18,13 @@ class tca9548a(object):
         self.i2c = i2c_interface
         self.switch_address = address
 
-    def set_port(self, ports=None, bitmask = None, *args, **kwargs):
+    def set_port(self, ports=None, bitmask=None, *args, **kwargs):
         """
         Activates selected I2C ports of the switch and disable the others.
-        The ports can be either specified as a single port number (e.g. ports=1), a list of ports (e.g. ports=[1,2,3]) or a bitmask (bit_mask = 0x83)
+
+        The ports can be either specified as a single port number (e.g.
+        ports=1), a list of ports (e.g. ports=[1,2,3]) or a bitmask (bit_mask
+        = 0x83)
         """
         bit_pattern = 0
 
@@ -33,7 +32,7 @@ class tca9548a(object):
             if isinstance(ports, int):
                 ports = [ports]
             for port in ports:
-               bit_pattern |= (1 << port)
+                bit_pattern |= (1 << port)
         elif (ports is None) and (bitmask is not None):
             bit_pattern = bitmask
         else:

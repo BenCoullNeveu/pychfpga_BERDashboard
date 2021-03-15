@@ -1,3 +1,5 @@
+.. Use UTF-8 encoding
+
 pychfpga: ICEBoard & FPGA-based correlator control
 ==================================================
 
@@ -16,8 +18,8 @@ Before you start, you need:
 
 - Permissions to the pychfpga and dependent repositories in bitbucket. Ask McGill administrator.
 - git LFS (git >1.8.2 includes LFS by default)
-- Python 2.7 (Python 3 **not** supported)
-- pip 18.1 (2018-10-05) or later (to support the PEP 508 dependency specs)
+- Python 3.7 (Python 2.7 no longer supported). The code was tested on Python 3.7.9.
+- pip 18.1  (2018-10-05) or later (to support the PEP 508 dependency specs)
 - mdns/avahi/bonjour development libraries should be installed to allow the python package pybonjour to install::
 
 	sudo apt install  libavahi-compat-libdnssd1  # on Ubuntu

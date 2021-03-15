@@ -6,11 +6,12 @@
 #import os.path
 #import re
 
-import GPIB
+from . import GPIB
 import time
+import importlib
 #import utils
 
-reload(GPIB)
+importlib.reload(GPIB)
 
 # Define instrument model codes to easily refer to specific DVMs
 AGILENTN5764A = 'N5764A'
@@ -30,17 +31,17 @@ class agilent_N5700(GPIB.GPIB):
         super(agilent_N5700, self).__init__(interface=interface, gpib_addr=gpib_addr, ip_addr=ip_addr, ip_port=ip_port, timeout=timeout)
 
         if verbose:
-            print 'Initializing instrument'
+            print('Initializing instrument')
         self.device_clear()
 
         id_string = self.query('*IDN?', verbose=0, timeout=1)
         if verbose:
-            print 'Instrument Identification string:', id_string
-        for (instrument_code, (instrument_name, instrument_id_string)) in SUPPORTED_PS.items():
+            print('Instrument Identification string:', id_string)
+        for (instrument_code, (instrument_name, instrument_id_string)) in list(SUPPORTED_PS.items()):
             if instrument_id_string in id_string:
 
                 if verbose:
-                    print 'Connected to: %s' % instrument_name
+                    print('Connected to: %s' % instrument_name)
                 self.command('STATus:OPERation:ENABle %i' % 0x0500)  # We wish to know is in constant current or constant voltage mode
                 self.instrument_model = instrument_code
                 self.instrument_name = instrument_name
@@ -94,7 +95,7 @@ class agilent_N5700(GPIB.GPIB):
         return state
 
     def measure(self):
-        print 'Please use status function instead'
+        print('Please use status function instead')
         return self.status()
 
     def output(self, state=None, readonly=True):
@@ -251,11 +252,11 @@ class agilent_N5700(GPIB.GPIB):
             failmode=int(self.query_float('STAT:QUES:COND?'))
         else: #If you really want the register that clears itself set History=True
             failmode=int(self.query_float('STAT:QUES?'))  #Will spot if previously things went wrong or if currently things are wrong
-            print "Not that reliable and it clears itself after!"
+            print("Not that reliable and it clears itself after!")
 
         problem = False
         if failmode != 0:
-            print 'A power supply problem is present'
+            print('A power supply problem is present')
             problem = True
 
         UNR=bool( ( failmode & ( 1 << 10 ) ) >> 10 )  #True if Unregulated output
@@ -312,7 +313,7 @@ class agilent_N5700(GPIB.GPIB):
         starttime=time.time()
         while time.time()<runtime+starttime:
             time.sleep(polltime)
-            print self.status()
+            print(self.status())
 
 
 

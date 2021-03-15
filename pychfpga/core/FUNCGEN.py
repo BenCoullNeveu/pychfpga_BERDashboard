@@ -7,7 +7,7 @@ History:
     2012-10-17 JFC: Sets ramp as default function
 """
 
-from Module import Module_base, BitField
+from .Module import Module_base, BitField
 import numpy as np
 
 class FUNCGEN_base(Module_base):
@@ -92,14 +92,14 @@ class FUNCGEN_base(Module_base):
         'arb':            (0, lambda data, self=None, N=BUFFER_SIZE: data),  # Arbitrary waveform stored in buffer
         'a':              (1, lambda a, self=None, N=BUFFER_SIZE: np.tile(np.uint8(a), N)),  # All bytes are Byte A
         'b':              (2, lambda b, self=None, N=BUFFER_SIZE: np.tile(np.uint8(b), N)),  # All bytes are Byte B
-        'ab':             (3, lambda a, b, self=None, N=BUFFER_SIZE: np.tile(np.array([a, b], np.uint8), N / 2)),  # Bytes alternate between A and B.
+        'ab':             (3, lambda a, b, self=None, N=BUFFER_SIZE: np.tile(np.array([a, b], np.uint8), N // 2)),  # Bytes alternate between A and B.
         'ramp':           (4, lambda self=None, N=BUFFER_SIZE, **kwargs: np.arange(N, dtype=np.uint8)),  # Successive bytes generate a repeating ramp from 0 to 255.
-        'real_ramp':      (5, lambda self=None, N=BUFFER_SIZE, **kwargs: (np.arange(N / 2) << 8).astype('>u2').view(np.uint8)),  # Generates the ramp: 0,0,0,1,0,2,0,3,0... If the data is read as (8+8)-bit complex value pairs, we obtain (0,0j), (1+0j)... (255+0j)
+        'real_ramp':      (5, lambda self=None, N=BUFFER_SIZE, **kwargs: (np.arange(N // 2) << 8).astype('>u2').view(np.uint8)),  # Generates the ramp: 0,0,0,1,0,2,0,3,0... If the data is read as (8+8)-bit complex value pairs, we obtain (0,0j), (1+0j)... (255+0j)
         '4bit_ramp':      (6, lambda self=None, N=BUFFER_SIZE, **kwargs: np.arange(N, dtype=np.uint8) << 4),  # Generates the ramp 0x00, 0x10, 0x20, ... 0xF0.
-        '4bit_real_ramp': (7, lambda self=None, N=BUFFER_SIZE, **kwargs: (np.arange(N / 2) << 12).astype('>u2').view(np.uint8)),  # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
+        '4bit_real_ramp': (7, lambda self=None, N=BUFFER_SIZE, **kwargs: (np.arange(N // 2) << 12).astype('>u2').view(np.uint8)),  # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
          # '4bit_split_ramp': (0, FN_BUFFER, ),  # Generates 0x0000, 0x0010, 0x0020, .. 0x00F0, 0x1000, 0x1010 ...
-        'sin':            (8, lambda self, freq=1, N=BUFFER_SIZE: (np.sin(np.arange(N)*2*np.pi/N*freq) * 127).astype(np.uint8)),  # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
-        'crate_slot':     (9, lambda self, N=BUFFER_SIZE: np.tile(np.array([self.fpga.get_id()[0], self.fpga.get_id()[1]], np.uint8)<<4, N / 2)),  # Bytes alternate between crate number and slot number (in upper 4 bits). If FFT and scaler are bypassed, then the complex data has the crate number in the real part and slot number in imag part.
+        'sin':            (8, lambda self, freq=1, N=BUFFER_SIZE: (np.sin(np.arange(N) * 2 * np.pi / N * freq) * 127).astype(np.uint8)),  # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
+        'crate_slot':     (9, lambda self, N=BUFFER_SIZE: np.tile(np.array([self.fpga.get_id()[0], self.fpga.get_id()[1]], np.uint8) << 4, N // 2)),  # Bytes alternate between crate number and slot number (in upper 4 bits). If FFT and scaler are bypassed, then the complex data has the crate number in the real part and slot number in imag part.
         #'crate':          (10, lambda self, N=BUFFER_SIZE: np.tile(np.array([self.get_id()[0]<<4, 0], np.uint8), N / 2)),  # Bytes alternate between crate number (in upper 4 bits) and 0. If FFT and scaler are bypassed, then the complex data has the crate number in the real part.
         'freq_test':      (10, freq_test),
         'one':            (11, one),
@@ -177,6 +177,8 @@ class FUNCGEN_base(Module_base):
             return fn_names[0]
 
     def set_buffer(self, data, function_number=0, info='Arbitrary data'):
+        """
+        """
 
         data = np.array(data, np.uint8)
 
@@ -191,7 +193,7 @@ class FUNCGEN_base(Module_base):
 
         self.RAM_PAGE = 4
         self.write_ram(0, function_number)
-        self.write_ram(1, info + chr(0))
+        self.write_ram(1, info.encode() + b'\x00')
 
     def get_buffer(self, use_cache=True):
 
@@ -268,9 +270,9 @@ class FUNCGEN_base(Module_base):
 
     def status(self):
         """ Displays the status of the function generator module """
-        print '-------------- ANT[%i].FUNCGEN STATUS --------------' % self.instance_number
-        print ' Function number: %i' % self.FUNCTION
-        print ' Ramp counter status:'
-        print '    RAMP_CTR: %i' % self.RAMP_CTR
+        print('-------------- ANT[%i].FUNCGEN STATUS --------------' % self.instance_number)
+        print(' Function number: %i' % self.FUNCTION)
+        print(' Ramp counter status:')
+        print('    RAMP_CTR: %i' % self.RAMP_CTR)
 
 

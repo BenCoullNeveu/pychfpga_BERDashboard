@@ -1,26 +1,32 @@
 #!/usr/bin/python
-# Disable pylint Line too long (=C0301)
-# pylint: disable=C0301
 
 """
-CROSSBAR.py module
- Implements interface to the crossbar.
- The crossbar gets data from all channelizers and provide a number of output streams, each of which contain selected frequency channels from those antennas
+shuffle_crossbar.py module
 
- History:
- 2013-12-03 : JFC : Created
+Implements an interface to the shuffle_crossbar FPGA firmware module.
+
+The shuffle_crossbar gets already packetized data from previous channel or
+shuffle crossbars. It aligns the packets from the input lanes, remaps the
+lanes, and implement an array of bin selectors.
+
+History:
+    2013-12-03 : JFC : Created
 """
 
+# Standard Library packages
 import logging
+import asyncio
 from collections import OrderedDict
 
+# PyPi packages
 import numpy as np
 
+# External private packages
 from wtl.metrics import Metrics
-from Module import Module_base, BitField
-from .icecore import async, async_return, async_sleep, async_moment
 
-import SHUFFLE_BIN_SEL
+# local packages
+from .Module import Module_base, BitField
+from . import SHUFFLE_BIN_SEL
 
 
 class ShuffleCrossbar(Module_base):
@@ -77,7 +83,15 @@ class ShuffleCrossbar(Module_base):
     FIFO_COUNT       = BitField(STATUS, 12, 0, width=16, doc="")
     PACKET_ERROR_CTR = BitField(STATUS, 14, 0, width=16, doc="Number of CRC/length/aligment errors for the lane selected by LANE_MONITOR_SEL. Saturates to maximum value. Is reset by LANE_MONITOR_RESET")
 
-    def __init__(self, fpga_instance, base_address, address_increment, crossbar_level=1, verbose=0, number_of_bin_sel=2):
+    def __init__(
+            self,
+            fpga_instance,
+            base_address,
+            address_increment,
+            crossbar_level=1,
+            verbose=0,
+            number_of_bin_sel=2):
+
         self.fpga = fpga_instance
         self.verbose = verbose
         self.logger = logging.getLogger(__name__)
@@ -85,7 +99,11 @@ class ShuffleCrossbar(Module_base):
         super(ShuffleCrossbar, self).__init__(fpga_instance, base_address)
         self.BIN_SEL = []
         for i in range(number_of_bin_sel):
-            self.BIN_SEL.append(SHUFFLE_BIN_SEL.SHUFFLE_BIN_SEL_base(fpga_instance, base_address+ (i+1) * address_increment, i, crossbar_level=crossbar_level))
+            self.BIN_SEL.append(SHUFFLE_BIN_SEL.SHUFFLE_BIN_SEL_base(
+                    fpga_instance,
+                    base_address + (i + 1) * address_increment,
+                    i,
+                    crossbar_level=crossbar_level))
 
     def __getitem__(self, key):
         """    Returns the bin selector instance specified by the key"""
@@ -95,7 +113,7 @@ class ShuffleCrossbar(Module_base):
         """ Initializes all correlators"""
         self.NUMBER_OF_CROSSBAR_INPUTS = self.NUMBER_OF_INPUT_LANES
         self.NUMBER_OF_CROSSBAR_OUTPUTS = self.NUMBER_OF_OUTPUT_LANES
-        self.NUMBER_OF_OUTPUTS_PER_BIN_SEL = self.NUMBER_OF_CROSSBAR_OUTPUTS/self.NUMBER_OF_BIN_SEL
+        self.NUMBER_OF_OUTPUTS_PER_BIN_SEL = self.NUMBER_OF_CROSSBAR_OUTPUTS // self.NUMBER_OF_BIN_SEL
         self.SOF_WINDOW_STOP = 55
         for bs in self.BIN_SEL:
             bs.init(number_of_inputs=self.NUMBER_OF_INPUT_LANES)
@@ -114,7 +132,7 @@ class ShuffleCrossbar(Module_base):
             width=8: data is 8 bits Real + 8 bits Imaginary
         """
 
-        if width==4:
+        if width == 4:
             is_four_bits = 1
         elif width == 8:
             is_four_bits = 0
@@ -133,7 +151,8 @@ class ShuffleCrossbar(Module_base):
         if not self.BIN_SEL:
             return None
 
-        four_bits = {bs.FOUR_BITS for bs in self.BIN_SEL}  # use a set to uniquely record all the possible encountered states
+        # use a set to uniquely record all the possible encountered states
+        four_bits = {bs.FOUR_BITS for bs in self.BIN_SEL}
 
         if four_bits == {0}:
             return 8
@@ -170,20 +189,20 @@ class ShuffleCrossbar(Module_base):
         if len(lane_map) != self.NUMBER_OF_CROSSBAR_INPUTS:
             raise TypeError('Lane map must be a list of %i values' % self.NUMBER_OF_CROSSBAR_INPUTS)
 
-        lane_map_bytes = np.zeros(self.NUMBER_OF_CROSSBAR_INPUTS/2, dtype=np.uint8)
-        for i,lane in enumerate(lane_map):
-            byte = i//2
-            bit = (i%2)*4
+        lane_map_bytes = np.zeros(self.NUMBER_OF_CROSSBAR_INPUTS // 2, dtype=np.uint8)
+        for i, lane in enumerate(lane_map):
+            byte = i // 2
+            bit = (i % 2) * 4
             lane_map_bytes[byte] |= (lane & 0x0F) << bit
 
         self.write(self.get_addr('LANE_MAP_BYTE0'), lane_map_bytes)
 
     def get_lane_map(self):
         """ Get the lane remapping vector that indicates from which shuffle
-        output lanes each bin selected or taing its data, i.e.
+        output lanes each bin selected its data, i.e.
         shuffle_output_lane = lane_map[bin_sel_input_lane]
         """
-        map_bytes = self.read(self.get_addr('LANE_MAP_BYTE0'), length=self.NUMBER_OF_CROSSBAR_INPUTS/2)
+        map_bytes = self.read(self.get_addr('LANE_MAP_BYTE0'), length=self.NUMBER_OF_CROSSBAR_INPUTS // 2)
 
         lane_map = []
         for i, byte in enumerate(map_bytes):
@@ -217,7 +236,7 @@ class ShuffleCrossbar(Module_base):
             rx = (ib.slot, i)
             tx = ib.crate.get_matching_tx(rx)
             # print '%s is receiving from %s' % (rx, tx)
-            lane_map[tx[0]-1] = i
+            lane_map[tx[0] - 1] = i
         return lane_map
 
     def map(self, data):
@@ -232,67 +251,30 @@ class ShuffleCrossbar(Module_base):
         remap_out = {output_lane: data[input_lane] for output_lane, input_lane in enumerate(self.get_lane_map())}
 
         cb_out = OrderedDict()
-        N = self.NUMBER_OF_OUTPUT_LANES / self.NUMBER_OF_BIN_SEL
+        N = self.NUMBER_OF_OUTPUT_LANES // self.NUMBER_OF_BIN_SEL
         for bs_number, bs in enumerate(self.BIN_SEL):
             for sublane, data in bs.map(remap_out).items():
                 cb_out[N * bs_number + sublane] = data
         return cb_out
 
-    def configure(self, number_of_bins_per_crossbar_output= 8):
+    def configure(self, number_of_bins_per_crossbar_output=8):
         """
         Configure the channel selection.
         This should be done once the data width has been selected.
         """
-        # data_width = self.get_data_width()
-        # # Compute the minimum word spacing to allow the channel_selector time to forwared the data.
-        # # In 8-bit mode, 2*N bins come every clock from the channelizers, and it takes N clocks to send them away (2 per output word). So the bin spacing is N.
-        # # In 4-bit mode, 2*N bins come every clock from the channelizers, and it takes N/2 clocks to send them away ( 4 per output word). So bin spacing is N/2.
-        # bin_step = self.fpga.NUMBER_OF_CROSSBAR_INPUTS * data_width / 8
-        # number_of_bins_per_frame = self.fpga.FRAME_LENGTH / 2 # The FFT generates 2048 bins, but half of them are discarded
-        # #number_of_bins_per_frame = 2 # The FFT generates 2048 bins, but half of them are discarded
-        # if number_of_bins_per_crossbar_output is None:
-        #     number_of_bins_per_crossbar_output =  int (number_of_bins_per_frame / bin_step) # Number of channels that one channel selector can handle
-
-        # if bin_step > self.fpga.NUMBER_OF_CROSSBAR_OUTPUTS:
-        #     self.logger.warning('   Only a fraction of the frequency bins can be mapped to the crossbar outputs because the total number of bits entering the crossbar exceeds the number of bits at its outputs.')
-
-        # # Check if the set-up is acceptable for the FPGA correlator (if present in the FPGA), and make corrections if needed
-        # if self.fpga.NUMBER_OF_CORRELATORS:
-        #     if data_width == 4:
-        #         self.logger.warning('The FPGA correlator will not operate properly in 4-bit mode ')
-
-        #     max_correlator_frame_length_in_words = 511 # maximum number of words that the correlator can handle in a frame. This is limited by the ACCumulator buffer depth
-        #     max_number_of_words_per_correlator = int( max_correlator_frame_length_in_words / self.fpga.NUMBER_OF_ANTENNAS_TO_CORRELATE ) # maximum number of words that can be selected
-        #     if number_of_bins_per_crossbar_output > 2*max_number_of_words_per_correlator:
-        #         self.logger.warning('   The number of frequency bins in each crossbar output was reduced from %i to %i due to the correlator accumulator memory limitation' % (number_of_bins_per_crossbar_output, max_number_of_words_per_correlator))
-        #         number_of_bins_per_crossbar_output = 2*max_number_of_words_per_correlator
-
-        # # Apply GPU Link limitations
-        # if self.fpga.NUMBER_OF_GPU_LINKS:
-        #     max_number_of_words_per_input_frame = 4095 // self.get_frame_grouping() * 8 / data_width / self.fpga.NUMBER_OF_CROSSBAR_INPUTS
-        #     if number_of_bins_per_crossbar_output > 2*max_number_of_words_per_input_frame:
-        #         self.logger.warning('   The number of frequency bins in each crossbar output was reduced from %i to %i due to the GPU link buffer size limitations' % (number_of_bins_per_crossbar_output, max_number_of_words_per_input_frame))
-        #         number_of_bins_per_crossbar_output = 2*max_number_of_words_per_input_frame
-
-#         for (i, xbar) in enumerate(self.CROSSBAR):
-#             bin_list = np.arange(number_of_bins_per_crossbar_output)* bin_step + i
-#             # xbar.CH_DIST.select_words(word_list) # enable tranmission 8 words, 16 freq channels by default
-# #            bin_list = [0,8]
-#             xbar.CH_DIST.select_bins(bin_list) # enable tranmission 8 words, 16 freq channels by default
         for (i, bs) in enumerate(self.BIN_SEL):
-            if self.crossbar_level==1:
-                bin_list = np.arange(number_of_bins_per_crossbar_output)* 2 + i
+            if self.crossbar_level == 1:
+                bin_list = np.arange(number_of_bins_per_crossbar_output) * 2 + i
             else:
                 bin_list = np.arange(number_of_bins_per_crossbar_output) * 8 + i
             # xbar.CH_DIST.select_words(word_list) # enable tranmission 8 words, 16 freq channels by default
 #            bin_list = [0,8]
-            bs.select_bins(bin_list) # enable tranmission 8 words, 16 freq channels by default
+            bs.select_bins(bin_list)  # enable tranmission 8 words, 16 freq channels by default
 
     def status(self):
         """ Displays the status of all correlators"""
         for bs in self.BIN_SEL:
             bs.status()
-
 
     def capture_stream_id(self):
         sid = []
@@ -305,18 +287,17 @@ class ShuffleCrossbar(Module_base):
         self.HEADER_CAPTURE_EN = 1
         return sid
 
-    @async
-    def capture_frame_number(self):
+    async def capture_frame_number(self):
         frame = []
 
         # get 8 bits of stream ID
         self.HEADER_CAPTURE_EN = 0
         for i in range(self.NUMBER_OF_CROSSBAR_INPUTS):
-            yield async_moment
+            await asyncio.sleep(0)
             self.LANE_MONITOR_SEL = i
             frame.append(self.FRAME_NUMBER_CAPTURE_DATA)
         self.HEADER_CAPTURE_EN = 1
-        async_return(frame)
+        return frame
 
 
     LANE_MONITOR_TABLE = {
@@ -334,8 +315,7 @@ class ShuffleCrossbar(Module_base):
 
         }
 
-    @async
-    def get_lane_monitor(self, names):
+    async def get_lane_monitor(self, names):
         """
         Return a list describing the status of the specified flag for each *input*
         lane.
@@ -349,36 +329,39 @@ class ShuffleCrossbar(Module_base):
         bitfields = []
         for name in names:
             if name not in self.LANE_MONITOR_TABLE:
-                raise ValueError('Invalid lane monitor name. valid names are %s' % ','.join(self.LANE_MONITOR_TABLE.keys()))
+                raise ValueError('Invalid lane monitor name. valid names are %s' %
+                                 ','.join(self.LANE_MONITOR_TABLE.keys()))
             bitfields.append(self.get_bitfield(self.LANE_MONITOR_TABLE[name]))
 
         mon = [[] for _ in bitfields]
         for lane in range(self.NUMBER_OF_CROSSBAR_INPUTS):
-            yield async_moment
+            await asyncio.sleep(0)
             self.LANE_MONITOR_SEL = lane
             for i, bf in enumerate(bitfields):
                 mon[i].append(self.read_bitfield(bf))
 
-        async_return(mon if is_list else mon[0])
+        return mon if is_list else mon[0]
 
     def get_align_status(self):
         status = []
-        err_names = ['TLAST', 'TVALID', 'DISCARD', 'MISSING','FIFO','TIMEOUT']
-        errors = self.get_lane_monitor(['BAD_TLAST', 'BAD_TVALID', 'BAD_FRAME_LENGTH', 'MISSING_FRAME', 'ALIGN_FIFO_OVERFLOW', 'DATA_TIMEOUT'])
+        err_names = ['TLAST', 'TVALID', 'DISCARD', 'MISSING', 'FIFO', 'TIMEOUT']
+        errors = self.get_lane_monitor(
+            ['BAD_TLAST', 'BAD_TVALID', 'BAD_FRAME_LENGTH',
+             'MISSING_FRAME', 'ALIGN_FIFO_OVERFLOW', 'DATA_TIMEOUT'])
         for lane in range(len(errors[0])):
-            status.append({err_names[errno]:err[lane] for (errno, err) in enumerate(errors) if err[lane]})
+            status.append({err_names[errno]: err[lane] for (errno, err) in enumerate(errors) if err[lane]})
         return status
 
     def get_frame_alignment_status(self):
         frame_numbers = self.capture_frame_number()
         # is_aligned = len(set(frame_numbers)) == 1
-        status = [{'DELTA':f-frame_numbers[0]} if f-frame_numbers[0] else {} for (lane, f) in enumerate(frame_numbers)]
+        status = [{'DELTA': f-frame_numbers[0]} if f-frame_numbers[0] else {} for (lane, f) in enumerate(frame_numbers)]
         return status
 
     def get_bin_sel_status(self):
         status = []
         for bs in self.BIN_SEL:
-            number_of_sublanes_per_output = self.NUMBER_OF_INPUT_LANES/bs.NUMBER_OF_OUTPUTS
+            number_of_sublanes_per_output = self.NUMBER_OF_INPUT_LANES // bs.NUMBER_OF_OUTPUTS
             sublane_mask = (1 << (bs.LAST_LANE + 1)) - (1 << bs.FIRST_LANE)
             mask = sum(sublane_mask << (number_of_sublanes_per_output * i) for i in range(bs.NUMBER_OF_OUTPUTS))
 
@@ -403,7 +386,7 @@ class ShuffleCrossbar(Module_base):
             self.reset_stats()
             self.fpga.BP_SHUFFLE.reset_stats()
 
-        lane_range = range(self.NUMBER_OF_CROSSBAR_INPUTS)
+        lane_range = list(range(self.NUMBER_OF_CROSSBAR_INPUTS))
         lane_map = self.get_lane_map()
         rx_lane_group = {2: 'pcb', 3: 'qsfp'}[self.crossbar_level]
         active_slots = set(self.fpga.crate.slot.keys())
@@ -417,28 +400,41 @@ class ShuffleCrossbar(Module_base):
         frame_ref = frame_number[0]
         frame_number = [frame_number[lane] for lane in lane_map]
 
-        print '%25s: %s' % ('Monitor point', ' '.join('  L%2i ' % v for v in lane_range))
-        print '%25s: %s' % ('--------------------', ' '+' '.join('------' for v in lane_range))
-        print '%25s: %s' % ('Pre-map lane #', ' '.join(('%6i' % lane_map[lane] for lane in lane_range)))
+        print('%25s: %s' % ('Monitor point', ' '.join('  L%2i ' % v for v in lane_range)))
+        print('%25s: %s' % ('--------------------', ' '+' '.join('------' for v in lane_range)))
+        print('%25s: %s' % ('Pre-map lane #', ' '.join(('%6i' % lane_map[lane] for lane in lane_range))))
         if self.fpga.slot is not None:
             gtx_ids = [(self.fpga.slot, lane_map[lane]) for lane in lane_range]
-            print '%25s: %s' % ('Rx Node ID', ''.join('%7s' % ('(%i,%i)' % id_) for id_ in gtx_ids))
+            print('%25s: %s' % ('Rx Node ID', ''.join('%7s' % ('(%i,%i)' % id_) for id_ in gtx_ids)))
             matching_gtx_ids = [self.fpga.crate.get_matching_tx(gtx_id) for gtx_id in gtx_ids]
-            print '%25s: %s' % ('Matching GTX present', ' '.join(('%6s' % ('-N/A-', 'ok ')[matching_id[0] in active_slots]) for matching_id in matching_gtx_ids))
-            print '%25s: %s' % ('Matching TX Node ID', ''.join('%7s' % ('(%i,%i)' % matching_id) for matching_id in matching_gtx_ids))
-        print '%25s: %s' % ('Detected Stream ID', ''.join('%7s' % ('(%i,%i)' % (((id_ >> 4) & 15)+1, id_& 15)) for id_ in stream_id))
-        print '%25s: %s' % ('RX Errors', ' '.join('%6i' % rx_errors[lane_map[lane]] for lane in lane_range))
-        print '%25s: %s' % ('RX max frame len (words)', ' '.join('%6i' % (rx_max_frame[lane_map[lane]] + 1) for lane in lane_range))
-        print '%25s: %s' % ('RX min frame len (words)', ' '.join('%6i' % (rx_min_frame[lane_map[lane]] + 1) for lane in lane_range))
+            print('%25s: %s' % (
+                'Matching GTX present',
+                ' '.join(('%6s' % ('-N/A-', 'ok ')[matching_id[0] in active_slots]) for matching_id in matching_gtx_ids)))
+            print('%25s: %s' % (
+                'Matching TX Node ID',
+                ''.join('%7s' % ('(%i,%i)' % matching_id) for matching_id in matching_gtx_ids)))
+        print('%25s: %s' % (
+            'Detected Stream ID',
+            ''.join('%7s' % ('(%i,%i)' % (((id_ >> 4) & 15) + 1, id_ & 15)) for id_ in stream_id)))
+        print('%25s: %s' % (
+            'RX Errors',
+            ' '.join('%6i' % rx_errors[lane_map[lane]] for lane in lane_range)))
+        print('%25s: %s' % (
+            'RX max frame len (words)',
+            ' '.join('%6i' % (rx_max_frame[lane_map[lane]] + 1) for lane in lane_range)))
+        print('%25s: %s' % (
+            'RX min frame len (words)',
+            ' '.join('%6i' % (rx_min_frame[lane_map[lane]] + 1) for lane in lane_range)))
         # input_detect = self.get_lane_monitor('INPUT_DETECT')
         # input_detect = [input_detect[lane] for lane in lane_map]
         # align_detect = self.get_lane_monitor('ALIGN_DETECT')
         # align_detect = [align_detect[lane] for lane in lane_map]
         # remap_detect = self.get_lane_monitor('REMAP_DETECT')
         # print '%25s: %s' % ('IN/ALGN/REMAP DETECT', ' '.join(' %i/%i/%i' % (input_detect[lane], align_detect[lane], remap_detect[lane]) for lane in lane_range))
-        for name in [ 'MISSING_FRAME', 'BAD_FRAME_LENGTH', 'ALIGN_FIFO_OVERFLOW', 'DATA_TIMEOUT', 'BAD_TVALID', 'BAD_TLAST']:
+        for name in ['MISSING_FRAME', 'BAD_FRAME_LENGTH', 'ALIGN_FIFO_OVERFLOW',
+                     'DATA_TIMEOUT', 'BAD_TVALID', 'BAD_TLAST']:
             value = self.get_lane_monitor(name)
-            print '%25s: %s' % (name, ' '.join('%6s' % ('-', 'ERR!')[bool(value[lane])] for lane in lane_map))
+            print('%25s: %s' % (name, ' '.join('%6s' % ('-', 'ERR!')[bool(value[lane])] for lane in lane_map)))
         input_frame_ctr = []
         align_frame_ctr = []
         delay = []
@@ -451,22 +447,21 @@ class ShuffleCrossbar(Module_base):
             delay.append(self.DELAY_CAPTURE if lane < 8 else '-')
             fifo_count.append(self.FIFO_COUNT)
 
-        print '%25s: %s' % ('INPUT DELAY', ' '.join('%6s' % delay[lane] for lane in lane_map))
-        print '%25s: %s' % ('INPUT_FRAME_CTR', ' '.join('%6i' % input_frame_ctr[lane] for lane in lane_map))
-        print '%25s: %s' % ('ALIGN_FRAME_CTR', ' '.join('%6i' % align_frame_ctr[lane] for lane in lane_map))
-        print '%25s: %s' % ('FIFO_TFIRST', ' '.join('%6i' % fifo_tfirst[lane] for lane in lane_map))
-        print '%25s: %s' % ('FIFO_COUNT', ' '.join('%6i' % fifo_count[lane] for lane in lane_map))
+        print('%25s: %s' % ('INPUT DELAY', ' '.join('%6s' % delay[lane] for lane in lane_map)))
+        print('%25s: %s' % ('INPUT_FRAME_CTR', ' '.join('%6i' % input_frame_ctr[lane] for lane in lane_map)))
+        print('%25s: %s' % ('ALIGN_FRAME_CTR', ' '.join('%6i' % align_frame_ctr[lane] for lane in lane_map)))
+        print('%25s: %s' % ('FIFO_TFIRST', ' '.join('%6i' % fifo_tfirst[lane] for lane in lane_map)))
+        print('%25s: %s' % ('FIFO_COUNT', ' '.join('%6i' % fifo_count[lane] for lane in lane_map)))
         output_frame_ctr = []
         for lane in range(self.NUMBER_OF_CROSSBAR_OUTPUTS):
             self.LANE_MONITOR_SEL = lane
             output_frame_ctr.append(self.OUTPUT_FRAME_CTR)
-        print '%25s: %s' % ('OUTPUT_FRAME_CTR', ' '.join('%6i' % v for v in output_frame_ctr))
+        print('%25s: %s' % ('OUTPUT_FRAME_CTR', ' '.join('%6i' % v for v in output_frame_ctr)))
 
-        print '%25s: %s' % ('Frame #', ' '.join('%6i' % f for f in frame_number))
-        print '%25s: %s' % ('Delta Frame #', ' '.join('%6i' % (f - frame_ref) for f in frame_number))
+        print('%25s: %s' % ('Frame #', ' '.join('%6i' % f for f in frame_number)))
+        print('%25s: %s' % ('Delta Frame #', ' '.join('%6i' % (f - frame_ref) for f in frame_number)))
 
-    @async
-    def get_metrics(self, reset=True):
+    async def get_metrics(self, reset=True):
         """ Return the monitoring metrics for the 2nd and 3rd crossbar.
         """
         metrics = Metrics(
@@ -477,43 +472,44 @@ class ShuffleCrossbar(Module_base):
             type='GAUGE')
         prefix = 'fpga_crossbar%i_' % self.crossbar_level
         # add ALIGN status flags
-        bitfield_names = ['BAD_TLAST', 'BAD_TVALID', 'BAD_FRAME_LENGTH', 'MISSING_FRAME', 'ALIGN_FIFO_OVERFLOW', 'DATA_TIMEOUT']
-        align_flags = yield self.get_lane_monitor.async(bitfield_names)
+        bitfield_names = ['BAD_TLAST', 'BAD_TVALID', 'BAD_FRAME_LENGTH',
+                          'MISSING_FRAME', 'ALIGN_FIFO_OVERFLOW', 'DATA_TIMEOUT']
+        align_flags = await self.get_lane_monitor(bitfield_names)
         for i, bitfield_name in enumerate(bitfield_names):
             flags = align_flags[i]
             for lane, flag in enumerate(flags):
                 metrics.add(prefix + bitfield_name.lower() + '_flag', lane=lane, value=flag)
 
         # Add frame alignment flag
-        yield async_moment
-        frame_numbers = yield self.capture_frame_number.async()
+        await asyncio.sleep(0)
+        frame_numbers = await self.capture_frame_number()
         for lane, frame_number in enumerate(frame_numbers):
             offset = frame_number - frame_numbers[0]
             metrics.add(prefix + 'frame_alignment_offset', lane=lane, value=offset)
 
         # Add BIN SEL status
         for lane, bs in enumerate(self.BIN_SEL):
-            yield async_moment
-            number_of_sublanes_per_output = self.NUMBER_OF_INPUT_LANES/bs.NUMBER_OF_OUTPUTS
+            await asyncio.sleep(0)
+            number_of_sublanes_per_output = self.NUMBER_OF_INPUT_LANES // bs.NUMBER_OF_OUTPUTS
             sublane_mask = (1 << (bs.LAST_LANE + 1)) - (1 << bs.FIRST_LANE)
             mask = sum(sublane_mask << (number_of_sublanes_per_output * i) for i in range(bs.NUMBER_OF_OUTPUTS))
 
             metrics.add(prefix + 'bin_sel_data_fifo_overflow',
                         lane=lane, value=bs.FIFO_OVERFLOW & mask)
-            yield async_moment
+            await asyncio.sleep(0)
             metrics.add(prefix + 'bin_sel_flags_fifo_overflow',
                         lane=lane, value=bs.FLAGS_FIFO_OVERFLOW & mask)
         # Add input lane counters
         bitfield_names = ['INPUT_FRAME_CTR', 'ALIGN_FRAME_CTR', 'DELAY_CAPTURE', 'FIFO_COUNT']
-        counters = yield self.get_lane_monitor.async(bitfield_names)
+        counters = await self.get_lane_monitor(bitfield_names)
         for i, bitfield_name in enumerate(bitfield_names):
             flags = counters[i]
             for lane, flag in enumerate(flags):
-                metrics.add(prefix +  bitfield_name.lower(), lane=lane, value=flag)
+                metrics.add(prefix + bitfield_name.lower(), lane=lane, value=flag)
 
         # Add output lane counters
         for lane in range(self.NUMBER_OF_CROSSBAR_OUTPUTS):
-            yield async_moment
+            await asyncio.sleep(0)
             self.LANE_MONITOR_SEL = lane
             metrics.add(prefix + 'output_frame_ctr', lane=lane, value=self.OUTPUT_FRAME_CTR)
             metrics.add(prefix + 'packet_error_ctr', lane=lane, value=self.PACKET_ERROR_CTR)
@@ -521,9 +517,4 @@ class ShuffleCrossbar(Module_base):
         if reset:
             self.reset_stats()
 
-        async_return(metrics)
-
-
-    # def print_capture_word(self):
-
-    #     print 'Lane %02i, Word %i: Done=%i, tvalid=%i, tlast=%i, tdata=0x%08X' % (self.LANE_MONITOR_SEL, self.CAPTURE_WORD_NUMBER, self.CAPTURE_DONE, self.CAPTURE_TVALID, self.CAPTURE_TLAST, self.CAPTURE_TDATA)
+        return metrics

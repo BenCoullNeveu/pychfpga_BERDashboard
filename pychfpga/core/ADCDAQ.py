@@ -14,7 +14,7 @@ History:
 
 import time
 import numpy as np
-from Module import Module_base, BitField
+from .Module import Module_base, BitField
 
 
 class ADCDAQ_base(Module_base):
@@ -106,7 +106,7 @@ class ADCDAQ_base(Module_base):
         else:
             raise Exception('Invalid ADCDAQ mode')
 
-    def set_delays(self, dly=([0]*8, None, None)):
+    def set_delays(self, dly=([0] * 8, None, None)):
         """
         Sets the data acquisition delays
         WARNING: will work only if DIVCLK is clocking (i.e. ADC not in SYNC, and BUFR/PLL not in RESET)
@@ -220,16 +220,16 @@ class ADCDAQ_base(Module_base):
         """
         Prints the ADCDAQ module status.
         """
-        print '-------------- ANT[%i].ADCDAQ STATUS --------------' % self.instance_number
+        print('-------------- ANT[%i].ADCDAQ STATUS --------------' % self.instance_number)
 
-        print 'Clock source: %s' % ('ADC','SYSTEM CLOCK')[self.PLL_CLK_SRC]
-        print 'Data Acquisition FIFO status'
-        print '   Flag        Current   Sticky'
-        print '   ----------- -------   ------'
-        print '   OVERFLOW    %5s     %5s' % (bool(self.FIFO_OVERFLOW), bool(self.FIFO_OVERFLOW_STICKY))
-        print '   UNDERFLOW   %5s     %5s' % (bool(self.FIFO_UNDERFLOW), bool(self.FIFO_UNDERFLOW_STICKY))
-        print '   EMPTY       %5s     %5s' % (bool(self.FIFO_EMPTY), bool(self.FIFO_EMPTY_STICKY))
-        print 'Number of ramp errors: %i', self.RAMP_ERR_CTR
+        print('Clock source: %s' % ('ADC','SYSTEM CLOCK')[self.PLL_CLK_SRC])
+        print('Data Acquisition FIFO status')
+        print('   Flag        Current   Sticky')
+        print('   ----------- -------   ------')
+        print('   OVERFLOW    %5s     %5s' % (bool(self.FIFO_OVERFLOW), bool(self.FIFO_OVERFLOW_STICKY)))
+        print('   UNDERFLOW   %5s     %5s' % (bool(self.FIFO_UNDERFLOW), bool(self.FIFO_UNDERFLOW_STICKY)))
+        print('   EMPTY       %5s     %5s' % (bool(self.FIFO_EMPTY), bool(self.FIFO_EMPTY_STICKY)))
+        print('Number of ramp errors: %i', self.RAMP_ERR_CTR)
 
         # fin=200
         # input_div=1 if self.MMCM_CLKIN_BYPASS else (self.MMCM_CLKIN_HIGH + self.MMCM_CLKIN_LOW)
@@ -247,7 +247,7 @@ class ADCDAQ_base(Module_base):
         # print '  Computed VCO frequency: %.0f MHz'% (fin*1.0/input_div*fb_div)
         # print '  Computed DIVCLK frequency: %.0f MHz' % (fin*1.0/input_div*fb_div/divclk_div)
 
-        print
+        print()
 
     def get_sim_output(self, analog_input=None, number_of_frames=None):
         frame_length = self.fpga.FRAME_LENGTH

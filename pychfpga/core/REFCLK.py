@@ -1,6 +1,4 @@
 #!/usr/bin/python
-# Disable pylint Line too long (=C0301)
-# pylint: disable=C0301
 
 """
 REFCLK.py module
@@ -15,7 +13,7 @@ REFCLK.py module
     2012-09-23 JFC: Removed MMCM status registers. Converted bitfield list to independent variables. Commented out set_refclk200_phase.
 """
 
-from Module import Module_base, BitField
+from .Module import Module_base, BitField
 
 import logging
 import time
@@ -23,7 +21,7 @@ import numpy as np
 
 class REFCLK_base(Module_base):
 
-    sync_delay=9 # default value.
+    sync_delay = 9  # default value.
 
     CONTROL = BitField.CONTROL
     STATUS = BitField.STATUS
@@ -66,23 +64,30 @@ class REFCLK_base(Module_base):
         # self.set_refclk_delay(0)
         self.set_sync_delays(1)
         self.logger = logging.getLogger(__name__)
-        # If the board is not present, disable SYNC detection on REFCLK to prevent noise on the floating REFCLK lien to generate spurioys resets.
+
+        # If the board is not present, disable SYNC detection on REFCLK to
+        # prevent noise on the floating REFCLK lien to generate spurious
+        # resets.
+
         # self.ENABLE_SYNC_DETECTION = 1
         # self.ENABLE_SYNC_GENERATION = 1
         if self.fpga.is_fmc_present(0):
             self.logger.debug('%r:   REFCLK is using the 10 MHz reference clock from the ADC board' % self.fpga)
             self.REFCLK_SEL = 0  # Use REFCLK coming from the FMC
         else:
-            self.logger.debug('%r:   REFCLK is using the 10 MHz reference clock from FPGA since the ADC board is not prresent in FMC slot 0' % self.fpga)
+            self.logger.debug('%r:   REFCLK is using the 10 MHz reference clock from FPGA since the ADC board '
+                              'is not present in FMC slot 0' % self.fpga)
             self.REFCLK_SEL = 1  # Use internally generated REFCLK
 
     SYNC_SOURCE_TABLE = {
-        'local': 0,
-        'refclk': 1,
-        'bp_trig': 2,
-        'irigb': 3,
-        'bp_time': 4,
-        'bp_gpio_int': 5}
+        'local': 0,  # No external trigger, software only
+        'refclk': 1,  # Refclk pulse width
+        'bp_trig': 2,  # Backplane trig line
+        'irigb': 3,  # Output of the IRIG-B timestamp comparator
+        'bp_time': 4,  # Backplane time signal
+        'bp_gpio_int': 5,  # backplane GPIO interrupt line
+        'sma_a': 6,  # IceBoard SMA_A
+        'sma_b': 7}  # Iceboard SMA B
 
     def set_sync_source(self, source):
         """ Set the source of the SYNC signal."""
@@ -120,7 +125,7 @@ class REFCLK_base(Module_base):
         while True:
             self.LOCAL_SYNC = 1
             self.LOCAL_SYNC = 0
-            if self.wait_for_bit('SYNC_DONE', no_error=True): # Wait until the SYNC process is completed
+            if self.wait_for_bit('SYNC_DONE', no_error=True):  # Wait until the SYNC process is completed
                 return
             trial += 1
             if trial >= max_trials:
@@ -142,8 +147,8 @@ class REFCLK_base(Module_base):
             self.set_refclk_delay(delay)
             self.sync_delay = self.get_refclk_delay()  # Save the current delay value
 
-        #if set_sync_delay was called with -1 we didn't actually set anything so the saved value
-        #shouldnt be -1 it should be what ever is actually used
+        # if set_sync_delay was called with -1 we didn't actually set anything so the saved value
+        # shouldnt be -1 it should be what ever is actually used
 
     def get_sync_delays(self):
         return self.sync_delay
@@ -171,16 +176,25 @@ class REFCLK_base(Module_base):
             self.REFCLK1_DELAY = d1
         self.pulse_bit('REFCLK_DELAY_RST')
 
-    def acquire_adc_clock_waveforms(self, channels=range(16)):
+    def acquire_adc_clock_waveforms(self, channels=list(range(16))):
         """
-        Measures the waveform of the 400 MHz ADC input clock for the specifid ADC channels.
-        This is done by sweeping the delay on the 10 MHz reference clock and sampling the ADC clock signal on the rising edge of that delayed clock.
-        32 samples are taken over total delay of 2.5 ns (78.125 ps/sample). The acquisition therefore spans the full period of a 400 MHz signal, and it is graranteed that a transition will be observed.
+        Measures the waveform of the 400 MHz ADC input clock for the specified ADC channels.
 
-        The method returns a N x 32 numpy array (first dimension (row) is the channel, second dimension is the sample for each of the 32 tap delays).
+        This is done by sweeping the delay on the 10 MHz reference clock and
+        sampling the ADC clock signal on the rising edge of that delayed
+        clock. 32 samples are taken over total delay of 2.5 ns (78.125
+        ps/sample). The acquisition therefore spans the full period of a 400
+        MHz signal, and it is guaranteed that a transition will be observed.
+
+        The method returns a N x 32 numpy array (first dimension (row) is the
+        channel, second dimension is the sample for each of the 32 tap
+        delays).
         """
         old_refclk_delay = self.get_refclk_delay()
-        waveforms = np.zeros((len(channels), 32)) # prepare an empty array that will contain the ADC clock waveform for each channel
+
+        # prepare an empty array that will contain the ADC clock waveform for each channel
+        waveforms = np.zeros((len(channels), 32))
+
         # self.fpga.ANT[channels[0]].ADCDAQ.wait_for_bit('FIFO_EMPTY', target_value=0) # Make sure the ADCDAQ SYNC process is completed
         for delay in range(32):
             self.set_refclk_delay(delay)
@@ -197,9 +211,9 @@ class REFCLK_base(Module_base):
         falling edge to which an offset is added to point towards the expected
         location of the rising edge.
 
-        ``waveform`` must be a (Nx S) numpy array, where N is the
+        ``waveform`` must be a (N x S) numpy array, where N is the
         number of channels, and S is the number of samples in the waveform.
-        Each element of the waveform is an integers (1 or 0s).
+        Each element of the waveform is an integer (1 or 0s).
 
         The position of the rising edge is an integer modulo 'period'. It is
         therefore necessarily between 0 and ``period-1``, but might be larger than
@@ -214,40 +228,52 @@ class REFCLK_base(Module_base):
             stable_time = period / 8
         stable_time = int(stable_time)
 
-        rising_edges = np.zeros(waveforms.shape[0]) # make sure the returned value is always an Int
-        for i, waveform in enumerate(waveforms): # for each row
-            s = (waveform.astype(np.int8) + ord('0')).tostring() # Convert to a string of "1" and "0"s so we can use the 'find' method. before doing that, make sure this is an int8 array otherwise we'll get more than one char per value...
-            re = s.find('0' + '1' * stable_time)
-            fe = s.find('1' * stable_time + '0')
+        rising_edges = np.zeros(waveforms.shape[0])  # make sure the returned value is always an Int
+        for i, waveform in enumerate(waveforms):  # for each row
+            # Convert to a string of "1" and "0"s so we can use the 'find'
+            # method. before doing that, make sure this is an int8 array
+            # otherwise we'll get more than one char per value...
+            s = (waveform.astype(np.int8) + ord(b'0')).tobytes()
+            re = s.find(b'0' + b'1' * stable_time)
+            fe = s.find(b'1' * stable_time + b'0')
             if re >= 0:
                 rising_edges[i] = (re + 1) % period
             elif fe >= 0:
-                rising_edges[i] = (fe + stable_time + period/2.0) % period
+                rising_edges[i] = (fe + stable_time + period / 2.0) % period
             else:
                 rising_edges[i] = np.NaN
         return rising_edges
 
-
     def find_centers(self, edge_map, threshold=4):
-        """ For each column of ``edge_map``, find the centers of runs of 0s longer than ``threshold`` that are bounded by '1's.
+        """
+        For each column of ``edge_map``, find the centers of runs of 0s longer
+        than ``threshold`` that are bounded by '1's.
         """
         centers = []
         for edges in edge_map.T:
             pos_ones = np.nonzero(edges)[0]
-            if len(pos_ones) < 2: # we don't have 2 edges, can't compute
+            if len(pos_ones) < 2:  # we don't have 2 edges, can't compute
                 pos = []
             else:
                 run_length = np.diff(pos_ones)
                 # i = np.argmax(run_length)  # index_of_longest_run
                 i = np.where(run_length >= threshold)[0]  # indices of where  run_length > threshold
-                pos = [(pos_ones[ii] + pos_ones[ii + 1] + 1) // 2 for ii in i] # compute the centers. We add 1 so we are a bit firther from the end of the run than the beginning.
+
+                # compute the centers. We add 1 so we are a bit further from the end of the run than the beginning.
+                pos = [(pos_ones[ii] + pos_ones[ii + 1] + 1) // 2 for ii in i]
             centers.append(pos)
         return centers
 
-    def compute_sync_delays(self, channels=[0, 4, 8, 12], adc_clock_freq=400e6, set_sync_delays=False, verbose=1, sync_sleep=0.010):
+    def compute_sync_delays(
+            self,
+            channels=[0, 4, 8, 12],
+            adc_clock_freq=400e6,
+            set_sync_delays=False,
+            verbose=1,
+            sync_sleep=0.010):
         """
-        Compute and optionnally set the recommended ADC SYNC pulse timing to
-        ensure that it will meet the ADC timing requirments and produce
+        Compute and optionally set the recommended ADC SYNC pulse timing to
+        ensure that it will meet the ADC timing requirements and produce
         reproducible data acquisition timing relative to the 10MHz system
         reference clock.
 
@@ -255,7 +281,7 @@ class REFCLK_base(Module_base):
         2.5 ns in 32 steps (78.125 ps per step) and by measuring the 400 MHz ADC
         data clock waveform for each sync delay value.
 
-        Phase discontinuities will be seen where the timing requirments is not
+        Phase discontinuities will be seen where the timing requirements is not
         met (i.e. the SYNC falling edge is too close to the 1600 MHz ADC input
         clock and the setup or hold requirements are not met).
 
@@ -273,10 +299,10 @@ class REFCLK_base(Module_base):
                selection mux control bit must also be set to use the bypassed
                input.
         """
-        old_sync_delays = self.get_sync_delays() # Save the current delay value
+        old_sync_delays = self.get_sync_delays()  # Save the current delay value
         tap_delay = 1 / 200e6 / 32 / 2
-        adc_data_clock_period = int((1 / adc_clock_freq) / tap_delay) # 400 MHz period in tap delays
-        adc_input_clock_period = int((1 / 1600e6) / tap_delay) # 1600 MHz period in tap delays
+        adc_data_clock_period = int((1 / adc_clock_freq) / tap_delay)  # 400 MHz period in tap delays
+        adc_input_clock_period = int((1 / 1600e6) / tap_delay)  # 1600 MHz period in tap delays
 
         #  Measure the ADC clock waveform for each of the 32 possible sync delays
         waveforms = np.zeros((32, len(channels), 32))  # 32 sync delays x N channels x  32-sample waveform/channel
@@ -284,16 +310,19 @@ class REFCLK_base(Module_base):
         for sync_delay in range(32):
             self.local_sync(sync_delay)
             time.sleep(sync_sleep)
-            waveforms[sync_delay] = self.acquire_adc_clock_waveforms(channels=channels) # Measure the ADC clock waveform for all ADCs
-            rising_edges[sync_delay] = self.find_rising_edges(waveforms[sync_delay], period=adc_data_clock_period) # Find the position of the rising edge for the ADC clock waveform for each channel
+            # Measure the ADC clock waveform for all ADCs
+            waveforms[sync_delay] = self.acquire_adc_clock_waveforms(channels=channels)
+            # Find the position of the rising edge for the ADC clock waveform for each channel
+            rising_edges[sync_delay] = self.find_rising_edges(waveforms[sync_delay], period=adc_data_clock_period)
 
         # Now find where phase jump occur on the waveform for each channel
         phases = 2 * np.pi * rising_edges / adc_data_clock_period
         delta_phases = np.diff(phases, axis=0)
-        delta_phases = np.arctan2(np.sin(delta_phases), np.cos(delta_phases))  # compute the smallest angle between the 2 angles while correctly dealing with wraparounds (e.g. 0 and 31 are separated by 1, not 31)
-        # we then create a vector that has '1' where large phase transision occur
+        # Compute the smallest angle between the 2 angles while correctly dealing with wraparounds (e.g. 0 and 31 are separated by 1, not 31)
+        delta_phases = np.arctan2(np.sin(delta_phases), np.cos(delta_phases))
+        # We then create a vector that has '1' where large phase transition occur
         jumps = (np.abs(delta_phases) > 2 * np.pi / adc_data_clock_period * adc_input_clock_period / 2) * 1
-        centers = self.find_centers(jumps, threshold=adc_input_clock_period/2)
+        centers = self.find_centers(jumps, threshold=adc_input_clock_period / 2)
 
         # Gather the sync delays for each ADC board
         adc_board_sync_delays = [[], []]
@@ -305,37 +334,49 @@ class REFCLK_base(Module_base):
         for i, adc_board_sync_delay in enumerate(adc_board_sync_delays):
             if adc_board_sync_delay:
                 a = np.array(adc_board_sync_delay) * 2 * np.pi / adc_input_clock_period
-                adc_board_average_sync_delays[i] = (int(np.round(np.arctan2(np.sum(np.sin(a)), np.sum(np.cos(a))) / 2 / np.pi * adc_input_clock_period)) + 1) % adc_input_clock_period
+                adc_board_average_sync_delays[i] = (
+                    (int(np.round(np.arctan2(np.sum(np.sin(a)), np.sum(np.cos(a)))
+                     / 2 / np.pi * adc_input_clock_period)) + 1) % adc_input_clock_period)
             else:
                 adc_board_average_sync_delays[i] = None
 
         if verbose:
-            print 'ADC Clock waveform for %r' % self.fpga
+            print('ADC Clock waveform for %r' % self.fpga)
             for sync_delay in range(32):
-                print 'Sync delay %2i:' % (sync_delay),
+                print('Sync delay %2i:' % (sync_delay, ), end=' ')
                 for i, ch in enumerate(channels):
-                    bitstring = bytearray((waveforms[sync_delay][i].astype(np.int8) + ord('0')).tostring() + (' '*(adc_data_clock_period-32)))  # pad in case there the clock period is longer than 32
+                    # Compute string representing the bits. Pad in case there the clock period is longer than 32
+                    bitstring = bytearray((waveforms[sync_delay][i].astype(np.int8) + ord(b'0')).tobytes() + (b' ' * (adc_data_clock_period - 32)))
                     if ~np.isnan(rising_edges[sync_delay, i]):
                         edge_pos = int(rising_edges[sync_delay, i])
-                        if bitstring[edge_pos] == ord('1'):
-                            bitstring[edge_pos] = '!' #  we converted the string to bytearray so we could do assignments like this
+                        if bitstring[edge_pos] == ord(b'1'):
+                            # we converted the string to bytearray so we could do assignments like this
+                            bitstring[edge_pos] = ord(b'!')
                         else:
-                            bitstring[edge_pos] = '?'
-                        jump_flag = '>' if sync_delay in centers[i] else '-' if sync_delay<31 and jumps[sync_delay,i] else ' ';
+                            bitstring[edge_pos] = ord(b'?')
+                        jump_flag = ('>' if sync_delay in centers[i] else
+                                     '-' if sync_delay < 31 and jumps[sync_delay, i] else
+                                     ' ')
                     else:
                         jump_flag = '?'
-                    print 'CH%02i %3.0f %s: %s ' % (ch, rising_edges[sync_delay, i], jump_flag, bitstring),
-                print
-            print '   ADC boards average sync delays:', adc_board_average_sync_delays
+                    print('CH%02i %3.0f %s: %s ' % (ch, rising_edges[sync_delay, i], jump_flag, bitstring.decode()), end=' ')
+                print()
+            print('   ADC boards average sync delays:', adc_board_average_sync_delays)
 
         if set_sync_delays:
             self.set_sync_delays(adc_board_average_sync_delays)
         else:
             self.set_sync_delays(old_sync_delays)
-        # return (rising_edges, phases, delta_phases, jumps, centers, adc_board_sync_delays, adc_board_average_sync_delays)
         return adc_board_average_sync_delays
 
-    def check_sync_delays(self, sync_delay=None, channels=[0, 4, 8, 12], trials=10, adc_clock_freq=400e6, sync_sleep=0.010, verbose=True):
+    def check_sync_delays(
+            self,
+            sync_delay=None,
+            channels=[0, 4, 8, 12],
+            trials=10,
+            adc_clock_freq=400e6,
+            sync_sleep=0.010,
+            verbose=True):
         """
         Verify that the ADC clock waveforms are stable when measured after
         syncing the ADCs ``trials`` times.
@@ -343,25 +384,30 @@ class REFCLK_base(Module_base):
         Returns the number of detected phase jumps for all specified ADCs
         combined. A value of zero means that the SYNC alignment is adequate.
         """
-        old_sync_delays = self.get_sync_delays() # Save the current delay value
+        old_sync_delays = self.get_sync_delays()  # Save the current delay value
         tap_delay = 1 / 200e6 / 32 / 2
-        adc_data_clock_period = int((1 / adc_clock_freq) / tap_delay) # 400 MHz period in tap delays
-        adc_input_clock_period = int((1 / 1600e6) / tap_delay) # 1600 MHz period in tap delays
+        adc_data_clock_period = int((1 / adc_clock_freq) / tap_delay)  # 400 MHz period in tap delays
+        adc_input_clock_period = int((1 / 1600e6) / tap_delay)  # 1600 MHz period in tap delays
 
         errors = 0
         self.set_sync_delays(sync_delay)
         last_rising_edges = None
         if verbose:
-            print 'Sync delay checks for %r' % (self.fpga)
-            print 'ADC Clock waveform, Sync delay = %s' % (self.get_sync_delays(),)
+            print('Sync delay checks for %r' % (self.fpga))
+            print('ADC Clock waveform, Sync delay = %s' % (self.get_sync_delays(),))
         for trial in range(trials):
             self.local_sync()
             time.sleep(sync_sleep)
-            waveforms = self.acquire_adc_clock_waveforms(channels=channels) # Measure the ADC clock waveform for all ADCs
-            rising_edges = self.find_rising_edges(waveforms, period=adc_data_clock_period) # Find the position of the rising edge for the ADC clock waveform for each channel
+            # Measure the ADC clock waveform for all ADCs
+            waveforms = self.acquire_adc_clock_waveforms(channels=channels)
+            # Find the position of the rising edge for the ADC clock waveform for each channel
+            rising_edges = self.find_rising_edges(waveforms, period=adc_data_clock_period)
             if last_rising_edges is not None:
-                delta_phases = (last_rising_edges - rising_edges) * 2 * np.pi  / adc_data_clock_period
-                delta_phases = np.arctan2(np.sin(delta_phases), np.cos(delta_phases))  # compute the smallest angle between the 2 angles while correctly dealing with wraparounds (e.g. 0 and 31 are separated by 1, not 31)
+                delta_phases = (last_rising_edges - rising_edges) * 2 * np.pi / adc_data_clock_period
+                # compute the smallest angle between the 2 angles while
+                # correctly dealing with wraparounds (e.g. 0 and 31 are
+                # separated by 1, not 31)
+                delta_phases = np.arctan2(np.sin(delta_phases), np.cos(delta_phases))
                 jumps = (np.abs(delta_phases) > 2 * np.pi / adc_data_clock_period * adc_input_clock_period / 2) * 1
                 if any(jumps):
                     errors += 1
@@ -369,11 +415,12 @@ class REFCLK_base(Module_base):
                 jumps = [0] * len(channels)
             last_rising_edges = rising_edges
             if verbose:
-                print 'Trial #%3i:' % (trial + 1),
+                print('Trial #%3i:' % (trial + 1), end=' ')
                 for i, ch in enumerate(channels):
-                    bitstring = bytearray((waveforms[i].astype(np.int8) + ord('0')).tostring() )  # pad in case there the clock period is longer than 32
-                    print 'CH%02i %s: %s ' % (ch, '!' if jumps[i] else ' ', bitstring),
-                print
+                    # Compute string representation of bits. Pad in case there the clock period is longer than 32
+                    bitstring = bytearray((waveforms[i].astype(np.int8) + ord('0')).tobytes())
+                    print('CH%02i %s: %s ' % (ch, '!' if jumps[i] else ' ', bitstring.decode()), end=' ')
+                print()
         self.set_sync_delays(old_sync_delays)
         return errors
 
@@ -383,5 +430,3 @@ class REFCLK_base(Module_base):
         """
         # self.logger.info('-----------------------REFCLK------------------------------------')
         # self.logger.info('SYNC Detection Enabled: %s' % (bool(self.ENABLE_SYNC_DETECTION)))
-
-
