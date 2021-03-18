@@ -34,10 +34,12 @@ try:
 except ImportError:
     comet = None
 
-# Local imports
-from . import __version__
-from .core import CORR
+import sys
+print('PYTHONPATH=', sys.path)
 
+# Local imports
+from pychfpga import __version__
+from .core import CORR
 
 class RawAcqReceiver(object):
     ''' Implement an array of multi-threaded UDP Raw data receiver.

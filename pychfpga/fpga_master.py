@@ -39,12 +39,12 @@ except ImportError:
 
 
 # Local imports
-from . import FPGAArray
-from . import calculate_gains # Gain computation engine
-from . import digital_gain  # Load/save gains from disk
-from . import __version__
+from pychfpga import FPGAArray
+from pychfpga import calculate_gains # Gain computation engine
+from pychfpga import digital_gain  # Load/save gains from disk
+from pychfpga import __version__
 # from ps import PowerSupplyAsyncRESTClient
-from .raw_acq import RawAcqAsyncRESTClient
+from pychfpga.raw_acq import RawAcqAsyncRESTClient
 
 
 def convert_types(val):
