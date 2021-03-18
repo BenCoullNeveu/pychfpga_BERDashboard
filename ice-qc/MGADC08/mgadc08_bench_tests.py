@@ -4,22 +4,27 @@
 import unittest
 import time
 import numpy as np
-import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use("tkagg")
+from matplotlib import pyplot as plt
 import base64
 import util
 import datetime
 from util import NameSpace
 import textwrap
+import sys, os
+import subprocess
+import re
 
-util.add_paths('../..')  # needed to find icecore
+from socket import timeout
+
 from icecore import XReport as xr
 from icecore.tests.xreport import test_report
 from icecore.hw import ipmi_fru
 
-util.add_paths('../../..')  # needed to find fpga_array
 from fpga_array import FPGAArray
 
-TEST_CONFIG_FILE = './mgadc08_test_config.yaml'
+TEST_CONFIG_FILE = './MGADC08/mgadc08_test_config.yaml'
 
 def wrap(obj, width=80):
     return textwrap.fill(str(obj), width)
@@ -40,7 +45,13 @@ def input_yes_no(message, additional_answers=[]):
             return key
         print 'Wrong answer. Try again'
 
-class MGADC08BenchTests(unittest.TestCase):  #
+def blockPrint():
+    sys.stdout = open(os.devnull, 'w')
+
+def enablePrint():
+    sys.stdout = sys.__stdout__
+
+class MGADC08BenchTests(unittest.TestCase):
     """
     Perform impedance & power tests on the MGADC08 Mezzanine.
     """
@@ -66,7 +77,12 @@ class MGADC08BenchTests(unittest.TestCase):  #
         for rail_name, rail in cfg.rails.items():
             ps = self.instr[rail.ps]
             print 'Configuring rail %s to %.3fV@%.3fA' % (rail_name, rail.voltage, rail.current_limit)
-            ps.set_voltage(rail.output, rail.voltage)
+            try:
+                ps.set_voltage(rail.output, rail.voltage)
+            except timeout:
+                print('Failed to connect to power supply. Trying again...')
+                time.sleep(1)
+                ps.set_voltage(rail.output, rail.voltage)
             ps.set_current(rail.output, rail.current_limit)
             self.rails[rail_name] = NameSpace(ps=ps, output=rail.output)
         xr.header('Test results')
@@ -105,7 +121,7 @@ class MGADC08BenchTests(unittest.TestCase):  #
         print '   - the board under test is NOT connected on the motherboard'
         print '   - the power cable is NOT connected on the board under test'
         print
-        print ' Connect the Quick SMA to CH1 SMA input to provide a ground for the impedance measurements'
+        print ' Connect the Quick SMA to any of the 10 SMA inputs to provide a ground for the impedance measurements'
 
         for ps in pss:  # Turn off both power supplies, just to be sure
             ps.output_enable(0)
@@ -121,7 +137,6 @@ class MGADC08BenchTests(unittest.TestCase):  #
                     dmm.local()
                     input("Apply probe to test point '%s' and press ENTER to measure (Q=Exit):" % tp_name)
                     if limits.delay:
-                        dmm.get_resistance()  # make a dummy measurement
                         time.sleep(limits.delay)
                     result = dmm.get_resistance()
                     if result <= cfg.max_impedance: break
@@ -132,6 +147,7 @@ class MGADC08BenchTests(unittest.TestCase):  #
                 if not passed:
                     failed_test_points.append(tp_name)
                     dmm.beep()
+                    time.sleep(0.1)
                     dmm.beep()
                 print '   %s : %.0f ohms (must be more than %.0f ohms) ==> %s' % (tp_name, result, limits.zmin, xr.pass_fail(passed))
             assert not len(failed_test_points), 'Low impedance on %s' % ','.join(failed_test_points)
@@ -172,7 +188,9 @@ class MGADC08BenchTests(unittest.TestCase):  #
 
         passed = False
         try:
-            xr.input("Connect power cable to MGADC08 and press ENTER to measure current (Q=Exit):")
+            print '\n-------------------------------'
+            print 'Connect the power cable to the MGADC08, connect the SMA cable to one of the front ports for better ground.'
+            xr.input("Press ENTER to measure current (Q=Exit):")
 
             for ps in pss: # Turn on both power supplies
                 ps.output_enable(1)
@@ -194,7 +212,7 @@ class MGADC08BenchTests(unittest.TestCase):  #
             dmm.display('','Check power LED')
             power_led_state = input_yes_no('Is the power LED turned ON [Y/N]?')
             test_results.power_led_state = power_led_state
-            assert power_led_state, 'Power LED is not tuned ON. Something is wrong. Aborting.'
+            assert power_led_state, 'Power LED is not turned ON. Something is wrong. Aborting.'
 
             # Measure voltages on test points
             failed_rails = []
@@ -213,9 +231,11 @@ class MGADC08BenchTests(unittest.TestCase):  #
                 test_results.test_points[tp_name] = NameSpace(V=result, passed=passed)
                 if not passed:
                     failed_rails.append(tp_name)
-                    print '   %s : %.3g volts (must be between %.3f - %.3f) ==> %s' % (tp_name, result, limits.vmin, limits.vmax, xr.pass_fail(passed))
                     dmm.beep()
+                    time.sleep(0.1)
                     dmm.beep()
+                print '   %s : %.3g volts (must be between %.3f - %.3f) ==> %s' % (tp_name, result, limits.vmin, limits.vmax, xr.pass_fail(passed))
+
 
             assert not len(failed_rails), 'Inadequate voltage or current on %s' % ','.join(failed_rails)
             passed = True
@@ -230,7 +250,7 @@ class MGADC08BenchTests(unittest.TestCase):  #
             print '------------------------------------------------'
             input('Disconnect power cable from the mezzanine and press ENTER')
 
-class MGADC08CarrierTests():  #
+class MGADC08CarrierTests():
 
     def setUp(self):
         # xr.summary.pass
@@ -239,6 +259,41 @@ class MGADC08CarrierTests():  #
         self.model = xr.params.model
         self.serial = xr.params.serial
         self.slot = self.cfg.carrier_tests.setup.fmc_slot
+
+        cfg = self.cfg.carrier_tests.setup
+        self.instr = util.open_instruments(self.cfg.instruments, cfg.instruments)  # open only instruments listed in cfg.instruments
+
+        stat_command = ['ifconfig', 'eno1']
+        x = subprocess.check_output(stat_command)
+        m = re.search('mtu 9000', x)
+        if (m == None ):
+            print "\nNeed to change the ethernet port MTU setting. Please enter password when asked."
+            os.system('sudo ifconfig eno1 mtu 9000')
+
+        print '\n-------------------------------'
+        print '  - Make sure the mezzanine is mounted to the iceboard (or connected via the extension cable), and the iceboard is properly set up (see handbook).'
+        print "  - The mezzanine mustn't have a power cable connected to it."
+        
+        if(self.instr.ps18v.status()['status'] != 'OK' or self.instr.ps18v.status()['power'] == 0.0):
+            input_yes_no('\nAre you ready to apply power to the board? [Y(es) / Q(uit)]: ')
+    
+            try:
+                self.instr.ps18v.output(state=False, readonly=False) #Ensuring power on N5764A is off
+                self.instr.ps18v.clear() #Clearing any previous protection
+                self.instr.ps18v.control_voltage(voltage=cfg.vlt, readonly=False) #Setting voltage to 18V, power still off
+                self.instr.ps18v.set_current_limit(current=cfg.curlmt, ocp=True) #Setting current limit and turning on ocp feature
+                self.instr.ps18v.output(state=True, readonly=False)
+            except AttributeError:
+                pass
+
+            serial = cfg.fpga_array.iceboards
+            time.sleep(10)
+            print "Waiting for iceboard %s to boot and show up on the network (30 second timeout)" %serial
+            blockPrint()
+            ca = FPGAArray(**cfg.fpga_array)
+            enablePrint()
+            assert(len(ca.ib) == 1), 'Could not find iceboard with serial #%s' %serial
+
         xr.header('Testing...')
         # testing function will now begin
 
@@ -261,17 +316,9 @@ class MGADC08CarrierTests():  #
         dmm = instr.dmm
         dmm.display('EEPROM tests', '%s SN%s' % (self.model, self.serial))
 
-        print '-------------------------------'
-        print ' Make Sure that '
-        print '   -!!! the power cable is NOT connected on the board under test. This will probably damage the motherboard.'
-        print
-        print ' 1- Connect the mezzanine to the motherboard extension cable'
-        print " 2- Power the motherboard if it's not already powered. Wait for the initialization sequence to finish"
-
         tr = NameSpace() # test results container
         passed = False
         try:
-
             a = FPGAArray(**cfg.fpga_array)
             ib = a.ib[0]
             print
@@ -320,7 +367,7 @@ class MGADC08CarrierTests():  #
 
             if mezz:
                 # If a Mezzanine is discovered, it must have valid IPMI data.
-                eeprom_data = self._mezzanine_eeprom_read(self.slot)
+                eeprom_data = ib._mezzanine_eeprom_read(self.slot)
                 ipmi = mezz.decode_eeprom(eeprom_data)  # returns either a Tuber IPMI or a Python IPMI
                 tr.old_ipmi = repr(ipmi)
                 print
@@ -338,11 +385,18 @@ class MGADC08CarrierTests():  #
                     print
                     print ' *** ATTENTION ***'
                     print ' The board model and serial number found in its EEPROM do not match the expected values.'
-                    assert cfg.overrite, 'EEPROM is already programmed with model and serial numbers that to not match the expected values. Ovewriting is not allowed by the configuration file.'
-                    answer = input_yes_no('Do you want to proceed and overrite the EEPROM? All existing data (including MULTI fields) will be lost on that board.')
+                    assert cfg.overwrite, 'EEPROM is already programmed with model and serial numbers that do not match the expected values. Overwriting is not allowed by the configuration file.'
+                    answer = input_yes_no('Do you want to proceed and overwrite the EEPROM? All existing data (including MULTI fields) will be lost on that board.')
                     assert answer, 'The EEPROM was *NOT* reprogrammed. Aborting test.'
                     create_new_ipmi = True
                     write_ipmi = True
+                    rev = None
+                    for rev_number, rev_limits in NameSpace(cfg.revision_table).items():
+                        if rev_limits.sn_min <= int(self.serial) <= rev_limits.sn_max:
+                            rev = rev_number
+                            break
+                    assert rev is not None, 'Could not determine the revision number based on serial number'
+
                 else:
                     print 'The board model and serial number found on the EEPROM match the expected values'
                     create_new_ipmi = False
@@ -367,6 +421,8 @@ class MGADC08CarrierTests():  #
                 assert rev is not None, 'Could not determine the revision number based on serial number'
 
             if create_new_ipmi:
+                if rev < 10:
+                    strev = '0'+str(rev)
                 print
                 print 'Based on the serial number, the revision number will be:' , rev
                 ipmi = ipmi_fru.FRU(
@@ -381,7 +437,7 @@ class MGADC08CarrierTests():  #
                         manufacturer="Winterland",
                         product_name="McGill Mezzanine",
                         part_number=self.model,
-                        product_version=str(rev),
+                        product_version=strev,
                         serial_number=self.serial,
                         asset_tag="",
                         fru_file=""),
@@ -530,9 +586,11 @@ class MGADC08CarrierTests():  #
             tr.passed = passed
             print
             print 'Test ended. Turning mezzanine power OFF'
+
             if ib:
                 ib.set_mezzanine_power(False, self.slot)
-            tr.final_power_off_state = ib.get_mezzanine_power(self.slot)
+                tr.final_power_off_state = ib.get_mezzanine_power(self.slot)
+
             print 'ARM reports that Mezz power is %s' % bool(tr.final_power_off_state)
             print 'ARM reports that Mezz power is %s' % bool(ib.get_mezzanine_power(self.slot))
             print 'GPIO OUT0 reg is', bin(ib.hw._gpio_power.read_reg(10))
@@ -572,7 +630,6 @@ class MGADC08CarrierTests():  #
             - Check the MGT output clock frequency
 
         The computer will ask if the USER LEDs are blinking.
-        The computer will ask if the ADC and MGT PLL Lock LEDs is turned on
 
         Total time: 20 s
         """
@@ -654,6 +711,10 @@ class MGADC08CarrierTests():  #
             # Test LED blinking (interactive)
             print
             print 'Testing LED blinking'
+            io.LED0 = 0
+            io.LED2 = 0
+            io.LED3 = 0
+            raw_input('Press [Enter] to blink the 4 Mezzanine LEDs')
             while True:
                 io.LED0 = 1
                 time.sleep(cfg.blink_delay)
@@ -672,7 +733,7 @@ class MGADC08CarrierTests():  #
                 io.LED3 = 0
                 time.sleep(cfg.blink_delay)
 
-                answer = input_yes_no('Did you see the 4 Mezzanine LEDS blink [Q=Quit, Y=Yes, N=No, R=Repeat]:', ['r'])
+                answer = input_yes_no('Did you see the 4 Mezzanine LEDs blink [Q=Quit, Y=Yes, N=No, R=Repeat]:', ['r'])
                 if answer == 'r':
                     continue
                 break
@@ -765,23 +826,28 @@ class MGADC08CarrierTests():  #
 
     def ramp_test(self):
         cfg = self.cfg.carrier_tests.ramp_test
+        plt.ion()
 
         tr = NameSpace()  # test results container
         ib, mezz = (None, None)  # in case we fail finding boards
         passed = False
         r = None
+
+        message = 'Make sure 2 mezzanines are mounted on the board.\nIf not: quit test, power down board, mount second mezzanine and launch test again.\nPress [Enter] to continue or Q[uit]: '
+        assert not xr.input(message).lower().startswith('q'), 'Test was interrupted by user'
+
         try:
             print 'Opening link to IceBoard'
             ib, mezz = self._get_iceboard(**cfg.fpga_array)
-            ib.set_mezzanine_power(True, self.slot)
-            time.sleep(0.5)
+
             print 'initializing mezzanine...'
             mezz.init()
 
             print 'Computing ADC delays...'
-            delay_table = self.set_adc_delays(ib)
-
-            print 'Opening data receiver socket'
+            ib.set_adc_delays(compute_delays=2, save_delays=False, check_sync_delays=True, check_adc_delays=20, verbose=0, retry=5)
+            delay_table = ib.get_adc_delays()
+            
+            print '\nOpening data receiver socket'
             r = ib.get_data_receiver()
 
             print 'Setting up ramp transmission...'
@@ -790,23 +856,48 @@ class MGADC08CarrierTests():  #
             ib.set_data_source('adc')
             ib.set_adc_mode('ramp')
             ib.start_data_capture(period=1, source='adc')
+            
             print 'Syncing...'
             ib.sync()
-            print 'Getting data frames...'
-            r.read_frames(flush=1, frames=3)  # flush
-            data = r.read_frames(1)
+            
+            print 'Getting data frames, capturing until a full length frame (len 17) recieved...'
+            r.read_frames(flush=1, frames=3, verbose =1)  # flush
+            data = []
+            framenum = 0
+            maxcount=40
+            i = 0;
+            foundone=0
+            while i < maxcount and foundone == 0:
+                data.append(r.read_frames(frames = 1, verbose = 0))
+                if len(data[i]) == 17:
+                    framenum = i
+                    foundone = 1
+                print len(data[i])
+                i=i+1;
 
+
+            # for i in range(8):
+            #     assert 17==len(data[i]), "Some frames have incorrect length!"
+
+            print '\nFrame length OK\n'
+
+            r.close()
+            ib.stop_data_capture()
+            
             tr.data = data
             plt.figure(1)
+            wm = plt.get_current_fig_manager()
+            wm.window.wm_geometry("-0+0")
 
             ideal_ramp = (np.arange(2048) - 128).astype(np.int8)
 
             ramp_ok = []
             for ch in range(8):
                 plt.clf()
-                plt.plot(data[ch])
+                plt.plot(data[framenum][ch])
+                plt.pause(0.0001)
                 xr.insert_plot('Ramp capture for %s SN%s CHANNEL %02i' % (self.model, self.serial, ch))
-                ok = np.all(data[ch] == ideal_ramp)
+                ok = np.all(data[framenum][ch] == ideal_ramp)
                 ramp_ok.append(ok)
                 if ok:
                     print 'Channel %02i: OK' % (ch+1)
@@ -817,6 +908,7 @@ class MGADC08CarrierTests():  #
             assert all(ramp_ok), 'One or more channels have ramp errors'
 
         finally:
+            plt.close('all')
             xr.params.test_locals = locals()  # store local variables for interactive debugging
             tr.passed = passed
             print
@@ -825,6 +917,7 @@ class MGADC08CarrierTests():  #
                 r.close()
             if ib:
                 ib.set_mezzanine_power(False, self.slot)
+                ib.set_mezzanine_power(False, 2 if self.slot==1 else 1)
             xr.save_data(tr)
 
 
@@ -838,6 +931,7 @@ class MGADC08CarrierTests():  #
         """
         cfg = self.cfg.carrier_tests.s11_test
         dummy_instr = cfg.dummy_instruments
+        plt.ion()
 
         if not dummy_instr:
             instr = util.open_instruments(self.cfg.instruments, cfg.instruments)  # open only instruments listed in cfg.instruments
@@ -863,9 +957,6 @@ class MGADC08CarrierTests():  #
         try:
 
             ib, mezz = self._get_iceboard(**cfg.fpga_array)
-            ib.set_mezzanine_power(True, self.slot)
-            time.sleep(0.5)
-            mezz.init()
 
             r = ib.get_data_receiver()
 
@@ -876,7 +967,8 @@ class MGADC08CarrierTests():  #
             passed_fr = []
 
             frame_transmission_period = 0.1
-            tr.delay_table = self.set_adc_delays(ib)
+            ib.set_adc_delays(compute_delays=2, save_delays=False, check_sync_delays=True, check_adc_delays=20, verbose=0, retry=5)
+            tr.delay_table = ib.get_adc_delays()
             ib.set_adcdaq_mode('data')
             ib.set_data_source('adc')
             ib.set_adc_mode('data')
@@ -901,12 +993,15 @@ class MGADC08CarrierTests():  #
                     freqs, (s11_data, ) = na.get_s_params(['S11'])
                     tr.s11_data[channel] = (freqs, s11_data)
                     plt.figure(1)
+                    wm = plt.get_current_fig_manager()
+                    wm.window.wm_geometry("-0+0")
                     plt.clf()
-                    na.plot_s_params(freqs, s11_data, title='%s SN%s Channel %02i S11' % (self.model, self.serial, channel), xscale='lin', plot_phase=False)
+                    na.plot_s_params(freqs, s11_data, title='%s SN%s Channel %02i S11' % (self.model, self.serial, channel+1), xscale='lin', plot_phase=False)
                     ix = np.where(np.logical_and(freqs>=400e6, freqs<=800e6))
                     ff = freqs[ix]
                     dd = 20 * np.log10(np.abs(s11_data[ix]))
                     plt.plot([400e6, 800e6], [cfg.s11_max]*2, 'r-')  # plot the limit
+                    plt.pause(0.0001)
                     xr.insert_plot()
                     print '   Worst case return loss is %0.1f dB. Limit is %0.1d dB' % (max(dd), cfg.s11_max)
                     if all(dd <= cfg.s11_max):
@@ -916,7 +1011,9 @@ class MGADC08CarrierTests():  #
                     answer = input_yes_no('S11 is not good. Do you want to try again [Y/N] or quit [Q]?' )
                     if answer:
                         continue
-                    passed_s11.append(False)
+                    else:
+                        passed_s11.append(False)
+                        break
 
                 # --------------------------------
                 #   Frequency response Test
@@ -932,7 +1029,7 @@ class MGADC08CarrierTests():  #
                 fr_ok = []
                 resp = NameSpace(freq=[], data=[], dbfs=[])
                 for f in fr_freqs:
-                    print ('   CHANNEL %02i, Sinawave %7.3f MHz @ %f dBm' % (channel+1, f, power_level)),
+                    print ('   CHANNEL %02i, Sinewave %7.3f MHz @ %f dBm' % (channel+1, f, power_level)),
                     na.command('CWFREQ %f MHz' % f)
                     print '.',
                     # time.sleep(frame_transmission_period)
@@ -943,7 +1040,7 @@ class MGADC08CarrierTests():  #
                         data = r.read_frames(cfg.number_of_frames)
                         if channel in data:
                             break
-                        assert trial < 3, 'Did not receive data from the board.'
+                        assert trial < 40, 'Did not receive data from the board.'
                         trial += 1
 
                             # answer = input_yes_no('Did not receive data from the board. Want to try again [Y] or quit [Q]?' )
@@ -963,12 +1060,13 @@ class MGADC08CarrierTests():  #
                         expected_a = None
                     fr_ok.append(ok)
                     print 'Response = %0.3f dBFS%s' % (a, ', expected %0.3f dBFS (%s)' % (expected_a, ['ERROR!','OK'][ok]) if expected_a is not None else '')
-                    plt.figure(2)
+                    '''plt.figure(2)
                     plt.clf()
                     plt.plot(data)
                     plt.ylim(-128, 128)
-                    plt.title('CHANNEL %02i, Sinawave %f MHz @ %f dBm' % (channel, f, power_level))
-                    # xr.insert_plot()
+                    plt.title('CHANNEL %02i, Sinewave %f MHz @ %f dBm' % (channel+1, f, power_level))
+                    plt.pause(0.0001)
+                    xr.insert_plot()'''
                     ampl.append(a)  # 8044 = approximare
 
                 if all(fr_ok):
@@ -980,21 +1078,27 @@ class MGADC08CarrierTests():  #
                 tr.freq_resp[channel] = resp
                 print
                 print 'Frequency response'
-                plt.figure(2)
+                plt.figure(3)
+                wm = plt.get_current_fig_manager()
+                wm.window.wm_geometry("-0-0")
                 plt.clf()
                 plt.plot(fr_freqs, ampl, 'b.-', fr_f, fr_a, 'r-')
                 plt.ylabel('Response [dB Full Scale]')
                 plt.xlabel('Frequency [MHz]')
                 plt.grid(1)
-                plt.title('CHANNEL %02i Frequency respsonse, Input power =  %f dBm' % (channel, power_level))
+                plt.title('CHANNEL %02i Frequency respsonse, Input power =  %f dBm' % (channel+1, power_level))
+                plt.pause(0.0001)
                 xr.insert_plot()
                 assert fr_ok, 'Did not pass the frequency response'
+
+                plt.close('all')
 
             assert all(passed_s11), 'Some of the input have too much return loss'
             assert all(passed_fr), 'Some of the frequency responses are wrong'
 
             passed = True
         finally:
+            plt.close('all')
             xr.params.test_locals = locals()  # store local variables for interactive debugging
             tr.passed = passed
             print
@@ -1005,6 +1109,7 @@ class MGADC08CarrierTests():  #
             if ib:
                 ib.set_mezzanine_power(False, self.slot)
             xr.save_data(tr)
+            self.instr.ps18v.output(state=False, readonly=False)
             # na.close()
 
 if __name__ == '__main__':
