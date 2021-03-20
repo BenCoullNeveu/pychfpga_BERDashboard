@@ -18,13 +18,13 @@ comment: |
 
 # test_results_folder: './test_results'
 #test_results_folder: '../test_results/motherboard_qc'
-test_results_folder: '../digicoqc'
+test_results_folder: '../../test_data'
 fpga_bit_file: '../../../chfpgalite/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit'
-model_number: ['MGK7MB']
+model_number: 'MGK7MB'
 xformat: ['pdf']  # Output formats for the test reports. xml is always saved.
 
 default_model: 'MGK7MB'
-default_serial: null
+default_serial: '0342'
 
 #For changing prologix address, use ./nfcli --list to find devices
 instruments:
@@ -35,7 +35,7 @@ instruments:
 
 
 ?: &default_fpga_array
-    iceboards: 0047
+    iceboards: 342
     mdns_delay: 1
 
 
@@ -66,28 +66,27 @@ menu:
     #  text: do nothing. The description is shown in the menu if there is one.
     #  board_info: Sets the current board model and serial number. The serial number can be extracted from string parsed by the regex
     #
-    - {           description: "Start by entering the MB's serial number, then select a test or range of tests (e.g. 10-13).",     type: text}
-    - { key: '1', type: test, test_tag: insp}
-    - { key: '2', type: test, test_tag: res}
-    - { key: '3', type: test, test_tag: powup}
-    - { key: '4', type: test, test_tag: pll}
-    - { key: '5', type: test, test_tag: mem}
-    - { key: '6', type: test, test_tag: ser}   #used to be test 8, now is 6
-    - { key: '7', type: test, test_tag: clk}   #used to be test 9, now is 7
-    - { key: '8', type: test, test_tag: i2c}   #used to be test 6, now is 8
-    - { key: '9', type: test, test_tag: sens}  #used to be test 7, now is 9
-    - { key: '10', type: test, test_tag: fpga}
-    - { key: '11', type: test, test_tag: qsfp} #used to be test 12, now is 11
-    - { key: '12', type: test, test_tag: gtx}  #used to be test 14, now is 12
-    - { key: '13', type: test, test_tag: mezz} #used to be test 11, now is 13
-    - { key: '14', type: test, test_tag: rmp}  #used to be test 13, now is 14
-
-    - { key: 'S', description: 'Send all new test results data to McGill',                          type: push}
-    - { key: 'R', description: 'Generate summary of all tests',                                     type: summary}
-    - { key: 'Q', description: 'Exit',                                                              type: exit}
-    - { regex: '(0\d{3})', type: board_info, model: 'MGK7MB', serial: '{0}', next_key: '1'}  # 0nnn are MGK7MB Serial number
-    - { regex: '(\d+\-\d+)', type: range, input: '{0}'} # regex to select a range of options 
-    - { regex: '38355-0000-(\d{4})', type: board_info, model: 'MGK7MB', serial: '{0}', next_key: '1'}  #38355-0000-nnnn are MGK7MB Serial nnnn
+    - { description: "Start by entering the MB's serial number, then select a test or range of tests (e.g. 10-13).",     type: text}
+    - { key: '1',                    action: run_test, test_tag: insp}
+    - { key: '2',                    action: run_test, test_tag: res}
+    - { key: '3',                    action: run_test, test_tag: powup}
+    - { key: '4',                    action: run_test, test_tag: pll}
+    - { key: '5',                    action: run_test, test_tag: mem}
+    - { key: '6',                    action: run_test, test_tag: ser}   #used to be test 8, now is 6
+    - { key: '7',                    action: run_test, test_tag: clk}   #used to be test 9, now is 7
+    - { key: '8',                    action: run_test, test_tag: i2c}   #used to be test 6, now is 8
+    - { key: '9',                    action: run_test, test_tag: sens}  #used to be test 7, now is 9
+    - { key: '10',                   action: run_test, test_tag: fpga}
+    - { key: '11',                   action: run_test, test_tag: qsfp} #used to be test 12, now is 11
+    - { key: '12',                   action: run_test, test_tag: gtx}  #used to be test 14, now is 12
+    - { key: '13',                   action: run_test, test_tag: mezz} #used to be test 11, now is 13
+    - { key: '14',                   action: run_test, test_tag: rmp}  #used to be test 13, now is 14
+    - { regex: '(\d+\-\d+)',         action: run_range,   input: '{0}'} # regex to select a range of options
+    - { regex: '(0\d{3})',                             model: 'MGK7MB', serial: '{0}', next_key: '1'}  # 0nnn are MGK7MB Serial number
+    - { regex: '38355-0000-(\d{4})',                   model: 'MGK7MB', serial: '{0}', next_key: '1'}  #38355-0000-nnnn are MGK7MB Serial nnnn
+    - { key: 'S',                    action: push,    description: 'Send all new test results data to McGill'}
+    - { key: 'R',                    action: summary, description: 'Generate summary of all tests'           }
+    - { key: 'Q',                    action: exit,    description: 'Exit'                                    }
 
 
 ##################################
