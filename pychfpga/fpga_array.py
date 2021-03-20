@@ -25,18 +25,13 @@ import asyncio
 # PyPi packages
 import numpy as np
 import matplotlib.pyplot as plt
-# from tornado.netutil import Resolver
-# from tornado.ioloop import IOLoop
-# from tornado import gen
-# from tornado.gen import with_timeout, TimeoutError
-# from sqlalchemy import or_
 
 # For development: delete all fpga modules so fresh ones will be reloaded
-if getattr(__main__, '__reload__', False):
-    print('Clearing all pychfpga modules...')
-    for n, m in sys.modules.items():
-        if n.startswith('pychfpga'):
-            del sys.modules[n]
+# if getattr(__main__, '__reload__', False):
+#     print('Clearing all pychfpga modules...')
+#     for n, m in sys.modules.items():
+#         if n.startswith('pychfpga'):
+#             del sys.modules[n]
 
 # Local imports
 
@@ -53,7 +48,7 @@ except ImportError:
     if pychfpga_path not in sys.path:
         sys.path.insert(0, pychfpga_path)
 
-
+from wtl import log
 from pychfpga.core.icecore_ext import Ccoll
 # from pychfpga.core.icecore import HardwareMap, HWMResource
 from pychfpga.core.icecore_ext import mdns_discover
@@ -548,21 +543,8 @@ class FPGAArray(object):
         ###########################################
         # setup pychfpga.fpga_array logging
         ###########################################
-        self.logger = logging.getLogger(__name__)
-        # print('fpga_array logger name is %s' % __name__)
-        # print('logger name=%s, level=%s, handlers=%r' % (self.logger.name, self.logger.level, self.logger.handlers))
-        # self.logger.warning('This is a warning')
-        # ch = logging.StreamHandler(sys.stdout)
-        # self.logger.addHandler(ch)
-        # self.logger.warning('why dont you log')
-
-        ###########################################
-        # setup sqlalchemy logging
-        ###########################################
-        # Make sure the SQL engine logs only warnings
-        sql_log_level = logging.WARNING
-        sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
-        sql_logger.setLevel(sql_log_level)
+        # self.logger = logging.getLogger(__name__)
+        self.logger = log.get_logger(self)
 
         ###########################################
         # setup pychfpga package logging
@@ -570,9 +552,10 @@ class FPGAArray(object):
         # This sets the logging that comes out from *all* the modules within *pychfpga* package
         # (e.g. pychfpga.core.chfpga_controller.chFPGA_controller(), pychfpga.fpga_array.FPGAArray(), etc.)
         # We are careful not to set the root logger, which might have its own
-        parent_logger_name = __name__.rsplit('.', 1)[0] if '.' in __name__ else ''
-        parent_logger = logging.getLogger(parent_logger_name)
-        # Setup logging. If a handler already exists, its log level is simply updated
+        if stderr_log_level or syslog_log_level:
+            parent_logger_name = __name__.rsplit('.', 1)[0] if '.' in __name__ else ''
+            parent_logger = logging.getLogger(parent_logger_name)
+            # Setup logging. If a handler already exists, its log level is simply updated
         for (handler_type, log_level) in (
                 (logging.StreamHandler, stderr_log_level),
                 (logging.handlers.SysLogHandler, syslog_log_level)):
