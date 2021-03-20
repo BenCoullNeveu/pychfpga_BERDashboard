@@ -34,12 +34,16 @@ try:
 except ImportError:
     comet = None
 
-import sys
-print('PYTHONPATH=', sys.path)
+try:
+    import pychfpga
+except ImportError:
+    pychfpga_path = os.path.realpath(os.path.join(os.path.dirname(__file__), '..'))
+    if pychfpga_path not in sys.path:
+        sys.path.insert(0, pychfpga_path)
 
 # Local imports
 from pychfpga import __version__
-from .core import CORR
+from pychfpga.core import CORR
 
 class RawAcqReceiver(object):
     ''' Implement an array of multi-threaded UDP Raw data receiver.
