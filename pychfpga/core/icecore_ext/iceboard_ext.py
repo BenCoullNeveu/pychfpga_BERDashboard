@@ -101,17 +101,10 @@ class IceBoard(IceBoardBase, HardwareMap):
     provided code and a few Python wrappers)
 
     Adds:
-        - Slot, crate and mezzanine self discovery through backplane hardware
-         lines and IPMI info stored in non-volatile memory chips on the
-         backplane, motherboard and mezzanines (no mDNS required)
-        - Hardware map management
-
-
-    `IceBoardHandler` can be created as a standard Python object initialized with a number of
-    parameters which set corresponding attributes (see below). If a `parent_getter` function is
-    provided, no other parameter is needed, and the value of the attributes will will be fetched
-    dynamically from the parent object. Note that any explicitly specified parameter overrides a
-    parent parameter.
+        - Lightweight list-based Hardware map management
+        - Model, serial, slot, crate and mezzanine self discovery through the Iceboard (no mDNS required)
+        - Access to the memory-mapped registers in the FPGA's firmware using the ARM-FPGA SPI link
+            through the `fpga_spi_mmi_read_async()` and `fpga_spi_mmi_write_async()` methods.
 
     Parameters:
 
@@ -185,7 +178,10 @@ class IceBoard(IceBoardBase, HardwareMap):
         self._cached_repr = None  # important to avoid infinite recursions through repr(). Clear on updates to account for the new parameters.
         self.logger = logging.getLogger(__name__)
 
-        print(f"Created {self.__class__.__name__}(hostname={hostname}, serial={serial}, slot={slot}, subarray={subarray}), crate={self.crate}")
+        self.logger.debug(
+            f"{self!r}: Created {self.__class__.__name__}(hostname={hostname}, "
+            f"serial={serial}, slot={slot}, subarray={subarray}), "
+            f"crate={self.crate}")
 
     def __repr__(self):
         """ Provides a concise string representation of this Iceboard that is
@@ -223,7 +219,14 @@ class IceBoard(IceBoardBase, HardwareMap):
 
 
     @classmethod
-    def get_unique_instance(cls, new_class=None, serial=None, hostname=None, slot=None, subarray=None, crate_number=None, **kwargs):
+    def get_unique_instance(cls,
+                            new_class=None,
+                            serial=None,
+                            hostname=None,
+                            slot=None,
+                            subarray=None,
+                            crate_number=None,
+                            **kwargs):
         """
         Creates a new IceCrate instance if one with matching hostname or
         serial number does not exist, otherwise return an existing one
@@ -263,25 +266,33 @@ class IceBoard(IceBoardBase, HardwareMap):
                 that matches the specified crate number, or one is created
                 with that crate number to hold the desired crate number value.
         """
-        print(f"In et_unique_instance")
+        # print(f"In et_unique_instance")
 
         matching_crates = [
             c for c in cls._instance_registry
             if (hostname is not None and c.hostname == hostname)
             or ((new_class or cls).part_number and serial and c.part_number == (new_class or cls).part_number and c.serial == serial)]
 
-        print(f"Matches: {matching_crates}")
+        # print(f"Matches: {matching_crates}")
         if not len(matching_crates):  # no matching crate, create one
-            print(f"Creating Iceboard")
+            # print(f"{cls!r}: Creating Iceboard")
             ib = (new_class or cls)(serial=serial, hostname=hostname, slot=slot, subarray=subarray, **kwargs)
-            print(f"Updating Iceboard with crate_number={crate_number}")
+            # print(f"{cls!r}: Updating Iceboard with crate_number={crate_number}")
             return ib.update_instance(crate_number=crate_number)
         elif len(matching_crates) == 1: # one match, update existing one
             return matching_crates[0].update_instance(new_class=new_class, serial=serial, hostname=hostname, slot=slot, subarray=subarray, crate_number=crate_number, **kwargs)
         else:
             raise RuntimeError('Multiple IceBoards with same keys (should never happen)')
 
-    def update_instance(self, new_class=None, serial=None, hostname=None, slot=None, subarray=None, crate_number=None, crate=None, **kwargs):
+    def update_instance(self,
+                        new_class=None,
+                        serial=None,
+                        hostname=None,
+                        slot=None,
+                        subarray=None,
+                        crate_number=None,
+                        crate=None,
+                        **kwargs):
         """
         Update the class, serial or hostname info of specified IceCrate
         subclass instance. If the class needs to be changed, a new class
@@ -298,7 +309,7 @@ class IceBoard(IceBoardBase, HardwareMap):
 
         if new_class and self.__class__ is not new_class:
             other = new_class(serial=serial, hostname=hostname, slot=slot, subarray=subarray, **kwargs)
-            print(f"Updating newly created instance...")
+            self.logger.debug(f"{self!r}: Updating newly created instance...")
             other.update_instance(crate_number=crate_number, crate=self.crate) # update crate and backrefs
             # Update Mezzanine references to the new instance
             for fmc, mezz in self.mezzanine.items():
@@ -318,7 +329,7 @@ class IceBoard(IceBoardBase, HardwareMap):
             # Assign new slot
             self.slot = slot
             # eattach crate by crate number if specified
-            print(f"Updating with with crate_number={crate_number}...")
+            self.logger.debug(f"{self!r}: Updating with with crate_number={crate_number}...")
             if crate_number is not None:
                 self.crate = IceCrate.get_unique_instance(crate_number=crate_number)
             elif crate:
@@ -345,14 +356,16 @@ class IceBoard(IceBoardBase, HardwareMap):
         Returns a boolean indicating whether a tuber object is available at
         the specified ARM hostname.
         """
-        print(f'{self!r} Ping_async()')
+        # print(f'{self!r} Ping_async()')
         self.logger.info('%r: Pinging %s' % (self, self.tuber_uri))
         try:
             await self._tuber_get_meta_async()
             await self._tuber_sleep_async(0)
             return True
         except TuberError as e:
-            self.logger.debug('%.32r: Tuber Ping returned an error. Board is considered to be absent. Error is \n%r' % (self, e))
+            self.logger.debug(
+                f'{self!r}: Tuber Ping returned an error. '
+                f'Board is considered to be absent. Error is \n{e!r}')
             return False
 
     ###################################
@@ -363,13 +376,13 @@ class IceBoard(IceBoardBase, HardwareMap):
         """
         Discover the serial number of this IceBoard from its IPMI data, and update the hardware map accordingly if `update=True`
         """
-        self.logger.info(f'{self!r}: discovering the serial number of board at {self.tuber_uri}')
+        self.logger.debug(f'{self!r}: discovering the serial number of board at {self.tuber_uri}')
         try:
             actual_serial = str((await self.tuber_get_motherboard_serial_async()))
         except Exception as e:  #  Deal with uninitialized boards
             self.logger.warning('%r: Error while attempring to read the board serial number. The exception is %r' % (self, e))
             actual_serial = None
-        self.logger.info(f'{self!r}: got the serial number of board at {self.tuber_uri} to be {actual_serial}')
+        self.logger.debug(f'{self!r}: got the serial number of board at {self.tuber_uri} to be {actual_serial}')
         await asyncio.sleep(0)
         if update:
             if not actual_serial:
@@ -377,7 +390,7 @@ class IceBoard(IceBoardBase, HardwareMap):
             elif self.serial and actual_serial != self.serial:
                 self.logger.warning('%r: The discovered serial number differs from the current (hardware map) one. Updating to the discovered value.' % (self))
             self.update_instance(serial=actual_serial)
-        self.logger.info('%r: finished discovering the serial number of board at %s' % (self, self.tuber_uri))
+        self.logger.debug(f'{self!r}: finished discovering the serial number of board at {self.tuber_uri}')
         return(self.serial)
 
     async def discover_slot_async(self, update=True):
@@ -432,11 +445,15 @@ class IceBoard(IceBoardBase, HardwareMap):
             if not ipmi:
                 try:
                     ipmi = await self._tuber_get_mezzanine_ipmi_async(m)  # Read IPMI from the ARM's cache
-                    self.logger.debug('%r: detect_mezzanines(): read Mezzanine %i EEPROM using the ARM' % (self, m))
+                    self.logger.debug(
+                        f'{self!r}: detect_mezzanines(): '
+                        f'read Mezzanine {m} EEPROM using the ARM')
                 except TuberRemoteError:
                     pass
             if not ipmi:  # If we still did not get an IPMI block, give up and proceed to the next mezzanine
-                self.logger.debug('%r: detect_mezzanines(): Could not decode the EEPROM in Mezzanine %i' % (self, m))
+                self.logger.debug(
+                    f'{self!r}: detect_mezzanines(): Could not decode '
+                    f'the EEPROM in Mezzanine {m}')
                 continue
 
             # Extract the useful information from IPMI
@@ -444,9 +461,8 @@ class IceBoard(IceBoardBase, HardwareMap):
             serial = ipmi.product.serial_number
 
             self.logger.debug(
-                '%r: detect_mezzanines(): Detected Mezzanine '
-                'Model: %s Serial %s in Mezzanine %i'
-                % (self, part_number, serial, m))
+                f'{self!r}: detect_mezzanines(): Detected Mezzanine '
+                f'Model: {part_number} Serial {serial} in Mezzanine {m}')
 
             # Look through the Mezzanine classes to see if one matches the model number found in the EEPROM
             # for mapper in class_mapper(FMCMezzanine).self_and_descendants:
@@ -482,7 +498,7 @@ class IceBoard(IceBoardBase, HardwareMap):
                     iceboard=self)  # back reference to the carrier iceboard
                 new_mezz.iceboard=self
                 self.mezzanine[m] = new_mezz
-                print(f'{self!r} mezzanines on FMC {m} are {self.mezzanine[m]}')
+                self.logger.debug(f'{self!r} mezzanines on FMC {m} are {self.mezzanine[m]}')
         return(mezz_class)
 
     async def discover_crate_async(self, update=True):
@@ -523,7 +539,7 @@ class IceBoard(IceBoardBase, HardwareMap):
             crate_number = self.crate.crate_number if self.crate else None
             crate = IceCrate.get_unique_instance(new_class=icecrate_class, serial=serial, crate_number=crate_number)
             self.update_instance(crate=crate) # update crate info and repr
-            print(f"{self} now has crate {self.crate}")
+            self.logger.debug(f"{self} now has crate {self.crate}")
             # if slot_number:
             #     self.crate.slot[slot_number] = self
 
@@ -628,8 +644,6 @@ class IceBoardPlus(IceBoard):
 
     Adds:
 
-        - Access to the memory-mapped registers in the FPGA's firmware using the ARM-FPGA SPI link
-            through the `fpga_spi_mmi_read_async()` and `fpga_spi_mmi_write_async()` methods.
 
 
     `IceBoardPlusHandler` can be created as a standard Python object initialized with a number of
@@ -737,7 +751,7 @@ class IceBoardPlus(IceBoard):
         '''
 
         t0 = time.time()
-        self.logger.info('%r: called set_fpga_bitstream' % self)
+        self.logger.debug(f'{self!r}: called set_fpga_bitstream')
 
         if hasattr(self, 'close'):
             self.close()
@@ -755,16 +769,18 @@ class IceBoardPlus(IceBoard):
         crc32 &= 0xFFFFFFFF
         # buf = buf.bytes()
 
-        self.logger.info('%r: getting is_programmed' % self)
+        self.logger.debug(f'{self!r}: Getting is_programmed')
         is_fpga_programmed = await self.tuber_is_fpga_programmed_async()
         t1 = time.time()
-        self.logger.info('%r: getting FPGA crc' % self)
+        self.logger.debug(f'{self!r}: Getting FPGA crc')
         fpga_bitstream_crc = await self.get_fpga_bitstream_crc_async()
-        self.logger.debug('%r: fpga_programmed=%s, force=%s, fpga_crc=%08X, bitstream_crc=%08X' % (self, is_fpga_programmed, force, fpga_bitstream_crc or 0, crc32 or 0))
+        self.logger.debug(
+            f'{self!r}: fpga_programmed={is_fpga_programmed}, force={force}, '
+            f'fpga_crc={fpga_bitstream_crc or 0:08X}, bitstream_crc={crc32 or 0:08X}')
         t2 = time.time()
         if not is_fpga_programmed or force \
            or (force is not None and (fpga_bitstream_crc != crc32)):
-            self.logger.info(f'{self!r}: Configuring FPGA')
+            self.logger.debug(f'{self!r}: Configuring FPGA')
             if hasattr(buf, 'base64'):
                 b64_bytes = buf.base64
             elif hasattr(buf, 'bytes'):
@@ -785,11 +801,11 @@ class IceBoardPlus(IceBoard):
                 await self._tuber_set_fpga_bitstream_base64_async(b64_bytes)
             await self.set_fpga_bitstream_crc_async(crc32)
             t4 = time.time()
-            self.logger.info(f'{self!r}: Done configuring FPGA. '
+            self.logger.debug(f'{self!r}: Done configuring FPGA. '
                 f'It took {t4-t0:.3f}s ({t1-t0:.3f}s, {t2-t1:.3f}s, {t3-t2:.3f}s, {t4-t3:.3f}s)')
         else:
             t4 = time.time()
-            self.logger.info(
+            self.logger.debug(
                 f'{self!r}: FPGA is already configured. Skipping configuration. Took {t4 - t0:.3f}s')
 
     def get_fpga_bitstream(self, tag=None):
@@ -1199,7 +1215,7 @@ class IceBoardExt(IceBoardPlus):
 
         """
         # print '%r: opening core' % self
-        self.logger.info('%r: Opening UDP connection to the FPGA' % self)
+        self.logger.debug(f'{self!r}: Opening UDP connection to the FPGA')
 
         # Check if core communications with the FPGA was already opened
         if self.is_core_open():
@@ -1207,8 +1223,8 @@ class IceBoardExt(IceBoardPlus):
                 raise RuntimeError('Attempting to re-open an already-open '
                                    'UDP communication channel with new parameters')
             self.logger.debug(
-                '%r: Attempting to open core while it is already opened. '
-                'Ignoring.' % (self))
+                f'{self!r}: Attempting to open core while it is already opened. '
+                f'Ignoring.')
             return
 
         # Overrides communication parameter defaults if specified
@@ -1266,9 +1282,9 @@ class IceBoardExt(IceBoardPlus):
             if not self.slot or not self.crate or self.crate.crate_number is None:
                 self.local_control_port_number = 0
                 self.logger.debug(
-                    '%r: Cannot use slot/crate_number-based UDP port number '
-                    'for UDP control channel. There is no slot or crate_number'
-                    ' info. Using OS-assigned random port' % self)
+                    f'{self!r}: Cannot use slot/crate_number-based UDP port number '
+                    f'for UDP control channel. There is no slot or crate_number'
+                    f' info. Using OS-assigned random port')
             else:
                 self.local_control_port_number = self._FPGA_CONTROL_BASE_PORT + 16*self.crate.crate_number + (self.slot-1)
                 # self.logger.info('%r: Replies will be sent to %s:%i'
@@ -1317,13 +1333,13 @@ class IceBoardExt(IceBoardPlus):
         # link by reading the UDP MMI cookie (not the SPI one) and check if
         # the cookie correspond to the chFPGA firmware.
         # -------------------------------------------------------------------------
-        self.logger.info("%r: Clearing FPGAs UDP communication stack" % self)
+        self.logger.debug(f"{self!r}: Clearing FPGAs UDP communication stack")
         await self.reset_fpga_udp_stack()
         self.mmi.flush()
 
         self.logger.debug(
-            "%r: Attempting to communicate with the FPGA over direct "
-            "Ethernet link" % self)
+            f"{self!r}: Attempting to communicate with the FPGA over direct "
+            f"Ethernet link")
         try:
             # Read the firmware version cookie from the GPIO subsystem (this
             # is provided by the FPGA core firmware which is always present on
@@ -1351,8 +1367,8 @@ class IceBoardExt(IceBoardPlus):
             raise RuntimeError(error_message)
 
         self.logger.debug(
-            "%r: Established a UDP/Ethernet connection with the FPGA at %s:%i"
-            % (self, self.fpga_ip_addr, self.fpga_control_port_number))
+            f"{self!r}: Established a UDP/Ethernet connection with "
+            f"the FPGA at {self.fpga_ip_addr}:{self.fpga_control_port_number}")
 
         # -------------------------------------------------------------------------
         # Open FPGA's I2C interfaces
@@ -1398,7 +1414,7 @@ class IceBoardExt(IceBoardPlus):
 
     async def open(self, **kwargs):
 
-        self.logger.debug('%r: open() is called' % (self))
+        self.logger.debug(f'{self!r}: open() is called')
         await self.open_core(**kwargs)
         self.core_gpio.set_channelizer_reset(True)  # stop the channelizer from sending data while we initialize
         await self.open_hw()
@@ -1474,14 +1490,14 @@ class IceBoardExt(IceBoardPlus):
         trial = 1
         while True:
             if force or self.mmi.error_counter > 40:
-                self.logger.info('%r: Resetting FPGA UDP stack (trial #%i/%i)' % (self, trial, max_trials))
+                self.logger.warning(f'{self!r}: Resetting FPGA UDP stack (trial #{trial}/{max_trials})')
 
                 if not no_reset:
                     await self.reset_sfp()
                     await asyncio.sleep(0.1)
                     await self.reset_fpga_udp_stack()
                     await asyncio.sleep(0.1)
-                self.logger.info('%r: Trying to read from FPGA UDP stack' % self)
+                self.logger.debug(f'{self!r}: Trying to read from FPGA UDP stack')
                 try:
                     self.mmi.flush()
                     self.mmi.read(0, length=1, retry=-1, resync=1)
@@ -1497,17 +1513,17 @@ class IceBoardExt(IceBoardPlus):
                         #      '%r: cannot communicate with FPGA port after '
                         #      '%i FPGA UDP stack resets' % (self, trial))
                         self.logger.error(
-                            '%r: cannot communicate with FPGA port after %i '
-                            'FPGA UDP stack resets' % (self, trial))
+                            f'{self!r}: cannot communicate with FPGA port '
+                            f'after {trial} FPGA UDP stack resets')
                         break
                     else:
-                        self.logger.info(
-                            '%r: Still obtaining FPGA UDP errors after %i '
-                            'FPGA UDP stack reset. Retrying...' % (self, trial))
+                        self.logger.warning(
+                            f'{self!r}: Still obtaining FPGA UDP errors '
+                            f'after {trial} FPGA UDP stack reset. Retrying...')
                     trial += 1
                 finally:
                     self.mmi.error_counter = 0
-                    self.logger.info('%r: Finished to attempt clearing FPGA UDP errors.' % self)
+                    self.logger.debug(f'{self!r}: Finished to attempt clearing FPGA UDP errors.')
             else:
                 break
 
@@ -1537,7 +1553,7 @@ class IceBoardExt(IceBoardPlus):
         for trial in range(2):
             try:
                 await asyncio.sleep(0)
-                self.logger.info('%r: Checking command counters' % (self))
+                self.logger.debug(f'{self!r}: Checking command counters')
                 (cmd, rply) = self.core_gpio.get_command_count()
                 await asyncio.sleep(0)
                 valid = (cmd == self.mmi.send_counter & 0xFF) and (rply == self.mmi.recv_counter & 0xFF)
@@ -1762,8 +1778,9 @@ class IceBoardExt(IceBoardPlus):
             mac_addr_int = sum(int(s, 16) << (8 * i) for i, s in enumerate(reversed(mac_addr.split(':'))))
 
         self.logger.debug(
-            '%r: setting data target address to ip=%r(%r), port=%r(%r), mac=%r(%r)'
-            % (self, ip_addr, ip_addr_int, port, port, mac_addr, mac_addr_int))
+            f'{self!r}: setting data target address to '
+            f'ip={ip_addr}({ip_addr_int}), port={port}({port}), '
+            f'mac={mac_addr}({mac_addr_int})')
         # Set the UDP transmit channel 1 IP and MAC addresses
         self.core_gpio.TARGET_MAC_ADDR = mac_addr_int
         self.core_gpio.TARGET_IP_ADDR = ip_addr_int
@@ -1845,23 +1862,22 @@ class IceBoardExt(IceBoardPlus):
             return base64.decodebytes(data.encode())
         except (TuberRemoteError, AttributeError):
             self.logger.debug(
-                "%r: Cannot read the Mezzanine %i EEPROM through the ARM's "
-                "_mezzanine_eeprom_read_base64() method. Attempting to read "
-                "the Mezzanine EEPROM through the FPGA." % (self, mezzanine))
+                f"{self!r}: Cannot read the Mezzanine {mezzanine} EEPROM through the ARM's "
+                f"_mezzanine_eeprom_read_base64() method. Attempting to read "
+                f"the Mezzanine EEPROM through the FPGA.")
 
         fpga_programmed = await self.is_fpga_programmed_async()
         if not fpga_programmed:
             self.logger.debug(
-                "%r: FPGA is not programmed, so cannot read the Mezzanine %i "
-                "EEPROM through the FPGA." % (self, mezzanine))
+                f"{self!r}: FPGA is not programmed, so cannot read the Mezzanine {mezzanine} "
+                f"EEPROM through the FPGA.")
             return(None)
 
         eeprom_data = self.hw.read_mezzanine_eeprom(mezzanine, 0, 1)
         if ord(eeprom_data[0]) == 0x0d:  # if this is McGill format
             self.logger.debug(
-                "%r: EEPROM in Mezzanine %i is McGill format. The FPGA will "
-                "be reading only bytes until the terminator character. "
-                % (self, mezzanine))
+                f"{self!r}: EEPROM in Mezzanine {mezzanine} is McGill format. The FPGA will "
+                f"be reading only bytes until the terminator character. ")
             # Read the eeprom block by block until we detect the end of the
             # dictionary
             block_size = 32
@@ -1875,8 +1891,8 @@ class IceBoardExt(IceBoardPlus):
             return(string)
         else:  # If not McGill format,
             self.logger.debug(
-                "%r: EEPROM in Mezzanine %i is not McGill format. The FPGA "
-                "will *NOT* read the EEPROM contetnt " % (self, mezzanine))
+                f"{self!r}: EEPROM in Mezzanine {mezzanine} is not McGill format. The FPGA "
+                f"will *NOT* read the EEPROM contents")
             return(None)
 
     # ---------------------------------------------------------
@@ -2210,7 +2226,7 @@ class IceBoardExt(IceBoardPlus):
         if datetime_ is None:
             ts = await self._get_irigb_time_async(trig=True)  # do this synchronously to we get an accurate time
             dt = ts.astype('datetime')
-            self.logger.debug('%r: Current IRIGB time is %s' % (self, ts.isoformat()))
+            self.logger.debug(f'{self!r}: Current IRIGB time is {ts.isoformat()}')
             if delay is None:
                 delay = 3
         else:
@@ -2223,7 +2239,9 @@ class IceBoardExt(IceBoardPlus):
         # add delay in integer microseconds (datetime does not support more
         # than the microsecond accuracy)
         dt += timedelta(0, delay)
-        self.logger.debug('%r: Setting IRIGB target time to %s + %3i ns' % (self, dt.isoformat(), nano_delay))
+        self.logger.debug(
+            f'{self!r}: Setting IRIGB target time to '
+            f'{dt.isoformat()} + {nano_delay:3d} ns')
         if self.zero_target_irigb_year_and_day:
             y = 0
             d = 0
@@ -2236,8 +2254,8 @@ class IceBoardExt(IceBoardPlus):
         ss = dt.microsecond * 100 + int(nano_delay / 10)
 
         self.logger.debug(
-            '%r: Setting IRIGB target time with y=%i, d=%i, h=%i, '
-            'm=%i, s=%i, ss=%i' % (self, y, d, h, m, s, ss))
+            f'{self!r}: Setting IRIGB target time with y={y}, d={d}, h={h}, '
+            f'm={m}, s={s}, ss={ss}')
 
         t0 = (await self.fpga_spi_mmi_read_async(self._IRIGB_TARGET0_ADDR)) & 0xFFFFFF00
         t0 |= (y << 0)
