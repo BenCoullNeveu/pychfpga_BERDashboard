@@ -2593,7 +2593,7 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
             hostname=hostname,
             port=port,
             server_class=RawAcqAsyncRESTServer if create_server else None,
-            heartbeat_string='Rc')
+            heartbeat_string=None)
 
         self.name = name
         self.hdf5_base_dir = base_dir
