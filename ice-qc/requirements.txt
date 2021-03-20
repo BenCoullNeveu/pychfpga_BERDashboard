@@ -1,0 +1,5 @@
+wtl.xreport @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.xreport.git
+numpy
+matplotlib
+serial
+pyudev # linux only
