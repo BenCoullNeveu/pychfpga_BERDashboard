@@ -98,7 +98,7 @@ class ADC_chip(object):
                 data clock after a SYNC event
         """
 
-        self.logger.info('%r: initializing ADC chip with ADC mode %i' % (self, adc_mode))
+        self.logger.debug('%r: initializing ADC chip with ADC mode %i' % (self, adc_mode))
 
         ADC_MODE = adc_mode  # 0-15, 0=4-channel mode
         STDBY = standby_mode  # 0-3, 0=Full active, 3=Full standby
