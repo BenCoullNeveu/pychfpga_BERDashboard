@@ -71,10 +71,10 @@ class IceCrate(IceCrateBase, HardwareMap):
         super().__init__(serial=serial, **kwargs)
         self.crate_number = crate_number
 
-        self._logger = logging.getLogger(__name__)
-        self._logger.debug('%r: Instantiating IceCrate object' % self)
+        self.logger = logging.getLogger(__name__)
+        self.logger.debug('%r: Instantiating IceCrate object' % self)
 
-        print(f"Created {self.__class__.__name__}(serial={serial}, crate_number={crate_number})")
+        self.logger.debug(f"{self!r}: Created {self.__class__.__name__}(serial={serial}, crate_number={crate_number})")
 
     def __repr__(self):
         # return "IceCrate(%s)" % self.get_id()[0]
@@ -95,7 +95,7 @@ class IceCrate(IceCrateBase, HardwareMap):
             if (crate_number is not None and c.crate_number == crate_number)
             or ((new_class or cls).part_number and serial and c.part_number == (new_class or cls).part_number and c.serial == serial)
             ]
-        print(f'Found crates {matching_crates}')
+        # print(f'{cls!r}: Found crates {matching_crates}')
         if not len(matching_crates):  # no matching crate, create one
             return (new_class or cls)(serial=serial, crate_number=crate_number)
         elif len(matching_crates) == 1:  # one match, update existing one
@@ -517,12 +517,12 @@ class IceCrate_MGK7BP16(IceCrate):
         """
         super().__init__(**kwargs)
 
-        # self._logger = logging.getLogger(__name__)
-        self._logger.debug('%r: Instantiating backplane hardware' % self)
+        # self.logger = logging.getLogger(__name__)
+        self.logger.debug('%r: Instantiating backplane hardware' % self)
 
         self._i2c = MasterIceboardObject(self, 'i2c')  # Indirect reference to the master Iceboard's I2C object
 
-        self._logger.debug('%r: Instantiating Backplane I2C resource managers' % self)
+        self.logger.debug('%r: Instantiating Backplane I2C resource managers' % self)
         self._eeprom_data = EEPROM(
             self._i2c, bus_name='BP',
             address=self.BACKPLANE_EEPROM_DATA_ADDRESS,
@@ -538,14 +538,14 @@ class IceCrate_MGK7BP16(IceCrate):
             address=self.BACKPLANE_QSFP_ADDRESS,
             address_width=self.BACKPLANE_QSFP_ADDRESS_WIDTH)
 
-        self._logger.debug('%r: Instantiating Backplane I2C temperature sensors' % self)
+        self.logger.debug('%r: Instantiating Backplane I2C temperature sensors' % self)
         self._tmp_slot1 = tmp421.tmp421(self._i2c, self._TMP_SLOT1_ADDR, 'BP')
         self._tmp_slot16 = tmp421.tmp421(self._i2c, self._TMP_SLOT16_ADDR, 'BP')
 
-        self._logger.debug('%r: Instantiating Backplane I2C current/power monitor' % self)
+        self.logger.debug('%r: Instantiating Backplane I2C current/power monitor' % self)
         self._power_3v3 = ina230.ina230(self._i2c, self._POWER_3V3_ADDR, 'BP')
 
-        self._logger.debug('%r: Instantiating Backplane I2C I/O expanders' % self)
+        self.logger.debug('%r: Instantiating Backplane I2C I/O expanders' % self)
         self._qsfp_ctrla = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETA_ADDR, 'BP')
         self._qsfp_ctrlb = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETB_ADDR, 'BP')
         self._reset_ctrl = pca9698.pca9698(self._i2c, self._RESETS_CTRL_ADDR, 'BP')
@@ -713,13 +713,13 @@ class IceCrate_MGK7BP16(IceCrate):
         """
         super().init()
 
-        self._logger.info('%r: Starting backplane initialization' % self)
+        self.logger.info('%r: Starting backplane initialization' % self)
         for trial in range(10):
-            self._logger.info('%r: Backplane initialization trial #%i' % (self, trial))
+            self.logger.info('%r: Backplane initialization trial #%i' % (self, trial))
             try:
                 # Check if the fan controller is connected
                 self._fan_ctrl_present = self._fan_ctrl.is_present()
-                self._logger.info('%r: Fan controller %s present' % (self, ('is NOT', 'IS')[self._fan_ctrl_present]))
+                self.logger.info('%r: Fan controller %s present' % (self, ('is NOT', 'IS')[self._fan_ctrl_present]))
                 # Check if the power/reset control IO expander is accessible
                 # self._reset_ctrl_present = self._reset_ctrl.is_present()
 
@@ -732,20 +732,20 @@ class IceCrate_MGK7BP16(IceCrate):
 
                 if self._fan_ctrl_present:
                     self._fan_ctrl.init()
-                    self._logger.info('%r: Initialized fan controller from FPGA' % (self))
-                self._logger.info('%r: Successfully completed backplane initialization' % self)
+                    self.logger.info('%r: Initialized fan controller from FPGA' % (self))
+                self.logger.info('%r: Successfully completed backplane initialization' % self)
                 return
             except (IOError, RuntimeError) as e:
-                self._logger.error('%r: IO Error during backplane INIT on trial %i. retrying. Error was:\n%s'
+                self.logger.error('%r: IO Error during backplane INIT on trial %i. retrying. Error was:\n%s'
                                    % (self, trial+1, e))
             except Exception as e:
-                self._logger.info('%r: Unexpected exception during backplane INIT on trial %i. Retrying. Error was:\n%s'
+                self.logger.info('%r: Unexpected exception during backplane INIT on trial %i. Retrying. Error was:\n%s'
                                   % (self, trial+1, e))
             finally:
                 try:
                     self._i2c.select_bus([])  # Make sure we don't load the bus
                 except (IOError, RuntimeError) as e:
-                    self._logger.info('%r: IO Error while trying to deselect bus. Error was:\n%s' % (self, e))
+                    self.logger.info('%r: IO Error while trying to deselect bus. Error was:\n%s' % (self, e))
                     pass
         raise IOError('%r: Cannot initialize backplane peripherals' % self)
 
@@ -770,7 +770,7 @@ class IceCrate_MGK7BP16(IceCrate):
                 try:
                     tmp_object.init()
                 except IOError:
-                    self._logger.error('%r: Error initializing the Backplane temperature sensors' % self)
+                    self.logger.error('%r: Error initializing the Backplane temperature sensors' % self)
 
     def _init_power_sensors(self, power_sensor_name='BP_3V3'):
         """
@@ -803,7 +803,7 @@ class IceCrate_MGK7BP16(IceCrate):
                         i_typ=power_sensor_list[3],
                         tol_i=power_sensor_list[4])
                 except IOError:
-                    self._logger.error('%r: Error initializing the Backplane Power sensors.' % self)
+                    self.logger.error('%r: Error initializing the Backplane Power sensors.' % self)
 
     def _init_qsfp_ctrl(self):
         """
@@ -825,7 +825,7 @@ class IceCrate_MGK7BP16(IceCrate):
             # IntL (dir=input, output = 0), ResetL and ModselL (dir=output,
             # output=1)
         except IOError:
-            self._logger.error('%r: Error initializing the Backplane QSFP GPIO control lines' % self)
+            self.logger.error('%r: Error initializing the Backplane QSFP GPIO control lines' % self)
 
     def _init_reset_ctrl(self):
         """
@@ -1012,11 +1012,11 @@ class IceCrate_MGK7BP16(IceCrate):
 
             for (slot, isenabled, resettype) in zip(slots, state, reset_type):
                 if slot == self.master_iceboard.slot_number:
-                    print('Warning, will not perform reset on the controlling slot %i' % slot)
+                    self.logger.warning(f'Warning, will not perform reset on the controlling slot {slot}')
 
                 # if isenabled and slot != self._iceboard.slot_number  :
                 elif slot not in range(1, self.NUMBER_OF_SLOTS + 1):
-                    raise ValueError('Invalid Slot number %i' % slot)
+                    raise ValueError(f'Invalid Slot number {slot}')
                 else:
                     (reset_control_obj, arm_reset_reg, power_down_reg, bitnumber) = self.SLOT_RESETS_MAP[slot]
                     if resettype == 'ARM':
@@ -1026,7 +1026,7 @@ class IceCrate_MGK7BP16(IceCrate):
                         reset_cfg_register = 'CFG%i' % power_down_reg
                         reset_output_register = 'OUT%i' % power_down_reg
                     else:
-                        raise ValueError('Unknown reset type, will not perform reset on slot %i' % slot)
+                        raise ValueError(f'Unknown reset type, will not perform reset on slot {slot}')
 
                     mask = 1 << bitnumber
                     if isenabled == 1 or isenabled == 'pulse':  # Turning reset on
@@ -1238,14 +1238,14 @@ class IceCrate_MGK7BP1(IceCrate):
         super().__init__(**kwargs)
 
         self._I2C_BACKPLANE_BUS_NAME = 'BP'
-        # self._logger = logging.getLogger(__name__)
-        self._logger.debug('Initializing Iceboard hardware')
+        # self.logger = logging.getLogger(__name__)
+        self.logger.debug('Initializing Iceboard hardware')
         self._i2c = MasterIceboardObject(self, 'i2c')
         # self._i2c = iceboard.i2c
         # self._iceboard_hw = iceboard.hw
         # self._iceboard = iceboard
 
-        self._logger.debug(' Instantiating Backplane I2C resource managers')
+        self.logger.debug(' Instantiating Backplane I2C resource managers')
         self._eeprom_data = EEPROM(
             self._i2c, bus_name='BP',
             address=self.BACKPLANE_EEPROM_DATA_ADDRESS,
@@ -1257,7 +1257,7 @@ class IceCrate_MGK7BP1(IceCrate):
             address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH,
             write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
 
-        self._logger.debug(' Instantiating Backplane I2C I/O expanders')
+        self.logger.debug(' Instantiating Backplane I2C I/O expanders')
         self._gpio_ctrl = pca9575.pca9575(self._i2c, self._GPIO_CTRL_ADDR, 'BP')
 
         self._GPIO_CTRL_MAP = {
