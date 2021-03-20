@@ -67,7 +67,7 @@ import asyncio
 import atexit
 import textwrap
 import contextvars
-
+import logging
 
 # PyPi packages
 import aiohttp
@@ -448,7 +448,7 @@ class TuberObject:
     overriding appropriate configuration class properties in addition to
     `tuber_objname` and `tuber_uri`.
     """
-
+    _tuber_log = logging.getLogger(__name__)
     # User defined class attributes. Can be overriden by subclasses.
     # Parametrize the TCP connection limits.
     _tuber_client_connections_total = 0  # total number of simultaneous TCP connections (0 = no limit)
@@ -561,7 +561,7 @@ class TuberObject:
         if loop in self._tuber_client_sessions:
             return self._tuber_client_sessions[loop]
         else:
-            print(f'Running in new loop {id(loop)}. Creating new session')
+            self._tuber_log.debug(f'Running in new loop {id(loop)}. Creating new session')
             connector = aiohttp.TCPConnector(
                 limit=self._tuber_client_connections_total,
                 limit_per_host=self._tuber_client_connections_per_host,
@@ -598,7 +598,7 @@ class TuberObject:
                 return frozenset((k, build_key(v)) for k, v in x.items()) if isinstance(x, dict) else tuple(build_key(v) for v in x) if isinstance(x, list) else x
             key = build_key(data)
             if key in cls._tuber_json_cache:
-                print(f"Reusing cached JSON encoding.")
+                # self._tuber_log.debug(f"Reusing cached JSON encoding.")
                 encoded_data = cls._tuber_json_cache[key]
             else:
                 encoded_data = cls._tuber_json_cache[key] = ujson.dumps(data, reject_bytes=False)
@@ -650,7 +650,7 @@ class TuberObject:
                         loads=self._tuber_json_decode,
                         content_type=None)
         except aiohttp.ClientConnectorError as e:
-            print('Network error')
+            self._tuber_log.error('Network error')
             raise TuberNetworkError(e)
 
         return results
@@ -670,7 +670,7 @@ class TuberObject:
         on-the-fly as they're needed.
 
         """
-        print(f'{self!r} Fetching Tuber metadata')
+        self._tuber_log.debug(f'{self!r} Fetching Tuber metadata')
         uri = self.tuber_uri
 
         # if we don't already have the meta info from the board at this specific URI, fetch it
