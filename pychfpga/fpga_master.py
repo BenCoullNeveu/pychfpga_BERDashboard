@@ -482,60 +482,62 @@ class FPGAMaster(object):
             chan_id = [(4,'*', 5)] or [(4, None, 5)] or [{crate:4, channel:5}, {crate:4, slot:'*', channel:5}  # select channel 5 of all boards in crate 4
 
         """
+        try:
+            # Make sure gain calculation is enabled
+            if not enable:
+                return
 
-        # Make sure gain calculation is enabled
-        if not enable:
-            return
+            # Get a {iceboard:[list_of_channels]} dict of selected channels
+            ib_chans = self.fpgas.get_iceboards(targets, lane_type='chan').items()
 
-        # Get a {iceboard:[list_of_channels]} dict of selected channels
-        ib_chans = self.fpgas.get_iceboards(targets, lane_type='chan').items()
+            if not ib_chans:
+                self.log.error(
+                    f'{self!r}: No target board was found for the specified '
+                    f'targets {targets}. Available boards are '
+                    f'{[ib.get_id() for ib in self.fpgas.ib]}')
+                raise RuntimeError('No target board was found for the specified patterns')
 
-        if not ib_chans:
-            self.log.error(
-                f'{self!r}: No target board was found for the specified '
-                f'targets {targets}. Available boards are '
-                f'{[ib.get_id() for ib in self.fpgas.ib]}')
-            raise RuntimeError('No target board was found for the specified patterns')
+            channels = ', '.join(str(ib.get_id()) + str(ch) for ib, ch in ib_chans)
+            self.log.info(
+                f'{self!r}: *** Gain calculator : Starting compute_gains() '
+                f'on the following channels: {channels}')
 
-        channels = ', '.join(str(ib.get_id()) + str(ch) for ib, ch in ib_chans)
-        self.log.info(
-            f'{self!r}: *** Gain calculator : Starting compute_gains() '
-            f'on the following channels: {channels}')
+            # Set the source and data capture rate for target channels
+            await self.set_fpga_data_capture(targets=targets,
+                                             capture_rate=capture_rate,
+                                             source='scaler')
 
-        # Set the source and data capture rate for target channels
-        await self.set_fpga_data_capture(targets=targets,
-                                         capture_rate=capture_rate,
-                                         source='scaler')
+            if noise_injection is not None:
+                raise AttributeError('Noise injection settings are not yet '
+                                     'supported for gain computations')
 
-        if noise_injection is not None:
-            raise AttributeError('Noise injection settings are not yet '
-                                 'supported for gain computations')
+            # find the channel ID and stream ID associated with each raw_acq server
+            server_channel_ids = {} # will be returned with the new gains so set_gains can apply gains to the proper board
+            server_stream_ids = {} # will be used by raw_acq to select the proper channels
+            all_channel_ids = []
+            all_stream_ids = []
+            for server_name, ibs in self.raw_acq_ibs.items():
+                server_channel_ids[server_name] = []
+                server_stream_ids[server_name] = []
+                for (ib, channels) in ib_chans:
+                    if ib in ibs:
+                        cids = ib.get_channel_ids(channels)
+                        sids = ib.get_stream_ids(channels)
+                        server_channel_ids[server_name].extend(cids)
+                        server_stream_ids[server_name].extend(sids)
+                        all_channel_ids.extend(cids)
+                        all_stream_ids.extend(sids)
+            sid_index_map = {sid:i for i,sid in enumerate(all_stream_ids)}
 
-        # find the channel ID and stream ID associated with each raw_acq server
-        server_channel_ids = {} # will be returned with the new gains so set_gains can apply gains to the proper board
-        server_stream_ids = {} # will be used by raw_acq to select the proper channels
-        all_channel_ids = []
-        all_stream_ids = []
-        for server_name, ibs in self.raw_acq_ibs.items():
-            server_channel_ids[server_name] = []
-            server_stream_ids[server_name] = []
-            for (ib, channels) in ib_chans:
-                if ib in ibs:
-                    cids = ib.get_channel_ids(channels)
-                    sids = ib.get_stream_ids(channels)
-                    server_channel_ids[server_name].extend(cids)
-                    server_stream_ids[server_name].extend(sids)
-                    all_channel_ids.extend(cids)
-                    all_stream_ids.extend(sids)
-        sid_index_map = {sid:i for i,sid in enumerate(all_stream_ids)}
+            # load the current gains as initial gains if an initial gain table is not provided.
+            if not initial_gains:
+                initial_gains = [(cid, gains) for cid, gains in (await self.fpgas.get_gains_async(bank=0)).items() if cid in all_channel_ids]
 
-        # load the current gains as initial gains if an initial gain table is not provided.
-        if not initial_gains:
-            initial_gains = [(cid, gains) for cid, gains in await self.fpgas.get_gains_async(bank=0).items() if cid in all_channel_ids]
-
-        # compute an approxitame amount of time to wait for the data, which is 1/2 of the time it should date to accumulate
-        wait_time = min(2.56e-6 * 2**(capture_rate + 1) * number_of_fft_averages / 2, 1.0)
-
+            # compute an approxitame amount of time to wait for the data, which is 1/2 of the time it should date to accumulate
+            wait_time = min(2.56e-6 * 2**(capture_rate + 1) * number_of_fft_averages / 2, 1.0)
+        except Exception as e:
+            self.log.error(f'{self!r}: Exception while preparing gain calculations: {e!r}')
+            raise
 
         async def iterate_gains(server, channel_ids, stream_ids):
 
