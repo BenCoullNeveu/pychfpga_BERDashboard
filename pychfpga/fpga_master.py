@@ -531,7 +531,7 @@ class FPGAMaster(object):
 
         # load the current gains as initial gains if an initial gain table is not provided.
         if not initial_gains:
-            initial_gains = [(cid, gains) for cid, gains in await self.fpgas.get_gains_async(bank=0).items() if cid in all_channel_ids]
+            initial_gains = [(cid, gains) for cid, gains in (await self.fpgas.get_gains_async(bank=0)).items() if cid in all_channel_ids]
 
         # compute an approxitame amount of time to wait for the data, which is 1/2 of the time it should date to accumulate
         wait_time = min(2.56e-6 * 2**(capture_rate + 1) * number_of_fft_averages / 2, 1.0)
@@ -1827,7 +1827,7 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
                 params[key] = val
 
         # Compute gains
-        future = self.chime_master.serial_compute_gains(**params)
+        future = asyncio.create_task(self.chime_master.serial_compute_gains(**params))
 
         return dict(message='Serial gain update in progress')
 
