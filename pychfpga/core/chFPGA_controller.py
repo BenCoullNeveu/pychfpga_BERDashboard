@@ -254,7 +254,7 @@ class chFPGA_controller(IceBoardExt):
             self._logger.warning('%r: Upon user request (init < 0), communication with the FPGA are inhibited. '
                               'Initialization sequence stops here. Use this for debug only.' % self)
             return
-        self._logger.info('%r:    ---> Hello! This is chFPGA! <---' % self)
+        self._logger.debug('%r:    ---> Hello! This is chFPGA! <---' % self)
 
         try:  # catch initialization errors so we can free the socket for future instantiation
 
@@ -521,7 +521,7 @@ class chFPGA_controller(IceBoardExt):
         self.FRAME_PERIOD = float(self.FRAME_LENGTH) / self._sampling_frequency
         self.FRAME_RATE = 1 / self.FRAME_PERIOD
 
-        self._logger.info('%r: --- Initializing FPGA subsystems' % self)
+        self._logger.debug('%r: --- Initializing FPGA subsystems' % self)
 
         self._logger.debug('%r: --- Initializing GPIO' % self)
 
@@ -599,11 +599,11 @@ class chFPGA_controller(IceBoardExt):
         self.sync()  # might be needed  to make sure that the clock is running to set delays
 
         # self._logger.info('%r: --- Initializing FPGA subsystems' % self)
-        self._logger.info('%r: === Initializing Channelizers' % self)
+        self._logger.debug('%r: === Initializing Channelizers' % self)
         self.ANT.init(delay_table=adc_delay_table, fmc_present=self.ANT_FMC_IS_PRESENT)
         # self.ANT.status()
 
-        self._logger.info('%r: === Initializing Corner-Turn engine' % self)
+        self._logger.debug('%r: === Initializing Corner-Turn engine' % self)
         self._logger.debug('%r: === Initializing 1st Crossbar' % self)
         await asyncio.sleep(0)
         if self.NUMBER_OF_CROSSBAR_OUTPUTS > 0:
@@ -634,7 +634,7 @@ class chFPGA_controller(IceBoardExt):
             self._logger.warning("%r: There is no 3rd CROSSBAR module in this firmware build" % self)
 
         if self.CORR:
-            self._logger.info('%r: === Initializing FPGA-based correlator (X-Engine)' % self)
+            self._logger.debug('%r: === Initializing FPGA-based correlator (X-Engine)' % self)
             await asyncio.sleep(0)
             self._logger.debug('%r:  - CORR' % self)
             self.CORR.init()
@@ -653,7 +653,7 @@ class chFPGA_controller(IceBoardExt):
         await asyncio.sleep(0)
 
         if self.GPU:
-            self._logger.info('%r: === Initializing GPU links' % self)
+            self._logger.debug('%r: === Initializing GPU links' % self)
             self.GPU.init()
             self.GPU.set_enable(enable_gpu_link)
             self._logger.debug('%r: GPU link is currently %s' % (self, ['Disabled', 'Enabled'][bool(enable_gpu_link)]))
@@ -1355,7 +1355,7 @@ class chFPGA_controller(IceBoardExt):
         # print ('continuously when TRIG=1' if not number_of_bursts else \
         #       ('for a total of %i bursts' % number_of_bursts) )
         if verbose:
-            self._logger.info(
+            self._logger.debug(
                 "%r: Configuring channelizer %r to capture " % (self, channels) +
                 '%i frame every %i frames (i.e .every %.3f ms) ' % (
                    frames_per_burst,
@@ -1370,7 +1370,7 @@ class chFPGA_controller(IceBoardExt):
 
             frames_per_second = frames_per_burst * 1.0 / self.FRAME_PERIOD / burst_period_in_frames
             packet_size_in_bits = (self.FRAME_LENGTH + 10 + 42) * 8  # 10 header bytes, 42 Ethernet/IP/UDP overhead
-            self._logger.info(
+            self._logger.debug(
                 '%r: Data rates are:\n' % (self) +
                 '    1 board, 1 channel: %.3f Mbits/s\n' % (frames_per_second * packet_size_in_bits / 1e6) +
                 '    1 board, %i channels: %.3f Mbit/s\n' % (
@@ -1439,9 +1439,9 @@ class chFPGA_controller(IceBoardExt):
         if channels is None:
             channels = self.get_channels()
 
-        self.logger.info('%r: Setting dynamic capture parameters to sub_period=%i and source=%s for channels=%s' % (
-            self,
-            sub_period, source, channels))
+        self.logger.debug(
+            f'{self!r}: Setting dynamic capture parameters to '
+            f'sub_period={sub_period} and source={source} for channels={channels}')
 
         for ant in self.get_channelizers(channels):
             ant.PROBER.set_data_source(source)
@@ -1787,12 +1787,13 @@ class chFPGA_controller(IceBoardExt):
         self.set_adc_mode('ramp')
         word_errors = []
         if verbose:
-            print('ADC Delay checks for %r' % (self))
+            self.logger.info(f'{self!r} Performing ADC Delay checks for board {self.get_id()}')
         for trial in range(trials):
             if verbose:
-                print('Trial #%2i' % (trial + 1), end=' ')
+                self.logger.debug(f'{self!r}: Trial #{trial+1}')
             self.sync()  # This automatically clears the error counter
             time.sleep(delay)
+            s = ''
             for (i, ant) in self.ANT.items():
                 e = ant.ADCDAQ.RAMP_ERR_CTR
                 # We still sometimes get one (and only one) spurious error
@@ -1805,8 +1806,8 @@ class chFPGA_controller(IceBoardExt):
                 # ant.ADCDAQ.RAMP_ERR_CLEAR = 0
                 # ant.ADCDAQ.RAMP_ERR_CLEAR = 1
                 if verbose:
-                    print('%2i (%08X) ' % (e, be), end=' ')
-            print()
+                    s += '%2i (%08X) ' % (e, be)
+            self.logger.debug(f'{self!r}: {s}')
         self.set_adc_mode(old_adc_mode)
         return sum(word_errors)
 
@@ -2275,7 +2276,7 @@ class chFPGA_controller(IceBoardExt):
         try:
             with open(gain_filename, 'r') as f:
                 gains = pickle.load(f)
-            self.logger.info('%r: Loaded gains for board %s from file %s' % (self, gain_filename))
+            self.logger.debug('%r: Loaded gains for board %s from file %s' % (self, gain_filename))
             # ib.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
         except IOError:
             self.logger.warning("Gain file '%s' not found for (crate,slot)= %r" % (gain_filename, self.get_id()))
@@ -3964,7 +3965,7 @@ class chFPGA_controller(IceBoardExt):
             # bp_data_rate = 156.25e6* 50 * 32/33
             packet_rate = 800e6 / 2048 / frames_per_packet
             ethernet_data_rate = (packet_rate * ethernet_packet_size) * 8
-            self._logger.info(
+            self._logger.debug(
                 '%r: %s Ethernet packet size: %i bytes, %0.1f Gbit/s '
                 '(%i frames_per_packet, %i bins, %i data words/bin, %g data flags_words/bin, %i frame_flags_words/frame)' % (
                     self,
