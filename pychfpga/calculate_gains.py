@@ -17,6 +17,7 @@ import numpy as np
 # Private external packages
 
 # from wtl.rest import RunSyncWrapper  # For testing
+from wtl import log
 
 # local imports
 from . import raw_acq # this assumed that '..' has been put into the search path
@@ -64,6 +65,7 @@ class GainCalc(object):
                 glog is an integer
 
         """
+        self.log = log.get_logger(self)
         self.channel_ids = channel_ids
         self.stream_ids = stream_ids
 
@@ -111,6 +113,9 @@ class GainCalc(object):
         self.frame_count = np.zeros((self.nchan), dtype=np.int8)
         self.iteration_number = np.zeros((self.nchan), dtype=np.int8)
         self.done = np.zeros((self.nchan), dtype=bool)
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}()'
 
     def get_gains(self, ix=None):
         """ Return the gains from the current iteration in a format compatible with the FPGAArray.set_gains().
@@ -205,10 +210,10 @@ class GainCalc(object):
             # print 'CG: Gain Iteration', self.iteration_number[ix]
             # print 'CG: RMS is ', np.median(rms[ix, 1:], axis=-1)
             # N=np.array([0,13,313,513])
-            print('CG: Received RMS data from %i channels. Processing %i of those.' % (rms.shape[0], bix.size))
+            self.log.info(f'{self!r}: Received RMS data from {rms.shape[0]} channels. Processing {bix.size} of those.')
             # print 'CG: Median Actual/target RMS ratio is ', np.median(rms[ix, 1:] / self.target_rms, axis=-1)
             # print 'CG: Median RMS is ', np.median(rms[ix, 1:], axis=-1)
-            print('CG: Got Stream IDs:', stream_ids[ix])
+            self.log.debug(f'{self!r}: Got Stream IDs: {stream_ids[ix]}')
             # Compute new gain base don the ratio of the acrual rms vs target rms
             # We want to slowly ease into that gain to avoid being affected too much by transients,
             # so just take 20% of thhat target and 80% of the old gain
@@ -217,8 +222,8 @@ class GainCalc(object):
             # self.temp_gains[ix][...] = 0.2 * target_gains + 0.8 * self.temp_gains[ix]
             a = self.weight
             gmax = 4.0
-            print(('temp gains.shape=', self.temp_gains[bix].shape))
-            print(('rms.shape=', rms[ix].shape))
+            self.log.debug(f'{self!r}: temp gains.shape={self.temp_gains[bix].shape}')
+            self.log.debug(f'{self!r}: rms.shape={rms[ix].shape}')
 
             # Compute new gains. Equivalent to idealRMS*glin*(2**(glog-4))/outrms (?)
             self.temp_gains[bix] = np.clip(
@@ -232,8 +237,10 @@ class GainCalc(object):
                 x = np.where(stream_ids[ix] == S)[0][0]
                 bx = self.stream_id_map[S]
                 # print 'CG: Stream 0 Median Actual/target RMS ratio is ', rms[ix[0]] / self.target_rms
-                print('CG: Stream 0 Median RMS is ', ',  '.join('%7.3f' % rms[x, i] for i in range(10)))
-                print('CG: Stream 0 Gain is ', ',  '.join('%7.3e' % self.temp_gains[bx, i] for i in range(10)))
+                median_rms_info = ',  '.join('%7.3f' % rms[x, i] for i in range(10))
+                gain_info = ',  '.join('%7.3e' % self.temp_gains[bx, i] for i in range(10))
+                self.log.debug(f'{self!r}: Stream 0 Median RMS is {median_rms_info}')
+                self.log.debug(f'{self!r}: Stream 0 Gain is {gain_info}')
 
             # print 'CG: new_gain is ', self.temp_gains[ix]
 
@@ -256,12 +263,12 @@ class GainCalc(object):
             # print self.iteration_number[ix]
             # print 'Gain is glin=%i, glog=%i, g=%f' % (self.glin[ix[0]][0], self.glog[ix[0]], self.glin[ix[0]][0] * 2**self.glog[ix[0]])
             t2 = time.time()
-            print('Gain updating time: %.3f ms for %i channels' % (((t2 - t1) * 1000, bix.size)))
+            self.log.info(f'{self!r}: Gain updating time: {(t2 - t1) * 1000:0.3f} ms for {bix.size} channels')
 
             return self.get_gains(bix)
 
         except Exception as e:
-            print('CG Exception:\n%r' % e)
+            self.log.error(f'{self!r}: Exception:\n{e!r}')
             traceback.print_exc()
             raise
 
