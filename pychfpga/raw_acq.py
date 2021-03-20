@@ -2589,7 +2589,7 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
                  base_filename= None,
                  create_server = True,
                  **config):
-        super(RawAcqAsyncRESTClient, self).__init__(
+        super().__init__(
             hostname=hostname,
             port=port,
             server_class=RawAcqAsyncRESTServer if create_server else None,
@@ -2620,7 +2620,8 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
 
     async def start(self, **config):
         """ Start the RaqAcq remote server with the keyword argument as configuration data"""
-        self.log.info('%s: Starting remote RawAcq server at %s:%i with config: %r' % (self, self.hostname, self.port, config))
+        self.log.info(f'{self!r}: Starting remote RawAcq server at {self.hostname}:{self.port}')
+        self.log.debug('%s: Starting remote RawAcq server at %s:%i with config: %r' % (self, self.hostname, self.port, config))
         result = await self.post('start', **config)
         return result
 
