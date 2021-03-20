@@ -82,12 +82,12 @@ def setup_serial(rs232dongle_dev):
 
     try:
         ser.open()
-    except Exception, e:
-        print "error open serial port: " + str(e)
+    except Exception as e:
+        print("error open serial port: " + str(e))
         sys.exit()
 
     ser.flushInput() #flush input buffer, discarding all its contents
-    ser.flushOutput()#flush output buffer, aborting current output 
+    ser.flushOutput()#flush output buffer, aborting current output
     return ser
 
 def init_rs232():
@@ -102,7 +102,7 @@ def init_rs232():
         stat_command = ['stat', '-c', '%a', rs232dongle_dev]
         x = int(subprocess.check_output(stat_command))
         if x != 777:
-            print "\nNeed to change the permissions of %s. Please enter password when asked." %rs232dongle_dev
+            print("\nNeed to change the permissions of %s. Please enter password when asked." %rs232dongle_dev)
             os.system('sudo chmod 777 /dev/ttyUSB*')
 
     ser = setup_serial(rs232dongle_dev)
@@ -129,7 +129,7 @@ def interupt_boot(ser):
 
 
 def start_memtest(ser, iterations=5):
-    
+
     print("Initiating memory test")
     ser.write("mtest 84000000 84800000 0 %i\n" %iterations)
     numOfLines = 0
@@ -142,7 +142,7 @@ def start_memtest(ser, iterations=5):
       #Print anything that has visible characters
       m = re.search('[0-9A-Fa-f]', response)
       if m != None:
-         print response
+         print(response)
 
       #Looking for test end condition
       endtest = re.search('Tested', response)
