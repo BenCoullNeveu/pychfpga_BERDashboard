@@ -556,19 +556,19 @@ class FPGAArray(object):
             parent_logger_name = __name__.rsplit('.', 1)[0] if '.' in __name__ else ''
             parent_logger = logging.getLogger(parent_logger_name)
             # Setup logging. If a handler already exists, its log level is simply updated
-        for (handler_type, log_level) in (
-                (logging.StreamHandler, stderr_log_level),
-                (logging.handlers.SysLogHandler, syslog_log_level)):
-            if log_level:
-                log_handlers = [h for h in parent_logger.handlers if isinstance(h, handler_type)]
-                if log_handlers:  # if a handler of that type already exist, just use it
-                    log_handler = log_handlers[0]
-                else:  # otherwise create a new one
-                    log_handler = handler_type()
-                    parent_logger.addHandler(log_handler)
-                log_handler.setLevel(log_level.upper() if isinstance(log_level, str) else log_level)
-                # make sure all messages from this handler are passed to the parent handler
-                parent_logger.setLevel(min(parent_logger.level, log_handler.level))
+            for (handler_type, log_level) in (
+                    (logging.StreamHandler, stderr_log_level),
+                    (logging.handlers.SysLogHandler, syslog_log_level)):
+                if log_level:
+                    log_handlers = [h for h in parent_logger.handlers if isinstance(h, handler_type)]
+                    if log_handlers:  # if a handler of that type already exist, just use it
+                        log_handler = log_handlers[0]
+                    else:  # otherwise create a new one
+                        log_handler = handler_type()
+                        parent_logger.addHandler(log_handler)
+                    log_handler.setLevel(log_level.upper() if isinstance(log_level, str) else log_level)
+                    # make sure all messages from this handler are passed to the parent handler
+                    parent_logger.setLevel(min(parent_logger.level, log_handler.level))
 
 
         # If no bitfile is provided, automatically select the bitfile in the
@@ -631,7 +631,7 @@ class FPGAArray(object):
         if icecrates:
             self.process_str_hwm(f"MGK7BP16 {' '.join(str(ic) for ic in icecrates)}")
 
-        print(f'HWM before = {IceBoard.get_all_instances()}')
+        # print(f'HWM before = {IceBoard.get_all_instances()}')
 
         # iceboards = [self._to_integer(x) for x in iceboards]
 
@@ -792,8 +792,9 @@ class FPGAArray(object):
         ib_without_serial = [ib for ib in self.hwm if ib.hostname and ib.serial is None]
         if ib_without_serial:
             t0 = time.time()
-            self.logger.info('%r: Auto-Discovering the serial number of the IceBoards with known hostnames: %s'
-                             % (self, ', '.join(ib.hostname for ib in ib_without_serial)))
+            self.logger.info(f'{self!r}: Auto-Discovering the serial number of the IceBoards with known hostnames')
+            ad_boards = ', '.join(ib.hostname for ib in ib_without_serial)
+            self.logger.debug(f'{self!r}: Serial Auto-discovery is performed on the following boards: {ad_boards}')
             # concurrently resolve serials
             await asyncio.gather(*[ib.discover_serial_async() for ib in ib_without_serial])
             # self.logger.info('%r: Got all discover_serial futures after %f seconds' % (self, time.time() - t0))
@@ -873,7 +874,7 @@ class FPGAArray(object):
 
         self.logger.info('%r: Hardware map is complete' % self)
 
-        print(f'HWM={self.hwm}')
+        self.logger.debug(f'HWM={self.hwm}')
 
 
         #################################
@@ -947,7 +948,7 @@ class FPGAArray(object):
             self.print_flush()
             await asyncio.gather(*[ib.discover_mezzanines_async() for ib in self.hwm])
         for ib in self.hwm:
-            print(f'Mezzanines after discovery {ib}, {ib.mezzanine[1].iceboard}, {ib.mezzanine[2].iceboard}')
+            self.logger.debug(f'Mezzanines after discovery {ib}, {ib.mezzanine[1].iceboard}, {ib.mezzanine[2].iceboard}')
 
         def get_mezz_name(ib, mezz_number):
             m = ib.mezzanine.get(mezz_number, None)
@@ -960,16 +961,16 @@ class FPGAArray(object):
         # For now, we assume that all the boards boards with two MGADC08
         # boards are running firmware that is supported by
         # chFPGA_controller (i.e. chFPGA or siFPGA).
-        print(f'Before reassignment, HWM={list(self.hwm)}')
+        self.logger.debug(f'Before reassignment, HWM={list(self.hwm)}')
         for ic in IceCrate.get_all_instances():
-            print(f'{ic}(serial={ic.serial}, crate_number={ic.crate_number}')
+            self.logger.debug(f'{ic}(serial={ic.serial}, crate_number={ic.crate_number}')
         for i, ib in enumerate(list(self.hwm)):  # use list() so we can modify self.ib in the loop.
             # print('Board %r has mezzanines %s. Is instance of chFPGA_controller: %s'
             #       % (ib, ','.join('%i:%s' % (k, m.part_number) for k,m in ib.mezzanine.items()), isinstance(ib, chFPGA_controller)))
             if all(m.part_number == FMCMezzanine_MGADC08.part_number for m in ib.mezzanine.values() if m) and not isinstance(ib, chFPGA_controller):
                 new_ib = ib.update_instance(new_class=chFPGA_controller)
-                print(f'Replaced {ib!r} with {new_ib!r}')
-                print(f'Mezzanines after {new_ib}, {new_ib.mezzanine}')
+                self.logger.debug(f'Replaced {ib!r} with {new_ib!r}')
+                self.logger.debug(f'Mezzanines after {new_ib}, {new_ib.mezzanine}')
 
 
         #################################
@@ -998,10 +999,10 @@ class FPGAArray(object):
         #################################
         # Print the IceBoard table
         #################################
-        print(f'New HWM={self.hwm}')
+        self.logger.debug(f'New HWM={self.hwm}')
         for ib in self.hwm:
             crate_info = f"{ib.crate}(serial={ib.crate.serial}, crate_number={ib.crate.crate_number})" if ib.crate else None
-            print(f"{ib}, crate={crate_info}")
+            self.logger.debug(f"{ib}, crate={crate_info}")
         self.print_iceboard_table(
             lambda ib: '%s\n%s' % (get_mezz_name(ib, 1), get_mezz_name(ib, 2)),
             row_labels=['Mezz1\nMezz2'],
@@ -1027,14 +1028,14 @@ class FPGAArray(object):
 
             # Configure the FPGA with the bitstream associated with the handler
             if prog:
-                self.logger.info('%r: Configuring FPGAs...' % self)
+                self.logger.info(f'{self!r}: Configuring FPGAs...')
                 # Associate the bitstream with the target Handler
                 self.fpga_bitstream = FPGABitstream(bitfile, auto_reload=False)
-                self.logger.info('%r: Loaded bitfile: %s' % (self, bitfile))
+                self.logger.info(f'{self!r}: Loaded bitfile: {bitfile}')
                 # str(self.fpga_bitstream)
                 # self.ib.register_fpga_bitstream(self.fpga_bitstream)
                 await asyncio.gather(*[ib.set_fpga_bitstream_async(self.fpga_bitstream, force=(prog > 1)) for ib in self.ib])
-                self.logger.info('%r: Done configuring FPGAs' % self)
+                self.logger.info(f'{self!r}: Done configuring FPGAs')
 
         self.print_flush()
 
@@ -1067,8 +1068,9 @@ class FPGAArray(object):
                 trial = 1
                 while True:
                     try:
-                        self.logger.info('%r: Initializing core FPGA firmware, including FPGA UDP communications '
-                                         '(calling ib.open_core()). Trial %i/%i.' % (self, trial, max_trials))
+                        self.logger.info(
+                            f'{self!r}: Initializing core FPGA firmware for {ib!r}: '
+                            f'Trial {trial}/{max_trials}.')
 
                         # Initialize FPGA UDP communications. Overrides
                         # default parameters that were temporarily set when
@@ -1079,14 +1081,14 @@ class FPGAArray(object):
                             interface_ip_addr=if_ip)
                         return
                     except IOError as e:
-                        self.logger.error('%r: Error while initializing core firmware on trial %i/%i. Error is: \n%r'
+                        self.logger.warning('%r: Error while initializing core firmware on trial %i/%i. Error is: \n%r'
                                           % (self, trial, max_trials, e))
                         if trial >= max_trials:
                             raise IOError('%r: Unable to initializing FPGA core firmware after %i trials. Giving up.'
                                           % (self, trial))
                         else:
                             trial += 1
-                            self.logger.error('%r: Reprogramming FPGA and trying again.' % (self))
+                            self.logger.warning('%r: Reprogramming FPGA and trying again.' % (self))
                             await ib.set_fpga_bitstream_async(self.fpga_bitstream, force=True)
             await asyncio.gather(*[open_core(ib) for ib in self.ib])
 
@@ -1094,7 +1096,7 @@ class FPGAArray(object):
             # Initialize application specific FPGA firmware
             ########################
 
-            self.logger.info('%r: Initializing FPGA firmware (calling ib.open(adc_mode=%i))' % (self, adc_mode))
+            self.logger.info(f'{self!r}: Initializing FPGA firmware (calling ib.open(adc_mode={adc_mode}))')
             await asyncio.gather(*[ib.open(adc_delay_table=ADC_DELAY_TABLE,
                                  init=open,
                                  adc_mode=adc_mode,
@@ -1107,7 +1109,7 @@ class FPGAArray(object):
             # Initializing SYNC method
             ########################
             if sync_method or sync_source:
-                self.logger.info('%r: Setting SYNC method' % self)
+                self.logger.info(f'{self!r}: Setting SYNC method')
                 self.set_sync_method(
                     method=sync_method,
                     source=sync_source,
@@ -1118,7 +1120,6 @@ class FPGAArray(object):
             # Initializing operational mode
             ########################
             if mode:
-                self.logger.info('%r: Setting operational mode to %s' % (self, mode))
                 self.set_operational_mode(
                     mode=mode,
                     frames_per_packet=frames_per_packet,
@@ -1132,7 +1133,7 @@ class FPGAArray(object):
             # Initializing backplane hardware communication firmware
             ########################
 
-            self.logger.info('%r: Initializing Backplane firmware' % self)
+            self.logger.info(f'{self!r}: Initializing Backplane firmware')
             if self.ic:
                 self.ic.init()
 
@@ -1142,7 +1143,7 @@ class FPGAArray(object):
         # Completed
         #################################
 
-        self.logger.info('%r: Done creating %r' % (self, self))
+        self.logger.info(f'{self!r}: Done creating {self!r}')
 
     @staticmethod
     def _to_integer(x):
@@ -1212,53 +1213,6 @@ class FPGAArray(object):
         """ Make sure that the test sent previously to stdout shows immediately on the console.
         """
         sys.stdout.flush()
-
-
-
-
-    def dns_resolve(self, hostnames='iceboard0077.local', timeout=1):
-        """
-        ** OBSOLETE ** DOE NOT WORK ANYMORE ***
-        Rewrite for asyncio
-
-
-        This is an experimental method to concurrently resolve the  IP
-        address of boards without having to contend with the fixed timout of
-        getaddrinfo(). This does not work yet, as requests seem to block
-        anyway even with the Async resolver.
-        """
-        if isinstance(hostnames, str):
-            hostnames = [hostnames]
-        io_loop = IOLoop()
-        resolver = Resolver()
-        futures = [resolver.resolve(h, 9000) for h in hostnames]
-
-        def stop_when_all_resolved(one_future):
-            print([ff.done() for ff in futures])
-            self.print_flush()
-            return
-            # if all(f.done() for f in futures):
-            #     io_loop.stop()
-            # print one_future.exception() or one_future.result()
-        for f in futures:
-            io_loop.add_future(f, stop_when_all_resolved)
-        io_loop.add_timeout(io_loop.time() + timeout, lambda: io_loop.stop())
-        io_loop.start()
-        ip_addr = [None if not f.done() or f.exception() else dict(f.result())[socket.AF_INET][0] for f in futures]
-        for f in futures:
-            f.cancel()
-        resolver.close()
-        return (resolver, futures, ip_addr)
-
-    # def __getattr__(self, name):
-    #     """
-    #     Redirects all attributes access to the hardware map (Session) object.
-    #     """
-    #     return getattr(self.hwm, name)
-
-    # def __dir__(self):
-    #     # return type(self).__dict__ + self.__dict__ + dir(self._hwmap)
-    #     return dir(self.hwm) + self.__dict__.keys()
 
     def __repr__(self):
         """ Short string representing this object and suitable to use as a tag in a syslog entry"""
@@ -1364,12 +1318,12 @@ class FPGAArray(object):
                 IceCrate.get_unique_instance(new_class=icecrate_classes[class_name], **params)
         # Second pass: Create the IceBoards, and link them to the crates
         for hwm_entry in hwm:
-            print(f'Processing hwm entry {hwm_entry}')
+            self.logger.debug(f'Processing hwm entry {hwm_entry}')
 
             params = dict(hwm_entry)  # make a copy
             class_name = params.pop('class')
             if class_name in iceboard_classes:
-                print(f"Calling getuniqueinstance class={class_name}")
+                self.logger.debug(f"Calling getuniqueinstance class={class_name}")
                 ib = IceBoard.get_unique_instance(new_class=iceboard_classes[class_name], **params)
                 # self.logger.debug('%r: Crate %r is in %r' % (self, crate_number, params))
 
@@ -1389,7 +1343,7 @@ class FPGAArray(object):
         #     'crates': {(crate_number,): ('icecrates', (model, serial, crate_number))
         #                for crate_number, (model, serial) in crate_map.items()}}
 
-        logger = logging.getLogger(__name__)
+        logger = log.get_logger(self)
         # If hw_string is a list of string, combine them in one single string
         if isinstance(hw_string, (list, tuple)):
             hw_string = ' '.join(str(s) for s in hw_string)
@@ -1618,8 +1572,7 @@ class FPGAArray(object):
         # use defaults that were set during initialization unless overriden
         mode = mode or self.mode
         tx_power = tx_power or self.tx_power
-        self.logger.info('%r: Setting operational mode to %s' % (self, mode))
-        self.logger.info('%r: Using tx_power=%r' % (self, tx_power))
+        self.logger.info(f'{self!r}: Setting operational mode to {mode}')
         # To make sure that the data acquisition and transmission will be done
         # at the same rate, refuse to operate if there are more than one
         # IceBoard in the array and the boards are not all set to operate on
@@ -2378,8 +2331,8 @@ class FPGAArray(object):
         #                        'Iceboards have the following crates: %r' % crate_set)
         # crate = crate_set.pop()
 
-        self.logger.info('%r: Configuring crate-wide data shuffling with frames_per_packet=%i'
-                         % (self, frames_per_packet))
+        self.logger.info(f'{self!r}: Configuring crate-wide data shuffling '
+                         f'with frames_per_packet={frames_per_packet}')
 
         bin_map = self.get_corner_turn_bin_map(
             mode=mode,
@@ -2390,9 +2343,12 @@ class FPGAArray(object):
         #####################
         # Set-up transmitters
         #####################
+        self.logger.info(f'{self!r}: Setting GTX transmit power for all boards')
+        self.logger.debug(f'{self!r}: Using tx_power={tx_power!r}')
+
         self.corner_turn_stream_ids = {}
         for i, ib in enumerate(self.ib):
-            self.logger.info('%r: **** Initializing transmitters for IceBoard %r (SN%s) ****' % (self, ib, ib.serial))
+            self.logger.debug('%r: **** Initializing transmitters for IceBoard %r (SN%s) ****' % (self, ib, ib.serial))
             ib.set_corr_reset(0)  # Put the corner_turn engine in reset
 
             tx_list.append((ib.slot, 0))  # Register Bypass lane (lane 0) as a transmitter in this slot
@@ -2445,8 +2401,9 @@ class FPGAArray(object):
                     lane_group = tx_group['lane_group']
                     default = tx_group['default']
                     exceptions = tx_group.get('exceptions', [])
-                    self.logger.info('%r: TX power parameters are: %r (default=%r, exceptions=%r)'
-                                     % (self, tx_group, default, exceptions))
+                    self.logger.debug(
+                        f'{self!r}: TX power parameters are: {tx_group!r} '
+                        f'(default={default!r}, exceptions={exceptions!r})')
                     self.set_tx_power(lane_group=lane_group, default_power=default, exceptions=exceptions, index=index)
                 if index == 0:
                     time.sleep(0.3)
@@ -2492,13 +2449,13 @@ class FPGAArray(object):
         # sync boards
         # soft_sync(c, sync_board)
 
-        self.logger.info('%r: Resetting the GPU transmitters.' % self)
+        self.logger.debug(f'{self!r}: Resetting the GPU transmitters.')
         self.ib.GPU.CORE_RESET = 1
         time.sleep(.1)
         self.ib.GPU.CORE_RESET = 0
         time.sleep(.1)
 
-        self.logger.info('%r: Shuffling initialization completed.' % self)
+        self.logger.info(f'{self!r}: Shuffling initialization completed.')
         if sync:
             self.sync()
 
@@ -2528,14 +2485,14 @@ class FPGAArray(object):
 
         exceptions = {tuple(node_id): power_tuple for node_id, power_tuple in exceptions}
         self.logger.info('%r: Setting GTX power for lane group %s to power index %i' % (self, lane_group, index))
-        self.logger.info('%r:    Default power is %s' % (self, default_power))
-        self.logger.info('%r:    Power exceptions are %s' % (self, exceptions))
+        self.logger.debug('%r:    Default power is %s' % (self, default_power))
+        self.logger.debug('%r:    Power exceptions are %s' % (self, exceptions))
 
         for ib in self.ib:
             bp = ib.BP_SHUFFLE
             power_tuples = [(lane, exceptions.get(ib.get_id(lane), default_power)[index])
                             for lane, gtx in enumerate(bp.get_gtx(lane_group=lane_group)) if gtx]
-            self.logger.info('%r: setting Tx power for %r %s links' % (self, ib, lane_group))
+            self.logger.debug('%r: setting Tx power for %r %s links' % (self, ib, lane_group))
             bp.set_tx_power(power_tuples, lane_group)
 
     # def set_tx_power(self, pmin=6, pmax=13, pre=3):
@@ -2808,7 +2765,7 @@ class FPGAArray(object):
                     delta_ts = max(ts.nano) - min(ts.nano)
                     self.logger.info('%r: The IRIG-B time for Frame 0 on all boards is:\n%s' % (
                         self,
-                        '\n'.join('%r: %s (%i ns since epoch, %i ns after sync)' % (
+                        '\n'.join('         %r: %s (%i ns since epoch, %i ns after sync)' % (
                                 ib,
                                 ts[i].isoformat(),
                                 ts[i].nano,
@@ -3176,7 +3133,7 @@ class FPGAArray(object):
         array_gains = {}
         for ib in self.ib:
             board_id = ib.get_id()
-            self.logger.info('%r: Reading digital gains for (crate,slot)=%r' %
+            self.logger.debug('%r: Reading digital gains for (crate,slot)=%r' %
                              (self, board_id))
             board_gains = ib.load_gains(folder=gain_folder) or default_gains
             await asyncio.sleep(0)
@@ -3323,7 +3280,7 @@ class FPGAArray(object):
         for board_id, g in gains.items():
             gain_timestamp = gain_timestamps[board_id] if isinstance(gain_timestamps, dict) else gain_timestamps
             ib = self.get_iceboard_from_id(board_id)
-            self.logger.info('%r: Setting digital gains for (crate,slot)=%r (%s)'
+            self.logger.debug('%r: Setting digital gains for (crate,slot)=%r (%s)'
                              % (self, board_id, ib.get_formatted_id()))
             ib.set_gains(gain=g, bank=bank, when=None, gain_timestamp=gain_timestamp)
             await asyncio.sleep(0)
@@ -3378,19 +3335,19 @@ class FPGAArray(object):
         try:
             from pychfpga import calculate_gains
         except ImportError:
-            self.logger.info('Could not import calculate_gains. Missing timestream_receiver in path?')
+            self.logger.error('Could not import calculate_gains. Missing timestream_receiver in path?')
             return
 
         # Setup noise injection using noise injection parameters that are specific to the gain calculation operation.
         if noise_injection is not None:
             for source_name, source_params in noise_injection.items():
                 if source_params.board:
-                    self.logger.info("Setting gain computation noise injection for source '%s' with parameters %s"
+                    self.logger.debug("Setting gain computation noise injection for source '%s' with parameters %s"
                                      % (source_name, source_params))
                     self.set_noise_injection(local_sync=True, **source_params)
 
         # Loop over boards and compute gains
-        self.logger.info("Computing SCALAR gains.")
+        self.logger.info("Computing SCALER gains.")
         for ib in self.ib:
             ch_id = ib.get_id()
             # crate, slot_0based = ch_id[0], ch_id[1]
@@ -4574,16 +4531,16 @@ class FPGAArray(object):
         """
 
         # IceCrate metrics
-        self.logger.info('%r: Getting IceBoard backplane hardware metrics (over ARM link)' % self)
+        self.logger.debug('%r: Getting IceBoard backplane hardware metrics (over ARM link)' % self)
         for ic in self.ic:
             slot, ib = list(ic.slot.items())[0]
             metrics += await ib.get_backplane_metrics_async()
 
         # IceBoard metrics
-        self.logger.info('%r: Getting IceBoard temperature & power supply metrics (over ARM link)' % self)
+        self.logger.debug('%r: Getting IceBoard temperature & power supply metrics (over ARM link)' % self)
         m = await asyncio.gather(*[ib.get_metrics_async() for ib in self.ib])
         metrics += m
-        self.logger.info('%r: Got %i IceBoard temperature & power supply metrics' % (self, len(m)))
+        self.logger.debug('%r: Got %i IceBoard temperature & power supply metrics' % (self, len(m)))
         metrics += await asyncio.gather(*[ib.get_fpga_udp_metrics_async() for ib in self.ib])
 
     async def get_fpga_metrics_async(self, metrics, reset=True):
@@ -4597,13 +4554,13 @@ class FPGAArray(object):
         """
 
         # Shuffle status
-        self.logger.info('%r: Getting corner-turn links metrics (over FPGA UDP link)' % self)
+        self.logger.debug('%r: Getting corner-turn links metrics (over FPGA UDP link)' % self)
         metrics += await asyncio.gather(*[ib.get_bp_shuffle_metrics_async(reset=reset) for ib in self.ib])
-        self.logger.info('%r: Getting corner-turn crossbars metrics (over FPGA UDP link)' % self)
+        self.logger.debug('%r: Getting corner-turn crossbars metrics (over FPGA UDP link)' % self)
         metrics += await asyncio.gather(*[ib.get_crossbar_metrics_async(reset=False) for ib in self.ib])
-        self.logger.info('%r: Getting channelizer metrics (over FPGA UDP link)' % self)
+        self.logger.debug('%r: Getting channelizer metrics (over FPGA UDP link)' % self)
         metrics += await asyncio.gather(*[ib.get_channelizer_metrics_async(reset=reset) for ib in self.ib])
-        self.logger.info('%r: Finished gathering FPGA/backplane metrics' % self)
+        self.logger.debug('%r: Finished gathering FPGA/backplane metrics' % self)
 
         # Backplane GTX
         # Errors, signal level
@@ -4840,7 +4797,7 @@ class FPGAArray(object):
 
         for ib in self.ib:
             if ib.is_open():
-                self.logger.info("%r: Setting ADC delays" % (self))
+                self.logger.debug("%r: Setting ADC delays" % (self))
                 ib.set_adc_delays(**kwargs)
                 await asyncio.sleep(0)
             else:
