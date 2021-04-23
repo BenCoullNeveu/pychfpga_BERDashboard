@@ -29,13 +29,13 @@ test_list:
     # This list all the tests that will be done my the test software, in the proper order
     # path is the argument given to nose to find the test fucntion, in the form of module_path:function or module_path:class.method
     # This path is also the path used by XReport to identify tests results, with the exception that the semicolon ':' is replaced by a dot '.'
-    - [ 'clk', {description: 'Clock etc. Readout test',     path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.clock_test',        required: yes, require_serial_number: yes, dependencies: null}]
-    - [ 'sen', {description: 'BP Sensor test',              path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.sensor_test',       required: no,  require_serial_number: yes, dependencies: null}]
-    - [ 'qsf', {description: 'QSFP Connector test',         path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.qsfp_test',         required: yes, require_serial_number: yes, dependencies: null}]
-    - [ 'res', {description: 'Board Reset test',            path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.reset_test',        required: yes, require_serial_number: yes, dependencies: null}]
-    - [ 'ber', {description: 'Bit Error Rate test',         path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.bitErrorRate_test', required: yes, require_serial_number: yes, dependencies: null}]
-    - [ 'shu', {description: '256/512 Shuffle test',        path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.shuffle_test',      required: yes, require_serial_number: yes, dependencies: null}]
-    - [ 'mez', {description: 'Mezzanine Ramp test',         path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.mezzRamp_test',     required: yes, require_serial_number: yes, dependencies: null}]
+    clk: {description: 'Clock etc. Readout test',     path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.clock_test',        required: yes, require_serial_number: yes, dependencies: null}
+    sen: {description: 'BP Sensor test',              path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.sensor_test',       required: no,  require_serial_number: yes, dependencies: null}
+    qsf: {description: 'QSFP Connector test',         path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.qsfp_test',         required: yes, require_serial_number: yes, dependencies: null}
+    res: {description: 'Board Reset test',            path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.reset_test',        required: yes, require_serial_number: yes, dependencies: null}
+    ber: {description: 'Bit Error Rate test',         path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.bitErrorRate_test', required: yes, require_serial_number: yes, dependencies: null}
+    shu: {description: '256/512 Shuffle test',        path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.shuffle_test',      required: yes, require_serial_number: yes, dependencies: null}
+    mez: {description: 'Mezzanine Ramp test',         path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.mezzRamp_test',     required: yes, require_serial_number: yes, dependencies: null}
 
 menu:
     # The menu item will match the user input to either the 'key' field or to the regular expression 'regex'. The matching dictionary is returned.
@@ -58,9 +58,9 @@ menu:
     - { key: 'Q', description: 'Exit',                                                              type: exit}
     - {           description: "Start by entering the BP's serial number, then select a test or range of tests (e.g. 5-7).",     type: text}
     - { regex: '(0\d{2})',                                                                          type: board_info, model: 'MGK7BP16', serial: '{0}', next_key: '1'}  # 0nn are MGK7BP16 Serial number
-    - { regex: '\d+\-\d+', type: range, input: '{0}'} # regex to select a range of options 
+    - { regex: '\d+\-\d+', type: range, input: '{0}'} # regex to select a range of options
 
- 
+
 
 ##################################
 # Test-specific parameters
@@ -68,7 +68,7 @@ menu:
 
 crate_tests:
     setup:
-    
+
     bitErrorRate_test:
         period: 60
         bp_limit: 1.e-10
