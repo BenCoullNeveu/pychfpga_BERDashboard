@@ -93,7 +93,7 @@ class FpgaBitstream(object):
             length = struct.unpack('>H', data[pos:pos+2])[0]
             self.logger.debug(
                 '%r: Field 1: 0x%s' % (self, ''.join(
-                    ['%0X' % ord(c) for c in data[pos+2: pos+2+length]]))
+                    ['%0X' % c for c in data[pos+2: pos+2+length]]))
                 )
             pos += length + 2
             # Field 2 - always 'a'
@@ -101,7 +101,7 @@ class FpgaBitstream(object):
             field = data[pos + 2: pos + 2 + length]
             self.logger.debug(
                 '%r: Field 2 (%i bytes): %s' % (self, length, field))
-            if field != 'a':
+            if field != b'a':
                 self.logger.error('This is not a valid bit file')
                 return
             pos += length + 2
@@ -143,10 +143,10 @@ class FpgaBitstream(object):
             pos += 4 + 1  # skip the header. Now points to cofiguration data
             bitstream = data[pos:]
 
-            timestamp_string = firmware_date + ' ' + firmware_time
+            timestamp_string = firmware_date + b' ' + firmware_time
             timestamp = datetime.datetime.strptime(
-                firmware_date[:-1] + ' ' +
-                firmware_time[:-1], '%Y/%m/%d %H:%M:%S')
+                (firmware_date[:-1] + b' ' + firmware_time[:-1]).decode(),
+                '%Y/%m/%d %H:%M:%S')
 
             # I thought the the remaining bitstream should start with the
             # proper cookie but there seems to be additional bytes before it.
@@ -162,7 +162,7 @@ class FpgaBitstream(object):
 
         self.bitstream_cache = bitstream
         self.bytes = bitstream
-        self.base64 = base64.encode(bitstream)
+        self.base64 = base64.b64encode(bitstream)
         self.crc32 = zlib.crc32(bitstream)  # compute CRC32 of the data
         # Compute MD5 sum as a hex string
         self.md5_string = hashlib.md5(bitstream).hexdigest()
