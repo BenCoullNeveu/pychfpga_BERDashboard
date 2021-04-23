@@ -13,21 +13,25 @@ import textwrap
 import subprocess
 import shlex
 import re
+import builtins
 
-import visa
+import pytest
+import numpy as np
+import matplotlib.pyplot as plt
+
+# import visa
+from wtl.namespace import NameSpace
+from wtl.pytest_xreport import load_config, open_instruments
+from wtl.pytest_xreport import xr
 
 
-util.add_paths('../pychfpga/core')  # needed to find icecore
-from icecore import XReport as xr
-from icecore.tests.xreport import test_report
-from icecore.hw import ipmi_fru
+from pychfpga.core.icecore.hw import ipmi_fru
 
-util.add_paths('../pychfpga')  # needed to find fpga_array
+from pychfpga import fpga_array, run_async, async_to_sync
+from pychfpga.core.icecore_ext import IceBoardPlus
+from pychfpga.core.icecore_ext import FpgaBitstream
 
-import fpga_array
-from pychfpga.core.icecore import IceBoardPlusHandler
-
-util.add_paths('../pychfpga/core/icecore/python/hw')
+# util.add_paths('../pychfpga/core/icecore/python/hw')
 #import ipmi_fru as ipmi_fru
 
 # util.add_paths('../pychfpga/core/icecore_ext')
@@ -44,22 +48,6 @@ TEST_CONFIG_FILE = './MGK7MB/mgk7mb_test_config.yaml'
 def wrap(obj, width=80):
     return textwrap.fill(str(obj), width)
 
-def input(message):
-    key = xr.input(message).lower()
-    assert not key.startswith('q'), 'Test was interrupted by user'
-    return key
-
-def input_yes_no(message, additional_answers=[]):
-    while True:
-        key = eval(input(message))
-        if key.startswith('y'):
-            return True
-        elif key.startswith('n'):
-            return False
-        elif key in additional_answers:
-            return key
-        print('Wrong answer. Try again')
-
 def in_range(value, target, pmargin=0.05, amargin=0):
     if( (value < target * ( 1 - pmargin) - amargin) or
         (value > target * ( 1 + pmargin) + amargin)):
@@ -68,26 +56,28 @@ def in_range(value, target, pmargin=0.05, amargin=0):
             return True
 
 def flush():
-    xr.instance.flush_stdout_capture()
+    # xr.instance.flush_stdout_capture()
+    pass
 
-class MGK7MBBenchTests(unittest.TestCase):
+class MGK7MBBenchTests:
     """
     Perform impedance & power tests on the MGADC08 Mezzanine.
     """
-    def setUp(self):
+    @pytest.fixture
+    def setUp(self, xr):
         """ Prepare the test for execution.
 
         Here, we grab the command line arguments and parse them.
         """
         xr.header('Setting-up')
-        self.cfg = util.load_config(TEST_CONFIG_FILE)
+        self.cfg = load_config(TEST_CONFIG_FILE)
 
     def tearDown(self):
         if hasattr(self, 'instr') and hasattr(self.instr, 'ps18v'):
             self.instr.ps18v.output(state=False, readonly=False) #Ensuring power on N5764A is off
 
     def connect_instruments(self, cfg):
-        self.instr = util.open_instruments(self.cfg.instruments, cfg.instruments)  # open only instruments listed in cfg.instruments
+        self.instr = open_instruments(self.cfg.instruments, cfg.instruments)  # open only instruments listed in cfg.instruments
 
         if "ps18v" in cfg.instruments and not cfg.manual_ps:
             self.instr.ps18v.output(state=False, readonly=False) #Ensuring power on N5764A is off
@@ -95,7 +85,7 @@ class MGK7MBBenchTests(unittest.TestCase):
             self.instr.ps18v.control_voltage(voltage=cfg.vlt, readonly=False) #Setting voltage to 18V, power still off
             self.instr.ps18v.set_current_limit(current=cfg.curlmt, ocp=True) #Setting current limit and turning on ocp feature
 
-    def insp_test(self):
+    def insp_test(self, xr, setUp):
         """
         QC001: Inspection test: visual check of the board
 
@@ -129,7 +119,7 @@ class MGK7MBBenchTests(unittest.TestCase):
         answers = []
 
         for i in range(0, len(questions)):
-            answers.append(input_yes_no(str(i+1)+ ") " + questions[i], additional_answers=[]))
+            answers.append(xr.input_yes_no(str(i+1)+ ") " + questions[i], additional_answers=[]))
 
         passed =  True
         for i, ans in enumerate(answers):
@@ -139,12 +129,12 @@ class MGK7MBBenchTests(unittest.TestCase):
         assert passed, 'Inspection Test failed'
 
 
-        comments = eval(input("If there are any additional comments you wish to make (e.g. scratches, manufacturing problems), please describe below. (If none, enter 'None'): "))
+        comments = xr.input("If there are any additional comments you wish to make (e.g. scratches, manufacturing problems), please describe below. (If none, enter 'None'): ")
         passed = True
 
         #Estimate 30 seconds
 
-    def res_test(self):
+    def res_test(self, xr, SetUp):
         """
         QC002: Resistance test: Record resistance at various points on the board
 
@@ -202,7 +192,7 @@ class MGK7MBBenchTests(unittest.TestCase):
                 while True:
                     dmm.local()
                     print('Optional: Press the blue (SHIFT/Local) button on the multimeter so see real-time resistance measurements')
-                    eval(input("Apply probe to test point '%s' and press ENTER to measure (Q=Exit):" % tp_name))
+                    xr.input("Apply probe to test point '%s' and press ENTER to measure (Q=Exit):" % tp_name)
                     if limits.delay:
                         time.sleep(limits.delay)
                     result = dmm.get_resistance()
@@ -225,7 +215,7 @@ class MGK7MBBenchTests(unittest.TestCase):
             #dmm.local()
             xr.save_data(test_results)
 
-    def powerup_test(self):
+    def powerup_test(self, xr, setUp):
         """
         QC003: Power board up: Measure current draw on agilent supply
 
@@ -257,8 +247,7 @@ class MGK7MBBenchTests(unittest.TestCase):
             print('Power up the board, note current on power supply, power off the board.\n ')
 
             while True:
-                current = eval(input(
-                    'What current did you measure (just a number, no units)?'))
+                current = xr.input('What current did you measure (just a number, no units)?')
                 try:
                     current = float(current)
                     break
@@ -268,7 +257,7 @@ class MGK7MBBenchTests(unittest.TestCase):
             current_good = current < cfg.imax and  current > cfg.imin
             assert current_good, "Current is out of range"
         else:
-            while (input_yes_no("Are you ready to apply power to the board? [Y/N]", additional_answers=[]) != True):
+            while (xr.input_yes_no("Are you ready to apply power to the board? [Y/N]", additional_answers=[]) != True):
     	        pass;
 
             self.instr.ps18v.output(state=True, readonly=False)
@@ -294,25 +283,25 @@ class MGK7MBBenchTests(unittest.TestCase):
         if manual_ps:
             print('Apply power to the board')
         else:
-            while (input_yes_no("Are you ready to apply power to the board again? [Y/N]", additional_answers=[]) != True):
+            while (xr.input_yes_no("Are you ready to apply power to the board again? [Y/N]", additional_answers=[]) != True):
                 pass;
             self.instr.ps18v.output(state=True, readonly=False)
 
-        response = input_yes_no("Are all 9 of the power LEDs turned on? Y/N]", additional_answers=[])
+        response = xr.input_yes_no("Are all 9 of the power LEDs turned on? Y/N]", additional_answers=[])
         if manual_ps:
-            eval(input('Turn OFF power and press ENTER'))
+            xr.input('Turn OFF power and press ENTER')
 
         if response == True:
             print("Test has passed")
         else:
-            eval(input("Which lights failed to light up?"))
+            xr.input("Which lights failed to light up?")
             #self.instr.ps18v.output(state=False, readonly=False)
             passed = 0
             assert False, "Some of the buck converters have not registered power good"
 
     #Estimate 30 seconds
 
-    def pll_test(self):
+    def pll_test(self, xr, setUp):
         """
         QC004: Program the onboard PLLs
 
@@ -343,10 +332,10 @@ class MGK7MBBenchTests(unittest.TestCase):
         print("Please make sure power is OFF and connect PLL programming dongle to the 6pin header.")
 
         if manual_ps:
-            eval(input('Turn power supply ON and press ENTER'))
+            xr.input('Turn power supply ON and press ENTER')
         else:
             if(self.cfg.ready_check):
-                while (input_yes_no("Are you ready to apply power to the board? [Y/N]", additional_answers=[]) != True):
+                while (xr.input_yes_no("Are you ready to apply power to the board? [Y/N]", additional_answers=[]) != True):
                     pass;
         #self.instr.ps18v.output(state=True, readonly=False)
 
@@ -361,14 +350,14 @@ class MGK7MBBenchTests(unittest.TestCase):
         pll2_cmp=cdce.comp_reg(cfg.pll2regs, meas_pll2_regs)
 
         if (all(v==0 for v in meas_pll1_regs) and all(v==0 for v in meas_pll1_regs)):
-            while (input_yes_no("All the registers in both PLLs are 0.  Please ensure that dongle orientated correctly on the program header. Ready to continue? [Y/N]", additional_answers=[]) != True):
+            while (xr.input_yes_no("All the registers in both PLLs are 0.  Please ensure that dongle orientated correctly on the program header. Ready to continue? [Y/N]", additional_answers=[]) != True):
                 pass;
-            input_yes_no("Out of interest was it on the right way? [Y/N]", additional_answers=[])
+            xr.input_yes_no("Out of interest was it on the right way? [Y/N]", additional_answers=[])
 
         if (all(v==0xFFFFFFFF for v in meas_pll1_regs) and all(v==0xFFFFFFFF for v in meas_pll1_regs)):
-            while (input_yes_no("All the registers in both PLLs are 0xFFFFFFFF.  Please ensure that dongle is plugged into the program header. Ready to continue? [Y/N]", additional_answers=[]) != True):
+            while (xr.input_yes_no("All the registers in both PLLs are 0xFFFFFFFF.  Please ensure that dongle is plugged into the program header. Ready to continue? [Y/N]", additional_answers=[]) != True):
                 pass;
-            input_yes_no("Out of interest was it plugged in? [Y/N]", additional_answers=[])
+            xr.input_yes_no("Out of interest was it plugged in? [Y/N]", additional_answers=[])
 
         if (pll1_cmp==0):
             print("\nDifferences were detected on PLL1 - Programing it")
@@ -402,13 +391,13 @@ class MGK7MBBenchTests(unittest.TestCase):
 
 
         if manual_ps:
-            eval(input('Turn power supply OFF and back ON and press ENTER'))
+            xr.input('Turn power supply OFF and back ON and press ENTER')
         else:
             print("Rebooting the board")
             self.instr.ps18v.output(state=False, readonly=False) #Ensuring power on N5764A is off
             self.instr.ps18v.output(state=True, readonly=False) #Turning power back on
 
-        response = input_yes_no("Are both PLL lock lights turned on? (yellow and green next to 6 pin RS232 header) [Y/N]", additional_answers=[])
+        response = xr.input_yes_no("Are both PLL lock lights turned on? (yellow and green next to 6 pin RS232 header) [Y/N]", additional_answers=[])
         if response == True:
             passed = True
         else:
@@ -416,13 +405,13 @@ class MGK7MBBenchTests(unittest.TestCase):
             passed = False
 
         if manual_ps:
-            eval(input('Turn power supply OFF and press ENTER. You can then disconnect the PLL dongle: it is no longer needed for this board'))
+            xr.input('Turn power supply OFF and press ENTER. You can then disconnect the PLL dongle: it is no longer needed for this board')
 
         assert passed
         #self.instr.ps18v.output(state=False, readonly=False) #Ensuring power on N5764A is off
         #Estimate 10 seconds
 
-    def mem_test(self):
+    def mem_test(self, xr, setUp):
         """
         QC005: Perform the ARM memory test
 
@@ -454,9 +443,9 @@ class MGK7MBBenchTests(unittest.TestCase):
         print("Found RS232 dongle on port " + rs232dongle_dev)
 
         if manual_ps:
-            eval(input('press ENTER and *then* turn power supply ON'))
+            xr.input('press ENTER and *then* turn power supply ON')
         else:
-            while (input_yes_no("Are you ready to apply power to the board? [Y/N]", additional_answers=[]) != True):
+            while (xr.input_yes_no("Are you ready to apply power to the board? [Y/N]", additional_answers=[]) != True):
                 pass;
             self.instr.ps18v.output(state=True, readonly=False)
 
@@ -475,17 +464,18 @@ class MGK7MBBenchTests(unittest.TestCase):
             print("The memory test failed")
             passed = False
         if manual_ps:
-            eval(input('Power OFF the board and press ENTER. You can then disconnect the RS232 dongle: it is no longer needed with this board'))
+            xr.input('Power OFF the board and press ENTER. You can then disconnect the RS232 dongle: it is no longer needed with this board')
         assert passed
 
         #Measured time 90 seconds with 5 iterations (15secs setup, 15secs per iteration)
 
 
-class MGK7MBNetworkTests(unittest.TestCase):  #
+class TestMGK7MBNetwork:  #
     """
     Perform impedance & power tests on the MGADC08 Mezzanine.
     """
-    def setUp(self):
+    @pytest.fixture
+    def setUp(self, xr):
         """
         Prepare the test for execution.
 
@@ -493,22 +483,23 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
 
         """
         xr.header('Setting-up')
-        self.cfg = util.load_config(TEST_CONFIG_FILE)
+        self.cfg = load_config(TEST_CONFIG_FILE)
 
         cfg = self.cfg.motherboard_tests.network  # config options pertaining to setup
-        self.instr = util.open_instruments(self.cfg.instruments, cfg.instruments)  # open only instruments listed in cfg.instruments
+        self.instr = open_instruments(self.cfg.instruments, cfg.instruments)  # open only instruments listed in cfg.instruments
 
         # self.instr.ps18v.output(state=False, readonly=False) #Ensuring power on N5764A is off
         # self.instr.ps18v.clear() #Clearing any previous protection
         # self.instr.ps18v.control_voltage(voltage=18, readonly=False) #Setting voltage to 18V, power still off
         # self.instr.ps18v.set_current_limit(current=5, ocp=True) #Setting current limit and turning on ocp feature
 
+        yield
 
-    def tearDown(self):
         #self.instr.ps18v.output(state=False, readonly=False) #Ensuring power on N5764A is off
+        xr.header('Tearing down')
         pass
 
-    def connect_to_board(self, xr, cfg , questions = True, powerdown = True, program = 0,iceboards="*"):
+    def connect_to_board(self, xr, cfg , questions = True, powerdown = True, program = 0, any_iceboard=False):
 
         if questions:
             print('\n-------------------------------')
@@ -516,9 +507,9 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
             print("Please ensure that the ethernet cable is plugged in to the board")
 
             if cfg.manual_ps:
-                eval(input('Please turn power ON and press ENTER'))
+                xr.input('Please turn power ON and press ENTER')
             else:
-                while (input_yes_no("Are you ready to apply power to the board? [Y/N]", additional_answers=[]) != True):
+                while (xr.input_yes_no("Are you ready to apply power to the board? [Y/N]", additional_answers=[]) != True):
                     pass;
 
                 # if powerdown:
@@ -531,54 +522,60 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
 
         #while (input_yes_no("Do the front panel lights indicate that the board is ready? [Y/N]", additional_answers=[]) != True):
         #    pass;
-        if cfg.restart_avahi:
-            print("\nNeed to kill and restart avahi - this clears the cache which causes us troubles. Please enter password if asked.")
-            os.system('sudo avahi-daemon --kill')
-            time.sleep(.5)
-            os.system('sudo avahi-daemon --daemonize')
-            time.sleep(2)
+        # if cfg.restart_avahi:
+        #     print("\nNeed to kill and restart avahi - this clears the cache which causes us troubles. Please enter password if asked.")
+        #     os.system('sudo avahi-daemon --kill')
+        #     time.sleep(.5)
+        #     os.system('sudo avahi-daemon --daemonize')
+        #     time.sleep(2)
 
-        serial = 'iceboard%s.local' %xr.params.serial
-        if "*" in iceboards:
-            print("Waiting for 'iceboard.local' or '%s' to boot and show up on the network (70 second timeout)" %serial)
-        else:
-            print("Waiting for '%s' to boot and show up on the network (60 second timeout)" %serial)
+        # serial = 'iceboard%s.local' %xr.params.serial
+        # if "*" in iceboards:
+        #     print("Waiting for 'iceboard.local' or '%s' to boot and show up on the network (70 second timeout)" %serial)
+        # else:
+        #     print("Waiting for '%s' to boot and show up on the network (60 second timeout)" %serial)
 
-        count = 0
-        response = 1
-        # print "Sleeping for 20 seconds to let most of the boot process complete"
-        # time.sleep(20)
-        print("The board should show up on the network about 20 seconds after power up.")
-        print("Pinging until we see it.")
-        for count in range(30):
-            print(".", end=' ')
-            flush()
-            ping_error = os.system("ping -c 1 -i 1 " + serial)
-            flush()
-            if not ping_error:
-                break
-            print(".", end=' ')
-            flush()
-            ping_error = os.system("ping -c 1 -i 1 iceboard.local")
-            flush()
-            if not ping_error:
-                break
-            if count == 10:
-                print("\n No response so far. We will restart the mDNS service (avahi) and continue to try. Please enter password if asked.")
-                os.system('sudo service avahi-daemon restart')
-        else:
-            assert False, "Board was not found on the network. Check the cabling, and power cycle again."
+        # count = 0
+        # response = 1
+        # # print "Sleeping for 20 seconds to let most of the boot process complete"
+        # # time.sleep(20)
+        # print("The board should show up on the network about 20 seconds after power up.")
+        # print("Pinging until we see it.")
+        # for count in range(30):
+        #     print(".", end=' ')
+        #     flush()
+        #     ping_error = os.system("ping -c 1 -i 1 " + serial)
+        #     flush()
+        #     if not ping_error:
+        #         break
+        #     print(".", end=' ')
+        #     flush()
+        #     ping_error = os.system("ping -c 1 -i 1 iceboard.local")
+        #     flush()
+        #     if not ping_error:
+        #         break
+        #     if count == 10:
+        #         print("\n No response so far. We will restart the mDNS service (avahi) and continue to try. Please enter password if asked.")
+        #         os.system('sudo service avahi-daemon restart')
+        # else:
+        #     assert False, "Board was not found on the network. Check the cabling, and power cycle again."
 
-        print()
-        flush()
-        print('Board was found!')
-        current_path = os.path.dirname(__file__)
-        current_path += '/' if current_path else ''
-        bitfile = current_path + self.cfg.fpga_bit_file
+        # print()
+        # flush()
+        # print('Board was found!')
+        # current_path = os.path.dirname(__file__)
+        # current_path += '/' if current_path else ''
+        # bitfile = current_path + self.cfg.fpga_bit_file
 
         #So rather than doing the iceboards="*", and then later singling out the one we want. We could maybe have extracted the ip address from the ping command
-        ibs = fpga_array.FPGAArray(iceboards="*", open = 0, prog = 0, mdns_timeout=5, ping=1, bitfile=bitfile)
-        serials = list(ibs.ib.discover_serial().values())
+
+        if any_iceboard or not xr.params.serial:
+            hwm = '*'
+        else:
+            hwm = f'{self.cfg.model_number} {xr.params.serial}'
+
+        ibs = fpga_array.FPGAArray(hwm, open = 0, prog = 0, mdns_timeout=1, ping=1)
+        serials = list(ibs.ib.serial)
         if xr.params.serial in serials:
             print("Found an iceboard with the correct serial number on the network")
             ib_index = serials.index(xr.params.serial)
@@ -602,20 +599,44 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
         # ibs = fpga_array.FPGAArray(iceboards=[ib.hostname], open = 0, prog = program, mdns_timeout=1, ping=1, bitfile=bitfile)
         # ib=ibs.ib[0]
         # ib_index=0
-    
+
+
+        ib.set_fpga_bitstream = async_to_sync(ib.set_fpga_bitstream_async)
+        # Add synchronous versions of the async tuber commands for convenience
+        ib.is_fpga_programmed = async_to_sync(ib.tuber_is_fpga_programmed_async)
+        ib.get_clock_source = async_to_sync(ib.tuber_get_clock_source_async)
+        ib.is_mezzanine_present = async_to_sync(ib.tuber_is_mezzanine_present_async)
+        ib.get_motherboard_power = async_to_sync(ib.tuber_get_motherboard_power_async)
+        ib.get_motherboard_current = async_to_sync(ib.tuber_get_motherboard_current_async)
+        ib.get_motherboard_voltage = async_to_sync(ib.tuber_get_motherboard_voltage_async)
+        ib.get_motherboard_temperature = async_to_sync(ib.tuber_get_motherboard_temperature_async)
+        ib.get_mezzanine_voltage = async_to_sync(ib.tuber_get_mezzanine_voltage_async)
+        ib.set_mezzanine_power = async_to_sync(ib.tuber_set_mezzanine_power_async)
+        ib.get_mezzanine_power = async_to_sync(ib.tuber_get_mezzanine_power_async)
+        ib.get_mezzanine_current = async_to_sync(ib.tuber_get_mezzanine_current_async)
+        ib._mezzanine_eeprom_read_base64 = async_to_sync(ib._tuber_mezzanine_eeprom_read_base64_async)
+        ib.is_voltage_nominal = async_to_sync(ib.tuber_is_voltage_nominal_async)
+
         return (ib, ibs, ib_index)
 
     def prog_fpga(self, ib):
         print("Programming FPGA. This takes about 20 seconds...")
+        flush()
         current_path = os.path.dirname(__file__)
-        current_path += '/' if current_path else ''
-        bitfile = current_path + self.cfg.fpga_bit_file
-        bit = fb.FpgaBitstream(bitfile)
-        ib.register_fpga_bitstream(bit)
-        ib.set_fpga_bitstream()
+        bitfile = os.path.join(current_path, self.cfg.fpga_bit_file)
+        bitstream = FpgaBitstream(bitfile)
+        # ib.register_fpga_bitstream(bit)
+        ib.set_fpga_bitstream(bitstream)
         assert ib.is_fpga_programmed()
 
-    def sens_test(self):
+    def run_arm_system_command(self, hostname, cmd):
+        ssh_cmd = f'ssh -o "StrictHostKeyChecking no" root@{hostname} "{cmd}"'
+        split_cmd = shlex.split(ssh_cmd)
+        p = subprocess.Popen(split_cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='ascii')
+        result = p.stdout.readlines()
+        return result
+
+    def test_sens(self, xr, setUp):
         """
         QC007: Read the onboard power sensors and temperature sensors
 
@@ -652,11 +673,11 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
             #print "The hostname we're looking for is %s " %serial
 
             #ib = IceBoardPlusHandler(hostname = serial)
-            if (ib.ping() == False): #Its likely that the eeprom has never been programmed so hostname = iceboard.lcal
-                print("No motherboard found. Trying hostname = iceboard.local")
-                ib = IceBoardPlusHandler(iceboards='iceboard.local')
+            # if (ib.ping() == False): #Its likely that the eeprom has never been programmed so hostname = iceboard.lcal
+            #     print("No motherboard found. Trying hostname = iceboard.local")
+            #     ib = IceBoardPlus('iceboard.local')
 
-            assert ib.ping(), "No motherboard found. We can't ping it"
+            # assert ib.ping(), "No motherboard found. We can't ping it"
             assert not ib.is_mezzanine_present(1), "Mezzanine are NOT supposed to be present for this test, found Mezzanine on Slot 1."
             assert not ib.is_mezzanine_present(2), "Mezzanine are NOT supposed to be present for this test, found Mezzanine on Slot 2."
 
@@ -804,7 +825,7 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
 
         #Estimate 30 seconds
 
-    def ser_test(self):
+    def ser_test(self, xr, setUp):
         """
         QC006: Program boards EEPROM and Flash with serial number
 
@@ -827,10 +848,10 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
 
         question = "Is this a Rev %d board? [Y/N]" %cfg.rev
         if(self.cfg.ready_check):
-            if (input_yes_no(question, additional_answers=[])==True):
+            if (xr.input_yes_no(question, additional_answers=[])==True):
                 rev = "%d" %cfg.rev
             else:
-                rev = eval(input("What is the revision of this board? e.g 4 ?"))
+                rev = xr.input("What is the revision of this board? e.g 4 ?")
         else:
             print("Taking board rev from config file since ready_check is 0")
             rev = "%d" %cfg.rev
@@ -889,99 +910,114 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
             assert False, "Serial programmed incorectly"
         #self.instr.ps18v.output(state=False, readonly=False) # Turn power off
 
-    def i2c_test(self):
+    def test_i2c(self, xr, setUp):
         """
         QC008: Check if all I2C devices are present
 
         Procedure:
 
-          - Start the i2c test on the computerour
-          - Type in serial number of tested board.
+          - Start the i2c test on the computer
+          - Connect to the iceboard with specified serial number.
           - Check if expected devices are present
+
+        Not done:
           - IOexpanders - GPIO/ LEDs
           - Measure temperatures
 
         """
-        xr.header('Checking I2C connectivity')
+        xr.header('Checking I2C devices')
         if(self.cfg.ready_check):
-            check_bp = input_yes_no("Should this test check for backplane I2C devices? [Y/N]", additional_answers=[])
+            check_bp = xr.input_yes_no("Should this test check for backplane I2C devices? [Y/N]", additional_answers=[])
         else:
             check_bp = True
 
         cfg = self.cfg.motherboard_tests.i2c_test
-        test_results = NameSpace()
         passed = False
 
         (ib, ibs, ib_index) = self.connect_to_board(xr, cfg, questions=self.cfg.ready_check)
-        hostname = ib.hostname
 
+        print("Requesting all the I2C devices found at /sys/bus/i2c/devices on the board")
         cmd = "ls /sys/bus/i2c/devices/"
-        ssh_cmd = 'ssh -o "StrictHostKeyChecking no" root@%s "%s"' % (hostname, cmd)
-        split_cmd = shlex.split(ssh_cmd)
+        results = self.run_arm_system_command(ib.hostname, cmd)
 
-        p = subprocess.Popen(split_cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        result = p.stdout.readlines()
 
-        print("Listing all the I2C devices found at /sys/bus/i2c/devices on the board:")
-        print(result)
+        matrix_names = {"pca9548-1-70":"1-0070",
+                        "pca9548-2-71":"2-0071"}
 
-        matrix_names = ["pca9548-1-70", "pca9548-2-71"]
-        matrix_addr = ["1-0070\n", "2-0071\n"]
+        bus_names = {"I2C-1": "i2c-1",
+                     "I2C-2": "i2c-2",
+                     "I2C0_PCA954X_FMCA": "i2c-5",
+                     "I2C0_PCA954X_FMCB": "i2c-6",
+                     "I2C0_PCA954X_QSFPA": "i2c-7",
+                     "I2C0_PCA954X_QSFPB": "i2c-8",
+                     "I2C0_PCA954X_SFP": "i2c-9",
+                     "I2C0_PCA954X_SMPS": "i2c-10",
+                     "I2C0_PCA954X_BP": "i2c-11",
+                     "I2C0_PCA954X_GPIO": "i2c-12",
+                     "I2C1_PCA954X_FMCA": "i2c-13",
+                     "I2C1_PCA954X_FMCB": "i2c-14",
+                     "I2C1_PCA954X_QSFPA": "i2c-15",
+                     "I2C1_PCA954X_QSFPB": "i2c-16",
+                     "I2C1_PCA954X_SFP": "i2c-17",
+                     "I2C1_PCA954X_SMPS": "i2c-18",
+                     "I2C1_PCA954X_BP": "i2c-19",
+                     "I2C1_PCA954X_GPIO": "i2c-20"}
 
-        bus_names = [   "I2C-1", "I2C-2",
-                        "I2C0_PCA954X_FMCA","I2C0_PCA954X_FMCB","I2C0_PCA954X_QSFPA","I2C0_PCA954X_QSFPB",
-                        "I2C0_PCA954X_SFP","I2C0_PCA954X_SMPS","I2C0_PCA954X_BP","I2C0_PCA954X_GPIO",
-                        "I2C1_PCA954X_FMCA","I2C1_PCA954X_FMCB","I2C1_PCA954X_QSFPA","I2C1_PCA954X_QSFPB",
-                        "I2C1_PCA954X_SFP","I2C1_PCA954X_SMPS","I2C1_PCA954X_BP","I2C1_PCA954X_GPIO"]
-        bus_addr = ["i2c-1\n", "i2c-2\n",
-                 "i2c-5\n", "i2c-6\n", "i2c-7\n", "i2c-8\n",
-                 "i2c-9\n", "i2c-10\n", "i2c-11\n", "i2c-12\n",
-                 "i2c-13\n", "i2c-14\n", "i2c-15\n", "i2c-16\n",
-                 "i2c-17\n", "i2c-18\n", "i2c-19\n", "i2c-20\n"]
+        power_names = {"VCC12V0": "10-0047",
+                       "VCC5V5": "10-0048",
+                       "VCC3V3": "10-0049",
+                       "VADJ": "10-0043",
+                       "VCC1V8": "10-004b",
+                       "VCC1V5": "10-004c",
+                       "VCC1V2": "10-004d",
+                       "VCC1V0": "10-004e",
+                       "VCC1V0_GTX": "10-004f",
+                       "FMC_A_VCC3V3": "10-0040",
+                       "FMC_A_VCC12V0": "10-0041",
+                       "FMC_A_VADJ": "10-0042",
+                       "FMC_B_VCC3V3": "10-0044",
+                       "FMC_B_VCC12V0": "10-0045",
+                       "FMC_B_VADJ": "10-0046"}
 
-        power_names = ["VCC12V0","VCC5V5", "VCC3V3",
-                       "VADJ","VCC1V8", "VCC1V5",
-                       "VCC1V2", "VCC1V0", "VCC1V0_GTX",
-                       "FMC_A_VCC3V3", "FMC_A_VCC12V0", "FMC_A_VADJ",
-                       "FMC_B_VCC3V3", "FMC_B_VCC12V0", "FMC_B_VADJ"]
-        power_addr = ["10-0047\n", "10-0048\n", "10-0049\n",
-                      "10-0043\n", "10-004b\n", "10-004c\n",
-                      "10-004d\n", "10-004e\n", "10-004f\n",
-                      "10-0040\n", "10-0041\n", "10-0042\n",
-                      "10-0044\n", "10-0045\n", "10-0046\n"]
+        temp_names = {"POWER": "12-0048",
+                      "ARM": "12-004a",
+                      "FPGA": "12-004b",
+                      "PHY": "12-004c"}
 
-        temp_names = [ "POWER", "ARM", "FPGA", "PHY"]
-        temp_addr = ["12-0048\n","12-004a\n","12-004b\n","12-004c\n"]
+        io_names = {"pca9575_u41": "12-0020",
+                    "pca9575_u42": "12-0021",
+                    "pca9575_u48": "12-0022",
+                    "pca9575_u59": "12-0023"}
 
-        io_names = ["pca9575_u41", "pca9575_u42", "pca9575_u48", "pca9575_u59"]
-        io_addr = ["12-0020\n","12-0021\n","12-0022\n","12-0023\n"]
+        eeprom_names = {"Motherboard EEPROM": "12-0057"}
 
-        eeprom_names = ["Motherboard EEPROM"]
-        eeprom_addr = ["12-0057\n"]
+        backplane_names = {"BP_VCC3V3": "19-0040",
+                           "BP_Temp1": "19-004d",
+                           "BP_Temp2": "19-004e",
+                           "Backplane EEPROM": "19-0054"}
 
-        backplane_names = [ "BP_VCC3V3", "BP_Temp1", "BP_Temp2", "Backplane EEPROM"]
-        backplane_addr =  ["19-0040\n", "19-004d\n", "19-004e\n", "19-0054\n"]
-
-        i2c_names = matrix_names + bus_names + power_names + temp_names + io_names + eeprom_names
-        i2c_addr  = matrix_addr  + bus_addr  + power_addr  + temp_addr  + io_addr  + eeprom_addr
+        motherboard_names = dict(**matrix_names, **bus_names, **power_names, **temp_names, **io_names, **eeprom_names)
 
         print("\nParsing the list looking for specific devices")
 
         passed = True
-        for i,j in enumerate(i2c_addr):
-            if not(j in result):
-                print("Missing I2C device %s with address %s" %(i2c_names[i], i2c_addr[i]))
-                passed = False
-
-        if (check_bp == True):
-            for i,j in enumerate(backplane_addr):
-                if not(j in result):
-                    print("Missing I2C device %s with address %s" %(backplane_names[i], backplane_addr[i]))
+        def check_names(names):
+            nonlocal passed
+            for name, addr in names.items():
+                if addr + '\n' not in results:
+                    print(f"   {name}:{addr}: Missing I2C device")
                     passed = False
+                else:
+                    print(f"   {name}:{addr}: OK")
+
+        check_names(motherboard_names)
+        if check_bp:
+            check_names(backplane_names)
+
         assert passed, "Missing I2C devices"
         print("All devices are present")
 
-    def clock_test(self):
+    def test_clock(self, setUp, xr):
         """
         QC?: check if board will boot with backplane clock
 
@@ -993,13 +1029,17 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
           - Check if board reports correct clock source
 
         """
+        # xr.capture_manager.suspend_global_capture(in_=True)
+        # xr.capture_manager.resume_global_capture()
+
+        # xr.flush() # need this for now to prevent the output until the next input() from being discarded
         xr.header('Clock source test')
 
         cfg = self.cfg.motherboard_tests.clock_test
         test_results = NameSpace()
         passed = False
 
-        input("Please move the clock source jumper to the CRYSTAL position, POWER CYCLE the board, and press ENTER. ")
+        xr.input("Please move the clock source jumper to the CRYSTAL position, POWER CYCLE the board, and press ENTER. ")
         (ib, ibs, ib_index) = self.connect_to_board(xr, cfg, questions=False)
         clock_source = ib.get_clock_source()
         #self.instr.ps18v.output(state=False, readonly=False) # Turn power off
@@ -1013,7 +1053,7 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
 
         print("\nPlease turn OFF the board, and move the clock source jumper to the SMA position. ")
         print("Then attach an SMA cable between the front panel clock input and backplane clock out SMA")
-        input("When done, power ON the board and press ENTER")
+        xr.input("When done, power ON the board and press ENTER")
 
         (ib, ibs, ib_index) = self.connect_to_board(xr, cfg, questions = False)
         clock_source = ib.get_clock_source()
@@ -1028,7 +1068,7 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
             assert False, "Wrong clock source detected."
 
         print("\nPlease turn OFF the board and move the clock source jumper to the BACKPLANE position. ")
-        input("When done, power ON the board and press ENTER")
+        xr.input("When done, power ON the board and press ENTER")
 
         (ib, ibs, ib_index) = self.connect_to_board(xr, cfg, questions = False)
         clock_source = ib.get_clock_source()
@@ -1045,7 +1085,7 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
         passed = True
         print("Test passed")
 
-    def fpga_test(self):
+    def test_fpga(self, xr, setUp):
         """
         QC009: check if FPGA can be programmed - I don't think we want to run toptest script
 
@@ -1111,7 +1151,7 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
             print("Correct cookie detected - memory map read back looks good")
         else:
             print("Invalid cookie detected - letting test continue for now - although FPGA memory map read back may be problematic")
-            while (input_yes_no("Is the jumper J1 shorted? [Y/N]", additional_answers=[]) != True):
+            while (xr.input_yes_no("Is the jumper J1 shorted? [Y/N]", additional_answers=[]) != True):
                 pass;
             passed = False
 
@@ -1149,7 +1189,7 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
 
         passed = True
 
-    def mezz_test(self):
+    def test_mezz(self, xr, setUp):
         """
         QC0010: Check basic functionality of mezzanine
 
@@ -1244,30 +1284,16 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
         #Checking if the mezzanine PG_M2C line is high - its one of the GPIOs that the ARM has access to
         #A bit over kill but I prefer getting the info via the arm and no tubber command exists for it
         #Could have gone via the FPGA instead
-        cmd = "cat /sys/class/gpio/FMCA_PG_M2C/value"
-        ssh_cmd = 'ssh -o "StrictHostKeyChecking no" root@%s "%s"' % (ib.hostname, cmd)
-        split_cmd = shlex.split(ssh_cmd)
-        p = subprocess.Popen(split_cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        result = p.stdout.readlines()
-        if re.search("1",result[0]):
-            print("Mezzanine 1 - PG_M2C line is detected high - mezzanine reports power good")
-        else:
-            print("Mezzanine 1 - PG_M2C line is not high - mezzanine did not report good power")
-            assert False, "Mezzanine 1 - PG_M2C has problems"
+        def check_power_good(cmd, mezz_number):
+            result = self.run_arm_system_command(ib.hostname, cmd)
+            if re.search("1",result[0]):
+                print(f"Mezzanine {mezz_number} - PG_M2C line is detected high - mezzanine reports power good")
+            else:
+                print(f"Mezzanine {mezz_number} - PG_M2C line is not high - mezzanine did not report good power")
+                assert False, f"Mezzanine {mezz_number} - PG_M2C has problems"
 
-        #Checking if the mezzanine PG_M2C line is high - its one of the GPIOs that the ARM has access to
-        #A bit over kill but I prefer getting the info via the arm and no tubber command exists for it
-        #Could have gone via the FPGA instead
-        cmd = "cat /sys/class/gpio/FMCB_PG_M2C/value"
-        ssh_cmd = 'ssh -o "StrictHostKeyChecking no" root@%s "%s"' % (ib.hostname, cmd)
-        split_cmd = shlex.split(ssh_cmd)
-        p = subprocess.Popen(split_cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        result = p.stdout.readlines()
-        if re.search("1",result[0]):
-            print("Mezzanine 2 - PG_M2C line is detected high - mezzanine reports power good")
-        else:
-            print("Mezzanine 2 - PG_M2C line is not high - mezzanine did not report good power")
-            assert False, "Mezzanine 1 - PG_M2C has problems"
+        check_power_good("cat /sys/class/gpio/FMCA_PG_M2C/value", 1)
+        check_power_good("cat /sys/class/gpio/FMCB_PG_M2C/value", 2)
 
         passed = True
 
@@ -1304,7 +1330,7 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
         self.prog_fpga(ib)
         ib.is_fpga_programmed()
         ib.open()
-        
+
         try:
             test_results.data = []
             test_results.ramp_ok = []
@@ -1358,7 +1384,7 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
             #         good_frames+=1
             #         #print "got a frame"
             #         if (good_frames % 100) == 0:
-            #             print 'Captured {0} frames'.format(good_frames) 
+            #             print 'Captured {0} frames'.format(good_frames)
             #     except KeyError:
             #         print "missing a frame, skipping"
             #         print data
@@ -1576,8 +1602,8 @@ class MGK7MBNetworkTests(unittest.TestCase):  #
         xr.params.test_locals = locals()
 
 if __name__ == '__main__':
-    util.add_paths('..')  # needed to pychfpga
+    # util.add_paths('..')  # needed to pychfpga
 
     """ Run the test in this file."""
-    v = util.TestMenu(TEST_CONFIG_FILE).run()
+    v = TestMenu(TEST_CONFIG_FILE).run()
     locals().update(v) # bring local variables from the test runner into the current namespace for easier debugging
