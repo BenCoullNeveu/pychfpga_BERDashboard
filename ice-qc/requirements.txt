@@ -1,7 +1,0 @@
-wtl.pytest-xreport @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.pytest-xreport.git
-numpy
-matplotlib
-
-# test-specific packages
-serial
-pyudev # linux only
