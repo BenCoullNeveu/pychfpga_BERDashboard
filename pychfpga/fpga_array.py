@@ -842,7 +842,7 @@ class FPGAArray(object):
             await mdns_discover(
                           iceboards=ib_to_discover,
                           icecrates=ic_to_discover,
-                          auto_timeout=mdns_timeout)
+                          timeout=mdns_timeout)
 
         ###########################################################################
         # Exclude boards
