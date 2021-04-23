@@ -10,7 +10,7 @@ import asyncio
 import threading
 
 # PyPI packages
-from zeroconf import IPVersion, ServiceBrowser, ServiceStateChange, Zeroconf
+from zeroconf import IPVersion, ServiceBrowser, ServiceStateChange, Zeroconf, _MDNS_ADDR
 
 # Local packages
 from . import IceBoard, IceCrate
@@ -29,6 +29,9 @@ def _get_txt_field(tr, key):
 
 def match(target, value):
     return target == '*' or target == value
+
+def tuple_match(target, value):
+    return match(target[0], value[0]) and match (target[1], value[1])
 
 class ThreadData:
     def __init__(self,**kwargs):
@@ -101,6 +104,8 @@ async def mdns_discover(
     # iceboards = [entry if isinstance(entry, (list, tuple)) else ('*', [entry]) for entry in iceboards or []]
     # iceboards = [(model, serials if isinstance(serials, (list, tuple)) else [serials]) for model, serials in iceboards]
 
+    iceboard_found = {(model, serial):None for model, serial in iceboards if model != "*" and serial != "*"}
+    icecrate_found = {(model, serial):None for model, serial in icecrates if model != "*" and serial != "*"}
     # if isinstance(icecrates, str): # include '*'
     #     icecrates = [('*', [icecrates])]
     if icecrates == '*':
@@ -123,6 +128,7 @@ async def mdns_discover(
         # print("Info from zeroconf.get_service_info: %r" % (info))
         if not info:
             return
+        print(f"mdns: info= {info}, v4={info.addresses_by_version(version=IPVersion.V4Only)}")
         addr = socket.inet_ntop(socket.AF_INET, info.addresses_by_version(version=IPVersion.V4Only)[0])
         port = info.port
         # print(f"  Address: {addr}:{port}")
@@ -160,7 +166,9 @@ async def mdns_discover(
                 # ib_cls = IceBoard.get_class_by_ipmi_part_number(ib_part_number)
                 ib_obj = IceBoard.get_unique_instance(serial=ib_serial, hostname=addr)
                 # print(f'ib obj {ib_obj} has hostnme {ib_obj.hostname}')
-
+                for tib in iceboard_found:
+                    if tuple_match(tib, (ib_part_number, ib_serial)):
+                        iceboard_found[tib] = True
             # Add the backplane if it does not already exist
             if bp_part_number and bp_serial:
                 bp_cls = IceCrate.get_class_by_ipmi_part_number(bp_part_number)
@@ -182,9 +190,15 @@ async def mdns_discover(
         browser = ServiceBrowser(
             zeroconf,
             '_tuber-jsonrpc._tcp.local.',
-            handlers=[on_service_state_change])
+            handlers=[on_service_state_change],
+            addr=_MDNS_ADDR,
+            delay=100 #motherboard-serial
+            )
         while True:
             t = time.time()
+            if iceboard_found and not icecrates and all(iceboard_found.values()):
+                print('DNS-SD: All the boards that were requested were found. Stopping the search')
+                break
             with time_info as ti:
                 print(f'elapsed={t-t0:.1f}, elapsed since last time={t-ti.last_time:.1f}, dt_max={ti.dt_max}, n={ti.n}, last_time={ti.last_time}')
                 if (timeout and t - t0 > timeout):
