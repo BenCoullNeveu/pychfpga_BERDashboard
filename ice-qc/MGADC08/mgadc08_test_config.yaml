@@ -9,11 +9,10 @@ comment: |
         this is indented more
 
 # test_results_folder: './test_results'
-test_results_folder: '../test_results/adc_mezz_qc'
-mgadc08_model_number: ['MGADC08']
+test_results_folder: '../../../iceqc/MGADC08'
 xformat: ['pdf']  # Output formats for the test reports. xml is always saved.
 
-default_model: 'MGADC08'
+model_number: 'MGADC08'
 default_serial: null
 
 instruments:
@@ -21,7 +20,8 @@ instruments:
     ps12v:     {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '11.11.11.130', gpib_addr: 5}  # Agilent E3648A dual output power supply  12V on output 1, output 2 not used
     ps3v3_2v5: {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '11.11.11.130', gpib_addr: 6}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
     na:        {labpy_object: 'hp8753e',     interface: 'prologix_eth', ip_addr: '11.11.11.130', gpib_addr: 15} # HP8753E Network Analyzer
-    ps18v:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '11.11.11.73', gpib_addr: 5}  # Agilent N5764A power supply
+    # ps18v:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '11.11.11.73', gpib_addr: 5}  # Agilent N5764A power supply
+    ps18v:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '10.10.10.151', gpib_addr: 5}  # Agilent N5764A power supply on Crate 0
 
 ?: &default_fpga_array
     iceboards: ['0387']
@@ -29,14 +29,14 @@ instruments:
 test_list:
     # This list all the tests that will be done my the test software, in the proper order
     # path is the argument given to nose to find the test fucntion, in the form of module_path:function or module_path:class.method
-    # This path is also the path used by XReport to identify tests results, with the exception that the semicolon ':' is replaced by a dot '.'
-    - [ 'imp', {description: 'Impedance test (needs S/N)',   path: 'mgadc08_bench_tests:MGADC08BenchTests.impedance_test', required: yes, require_serial_number: yes, dependencies: null}]
-    - [ 'smk', {description: 'Smoke test (needs S/N)',       path: 'mgadc08_bench_tests:MGADC08BenchTests.smoke_test',     required: yes, require_serial_number: yes, dependencies: imp}]
-    - [ 'eep', {description: 'EEPROM Programming and test (needs S/N)',  path: 'mgadc08_bench_tests:MGADC08CarrierTests.eeprom_test',  required: yes, require_serial_number: yes, dependencies: smk}]
-    - [ 'pow', {description: 'Power test',                   path: 'mgadc08_bench_tests:MGADC08CarrierTests.power_test',   required: yes, require_serial_number: no, dependencies: smk}]
-    - [ 'spi', {description: 'SPI & PLL test',               path: 'mgadc08_bench_tests:MGADC08CarrierTests.spi_pll_test', required: yes, require_serial_number: no, dependencies: smk}]
-    - [ 'rmp', {description: 'Ramp test',                    path: 'mgadc08_bench_tests:MGADC08CarrierTests.ramp_test',    required: yes, require_serial_number: no, dependencies: smk}]
-    - [ 's11', {description: 'S11 test',                     path: 'mgadc08_bench_tests:MGADC08CarrierTests.s11_test',     required: yes, require_serial_number: no, dependencies: smk}]
+    # This path is also the path used by XReport to identify tests results, with the exception that the double semicolon '::' is replaced by a dot '.'
+    imp: {description: 'Impedance test (needs S/N)',               path: 'mgadc08_bench_tests.py::MGADC08BenchTests::impedance_test', required: yes, require_serial_number: yes, dependencies: null}
+    smk: {description: 'Smoke test (needs S/N)',                   path: 'mgadc08_bench_tests.py::MGADC08BenchTests::smoke_test',     required: yes, require_serial_number: yes, dependencies: imp}
+    eep: {description: 'EEPROM Programming and test (needs S/N)',  path: 'mgadc08_bench_tests.py::TestMGADC08Carrier::eeprom_test',  required: yes, require_serial_number: yes, dependencies: smk}
+    pow: {description: 'Power test',                               path: 'mgadc08_bench_tests.py::TestMGADC08Carrier::test_power',   required: yes, require_serial_number: no, dependencies: smk}
+    spi: {description: 'SPI & PLL test',                           path: 'mgadc08_bench_tests.py::TestMGADC08Carrier::spi_pll_test', required: yes, require_serial_number: no, dependencies: smk}
+    rmp: {description: 'Ramp test',                                path: 'mgadc08_bench_tests.py::TestMGADC08Carrier::ramp_test',    required: yes, require_serial_number: no, dependencies: smk}
+    s11: {description: 'S11 test',                                 path: 'mgadc08_bench_tests.py::TestMGADC08Carrier::s11_test',     required: yes, require_serial_number: no, dependencies: smk}
 
 
 menu:
@@ -48,23 +48,22 @@ menu:
     #  text: do nothing. The description is shown in the menu if there is one.
     #  board_info: Sets the current board model and serial number. The serial number can be extracted from string parsed by the regex
     #
-    - { key: '1', type: test, test_tag: imp}
-    - { key: '2', type: test, test_tag: smk}
-    - { key: '3', type: test, test_tag: eep}
-    - { key: '4', type: test, test_tag: pow}
-    - { key: '5', type: test, test_tag: spi}
-    - { key: '6', type: test, test_tag: rmp}
-    - { key: '7', type: test, test_tag: s11}
-
-    - { key: 'S', description: 'Send all new test results data to McGill',                         type: push}
-    - { key: 'R', description: 'Generate summary of all tests',                       type: summary}
-    - { key: 'Q', description: 'Exit',                                                type: exit}
-    - {           description: "or Enter or scan board's serial number or menu item", type: text}
-    - { regex: '29821-0000-(\d{4})',                                                  type: board_info, model: 'MGADC08', serial: '{0}', next_key: '1'}  # 29821-0000-nnnn are MGADC08 Serial nnnn
-    - { regex: '35896-0000-(\d{4})',                                                  type: board_info, model: 'MGADC08', serial: '{0}', next_key: '1'}  # 35896-0000-nnnn are MGADC08 Serial nnnn
-    - { regex: '38161-0000-(\d{4})',                                                  type: board_info, model: 'MGADC08', serial: '{0}', next_key: '1'}  # 38161-0000-nnnn are MGADC08 Serial nnnn
-    - { regex: '(0\d{3})',                                                            type: board_info, model: 'MGADC08', serial: '{0}', next_key: '1'}  # 0nnn are MGADC08 Serial nnnn
-    - { regex: '(\d+\-\d+)', type: range, input: '{0}'} # regex to select a range of options 
+    - { key: '1',                    action: run_test, test_tag: imp}
+    - { key: '2',                    action: run_test, test_tag: smk}
+    - { key: '3',                    action: run_test, test_tag: eep}
+    - { key: '4',                    action: run_test, test_tag: pow}
+    - { key: '5',                    action: run_test, test_tag: spi}
+    - { key: '6',                    action: run_test, test_tag: rmp}
+    - { key: '7',                    action: run_test, test_tag: s11}
+    - { key: 'S',                    action: push, description: 'Send all new test results data to McGill'}
+    - { key: 'R',                    action: summary, description: 'Generate summary of all tests'                       }
+    - { key: 'Q',                    action: exit, description: 'Exit'                                                }
+    - {                              action: text, description: "or Enter or scan board's serial number or menu item" }
+    - { regex: '29821-0000-(\d{4})', action: board_info, model: 'MGADC08', serial: '{0}', next_key: '1'}  # 29821-0000-nnnn are MGADC08 Serial nnnn
+    - { regex: '35896-0000-(\d{4})', action: board_info, model: 'MGADC08', serial: '{0}', next_key: '1'}  # 35896-0000-nnnn are MGADC08 Serial nnnn
+    - { regex: '38161-0000-(\d{4})', action: board_info, model: 'MGADC08', serial: '{0}', next_key: '1'}  # 38161-0000-nnnn are MGADC08 Serial nnnn
+    - { regex: '(0\d{3})',           action: board_info, model: 'MGADC08', serial: '{0}', next_key: '1'}  # 0nnn are MGADC08 Serial nnnn
+    - { regex: '(\d+\-\d+)',         action: range, input: '{0}'} # regex to select a range of options
 
 
 ##################################
@@ -107,6 +106,7 @@ carrier_tests:
     setup:
         fmc_slot: 1 # This is the FMC slot where we expect the Mezzanine to be
         instruments: [ps18v]
+        configure_ps: false # if False, the power supply settings will not be changed
         vlt: 18
         curlmt: 5
         fpga_array: {<<: *default_fpga_array, no_mezz: True, prog: 0,  open: 0, mdns_timeout: 30}
@@ -119,7 +119,7 @@ carrier_tests:
             3: {sn_min: 43, sn_max: 1000}
         overwrite: ask  # true, false, ask
 
-    power_test:
+    test_power:
         # instruments: [dmm] # Subset of instruments we use in these tests
         fpga_array: {<<: *default_fpga_array, no_mezz: 1, prog: 1,  open: 1}
 
