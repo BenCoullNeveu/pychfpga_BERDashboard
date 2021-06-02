@@ -3987,7 +3987,7 @@ class FPGAArray(object):
 
         for link, (source_gtx, dest_gtx) in links.items():
             # First, make sure we can get errors by setting the wrong RX PRBS Sequence
-            if source_gtx is None or dest_gtx is None or source_gtx is 'int' or dest_gtx is 'int':
+            if source_gtx is None or dest_gtx is None or source_gtx == 'int' or dest_gtx == 'int':
                 continue
 
             source_gtx.TXPRBSSEL = 4
