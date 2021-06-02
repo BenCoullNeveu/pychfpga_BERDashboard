@@ -30,6 +30,6 @@ from .iceboard_ext import IceBoard, IceBoardPlus, IceBoardExt
 from .iceboard_ext import FMCMezzanine
 from .iceboard_ext import run_async, async_to_sync
 from .fpga_bitstream import FpgaBitstream
-from .mdns_discovery import mdns_discover
+from .mdns_discovery import mdns_discover, mdns_resolve
 from .ccoll import Ccoll
 # from .myasync import myasync, async_sleep, async_return, async_moment

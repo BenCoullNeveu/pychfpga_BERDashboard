@@ -213,6 +213,38 @@ async def mdns_discover(
     return IceBoard.get_all_instances(), IceCrate.get_all_instances()
 
 
+def mdns_resolve(name, timeout=1):
+    """
+    Return the IP address for the specified name by issuing a mDNS query directly.
+
+    Parameters:
+
+        name (str): Host name to lookup. Normally ends with ".local" or
+            ".local.", which is added automatically if missing.
+
+        timeout (float): time to wait for an answer, in seconds. The function will return
+            as soon as there is an answer. mDNS devices are not obligated to
+            respond more than once a second, so setting a value less than 1
+            might cause a timeout if the device had just been queried by some
+            other system.
+
+    Returns:
+        IPV4 address as a str; None if not found
+
+    """
+    if name.lower().endswith('local'):
+        name += '.'
+    if not name.lower().endswith('.local.'):
+        name += '.local.'
+    zeroconf = Zeroconf(ip_version=IPVersion.V4Only)
+    info = zeroconf.get_service_info('.local.', name, timeout=timeout * 1000)
+    # print('found', info)
+    zeroconf.close()
+    if info:
+        return socket.inet_ntop(socket.AF_INET, info.addresses_by_version(version=IPVersion.V4Only)[0])
+    else:
+        return None
+
 def test():
     logging.basicConfig(level=logging.DEBUG)
     IceBoard.clear_hardware_map()
