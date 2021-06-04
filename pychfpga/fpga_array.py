@@ -580,10 +580,18 @@ class FPGAArray(object):
                 filename = 'SIFPGA_MGK7MB.bit'
             else:
                 filename = 'chFPGA_MGK7MB_Rev2.bit'
+
             bitfile = os.path.join(
                 os.path.dirname(__file__),
                 'fpga_bitstreams',
                 filename)
+
+        # Tempporary hack to determine the nominal processing frequency of the
+        # selected firmware. This should be read out from the firmware.
+        if os.path.split(bitfile)[1].startswith('chord'):
+                processing_frequency = 300e6
+        else:
+                processing_frequency = 200e6
 
         self.logger.info('%r: ------------------------' % self)
         self.logger.info('%r: F P G A   A R R A Y' % self)
@@ -606,6 +614,9 @@ class FPGAArray(object):
         self.logger.info('%r:     sync_source = %s' % (self, sync_source))
         self.logger.info('%r:     fpga_ip_addr_fn = %s' % (self, fpga_ip_addr_fn))
         self.logger.info('%r: ------------------------' % self)
+
+
+        self.logger.info(f'{self!r}: Firmware professing frequency is {processing_frequency/1e6:.3f} MHz')
 
         __main__._host_interface_ip_addr = if_ip
 
@@ -1103,6 +1114,7 @@ class FPGAArray(object):
                                  init=open,
                                  adc_mode=adc_mode,
                                  sampling_frequency=sampling_frequency,
+                                 processing_frequency=processing_frequency,
                                  **kwargs
                                  # reference_frequency=reference_frequency,
                                  ) for ib in self.ib])
@@ -4977,6 +4989,7 @@ def setup_logging(log_target='syslog', log_level='debug', sql_log_level='warning
     # Make sure SQLAlchemy does not log too much
     sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
     sql_logger.setLevel(log_levels[sql_log_level])
+    logging.getLogger('parso.python.diff').disabled = True # disable ipython logging in interactive sessions
 
     # Set-up main loggers
     if log_target == 'stream':
@@ -5272,7 +5285,6 @@ def create_fpga_array(args=None):
     # config['test'] = parse_dut_id(' '.join(config['target']))
 
     logger = setup_logging(**args.get('cli_logging', {}))
-
     #######################################
     # Power supply array
     #######################################

@@ -474,6 +474,7 @@ class chFPGA_controller(IceBoardExt):
     async def init(
             self,
             sampling_frequency=800e6,
+            processing_frequency=200e6,
             reference_frequency=10e6,
             adc_mode=0,
             adc_delay_table=None,
@@ -490,6 +491,12 @@ class chFPGA_controller(IceBoardExt):
 
              sampling_frequency (float): Sampling frequency in Hz to set on the ADC Mezzanine boards
                  (default 800 MHz)
+
+             processing_frequency (float): Frequency of the internally
+                 generated channelizer signal processing clock in Hz. Is
+                 compared with sampling_frequency/4 to determine if we can use
+                 the internal clock instead of the ADC clock to avoid causing
+                 large current spikes when we start and stop the ADCs.
 
              reference_frequency (float): Frequency in Hz of the Iceboard's reference clock (default
                  is 10 MHz)
@@ -518,6 +525,7 @@ class chFPGA_controller(IceBoardExt):
 
         self._sampling_frequency = sampling_frequency
         self._reference_frequency = reference_frequency
+        self._processing_frequency = processing_frequency
         self.FRAME_PERIOD = float(self.FRAME_LENGTH) / self._sampling_frequency
         self.FRAME_RATE = 1 / self.FRAME_PERIOD
 
@@ -585,6 +593,7 @@ class chFPGA_controller(IceBoardExt):
                 await mezz.init(
                     sampling_frequency=sampling_frequency,
                     reference_frequency=reference_frequency,
+                    processing_frequency=processing_frequency,
                     adc_mode=adc_mode)
                 # mezz.status()
             else:
