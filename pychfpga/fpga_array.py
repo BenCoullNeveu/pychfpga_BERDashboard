@@ -144,7 +144,7 @@ class FPGAArray(object):
             udp_retries=10,
             fpga_ip_addr_fn='(a,b,3,d)',
 
-            # sampling_frequency=800e6,
+            sampling_frequency=800e6,
             # reference_frequency=10e6,
             # data_width=4,
 
@@ -436,6 +436,7 @@ class FPGAArray(object):
              adc_mode=adc_mode,
              mode=mode,
              frames_per_packet=frames_per_packet,
+             sampling_frequency=sampling_frequency,
              tx_power=tx_power,
              integration_period=integration_period,
              corner_turn_bad_links=corner_turn_bad_links,
@@ -513,6 +514,7 @@ class FPGAArray(object):
 
             mode=None,
             frames_per_packet=2,
+            sampling_frequency=800e6,
             tx_power=None,
             integration_period=None,
             corner_turn_bad_links=None,
@@ -578,10 +580,18 @@ class FPGAArray(object):
                 filename = 'SIFPGA_MGK7MB.bit'
             else:
                 filename = 'chFPGA_MGK7MB_Rev2.bit'
+
             bitfile = os.path.join(
                 os.path.dirname(__file__),
                 'fpga_bitstreams',
                 filename)
+
+        # Tempporary hack to determine the nominal processing frequency of the
+        # selected firmware. This should be read out from the firmware.
+        if os.path.split(bitfile)[1].startswith('chord'):
+                processing_frequency = 300e6
+        else:
+                processing_frequency = 200e6
 
         self.logger.info('%r: ------------------------' % self)
         self.logger.info('%r: F P G A   A R R A Y' % self)
@@ -598,12 +608,15 @@ class FPGAArray(object):
         self.logger.info('%r:     prog = %s' % (self, prog))
         self.logger.info('%r:     open = %s' % (self, open))
         self.logger.info('%r:     no_mezz = %s' % (self, no_mezz))
-        # self.logger.info('%r:     sampling_frequency = %s' % (self, sampling_frequency))
+        self.logger.info('%r:     sampling_frequency = %s' % (self, sampling_frequency))
         # self.logger.info('%r:     reference_frequency = %s' % (self, reference_frequency))
         self.logger.info('%r:     sync_method = %s' % (self, sync_method))
         self.logger.info('%r:     sync_source = %s' % (self, sync_source))
         self.logger.info('%r:     fpga_ip_addr_fn = %s' % (self, fpga_ip_addr_fn))
         self.logger.info('%r: ------------------------' % self)
+
+
+        self.logger.info(f'{self!r}: Firmware professing frequency is {processing_frequency/1e6:.3f} MHz')
 
         __main__._host_interface_ip_addr = if_ip
 
@@ -1100,8 +1113,9 @@ class FPGAArray(object):
             await asyncio.gather(*[ib.open(adc_delay_table=ADC_DELAY_TABLE,
                                  init=open,
                                  adc_mode=adc_mode,
+                                 sampling_frequency=sampling_frequency,
+                                 processing_frequency=processing_frequency,
                                  **kwargs
-                                 # sampling_frequency=sampling_frequency,
                                  # reference_frequency=reference_frequency,
                                  ) for ib in self.ib])
 
@@ -4975,6 +4989,7 @@ def setup_logging(log_target='syslog', log_level='debug', sql_log_level='warning
     # Make sure SQLAlchemy does not log too much
     sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
     sql_logger.setLevel(log_levels[sql_log_level])
+    logging.getLogger('parso.python.diff').disabled = True # disable ipython logging in interactive sessions
 
     # Set-up main loggers
     if log_target == 'stream':
@@ -5025,6 +5040,7 @@ def add_fpga_array_arguments(parser):
     parser.add_argument('--sync_master_time_source', type=str, help="Source of the time signal used by the master board to generate the time or trigger signal ('bp_gpio_int', 'bp_time', 'bp_trig')")
     parser.add_argument('-m', '--mode',      type=str, help="Operational mode ('shuffle16', 'shuffle256', 'shuffle512'). If not specified, set_operational_mode() is not called.")
     parser.add_argument('-f', '--frames_per_packet', '--fpp',     type=int, help="Number of frames per packeet. Default=2.")
+    parser.add_argument('-s', '--sampling_frequency', type=float, help="Sampling frequency of the ADC in Hz. Default=800e6.")
     parser.add_argument('-u', '--udp_retries', type=int, help="Number of times UDP packet transmission to the FPGA will be retried.")
     parser.add_argument('--fpga_ip_addr_fn', type=str, help="Method used to set the FPGA IP address relative to the ARM address")
     parser.add_argument('hwm',               type=str, nargs='*', default=argparse.SUPPRESS, help="target hardware")  # allows free-style hardware description string
@@ -5269,7 +5285,6 @@ def create_fpga_array(args=None):
     # config['test'] = parse_dut_id(' '.join(config['target']))
 
     logger = setup_logging(**args.get('cli_logging', {}))
-
     #######################################
     # Power supply array
     #######################################
