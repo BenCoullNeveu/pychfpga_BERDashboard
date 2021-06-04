@@ -436,6 +436,7 @@ class FPGAArray(object):
              adc_mode=adc_mode,
              mode=mode,
              frames_per_packet=frames_per_packet,
+             sampling_frequency=sampling_frequency,
              tx_power=tx_power,
              integration_period=integration_period,
              corner_turn_bad_links=corner_turn_bad_links,
@@ -513,6 +514,7 @@ class FPGAArray(object):
 
             mode=None,
             frames_per_packet=2,
+            sampling_frequency=800e6,
             tx_power=None,
             integration_period=None,
             corner_turn_bad_links=None,
