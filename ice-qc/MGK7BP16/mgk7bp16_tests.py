@@ -46,10 +46,12 @@ class TestMGK7BP16Crate:
         self.cfg = xr.config
         # cfg = self.cfg.crate_tests.setup  # config options pertaining to setup
 
+        assert xr.model and xr.serial, "model or serial number has not been specified"
+
 
     def test_insp(self, xr):
         """
-        QC001: Inspection test: visual check of the board
+        QC001: Inspection test: visual check of the backplane
 
         Procedure:
 
@@ -61,41 +63,55 @@ class TestMGK7BP16Crate:
         xr.header('Inspection test')
 
         questions = [
-            "Is the FPGA heatsink attached? With pushpins holding it firmly in place [Y/N]? ",
-            "Is the FPGA heatsink model correct? Pins cut near stiffener [Y/N]? ",
-            "Is the board Stiffener installed, and the board is reasonably flat[Y/N]? ",
-            "Are the PLL heatsinks attached [Y/N]? ",
-            "Does the ARM shield fence look straight [Y/N]? ",
-            "Are the dipswitches set correctly [Y/N]? ",
-            "Are the jumpers placed correctly [Y/N]? ",
-            "Are the 90pin Molex impact backplane connectors screwed down [Y/N]? ",
-            "Are the QSFP and SFP connectors soldered in place [Y/N]? ",
-            "Do all buck converter sensors have the additional hand soldered capacitor [Y/N]? ",
-            #   ---
-            #   Not strictly necessary since GTX test tests these connections:
-            #             "Please inspect the GTX backplane connector pins on the back of the board (you will need the microscope). " \
-            #                 "Are they all perfect? i.e none of them bent or unusual [Y/N]? ",
-            #   ---
-            "Do all the FMC power switches look well soldered [Y/N]?",
-            "Is the patch wire in place and secured [Y/N]?"]
+            "Does the soldering look okay overall",
+            "Do all pins on the the impact connector look present and straight",
+            "Buck sense capacitor added  (100nF)",
+            "Molex screws are plastic and NOT metal",
+            "Arm reset cap modified (680pF added between SW4 and SW2)",
+            # "heatsink added to buck",  # Not needed
+            "Hand soldered wire added", # old rev?
+            ]
 
         answers = []
 
         for i, q in enumerate(questions):
-            answers.append(xr.input_yes_no(str(i+1)+ ") " + q, additional_answers=[]))
+            answers.append(xr.input_yes_no(f'{i+1}) {q}', additional_answers=[]))
 
-        passed =  True
-        for i, ans in enumerate(answers):
-            if not ans:
-                print(("Please address inspection line %i" % (i+1)))
-                passed = False
-        assert passed, 'Inspection Test failed'
 
+        pf_table = [["Question", "Status"]] + [[f'{i+1}) {q}', (':red:`FAILED`', ':green:`PASSED`')[answers[i]]] for i,q in enumerate(questions)]
+        xr.add_table(pf_table, header=True)
+
+
+        failed_lines = [str(i+1) for i, ans in enumerate(answers) if not ans]
+        if failed_lines:
+            print(f"Some tests failed, please address inspection lines {', '.join(failed_lines)}")
+
+        assert not failed_lines, 'Inspection Test failed'
 
         comments = xr.input("If there are any additional comments you wish to make (e.g. scratches, manufacturing problems), please describe below. (If none, enter 'None'): ")
-        passed = True
+        # passed = True
 
         #Estimate 30 seconds
+
+
+    def test_power(self, xr):
+
+        """power
+        003,
+        Test    Result  Pass/Fail
+        Input resistance to backplane power     No short - high impedance   Pass
+        Load resistance on buck output  6 Ohms  Pass
+        Power consumption   17V supply 0.36A giving 6.2W    Pass
+        Power consumption   18V supply 0.43A giving 7.7W (6.3W on serial 8)     FAIL - SYNC FANOUT IC with IR Camera at >50 deg C, Slot 4 Sync failiure, Pin 20 of fanout IC 3 Ohms to ground
+
+        Buck output voltage     3.3V    Pass
+
+        011
+
+        5V linear regulator voltage     5V  Pass
+        3.3V linear regulator voltage   3.3V    Pass
+
+        """
 
 
     def clock_test(self):
