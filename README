@@ -17,12 +17,13 @@ Before you start, you need:
 	    ssh-add path_to_bitbucket_key
 
 - Permissions to the pychfpga and dependent repositories in bitbucket. Ask McGill administrator.
-- git LFS (git >1.8.2 includes LFS by default)
-- Python 3.7 (Python 2.7 no longer supported). The code was tested on Python 3.7.9.
-- pip 18.1  (2018-10-05) or later (to support the PEP 508 dependency specs)
-- mdns/avahi/bonjour development libraries should be installed to allow the python package pybonjour to install::
+- The following programs should be installed
+	- git LFS (git >1.8.2 includes LFS by default)
+	- Python >=3.7 (Python 2.7 no longer supported). The code was tested on Python 3.7.9.
+	- pip >=18.1  (2018-10-05) or later (to support the PEP 508 dependency specs)
+	- pythonX.X-dev (required for netiface to be compiled by pip)
 
-	sudo apt install  libavahi-compat-libdnssd1  # on Ubuntu
+	sudo apt install  pythonX.X-dev  # on Ubuntu
 
 To operate a board, You also need the following:
 
@@ -65,6 +66,9 @@ If you plan manual interactive sessions (which is useful for debugging first ins
 
 	$ pip install ipython
 
+If you want to operate the Quality Control (QC) test scripts, you can ask for the additional dependencies to be installed with:
+
+	$ pip install -e ./pychfpga[qc]  # install in-place with the QC dependencies
 
 
 

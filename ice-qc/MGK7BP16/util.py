@@ -53,15 +53,15 @@ def run_tests(config_file):
             menu_item.regex = '(%s|%s)' % (test.path, menu_item.test_tag) # have the menu recognize the test path or key as an other way to select the test
 
     while True:
-        print
-        print
-        print '---------------------------------------------'
+        print()
+        print()
+        print('---------------------------------------------')
         if current_model and current_serial:
-            print 'Currently testing  %s SN%s (Scanned=%s)' % (current_model, current_serial, is_serial_scanned)
+            print('Currently testing  %s SN%s (Scanned=%s)' % (current_model, current_serial, is_serial_scanned))
         else:
-            print ' !!! NO SERIAL NUMBER CURRENTLY SELECTED !!!'
-        print '---------------------------------------------'
-        print
+            print(' !!! NO SERIAL NUMBER CURRENTLY SELECTED !!!')
+        print('---------------------------------------------')
+        print()
         # Get a summary of all tests run so far
         test_folder = os.path.join(test_results_folder, '%s_SN%s' % (current_model, current_serial))
         summary = XReport.generate_test_summary(input_folder=test_folder, required_tests=cfg.test_list)
@@ -89,15 +89,15 @@ def run_tests(config_file):
             default_choice = 'Q'
 
         selection = select_menu_item(test_menu, default=default_choice)
-        print
+        print()
 
         if selection.type == 'exit':
             # instr.dmm.display('Bye!', '')
             break
         elif selection.type == 'board_info':
             if selection.model not in model_number:
-                print
-                print '!!!! This is not a valid serial number for this test. Try again.'
+                print()
+                print('!!!! This is not a valid serial number for this test. Try again.')
             else:
                 current_model = selection.model
                 current_serial = selection.serial
@@ -108,25 +108,25 @@ def run_tests(config_file):
             commit_repo(test_results_folder)
         elif selection.type == 'summary':
             test_folders = os.path.join(test_results_folder, '%s_SN*/' % (current_model))
-            f = raw_input('Enter destination filename (optional, no extension):')
+            f = input('Enter destination filename (optional, no extension):')
             summary_filename = os.path.join(test_results_folder, f+'.csv')
             XReport.generate_combined_summary(test_folders, cfg.test_list, output_filename=summary_filename)
         elif selection.type == 'test':
             test = test_list[selection.test_tag]
 
             if test.require_serial_number and (not is_serial_scanned or not current_serial or not current_model):
-                print
-                print '!!!!!!!!!!!!!!!!!!'
-                print 'Please enter or scan a serial number before beginning a test'
+                print()
+                print('!!!!!!!!!!!!!!!!!!')
+                print('Please enter or scan a serial number before beginning a test')
                 continue
             # summary_data = xr.generate_summary(summary_filename, data_folder)
             nose_test_path = test.path
             test_date = datetime.datetime.now().isoformat().replace(':','_')+'_' if not cfg.debug.no_date else ''
 
 
-            print
-            print 'Running test %s' % nose_test_path
-            print
+            print()
+            print('Running test %s' % nose_test_path)
+            print()
 
             if test.require_serial_number:
                 serial = current_serial
@@ -136,13 +136,13 @@ def run_tests(config_file):
 
             params = NameSpace(config_file=config_file, model=current_model, serial=serial)
             r = XReport.run(nose_test_path, xparams=params)
-            print
-            print
+            print()
+            print()
 
             if params.serial != current_serial:
-                print '**********************************************'
-                print ' **** Serial number is now %s' % (params.serial)
-                print '**********************************************'
+                print('**********************************************')
+                print(' **** Serial number is now %s' % (params.serial))
+                print('**********************************************')
                 current_serial = params.serial
                 is_serial_scanned = False
 
@@ -152,7 +152,7 @@ def run_tests(config_file):
             full_test_filename = os.path.join(test_data_folder, test_file_name)
 
             if not os.path.exists(test_folder):
-                print 'Creating folder %s' % test_data_folder
+                print('Creating folder %s' % test_data_folder)
                 os.makedirs(test_data_folder)
 
             # print 'Test data will be stored in %s' % full_test_filename
@@ -161,7 +161,7 @@ def run_tests(config_file):
             #     default_choice = selection.next_key
             # else:
             #     default_choice = 'Q'
-            print 'Generating summary report...'
+            print('Generating summary report...')
             summary_file_name = os.path.join(test_folder, '%s_SN%s_summary.pdf' %  (current_model, current_serial))
             t = XReport.generate_test_summary(input_folder=test_data_folder, required_tests=cfg.test_list, output_filename=summary_file_name, title='%s_SN%s Summary Test Report' % (current_model, current_serial))
     return locals()  # return a dict of all local variables to help interactive debugging
@@ -193,7 +193,7 @@ def select_menu_item(menu, default=''):
 
     Returns the list corresponding to the selected item.
     """
-    print 'Select the operation to execute.\n'
+    print('Select the operation to execute.\n')
 
     key_width = 0
     status_width = 0
@@ -204,16 +204,16 @@ def select_menu_item(menu, default=''):
     for item in menu:
         if 'description' in item:
             # if 'key' in item:
-                print fmt % (item.get('status',''), item.get('key',''), item.get('description',''))
+                print(fmt % (item.get('status',''), item.get('key',''), item.get('description','')))
             # else:
             #     print "    %s" % item['description']
 
     while True:
-        choice = raw_input("Enter choice%s: " % (' [%s]' % default if default else '')).strip()
+        choice = input("Enter choice%s: " % (' [%s]' % default if default else '')).strip()
         pattern_match = find_menu_item(choice or default, menu)
         if pattern_match:
             return pattern_match
-        print "Choice is not valid. Valid choices are %s. Please try again." % (', '.join(item['key'] for item in menu if item.get('key', None)))
+        print("Choice is not valid. Valid choices are %s. Please try again." % (', '.join(item['key'] for item in menu if item.get('key', None))))
 
 def find_menu_item(text, pattern_list):
     """ Finds the menu item whose 'key' or 'regex' pattern matches the specified text.
@@ -233,7 +233,7 @@ def find_menu_item(text, pattern_list):
             matches = re.match(pattern['regex'] + '$', text, re.I)
             if matches:
                 args = {}
-                for key, value in pattern.items():
+                for key, value in list(pattern.items()):
                     if isinstance(value, str) and key not in ('key', 'regex'):  # regex has curly braces...
                         # print matches.groups(), value, key
                         # sanitized_value = value.replace('{','{{').replace('}','}}')
@@ -256,7 +256,7 @@ def find_menu_item(text, pattern_list):
 
 
 def load_config(filename):
-        print 'Loading config file %s' % filename
+        print('Loading config file %s' % filename)
         with open(filename, 'rb') as yamlfile:
             cfg = NameSpace(icecore.load_yaml(yamlfile))
         return cfg
@@ -333,7 +333,7 @@ def open_instruments(instruments, filter_list=None):
 
     instr = NameSpace()
 
-    for instr_name, connection_parameters in instruments.items():
+    for instr_name, connection_parameters in list(instruments.items()):
         # print instr_name, connection_parameters
         labpy_object_name = connection_parameters.pop('labpy_object')
         labpy_object = getattr(labpy, labpy_object_name)
@@ -366,12 +366,12 @@ def pull_all( ):
     # For results repo
     # Check for no_commit file
     if os.path.exists(os.path.join(read_config()['results_directory'], 'no_commit')):
-        print "Skipping git pull of results due to presence of 'no_commit' file in results directory."
+        print("Skipping git pull of results due to presence of 'no_commit' file in results directory.")
     else:
         try:
             res_repo = get_repo('iceboard-qc')
             res_repo.git.pull('--rebase')
-            print "Pulled latest version of results git repository."
+            print("Pulled latest version of results git repository.")
         except GitCommandError:
             "Failed to pull latest version of results git repository. (trace below)"
             traceback.print_exc()
@@ -379,12 +379,12 @@ def pull_all( ):
     # For tracking repo
     # Check for no_commit file
     if os.path.exists(os.path.join(read_config()['hw_track_directory'], 'no_commit')):
-        print "Skipping git commit of hardware tracking due to presence of 'no_commit' file in results directory."
+        print("Skipping git commit of hardware tracking due to presence of 'no_commit' file in results directory.")
     else:
         try:
             hw_repo = get_repo('hardware_tracking')
             hw_repo.git.pull('--rebase')
-            print "Pulled latest version of hardware tracking git repository."
+            print("Pulled latest version of hardware tracking git repository.")
         except GitCommandError:
             "Failed to pull latest version of hardware tracking git repository. (trace below)"
             traceback.print_exc()
@@ -400,25 +400,25 @@ def commit_repo(repo_path):
         if repo.is_dirty() or len(repo.untracked_files) > 0:
             to_stage = [diff.a_blob.path for diff in repo.index.diff(None)] + repo.untracked_files
             repo.index.add(to_stage)
-            print "Added modified files to results git index:"
+            print("Added modified files to results git index:")
             for file in to_stage:
-                print "    " + file
+                print("    " + file)
             repo.index.commit("Changes to QC results committed from testing script.")
-            print "Changes committed. Pulling & merging latest results from server..."
+            print("Changes committed. Pulling & merging latest results from server...")
             repo.git.pull('--rebase')
-            print "Pulled from origin. Pushing data to server"
+            print("Pulled from origin. Pushing data to server")
             repo.remotes.origin.push()
-            print "New commit pushed to server!"
+            print("New commit pushed to server!")
         else:
-            print "Local Repository is clean. Nothing to commit!"
-            print "Pulling latest results from server..."
+            print("Local Repository is clean. Nothing to commit!")
+            print("Pulling latest results from server...")
             repo.git.pull('--rebase')
-            print "Pulled from sever"
+            print("Pulled from sever")
             # repo.remotes.origin.push()
             # print "New commit pushed to server!"
 
     except git.GitCommandError:
-        print "Failed to add files to 'iceboard-qc' git repository. (trace below)"
+        print("Failed to add files to 'iceboard-qc' git repository. (trace below)")
         traceback.print_exc()
 
 def commit_hw_files( ):
@@ -427,7 +427,7 @@ def commit_hw_files( ):
 
     # Check for no_commit file
     if os.path.exists(os.path.join(read_config()['hw_track_directory'], 'no_commit')):
-        print "Skipping git commit of results due to presence of 'no_commit' file in hardware_tracking directory."
+        print("Skipping git commit of results due to presence of 'no_commit' file in hardware_tracking directory.")
         return None
 
     hw_repo = get_repo('hardware_tracking')
@@ -435,15 +435,15 @@ def commit_hw_files( ):
         if hw_repo.is_dirty() or len(hw_repo.untracked_files) > 0:
             to_stage = [diff.a_blob.path for diff in hw_repo.index.diff(None)] + hw_repo.untracked_files
             hw_repo.index.add(to_stage)
-            print "Added modified files to hardware tracking git index:"
+            print("Added modified files to hardware tracking git index:")
             for file in to_stage:
-                print "    " + file
+                print("    " + file)
             hw_repo.index.commit("Update to Iceboard tracking committed from testing script.")
-            print "Changes committed.\n"
+            print("Changes committed.\n")
             hw_repo.git.pull('--rebase')
-            print "Pulled from origin..."
+            print("Pulled from origin...")
             hw_repo.remotes.origin.push()
-            print "New commit pushed to origin!"
+            print("New commit pushed to origin!")
         else:
             "Repository is clean. Nothing to commit!"
 

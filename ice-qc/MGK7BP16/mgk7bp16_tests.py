@@ -1,52 +1,117 @@
+#!/usr/bin/env python
 
 """Performs tests on the full crate setup."""
-import unittest
 import time
 import numpy as np
 import matplotlib.pyplot as plt
 import base64
-import util
-import datetime
-from util import NameSpace
-import textwrap
+# from util import NameSpace
 
-util.add_paths('../pychfpga/core')  # needed to find icecore
-from icecore import XReport as xr
-from icecore.tests.xreport import test_report
-from icecore.hw import ipmi_fru
+import pytest
 
-util.add_paths('../pychfpga')  # needed to find fpga_array
-util.add_paths('../') # needed to find pychfpga
-from fpga_array import FPGAArray
+from wtl.namespace import NameSpace
+from wtl.pytest_xreport import xr, run_test_menu
 
-TEST_CONFIG_FILE = './MGK7BP16/mgk7bp16_test_config.yaml'
+# from icecore.tests.xreport import test_report
+from pychfpga import ipmi_fru, FPGAArray
 
-def input(message):
-    key = xr.input(message).lower()
-    assert not key.startswith('q'), 'Test was interrupted by user'
-    return key
 
-def input_yes_no(message, additional_answers=[]):
-    while True:
-        key = input(message)
-        if key.startswith('y'):
-            return True
-        elif key.startswith('n'):
-            return False
-        elif key in additional_answers:
-            return key
-        print 'Wrong answer. Try again'
+# TEST_CONFIG_FILE = './MGK7BP16/mgk7bp16_test_config.yaml'
 
-class MGK7BP16CrateTests(unittest.TestCase):
+# def input(message):
+#     key = xr.input(message).lower()
+#     assert not key.startswith('q'), 'Test was interrupted by user'
+#     return key
 
-    def setUp(self):
+# def input_yes_no(message, additional_answers=[]):
+#     while True:
+#         key = input(message)
+#         if key.startswith('y'):
+#             return True
+#         elif key.startswith('n'):
+#             return False
+#         elif key in additional_answers:
+#             return key
+#         print 'Wrong answer. Try again'
+
+class TestMGK7BP16Crate:
+
+    @pytest.fixture(autouse=True)
+    def setup(self, xr):
         """ Prepare the test for execution.
 
         Here, we load the yaml configuration file.
         """
         xr.header('Setting-up')
-        self.cfg = util.load_config(TEST_CONFIG_FILE)
-        cfg = self.cfg.crate_tests.setup  # config options pertaining to setup
+        self.cfg = xr.config
+        # cfg = self.cfg.crate_tests.setup  # config options pertaining to setup
+
+        assert xr.model and xr.serial, "model or serial number has not been specified"
+
+
+    def test_insp(self, xr):
+        """
+        QC001: Inspection test: visual check of the backplane
+
+        Procedure:
+
+          - Start the inspection test on the computer
+          - Type in serial number of tested board.
+          - Visually inspect specific points mentioned in test
+
+        """
+        xr.header('Inspection test')
+
+        questions = [
+            "Does the soldering look okay overall",
+            "Do all pins on the the impact connector look present and straight",
+            "Buck sense capacitor added  (100nF)",
+            "Molex screws are plastic and NOT metal",
+            "Arm reset cap modified (680pF added between SW4 and SW2)",
+            # "heatsink added to buck",  # Not needed
+            "Hand soldered wire added", # old rev?
+            ]
+
+        answers = []
+
+        for i, q in enumerate(questions):
+            answers.append(xr.input_yes_no(f'{i+1}) {q}', additional_answers=[]))
+
+
+        pf_table = [["Question", "Status"]] + [[f'{i+1}) {q}', (':red:`FAILED`', ':green:`PASSED`')[answers[i]]] for i,q in enumerate(questions)]
+        xr.add_table(pf_table, header=True)
+
+
+        failed_lines = [str(i+1) for i, ans in enumerate(answers) if not ans]
+        if failed_lines:
+            print(f"Some tests failed, please address inspection lines {', '.join(failed_lines)}")
+
+        assert not failed_lines, 'Inspection Test failed'
+
+        comments = xr.input("If there are any additional comments you wish to make (e.g. scratches, manufacturing problems), please describe below. (If none, enter 'None'): ")
+        # passed = True
+
+        #Estimate 30 seconds
+
+
+    def test_power(self, xr):
+
+        """power
+        003,
+        Test    Result  Pass/Fail
+        Input resistance to backplane power     No short - high impedance   Pass
+        Load resistance on buck output  6 Ohms  Pass
+        Power consumption   17V supply 0.36A giving 6.2W    Pass
+        Power consumption   18V supply 0.43A giving 7.7W (6.3W on serial 8)     FAIL - SYNC FANOUT IC with IR Camera at >50 deg C, Slot 4 Sync failiure, Pin 20 of fanout IC 3 Ohms to ground
+
+        Buck output voltage     3.3V    Pass
+
+        011
+
+        5V linear regulator voltage     5V  Pass
+        3.3V linear regulator voltage   3.3V    Pass
+
+        """
 
 
     def clock_test(self):
@@ -55,9 +120,9 @@ class MGK7BP16CrateTests(unittest.TestCase):
         ca = FPGAArray(icecrates = xr.params.serial, prog = self.cfg.debug.force_fpga_prog, open = 1)
 
         while True:
-            irigb_source = raw_input('Indicate the source for the IRIG-B signal, 1 for bp_time, 2 for bp_trig, or 3 for both. ')
+            irigb_source = input('Indicate the source for the IRIG-B signal, 1 for bp_time, 2 for bp_trig, or 3 for both. ')
             if irigb_source != '1' and irigb_source != '2' and time_source != '3':
-                print 'Wrong input, try again!'
+                print('Wrong input, try again!')
             else:
                 break
 
@@ -69,31 +134,31 @@ class MGK7BP16CrateTests(unittest.TestCase):
             slots = set(ca.ib.slot)
 
             # Print the list of boards
-            print 'Populated Slots:'
-            for (slot, ib) in ca.ic[0].slot.items():
-                print 'Slot %02i: IceBoard SN%s' % (slot, ib.serial)
+            print('Populated Slots:')
+            for (slot, ib) in list(ca.ic[0].slot.items()):
+                print('Slot %02i: IceBoard SN%s' % (slot, ib.serial))
 
-            print '\nReference clock Frequencies:'
+            print('\nReference clock Frequencies:')
             clock = []
             for ib in ca.ib:
                 raw_clk_freq = ib.FreqCtr.read_frequency('RAW_CLK')
-                print 'Slot %02i: %.6f MHz' % (ib.slot, raw_clk_freq)
+                print('Slot %02i: %.6f MHz' % (ib.slot, raw_clk_freq))
                 clock.append(raw_clk_freq)
 
             if irigb_source == '1' or irigb_source == '3':
-                print '\nTime Readout:'
+                print('\nTime Readout:')
                 result.time = []
                 ca.ib.set_irigb_source('bp_time')
-                print ca.ib.get_irigb_time()
+                print(ca.ib.get_irigb_time())
                 for ib in ca.ib:
                     result.time.append(ib.get_irigb_time(format = 'nano'))
 
             if irigb_source == '2' or irigb_source == '3':
-                print '\nTrig Readout:'
+                print('\nTrig Readout:')
                 result.trig = []
                 ca.ib.set_irigb_source('bp_trig')
                 time.sleep(3)
-                print ca.ib.get_irigb_time()
+                print(ca.ib.get_irigb_time())
                 for ib in ca.ib:
                     result.trig.append(ib.get_irigb_time(format = 'nano'))
 
@@ -125,13 +190,13 @@ class MGK7BP16CrateTests(unittest.TestCase):
             #extTemp16 = ca.ib[0].get_backplane_temperature(ca.ib[0].TEMPERATURE_SENSOR.BP_SLOT16_EXTERN)
             serial = ca.ib[0]._get_backplane_serial()
 
-            print 'backplane voltage = ' + repr(voltage)
-            print 'backplane current = ' + repr(current)
-            print 'backplane slot1 temp = ' + repr(bpTemp1)
-            print 'backplane slot16 temp = ' + repr(bpTemp16)
+            print('backplane voltage = ' + repr(voltage))
+            print('backplane current = ' + repr(current))
+            print('backplane slot1 temp = ' + repr(bpTemp1))
+            print('backplane slot16 temp = ' + repr(bpTemp16))
             #print 'backplane slot1 extern temp = ' + repr(extTemp1)
             #print 'backplane slot16 extern temp = ' + repr(extTemp16)
-            print 'backplane serial number = ' + repr(serial)
+            print('backplane serial number = ' + repr(serial))
             ca.print_iceboard_temperatures()
 
             assert input_yes_no('\nIs the above data sensical? Answer Y/N\n'), "User detected error in sensory data!"
@@ -156,13 +221,13 @@ class MGK7BP16CrateTests(unittest.TestCase):
             qsfpslots = [0]*16
             for i in range(1, 17):
                 if ca.ib[0].is_bp_qsfp_present(i):
-                    print "Backplane QSFP module present on slot " + repr(i)
+                    print("Backplane QSFP module present on slot " + repr(i))
                     qsfpslots[i-1] = 1
                 else:
-                    print "Backplane QSFP module NOT present on slot " + repr(i)
+                    print("Backplane QSFP module NOT present on slot " + repr(i))
 
                 if qsfpslots[i-1]:
-                    print "QSFP module manufactured by: "+ base64.b64decode(ca.ib[0]._bp_qsfp_eeprom_read_base64(i, 148, 16)).strip() + ". Serial number: " + base64.b64decode(ca.ib[0]._bp_qsfp_eeprom_read_base64(i, 196, 16)).strip() + "."
+                    print("QSFP module manufactured by: "+ base64.b64decode(ca.ib[0]._bp_qsfp_eeprom_read_base64(i, 148, 16)).strip() + ". Serial number: " + base64.b64decode(ca.ib[0]._bp_qsfp_eeprom_read_base64(i, 196, 16)).strip() + ".")
 
             for i in range(0, 16):
                 assert qsfpslots[i], "Not all connectors were detected!"
@@ -189,22 +254,22 @@ class MGK7BP16CrateTests(unittest.TestCase):
         xr.header('Begin Reset Test')
         try:
             for i in range(0, 16, 2):
-                print "Resetting arm on board %d." % (i+2)
+                print("Resetting arm on board %d." % (i+2))
                 ca.ib[i].reset_arm_on_slot(i+2)
                 result.res.off[i+1] = not ca.ib[i+1].ping()
 
-            print "Waiting ..."
+            print("Waiting ...")
             time.sleep(cfg.arm_sleep_time)
 
             for i in range(0, 16, 2):
                 result.res.on[i+1] = ca.ib[i+1].ping()
 
             for i in range(1, 16, 2):
-                print "Resetting arm on board %d." % i
+                print("Resetting arm on board %d." % i)
                 ca.ib[i].reset_arm_on_slot(i)
                 result.res.off[i-1] = not ca.ib[i-1].ping()
 
-            print "Waiting ..."
+            print("Waiting ...")
             time.sleep(cfg.arm_sleep_time)
 
             for i in range(1, 16, 2):
@@ -212,7 +277,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
 
             xr.header('Test-Results')
             for i in range(0, len(result.res.off)):
-                print result.res.off[i] , result.res.on[i]
+                print(result.res.off[i] , result.res.on[i])
 
             for i in range(0, len(result.res.off)):
                 assert result.res.off[i], "Iceboard(s) did not turn off properly!"
@@ -226,26 +291,26 @@ class MGK7BP16CrateTests(unittest.TestCase):
 
         try:
             for i in range(0, 16, 2):
-                print "Turning board %d off." % (i+2)
+                print("Turning board %d off." % (i+2))
                 ca.ib[i].set_power_on_slot(i+2, False)
                 result.onoff.off[i+1] = not ca.ib[i+1].ping()
-                print "Turning board %d on." % (i+2)
+                print("Turning board %d on." % (i+2))
                 ca.ib[i].set_power_on_slot(i+2, True)
 
-            print "Waiting ..."
+            print("Waiting ...")
             time.sleep(cfg.pow_sleep_time)
 
             for i in range(0, 16, 2):
                 result.onoff.on[i+1] = ca.ib[i+1].ping()
 
             for i in range(1, 16, 2):
-                print "Turning board %d off." % i
+                print("Turning board %d off." % i)
                 ca.ib[i].set_power_on_slot(i, False)
                 result.onoff.off[i-1] = not ca.ib[i-1].ping()
-                print "Turning board %d on." % i
+                print("Turning board %d on." % i)
                 ca.ib[i].set_power_on_slot(i, True)
 
-            print "Waiting ..."
+            print("Waiting ...")
             time.sleep(cfg.pow_sleep_time)
 
             for i in range(1, 16, 2):
@@ -253,7 +318,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
 
             xr.header('Test-Results')
             for i in range(0, len(result.onoff.off)):
-                print result.onoff.off[i] , result.onoff.on[i]
+                print(result.onoff.off[i] , result.onoff.on[i])
 
             for i in range(0, len(result.onoff.off)):
                 assert result.onoff.off[i], "Iceboard(s) did not turn off properly!"
@@ -270,18 +335,18 @@ class MGK7BP16CrateTests(unittest.TestCase):
         cfg = self.cfg.crate_tests.bitErrorRate_test
 
         while True:
-            numberOfCrates = raw_input('Do you want to test on 1 or 2 crates (QSFP links require 2 crates, unless connected in a loop)?\nEnter "1" or "2" for respective choices. ')
+            numberOfCrates = input('Do you want to test on 1 or 2 crates (QSFP links require 2 crates, unless connected in a loop)?\nEnter "1" or "2" for respective choices. ')
             if numberOfCrates == '1':
                 serials = xr.params.serial
                 break
 
             elif numberOfCrates == '2':
-                crate2 = raw_input('What is the serial number of the second crate you want to use for this test? ')
+                crate2 = input('What is the serial number of the second crate you want to use for this test? ')
                 serials = [xr.params.serial, crate2]
                 break
 
             else:
-                print 'Wrong input!'
+                print('Wrong input!')
 
         ca = FPGAArray(icecrates = serials, prog = self.cfg.debug.force_fpga_prog, open = 1)
 
@@ -296,11 +361,11 @@ class MGK7BP16CrateTests(unittest.TestCase):
             #     ca.init_corner_turn(mode = 'shuffle256')
             # else:
             #     ca.init_corner_turn(mode = 'shuffle512')
-            
+
             link_map = {}
             link_map.update(ca.get_backplane_pcb_link_map())
             link_map.update(ca.get_backplane_qsfp_link_map())
-            link_map = {link: gtxes for link, gtxes in link_map.items() if (('int' not in gtxes) and (None not in gtxes))}
+            link_map = {link: gtxes for link, gtxes in list(link_map.items()) if (('int' not in gtxes) and (None not in gtxes))}
 
             result = ca.get_ber(link_list = link_map, period = cfg.period, print_ = True, tx_init_power=2, tx_power=6, tx_qsfp_power=14, minerrors_toprint=0)
             bp_rate = True
@@ -308,7 +373,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
             #gpu_rate = True
             bad_lanes = []
 
-            for key in result.keys():
+            for key in list(result.keys()):
                 if key[0] == 'pcb':
                     if result[key] >= cfg.bp_limit:
                         bp_rate = False
@@ -324,10 +389,10 @@ class MGK7BP16CrateTests(unittest.TestCase):
                     del result[key]
 
             xr.header('Test-Results')
-            keys = result.keys()
+            keys = list(result.keys())
             keys.sort()
             for key in keys:
-                print key, round(result[key], 3)
+                print(key, round(result[key], 3))
 
             bad_lanes.sort()
 
@@ -336,9 +401,9 @@ class MGK7BP16CrateTests(unittest.TestCase):
             #assert gpu_rate, 'Bit Error Rate for GPU lanes too high!'
 
         finally:
-            print 'Bad Links:'
+            print('Bad Links:')
             for item in bad_lanes:
-                print item
+                print(item)
             xr.save_data(result)
             xr.params.test_locals = locals()
 
@@ -357,29 +422,29 @@ class MGK7BP16CrateTests(unittest.TestCase):
                 result[board].data = []
                 result[board].ramp_ok = []
 
-                for mezz in ib.mezzanine.values():
-                    print 'initializing mezzanine...'
+                for mezz in list(ib.mezzanine.values()):
+                    print('initializing mezzanine...')
                     mezz.init()
 
-                print 'Computing ADC delays for board serial number: ' + ib.serial
+                print('Computing ADC delays for board serial number: ' + ib.serial)
                 ib.set_adc_delays(source='default', compute_delays=1, save_delays=False, check_sync_delays=True, check_adc_delays=20, verbose=0, retry=5)
 
-                for mezz in ib.mezzanine.values():
-                    
+                for mezz in list(ib.mezzanine.values()):
+
                     delay_table= ib.get_adc_delays()
-                    print 'Opening data receiver socket'
+                    print('Opening data receiver socket')
                     receiver = ib.get_data_receiver()
 
-                    print 'Setting up ramp transmission...'
+                    print('Setting up ramp transmission...')
                     ib.set_adcdaq_mode('data')
                     ib.set_data_source('adc')
                     ib.set_adc_mode('ramp')
                     ib.start_data_capture(period=1, source='adc')
 
-                    print 'Syncing...'
+                    print('Syncing...')
                     ib.sync()
 
-                    print 'Getting data frames...'
+                    print('Getting data frames...')
                     receiver.read_frames(flush=1, frames=3)  # flush
                     data = receiver.read_frames(1)
                     ib.stop_data_capture()
@@ -397,9 +462,9 @@ class MGK7BP16CrateTests(unittest.TestCase):
                         ok = np.all(data[ch] == ideal_ramp)
                         ramp_ok.append(ok)
                         if ok:
-                            print 'Channel %02i: OK' % (ch+1)
+                            print('Channel %02i: OK' % (ch+1))
                         else:
-                            print 'Channel %02i: ERROR!' % (ch+1)
+                            print('Channel %02i: ERROR!' % (ch+1))
 
                     result[board].ramp_ok.append(ramp_ok)
 
@@ -436,7 +501,8 @@ class MGK7BP16CrateTests(unittest.TestCase):
 
 if __name__ == '__main__':
     """ Run the test in this file."""
-    import mgk7bp16_crate_tests
-    reload(mgk7bp16_crate_tests)
-    v = util.run_tests(TEST_CONFIG_FILE)
-    locals().update(v) # bring local variables from the test runner into the current namespace for easier debugging
+    # import mgk7bp16_crate_tests
+    # reload(mgk7bp16_crate_tests)
+    # v = util.run_tests(TEST_CONFIG_FILE)
+    # locals().update(v) # bring local variables from the test runner into the current namespace for easier debugging
+    run_test_menu()

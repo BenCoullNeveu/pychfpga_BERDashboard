@@ -1,0 +1,121 @@
+# Notes:
+#     - Semicolumns must be followed by a space
+#     - Floats must have a decimal point *AND* an exponent sign if an exponent is used (i.e. 10.0 and 10.e+3 is valid, 10e3, 10.e3, 10e+3 are all invalid)
+aliases:
+comment: |
+    This is a long note
+
+    That extends many lines
+        this is indented more
+
+# test_results_folder: './test_results'
+xml_test_results_pathname: ../../../qc_results/{model}/{model}_SN{serial}/data/{isodate}_{session_name}.xml
+
+model_number: 'MGK7BP16'
+xformat: ['pdf']  # Output formats for the test reports. xml is always saved.
+
+# default_model: 'MGK7BP16'
+# default_serial: None
+
+# To get manufacturer names please download http://standards.ieee.org/regauth/oui/oui.txt to /usr/local/etc/oui.txt
+# Reading leases from /var/lib/dhcp/dhcpd.leases
+# MAC                IP              hostname       valid until         manufacturer
+# ===============================================================================================
+# 00:30:d3:06:9b:56  10.3.0.3        funcgen        2021-04-26 19:31:43 -NA-
+# 00:30:d3:0b:4e:f6  10.3.0.4        MULTIMETER     2021-04-26 19:31:35 -NA-
+# 08:00:11:1b:70:df  10.3.0.2        ScopeWinter    2021-04-26 20:57:46 -NA-
+# d4:36:39:f1:d0:94  10.3.0.5        -NA-           2021-04-26 19:30:41 -NA-
+
+
+#For changing prologix address, use ./nfcli --list to find devices
+instruments:
+    dmm:       {labpy_object: 'agilent_dmm', interface: 'lan', ip_addr: '10.3.0.4', gpib_addr: 22} # Agilent 34410A multimeter (we don't use the LAN connection so we can go back in local mode remotely)
+    scope:     {labpy_object: 'TDS3034B', interface: 'lan', ip_addr: '10.3.0.2'}
+    # funcgen:   {labpy_object: 'TDS3034B', interface: 'lan', ip_addr: '10.3.0.2'}
+#    ps18v:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '11.11.11.73', gpib_addr: 5}  # Agilent N5764A power supply
+#   ps3v3_2v5: {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 6}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
+#   na:        {labpy_object: 'hp8753e',     interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 14} # HP8753E Network Analyzer
+
+
+# DEBUGGING options
+debug:
+    force_fpga_prog: 2  # 1 - False , 2 - True
+
+?: &default_fpga_array
+    iceboards: 183
+    mdns_delay: 1
+
+
+test_list:
+    # This list all the tests that will be done my the test software, in the proper order
+    # path is the argument given to nose to find the test fucntion, in the form of module_path:function or module_path:class.method
+    # This path is also the path used by XReport to identify tests results, with the exception that the semicolon ':' is replaced by a dot '.'
+    insp: {description: 'Visual inspection',          path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_insp',         required: yes, require_serial_number: yes, dependencies: null}
+    clk: {description: 'Clock etc. Readout test',     path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::clock_test',        required: yes, require_serial_number: yes, dependencies: null}
+    sen: {description: 'BP Sensor test',              path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::sensor_test',       required: no,  require_serial_number: yes, dependencies: null}
+    qsf: {description: 'QSFP Connector test',         path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::qsfp_test',         required: yes, require_serial_number: yes, dependencies: null}
+    res: {description: 'Board Reset test',            path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::reset_test',        required: yes, require_serial_number: yes, dependencies: null}
+    ber: {description: 'Bit Error Rate test',         path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::bitErrorRate_test', required: yes, require_serial_number: yes, dependencies: null}
+    shu: {description: '256/512 Shuffle test',        path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::shuffle_test',      required: yes, require_serial_number: yes, dependencies: null}
+    mez: {description: 'Mezzanine Ramp test',         path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::mezzRamp_test',     required: yes, require_serial_number: yes, dependencies: null}
+
+menu:
+    # The menu item will match the user input to either the 'key' field or to the regular expression 'regex'. The matching dictionary is returned.
+    # If a regular expression is given, string parameters are replaced by string_param.format(regex_matched_group_list), i.e. '{0}' is replaced by the first matched group etc. The 'key' and 'regex' fields are excluded from this conversion.
+    # Entry types are:
+    #  test: a test to run. test_tag refers to the test to run in test_list (defined above). A regex entry will be added to match the tets tag and tets path. The description will be taken from the test description if none is provided here.
+    #  exit: exit the menu
+    #  text: do nothing. The description is shown in the menu if there is one.
+    #  board_info: Sets the current board model and serial number. The serial number can be extracted from string parsed by the regex
+    #
+    - { key: '0', action: run_test, test_tag: insp}
+    - { key: '1', action: run_test, test_tag: clk}
+    - { key: '2', action: run_test, test_tag: sen}
+    - { key: '3', action: run_test, test_tag: qsf}
+    - { key: '4', action: run_test, test_tag: res}
+    - { key: '5', action: run_test, test_tag: ber}
+    - { key: '6', action: run_test, test_tag: mez}
+
+    - { key: 'S', action: push, description: 'Send all new test results data to McGill',}
+    - { key: 'R', action: summary, description: 'Generate summary of all tests',           }
+    - { key: 'Q', action: exit, description: 'Exit',                                    }
+    - { description: "Start by entering the BP's serial number, then select a test or range of tests (e.g. 5-7)."}
+    - { regex: '(0\d{2})', model: 'MGK7BP16', serial: '{0}', next_key: '0'}  # 0nn are MGK7BP16 Serial number
+    - { regex: '\d+\-\d+', action: run_range, input: '{0}'} # regex to select a range of options
+
+
+
+##################################
+# Test-specific parameters
+##################################
+
+crate_tests:
+    setup:
+
+    insp:
+
+    clock:
+
+    bitErrorRate_test:
+        period: 60
+        bp_limit: 1.e-10
+        qsfp_limit: 1.e-10
+        gpu_limit: 50
+        repeat: 3
+
+    reset_test:
+        arm_sleep_time: 110 # ~20 secs
+        pow_sleep_time: 110 # ~40 secs , board 9 crate 18 ~50 secs
+
+    qsfp_test:
+
+    sensor_test:
+        voltage_limits: [3, 3.5]
+        current_limits: [1.3, 2.3]
+        temp_limit: 90
+
+    clock_test:
+        max_time_diff: 300000000
+        limits: [9999998, 10000002]
+
+    mezzRamp_test:
