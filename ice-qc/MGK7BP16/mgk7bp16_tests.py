@@ -9,6 +9,7 @@ import base64
 
 import pytest
 
+import labpy
 from wtl.namespace import NameSpace
 from wtl.pytest_xreport import xr, run_test_menu
 
@@ -16,7 +17,7 @@ from wtl.pytest_xreport import xr, run_test_menu
 from pychfpga import ipmi_fru, FPGAArray
 
 
-# TEST_CONFIG_FILE = './MGK7BP16/mgk7bp16_test_config.yaml'
+TEST_CONFIG_FILE = './MGK7BP16/test_config.yaml'
 
 # def input(message):
 #     key = xr.input(message).lower()
@@ -35,6 +36,10 @@ from pychfpga import ipmi_fru, FPGAArray
 #         print 'Wrong answer. Try again'
 
 class TestMGK7BP16Crate:
+    def open_instrument(self, name):
+        instr_params = self.cfg.instruments[name].copy()
+        class_name = instr_params.pop('labpy_object')
+        return labpy.open_instrument(class_name, **instr_params) 
 
     @pytest.fixture(autouse=True)
     def setup(self, xr):
@@ -45,6 +50,13 @@ class TestMGK7BP16Crate:
         xr.header('Setting-up')
         self.cfg = xr.config
         # cfg = self.cfg.crate_tests.setup  # config options pertaining to setup
+        self.dmm = self.open_instrument('dmm')
+        self.dmm.set_beeper(True)
+        self.dmm.display('Ready for','MGK7BP16 tests')
+
+        self.o = self.open_instrument('scope')
+
+        self.wfg = self.open_instrument('generator')
 
         assert xr.model and xr.serial, "model or serial number has not been specified"
 
@@ -94,7 +106,7 @@ class TestMGK7BP16Crate:
         #Estimate 30 seconds
 
 
-    def test_power(self, xr):
+    #def test_power(self, xr):
 
         """power
         003,
@@ -113,9 +125,238 @@ class TestMGK7BP16Crate:
 
         """
 
+    def test_impedance(self, xr):
+        """
+        Impedance test of various components
+        """
 
-    def clock_test(self):
-        cfg = self.cfg.crate_tests.clock_test
+        cfg = self.cfg.crate_tests.impedance
+        dmm = self.dmm
+
+        print(f'cfg = {cfg}')
+        test_results = NameSpace()
+        passed = False 
+        failed_test_points = [] 
+        try:
+            xr.input('Supply the backplane with 17V using a power supply (connect to any +V on the board). Has a green LED lit up? Is the input current around ~0.25-0.35A? If so, press ENTER to continue. If not, reconnect power elsewhere and try again. (Q:Exit):')
+            test_results.test_points = NameSpace()
+            for tp_name, limits in cfg.test_points:
+                limits = NameSpace(limits)
+                dmm.display('','Measure %s' % tp_name)
+                dmm.select_resistance_measurement()
+                while True:
+                    dmm.local()
+                    xr.input(f"Apply probe to test point '{tp_name}' and press ENTER to measure (Q=Exit):")
+                    if limits.delay:
+                        time.sleep(limits.delay)
+                    result = dmm.get_resistance()
+                    if result <= cfg.max_impedance: break
+                    print('Impedance is too high. Is the probe really connected?')
+                dmm.beep()
+                if ((result >= limits.zmin) and (result <= limits.zmax)):
+                    passed = result
+                    test_results.test_points[tp_name] = NameSpace(Z=result, passed=passed)
+                if not passed:
+                    failed_test_points.append(tp_name)
+                    dmm.beep()
+                    time.sleep(0.1)
+                    dmm.beep()
+                print('   %s : %.0f ohms (must be more than %.0f ohms) ==> %s' % (tp_name, result, limits.zmin, xr.pass_fail(passed)))
+            assert not len(failed_test_points), 'Low impedance on %s' % ','.join(failed_test_points)
+            passed = True
+
+        finally:
+            test_results.passed = passed
+            dmm.display(xr.pass_fail(passed),'Impedance tests')
+            # dmm.local()
+            xr.save_data(test_results)
+
+
+    def test_clk_time_trig(self, xr):
+
+        # Clock:
+            # dongle needs to be bottom
+            # LVPECL
+            # must be greater than 0.5V
+        # Trig: 
+            # dongle needs to be top
+            # LVDS
+        # Time:
+            # dongle needs to be top
+            # LVDS
+        # LVDS:
+            # between 0.25V and 0.45V (peak-to-peak)
+        # LVPECL:
+            # between 0.65V and 1.35V (peak-to-peak)
+
+        cfg = self.cfg.crate_tests.clk_time_trig
+
+        o = self.o
+        wfg = self.wfg
+
+        print(f'cfg = {cfg}')
+        xr.input('Supply the backplane with 17V using a power supply (connect to any +V on the board). Has a green LED lit up? Is the input current around ~0.25-0.35A? If so, press ENTER to continue. If not, reconnect power elsewhere and try again. (Q:Exit):')
+        
+        test_results = NameSpace()
+        failed_tests = []
+        passed = False
+
+        try:
+
+            test_results.test_slots = NameSpace()
+            for test in cfg.test:
+
+                channel = xr.input(f'Attach the {test} dongle cable to the scope and indicate the channel (1, 2, 3, or 4). (Q:Exit):')
+                o.set_channel(channel)
+                o.set_coupling('DC', channel)
+                o.set_impedance(50, channel)
+                o.set_voltage_trigger(0)
+                o.set_probe(channel, 1)
+
+                xr.input(f'Attach the function generator to {test}. Press ENTER to continue (Q:Exit):')
+                wfg.set_function('SQU')
+                wfg.set_amplitude(2.5, offset = 1.25)
+                wfg.set_frequency(10e6)
+                
+                if test == 'Clock':
+                    for test_name in cfg.test_inputs:
+                        xr.input(f'Attach the scope to the *bottom* dongle connector at {test_name}. Press ENTER to record the output amplitude. (Q=Exit):')
+                        output = o.get_waveform()
+                        p2p = max(output) - min(output) # peak-to-peak
+                        print('Measured amplitude:', p2p)
+                        if ((p2p >= cfg.min_LVPECL) and (p2p <= cfg.max_LVPECL)):
+                            passed = p2p
+                            test_results.test_slots[test_name] = NameSpace(Test = test, Amplitude=p2p, passed=passed)
+                        else:
+                            failed_tests.append({test, test_name})
+                        print('%s - %s : must be 0.5V < P2P < 1.35V (LVPECL) ==> %s' % (test, test_name, xr.pass_fail(passed)))
+                        print()
+
+                        with xr.figcontext(f'Clock/Time/Trig Test: Clock - {test_name}'):
+                            time = o.get_time()
+                            plt.scatter(time, output, s = 5)
+                            plt.xlabel('Time (s)')
+                            plt.ylabel('Voltage (V)')
+
+
+                else:
+                    for test_name in cfg.test_inputs:
+                        xr.input(f'Attach the dongle/scope to the *top* dongle connector at {test_name}. Press ENTER to record the output peak-to-peak amplitude. (Q=Exit):')
+                        output = o.get_waveform()
+                        p2p = max(output) - min(output)
+                        print('Measured amplitude:', p2p)
+                        if ((p2p >= cfg.min_LVDS) and (p2p <= cfg.max_LVDS)):
+                            passed = p2p
+                            test_results.test_slots[test_name] = NameSpace(Test = test, Amplitude=p2p, passed=passed)
+                        else:
+                            failed_tests.append({test, test_name})
+                        print('%s - %s : must be 0.3V < P2P < 0.45V (LVDS) ==> %s' % (test, test_name, xr.pass_fail(passed)))
+                        print()
+
+                        with xr.figcontext(caption = 'Clock/Time/Trig Test: {Test} - {test_name}'):
+                            time = o.get_time()
+                            plt.scatter(time, output, s = 5)
+                            plt.xlabel('Time (s)')
+                            plt.ylabel('Voltage (V)')
+    
+            passed = True
+
+        finally: 
+            test_results.passed = passed
+
+
+    def test_power(self, xr):
+
+        cfg = self.cfg.crate_tests.power
+
+        dmm = self.dmm
+
+        print(f'cfg = {cfg}')
+        test_results = NameSpace()
+        passed_power = False
+        passed_3V3 = False
+        passed_2V5 = False
+
+        try:
+
+            xr.input('Turn on the voltage generator and set it to 17V. Connect it to any +V on the board through the dmm (make sure the red cord is connected to the current setting of the dmm!). Press ENTER to measure the input current. (Q:Exit):')
+            current = dmm.get_dc_current()
+            print(f'Current: {current}A')
+            power = cfg.voltage * current
+            print(f'Power: {power}W')
+            passed_power = power < cfg.max_power
+            print('Power must be <6.5W: ==> %s' % (xr.pass_fail(passed_power)))
+            
+            xr.input('Now set the dmm to the voltage setting, and reconnect the backplane to power. Connect the probes of the dmm to 3V3 and GND. Press ENTER to measure the voltage. (Q:Exit):')
+            voltage_3V3 = dmm.get_dc_voltage()
+            print(f'3V3 Voltage: {voltage_3V3}V')
+            if ((voltage_3V3 >= cfg.min_3V3) and (voltage_3V3 <= cfg.max_3V3)):
+                passed = voltage_3V3
+            print('3V3 Voltage must be +/- 10%% of 3.3V (2.97V < Voltage < 3.63V): ==> %s' % (xr.pass_fail(passed_3V3)))
+
+            for cap_name in cfg.C47:
+
+                xr.input(f'Connect the probes of the dmm to the positive side of C47_{cap_name} and GND. Press ENTER to measure the voltage. (Q:Exit):')
+                voltage_2V5 = dmm.get_dc_voltage()
+                print(f'2V5 Voltage: {voltage_2V5}V')
+                if ((voltage_2V5 >= cfg.min_2V5) and (voltage_2V5 <= cfg.max_2V5)):
+                    passed_2V5 = voltage_2V5
+                print('2V5 Voltage must be +/- 10%% of 3.3V (2.25V < Voltage < 2.75V): ==> %s' % (xr.pass_fail(passed_2V5)))
+
+            passed_power = True
+            passed_3V3 = True
+            passed_2V5 = True
+
+        finally: 
+            test_results.passed_power = passed_power
+            test_results.passed_3V3 = passed_3V3
+            test_results.passed_2V5 = passed_2V5
+
+
+    def test_sync(self, xr):
+
+        # sync should be >2V
+        # i.e. the pins of U2 (1-4) should have >2V
+
+        cfg = cfg = self.cfg.crate_tests.sync
+
+        o = self.o
+        wfg = self.wfg
+
+        print(f'cfg = {cfg}')
+        test_results = NameSpace()
+        passed = False
+
+        xr.input('Supply the backplane with 17V using a power supply (connect to any +V on the board). Has a green LED lit up? Is the input current around ~0.25-0.35A? If so, press ENTER to continue. If not, reconnect power elsewhere and try again. (Q:Exit):')
+        channel = xr.input('Connect the function generator to Sync. Connect the high impedance probe to the scope, *set the probe to 10X on its side*, and specify the channel (1, 2, 3, or 4). (Q:Exit):')
+
+        o.set_channel(channel)
+        o.set_coupling('DC', channel)
+        o.set_impedance(1e6, channel)
+        o.set_voltage_trigger(0)
+        o.set_probe(channel = {channel}, gain = 10)
+        wfg.set_function('SQU')
+        wfg.set_amplitude(2.5, offset = 1.25)
+        wfg.set_frequency(10e6)
+
+        try:
+            for slot in cfg.slots:
+                for pin in cfg.pins:
+                    xr.input(f'Touch the probe to {pin} of U2 of {slot}. Press ENTER to measure the peak-to-peak amplitude.')
+                    output = o.get_waveform()
+                    p2p = max(output) - min(output) # peak-to-peak
+                    print('Measured amplitude:', p2p)
+                    passed = p2p > cfg.min_V
+                    print('Peak-to-peak voltage must be >2V: ==> %s' % (xr.pass_fail(passed)))
+            passed = True
+            
+        finally:
+            test_results.passed = passed 
+
+
+    def test_clock(self, xr):
+
+        cfg = self.cfg.crate_tests.clock
 
         ca = FPGAArray(icecrates = xr.params.serial, prog = self.cfg.debug.force_fpga_prog, open = 1)
 
@@ -174,7 +415,7 @@ class TestMGK7BP16Crate:
             xr.params.test_locals = locals()
 
 
-    def sensor_test(self):
+    def test_sensor(self):
         cfg = self.cfg.crate_tests.sensor_test
 
         ca = FPGAArray(icecrates = xr.params.serial, prog = self.cfg.debug.force_fpga_prog, open = 1)
@@ -210,7 +451,7 @@ class TestMGK7BP16Crate:
             xr.params.test_locals = locals()
 
 
-    def qsfp_test(self):
+    def test_qsfp(self):
         cfg = self.cfg.crate_tests.qsfp_test
 
         ca = FPGAArray(icecrates = xr.params.serial, prog = self.cfg.debug.force_fpga_prog, open = 1)
@@ -238,7 +479,7 @@ class TestMGK7BP16Crate:
             xr.params.test_locals = locals()
 
 
-    def reset_test(self):
+    def test_reset(self):
         cfg = self.cfg.crate_tests.reset_test
 
         ca = FPGAArray(icecrates = xr.params.serial, prog = self.cfg.debug.force_fpga_prog, open = 1)
@@ -329,7 +570,7 @@ class TestMGK7BP16Crate:
             xr.params.test_locals = locals()
 
 
-    def bitErrorRate_test(self):
+    def test_bitErrorRate(self):
 
         # Useful shortcuts
         cfg = self.cfg.crate_tests.bitErrorRate_test
@@ -407,7 +648,7 @@ class TestMGK7BP16Crate:
             xr.save_data(result)
             xr.params.test_locals = locals()
 
-    def mezzRamp_test(self):
+    def test_mezzRamp(self):
         cfg = self.cfg.crate_tests.mezzRamp_test
 
         ca = FPGAArray(icecrates = xr.params.serial, prog = self.cfg.debug.force_fpga_prog, open = 1)
