@@ -51,13 +51,13 @@ test_list:
     # This list all the tests that will be done my the test software, in the proper order
     # path is the argument given to nose to find the test fucntion, in the form of module_path:function or module_path:class.method
     # This path is also the path used by XReport to identify tests results, with the exception that the semicolon ':' is replaced by a dot '.'
-    insp: {description: 'Visual inspection',          path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_insp',         required: yes, require_serial_number: yes, dependencies: null}
+    insp: {description: 'Visual Inspection',          path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_insp',         required: yes, require_serial_number: yes, dependencies: null}
     imp: {description: 'Impedance Test',              path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_impedance',    required: yes, require_serial_number: yes, dependencies: null}
-    ctt: {description: 'Clock/Time/Trig Test',        path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_clk_time_trig',required: yes, require_serial_number: yes, dependencies: null}
     pow: {description: 'Power Test',                  path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_power',        required: yes, require_serial_number: yes, dependencies: null}
+    ctt: {description: 'Clock/Time/Trig Test',        path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_clk_time_trig',required: yes, require_serial_number: yes, dependencies: null}
     snc: {description: 'Sync Test',                   path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_sync',         required: yes, require_serial_number: yes, dependencies: null}
-    vol: {description: 'Voltage Test',                path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_voltage',      required: yes, require_serial_number: yes, dependencies: null}
-    clk: {description: 'Clock etc. Readout test',     path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_clock',        required: yes, require_serial_number: yes, dependencies: null}
+    clk: {description: 'Clock Output Test',           path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_clock_output', required: yes, require_serial_number: yes, dependencies: null}
+    led: {description: 'Reset LEDs Test',              path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_reset_LEDs',  required: yes, require_serial_number: yes, dependencies: null}
     sen: {description: 'BP Sensor test',              path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_sensor',       required: no,  require_serial_number: yes, dependencies: null}
     qsf: {description: 'QSFP Connector test',         path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_qsfp',         required: yes, require_serial_number: yes, dependencies: null}
     res: {description: 'Board Reset test',            path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_reset',        required: yes, require_serial_number: yes, dependencies: null}
@@ -76,15 +76,16 @@ menu:
     #
     - { key: '0', action: run_test, test_tag: insp}
     - { key: '1', action: run_test, test_tag: imp}
-    - { key: '2', action: run_test, test_tag: ctt}
-    - { key: '3', action: run_test, test_tag: pow}
+    - { key: '2', action: run_test, test_tag: pow}
+    - { key: '3', action: run_test, test_tag: ctt}
     - { key: '4', action: run_test, test_tag: snc}
     - { key: '5', action: run_test, test_tag: clk}
-    - { key: '6', action: run_test, test_tag: sen}
-    - { key: '7', action: run_test, test_tag: qsf}
-    - { key: '8', action: run_test, test_tag: res}
-    - { key: '9', action: run_test, test_tag: ber}
-    - { key: '10', action: run_test, test_tag: mez}
+    - { key: '6', action: run_test, test_tag: led}
+    - { key: '7', action: run_test, test_tag: sen}
+    - { key: '8', action: run_test, test_tag: qsf}
+    - { key: '9', action: run_test, test_tag: res}
+    - { key: '10', action: run_test, test_tag: ber}
+    - { key: '11', action: run_test, test_tag: mez}
 
     - { key: 'S', action: push, description: 'Send all new test results data to McGill',}
     - { key: 'R', action: summary, description: 'Generate summary of all tests',           }
@@ -119,7 +120,21 @@ crate_tests:
            # - ['R89',           {delay: 0.1, zmin: 0.1}] # ~0.15. Under 'Temp'
            # - ['R108',          {delay: 0.1, zmin: 99}] # 100 ohms
            - ['3V3 - GND (Load resistance on buck output)',     {delay: 0.1, zmin: 4, zmax: 10}]
-           - ['Input resistance to backplane power',           {delay: 0.1, zmin: 500000}]
+           - ['Input resistance to backplane power',           {delay: 0.1, zmin: 500000, zmax: 525000}]
+
+    power:
+        voltage: 17 # V
+        max_power: 9.18 # W
+        min_power: 3.06 # W
+        # min_cur: 0.18 # A
+        # max_cur: 0.54 # A
+        max_3V3: 3.63 # tolerance of +/- 10% of 3.3V
+        min_3V3: 2.97
+        max_2V5: 2.75 # tolerance of +/- 10% of 2.5V
+        min_2V5: 2.25
+        C47:
+            - 'Trig'
+            - 'Time'
 
     clk_time_trig:
         max_LVPECL: 1.35
@@ -148,17 +163,6 @@ crate_tests:
             - 'Slot 15'
             - 'Slot 16'
 
-    power:
-        voltage: 17 # V
-        max_power: 6.5 # W 
-        max_3V3: 3.63 # tolerance of +/- 10% of 3.3V
-        min_3V3: 2.97
-        max_2V5: 2.75 # tolerance of +/- 10% of 2.5V
-        min_2V5: 2.25
-        C47:
-            - 'Trig'
-            - 'Time'
-
     sync:
         min_V: 2
         slots:
@@ -184,8 +188,10 @@ crate_tests:
             - 'Pin 3'
             - 'Pin 4'
 
+    clock_output:
+        min_V: 1.5
 
-    clock:
+    reset_LEDs: 
 
     bitErrorRate_test:
         period: 60
