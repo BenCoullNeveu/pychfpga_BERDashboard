@@ -342,23 +342,23 @@ class ShuffleCrossbar(Module_base):
 
         return mon if is_list else mon[0]
 
-    def get_align_status(self):
+    async def get_align_status(self):
         status = []
         err_names = ['TLAST', 'TVALID', 'DISCARD', 'MISSING', 'FIFO', 'TIMEOUT']
-        errors = self.get_lane_monitor(
+        errors = await self.get_lane_monitor(
             ['BAD_TLAST', 'BAD_TVALID', 'BAD_FRAME_LENGTH',
              'MISSING_FRAME', 'ALIGN_FIFO_OVERFLOW', 'DATA_TIMEOUT'])
         for lane in range(len(errors[0])):
             status.append({err_names[errno]: err[lane] for (errno, err) in enumerate(errors) if err[lane]})
         return status
 
-    def get_frame_alignment_status(self):
-        frame_numbers = self.capture_frame_number()
+    async def get_frame_alignment_status(self):
+        frame_numbers = await self.capture_frame_number()
         # is_aligned = len(set(frame_numbers)) == 1
         status = [{'DELTA': f-frame_numbers[0]} if f-frame_numbers[0] else {} for (lane, f) in enumerate(frame_numbers)]
         return status
 
-    def get_bin_sel_status(self):
+    async def get_bin_sel_status(self):
         status = []
         for bs in self.BIN_SEL:
             number_of_sublanes_per_output = self.NUMBER_OF_INPUT_LANES // bs.NUMBER_OF_OUTPUTS
@@ -371,6 +371,7 @@ class ShuffleCrossbar(Module_base):
             if bs.FLAGS_FIFO_OVERFLOW & mask:
                 err['FFIFO'] = 1
             status.append(err)
+            await asyncio.sleep(0)
         return status
 
     def reset_stats(self):

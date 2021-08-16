@@ -80,24 +80,26 @@ class ChanBinSel(Module_base):
 
         Parameters:
 
-        bins_to_enable (int or array):
+        bins_to_enable (int or array): specify bins to be selected.
 
-            If 'bins_to_enable' is an integer, words 0 to (bins_to_enable-1) are transmitted.
-            (i.e channels 0 to 2*bins_to_enable-1 are selected )
+            If 'bins_to_enable' is an integer, bins 0 to (bins_to_enable-1) are selected.
 
-            select_words(4) selects words 0,1,2 and 3. and freq channels [0,1,2,3,4,5,6,7]
+            If 'bins_to_enable' is an array, the bin numbers indicated in the array are selected.
 
-            If 'bins_to_enable' is an array, the word numbers indicated in the arrays are selected.
+        Note:
 
-            select_words([0,1,2,3]) selects words 0,1,2 and 3. and freq channels [0,1,2,3,4,5,6,7]
-
-        If the FFT is bypassed, each word contains 4 8-bit ADC samples instead of a pair of frequency channels.
+            If the FFT is bypassed, the output of the channelizer are not
+            frequency bin but rather raw ADC samples. Proper bypass modes
+            should be set on this crossbar and downstream logic to get meaningful data.
         """
 
         if isinstance(bins_to_enable, int):
             bins_to_enable = list(range(bins_to_enable))
 
-        # Initialize filter mask (8 flags per word)
+        if min(np.diff(sorted(bins_to_enable))) < 8:
+            raise ValueError('Crossbar 1 bin spacing must be at least 8 bins')
+
+        # Initialize filter mask (8 flags per byte)
         # frequency_bins_per_frame (FRAME_LENGTH/2) *  mask_byte_per_word (1/8)
         mask = np.zeros(self.fpga.FRAME_LENGTH // 2 // 8, np.uint8)
         # Set the bits in mask
@@ -117,7 +119,9 @@ class ChanBinSel(Module_base):
         self.write_ram(0x00, mask)  # Enable transmission of selected bytes
 
     def set_selected_bins(self, bins_to_enable):
-        self.select_bits(bins_to_enable)
+        """ See select_bins().
+        """
+        self.select_bins(bins_to_enable)
 
     def get_selected_bins(self, use_cache=True):
 
