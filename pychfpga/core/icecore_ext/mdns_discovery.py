@@ -10,7 +10,7 @@ import asyncio
 import threading
 
 # PyPI packages
-from zeroconf import IPVersion, ServiceBrowser, ServiceStateChange, Zeroconf, _MDNS_ADDR
+from zeroconf import IPVersion, ServiceBrowser, ServiceStateChange, Zeroconf
 
 # Local packages
 from . import IceBoard, IceCrate
@@ -99,21 +99,13 @@ async def mdns_discover(
     # Normalize iceboard and icecrate target lists to the [ (model,[serial1, serial2]), ...] format
     if iceboards == '*':
         iceboards = [('*', '*')]
-    # if isinstance(iceboards, str): # include '*'
-    #     iceboards = [('*', [iceboards])]
-    # iceboards = [entry if isinstance(entry, (list, tuple)) else ('*', [entry]) for entry in iceboards or []]
-    # iceboards = [(model, serials if isinstance(serials, (list, tuple)) else [serials]) for model, serials in iceboards]
+    if icecrates == '*':
+        icecrates = [('*', '*')]
 
     iceboard_found = {(model, serial):None for model, serial in iceboards if model != "*" and serial != "*"}
     icecrate_found = {(model, serial):None for model, serial in icecrates if model != "*" and serial != "*"}
-    # if isinstance(icecrates, str): # include '*'
-    #     icecrates = [('*', [icecrates])]
-    if icecrates == '*':
-        icecrates = [('*', '*')]
-    # icecrates = [entry if isinstance(entry, (list, tuple)) else ('*', [entry]) for entry in icecrates or []]
-    # icecrates = [(model, serials if isinstance(serials, (list, tuple)) else [serials]) for model, serials in icecrates]
 
-    print(f'looking for ib={iceboards}, ic={icecrates}')
+    logger.debug(f'looking for ib={iceboards}, ic={icecrates}')
     t0 = time.time()
     time_info = ThreadData(t0=t0, last_time=t0, dt_max=0, n=0)
 
@@ -128,7 +120,7 @@ async def mdns_discover(
         # print("Info from zeroconf.get_service_info: %r" % (info))
         if not info:
             return
-        print(f"mdns: info= {info}, v4={info.addresses_by_version(version=IPVersion.V4Only)}")
+        # print(f"mdns: info= {info}, v4={info.addresses_by_version(version=IPVersion.V4Only)}")
         addr = socket.inet_ntop(socket.AF_INET, info.addresses_by_version(version=IPVersion.V4Only)[0])
         port = info.port
         # print(f"  Address: {addr}:{port}")
@@ -175,6 +167,9 @@ async def mdns_discover(
                 crate_number = ib_obj.crate.crate_number if ib_obj.crate else None
                 bp_obj = bp_cls.get_unique_instance(new_class=bp_cls, serial=bp_serial, crate_number =crate_number)
                 ib_obj.update_instance(crate=bp_obj, slot=slot)
+                for tib in icecrate_found:
+                    if tuple_match(tib, (bp_part_number, bp_serial)):
+                        icecrate_found[tib] = bp_obj
         else:
             logger.debug(
                 f"DNS-SD: IceBoard SN{ib_serial} (crate {bp_part_number} SN{bp_serial} slot {bp_slot}) was detected "
@@ -186,21 +181,27 @@ async def mdns_discover(
             ti.last_time = t
             ti.n += 1
     try:
-        zeroconf = Zeroconf(ip_version=IPVersion.V4Only)
+        zeroconf = Zeroconf(
+            ip_version=IPVersion.V4Only,
+            #interfaces=['10.10.10.83'],
+            unicast=True  # seems to prevent ICMP error on replies, but might just be luck
+            )
         browser = ServiceBrowser(
             zeroconf,
             '_tuber-jsonrpc._tcp.local.',
             handlers=[on_service_state_change],
-            addr=_MDNS_ADDR,
-            delay=100 #motherboard-serial
+            # addr=_MDNS_ADDR,
+            delay=100 #ms
             )
         while True:
             t = time.time()
-            if iceboard_found and not icecrates and all(iceboard_found.values()):
-                print('DNS-SD: All the boards that were requested were found. Stopping the search')
+            found_all_iceboards = not iceboard_found or all(iceboard_found.values())
+            found_all_slots = not icecrate_found or all(ic and len(ic.slot)==ic.NUMBER_OF_SLOTS for ic in icecrate_found.values())
+            if found_all_iceboards and found_all_slots:
+                print('DNS-SD: All the boards and/or crates that were requested were found. Stopping the search')
                 break
             with time_info as ti:
-                print(f'elapsed={t-t0:.1f}, elapsed since last time={t-ti.last_time:.1f}, dt_max={ti.dt_max}, n={ti.n}, last_time={ti.last_time}')
+                print(f'mDNS searching: elapsed={t-t0:.1f}, elapsed since last time={t-ti.last_time:.1f}, dt_max={ti.dt_max}, n={ti.n}, last_time={ti.last_time}')
                 if (timeout and t - t0 > timeout):
                     break
                 if auto_timeout and ti.n and t-ti.last_time > auto_timeout:
@@ -208,7 +209,11 @@ async def mdns_discover(
                 # if (auto_timeout and ti.n > 1 and ti.dt_max and (t - ti.last_time > AUTO_TIMEOUT_DELAY_FACTOR * ti.dt_max)):
                 #     break
             await asyncio.sleep(.1)
+    except BaseException as e:
+        print(f'mdns_discover: got the exception {e}')
+        raise
     finally:
+        print(f'mdns_discover: closing zeroconf')
         zeroconf.close()
     return IceBoard.get_all_instances(), IceCrate.get_all_instances()
 
