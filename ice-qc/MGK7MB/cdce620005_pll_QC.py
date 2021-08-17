@@ -177,21 +177,21 @@ def read_pll2():
 
 def print_reg(reg):
     for i in range(8):
-         print 'Config Register %i: 0x%08X' % (i, reg[i])
+         print('Config Register %i: 0x%08X' % (i, reg[i]))
 
     if(len(reg)==9):
-        print 'Status Register %i: 0x%08X' % (9, reg[8])
+        print('Status Register %i: 0x%08X' % (9, reg[8]))
 
 
 def comp_reg(desreg, measreg ):
     passed = 1
     for i in range(8):
         if(desreg[i] == measreg[i]):
-            print 'Register %i: should be 0x%08X and we measure 0x%08X: SAME' % (i, desreg[i], measreg[i])
+            print('Register %i: should be 0x%08X and we measure 0x%08X: SAME' % (i, desreg[i], measreg[i]))
         else:
-            print 'Register %i: should be 0x%08X and we measure 0x%08X: DIFFERENT!' % (i, desreg[i], measreg[i])
+            print('Register %i: should be 0x%08X and we measure 0x%08X: DIFFERENT!' % (i, desreg[i], measreg[i]))
             passed = 0;
     if(passed == 0):
-        print "A difference was detected between the desired configuration and measured configuration"
+        print("A difference was detected between the desired configuration and measured configuration")
 
     return passed

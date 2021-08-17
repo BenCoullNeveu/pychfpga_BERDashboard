@@ -241,7 +241,14 @@ class FMCMezzanine_MGADC08(FMCMezzanine):
     #     """ returns a boolean indicating whether the ADC board is present"""
     #     return self._board_is_present
 
-    async def init(self, sampling_frequency=800e6, reference_frequency=10e6, verbose=0, adc_mode=0, adc_bandwidth=2):
+    async def init(
+            self,
+            sampling_frequency=800e6,
+            processing_frequency=200e6,
+            reference_frequency=10e6,
+            verbose=0,
+            adc_mode=0,
+            adc_bandwidth=2):
         """ Initializes the FMC board modules"""
 
         if not isinstance(self.iceboard, chFPGA_controller):
@@ -261,6 +268,7 @@ class FMCMezzanine_MGADC08(FMCMezzanine):
             raise RuntimeError('Cannot initialize an mezzanine that has no power')
 
         self.sampling_frequency = sampling_frequency
+        self.processing_frequency = processing_frequency
         self.reference_frequency = reference_frequency
         self.logger.debug('%r: Initializing MGADC08 on Mezzanine %i' % (self, self.mezzanine))
         # self.logger.debug('%r:   - AmbTemp' % self)

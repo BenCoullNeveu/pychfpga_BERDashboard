@@ -176,20 +176,35 @@ class ANT_base(object):
     #     fpga.write(fpga.ANT_PORT[ant_number], module_number, addr, data, *args, **kwargs)
 
     def init(self, delay_table=None, fmc_present=None):
-        """ Initializes all channelizer modules"""
+        """ Initializes all channelizer modules
 
-        # Selects which clock is used to clock the channelizes based on whether the ADC card that normally provides the clock is present or not.
+
+        Clock selection
+        ---------------
+        We select the system clock or ADC clock as a channelizer clock source based on
+        whether the ADC card that normally provides the clock is present or
+        not.
+
+        We also select the internal system clock in the presence of the ADC
+        mezzanine if the sampling clock is exactly 1/4th of the processing
+        clock for that firmware build. This is to prevent large current spikes
+        that trip the FPGA's VCCINT DC-DC switcher whever the ADC is started
+        or stopped.
+
+
+        """
+
         if fmc_present[self.fpga.CHANNELIZERS_CLOCK_SOURCE]:
-            self.logger.debug('%r: Using the ADC to generate the channelizer clock' % self)
-            if self.fpga._sampling_frequency == 800.0e6:
+            self.logger.debug(f'{self!r}: Using the ADC to generate the channelizer clock')
+            if self.fpga._sampling_frequency/4 == self.fpga._processing_frequency:
                 self.fpga.GPIO.CHAN_CLK_SRC = 1 # *** JFC: uses the internal clock always. Works only for sampling at 800.000 MSPS
-                self.logger.debug("%r: Since the sampling frequency is exactly 800.000000 MHz, we'll use the internal 200 MHz clock to clock the channelizers instead of the ADC clock so that syncing the board won't cause large current changes that may upset the core switcher" % self)
+                self.logger.debug(f"{self!r}: Since the sampling frequency is {self.fpga._sampling_frequency} MHz, we'll use the internal {self.fpga._processing_frequency} MHz system clock to clock the channelizers instead of the ADC clock so that syncing the board won't cause large current changes that may upset the core switcher")
             else:
                 self.fpga.GPIO.CHAN_CLK_SRC = 0 # uses the ADC clock to clock the channelizers
-                self.logger.error("%r: The channelizers is clocked by the ADC because we do not sample at exactly 800 MHz. The channelizer clock will be interrupted during syncing, which will cause cause large current changes that may upset the core switcher" % self)
+                self.logger.error(f"{self!r}: The channelizers is clocked by the ADC because we do not sample at exactly 800 MHz. The channelizer clock will be interrupted during syncing, which will cause cause large current changes that may upset the core switcher")
         else:
-            self.logger.debug('%r: Using the internal clock to generate the channelizer clock since the ADC is not available' % self)
-            self.fpga.GPIO.CHAN_CLK_SRC = 1 # uses the internal 200 MHz clock to clock the channelizer
+            self.logger.debug(f'{self!r}: Using the internal clock to generate the channelizer clock since the ADC is not available')
+            self.fpga.GPIO.CHAN_CLK_SRC = 1 # uses the internal clock to clock the channelizer
 
         #self.logger.debug("%r: Initializing each channelizer", self.fpga)
         for (i, ant) in enumerate(self.ANT):

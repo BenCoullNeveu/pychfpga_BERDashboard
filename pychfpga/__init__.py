@@ -9,5 +9,7 @@ from wtl.namespace import NameSpace, merge_dict
 from wtl.config import load_yaml_config
 
 # Local imports
-from .core.icecore_ext import Ccoll
+from .core import Ccoll
+from .core import ipmi_fru
+from .core import run_async, async_to_sync
 from .fpga_array import FPGAArray

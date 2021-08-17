@@ -9,16 +9,19 @@ comment: |
         this is indented more
 
 # test_results_folder: './test_results'
-test_results_folder: '/home/sharktooth/iceqc'
-model_number: ['MGK7BP16','MGADC08','MGK7MB']
+test_results_folder: '../../iceqc'  # relative to this config file's folder. "~" is allowed.
+test_results_folder_uses_git: false
+xml_test_results_pathname: ""
+
 xformat: ['pdf']  # Output formats for the test reports. xml is always saved.
 
-submenu_list:
+submenus:
     # This list contains all the submenus accessible from the top level menu
-    - [ 'adc', {description: 'ADC level tests',             path: 'MGADC08/mgadc08_test_config.yaml'}]
-    - [ 'mb',  {description: 'Motherboard level tests',     path: 'MGK7MB/mgk7mb_test_config.yaml'}]
-    - [ 'bp',  {description: 'Backplane level tests',       path: 'MGK7BP16/mgk7bp16_test_config.yaml'}]
-    
+    # Paths are relative to this config file's folder.
+    - {name: 'adc', path: './MGADC08/mgadc08_test_config.yaml'}
+    - {name: 'mb',  path: './MGK7MB/mgk7mb_test_config.yaml'}
+    - {name: 'bp',  path: './MGK7BP16/test_config.yaml'}
+
 menu:
     # The menu item will match the user input to either the 'key' field or to the regular expression 'regex'. The matching dictionary is returned.
     # If a regular expression is given, string parameters are replaced by string_param.format(regex_matched_group_list), i.e. '{0}' is replaced by the first matched group etc. The 'key' and 'regex' fields are excluded from this conversion.
@@ -28,16 +31,14 @@ menu:
     #  text: do nothing. The description is shown in the menu if there is one.
     #  board_info: Sets the current board model and serial number. The serial number can be extracted from string parsed by the regex
     #
-    - {           description: "Start by choosing what kind of object you want to test or scan a barcode.",     type: text}
-    - { key: '1', type: submenu, menu_tag: adc}
-    - { key: '2', type: submenu, menu_tag: mb}
-    - { key: '3', type: submenu, menu_tag: bp}
-
-
-    - { key: 'S', description: 'Send all new test results data to McGill',                          type: push}
-    - { key: 'R', description: 'Generate summary of all tests',                                     type: summary}
-    - { key: 'Q', description: 'Exit',                                                              type: exit}
-    - { regex: '29821-0000-(\d{4})', type: board_info, model: 'MGADC08', serial: '{0}', next_key: '1', submenu: 'adc'}  #29821-0000-nnnn are MGADC08 Serial nnnn
-    - { regex: '35896-0000-(\d{4})', type: board_info, model: 'MGADC08', serial: '{0}', next_key: '1', submenu: 'adc'}  #35896-0000-nnnn are MGADC08 Serial nnnn
-    - { regex: '38161-0000-(\d{4})', type: board_info, model: 'MGADC08', serial: '{0}', next_key: '1', submenu: 'adc'}  #38161-0000-nnnn are MGADC08 Serial nnnn
-    - { regex: '38355-0000-(\d{4})', type: board_info, model: 'MGK7MB', serial: '{0}', next_key: '1', submenu: 'mb'}  #38355-0000-nnnn are MGK7MB Serial nnnn
+    - {   description: "Start by choosing what kind of object you want to test or scan a barcode.",     type: text}
+    - { key: '1',                    action: run_submenu, submenu: adc, description: 'MGADC08 ADC tests'}
+    - { key: '2',                    action: run_submenu, submenu: mb,  description: 'MGK7MB IceBoard tests'}
+    - { key: '3',                    action: run_submenu, submenu: bp,  description: 'MGK7BP16 Backplane tests'}
+    - { key: 'S',                    action: push,                      description: 'Send all new test results data to McGill'}
+    - { key: 'R',                    action: summary,                   description: 'Generate summary of all tests'}
+    - { key: 'Q',                    action: exit,                      description: 'Exit'}
+    - { regex: '29821-0000-(\d{4})', action: run_submenu, submenu: 'adc', model: 'MGADC08', serial: '{0}', next_key: '1'}  #29821-0000-nnnn are MGADC08 Serial nnnn
+    - { regex: '35896-0000-(\d{4})', action: run_submenu, submenu: 'adc', model: 'MGADC08', serial: '{0}', next_key: '1'}  #35896-0000-nnnn are MGADC08 Serial nnnn
+    - { regex: '38161-0000-(\d{4})', action: run_submenu, submenu: 'adc', model: 'MGADC08', serial: '{0}', next_key: '1'}  #38161-0000-nnnn are MGADC08 Serial nnnn
+    - { regex: '38355-0000-(\d{4})', action: run_submenu, submenu: 'mb' , model: 'MGK7MB', serial: '{0}', next_key: '1'}  #38355-0000-nnnn are MGK7MB Serial nnnn
