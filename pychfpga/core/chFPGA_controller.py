@@ -3296,7 +3296,7 @@ class chFPGA_controller(IceBoardExt):
             cb1_output_words_per_bin = 4
             cb1_output_bins = cb1_bins
             cb1_input_lanes_per_output_lane = 16
-            cb1_output_data_flags_words_per_bin = (cb1_output_words_per_bin * 4.0) // (32 if cb1_combine_data_flags else 16)  # This is 0.5 if combine_flags
+            cb1_output_data_flags_words_per_bin = (cb1_output_words_per_bin * 4.0) / (32 if cb1_combine_data_flags else 16)  # This is 0.5 if we combine_flags
             cb1_output_frame_flags_words_per_frame = 1
 
 
@@ -3346,6 +3346,131 @@ class chFPGA_controller(IceBoardExt):
             cb3_output_bins = cb2_input_bins
             cb3_output_data_flags_words_per_bin = cb2_output_data_flags_words_per_bin
             cb3_output_frame_flags_words_per_frame = cb2_output_frame_flags_words_per_frame
+
+        elif mode == 'shuffle128':
+            """ Configures the corner-turn engine for a 8-board shuffle.
+
+            Boards are assumed to be in slots 1-8 of the crates (slots 0-7).
+
+            In this mode, crossbar1 merges 16 channelizer outputs into 8
+            output lanes, with 128 bins per lane, like 'shuffle16'. However,
+            we do not bypass the backplane PCB shuffle. The lanes that end up
+            in one of the 8 populated slots are used. The backplane data rate is close to the limit (7.5 Gbps).
+
+            Crossbar2 remaps the 8 received lanes. Crossbar 2 doubles the data rate, so we can't use it and is bypassed.
+
+            Crossbar3 operates as in shuffle512: data from 8 input lanes is sent to the 8 output GPU lanes. We have 16 bins per lane.
+            """
+            if not self.slot:
+                raise RuntimeError('The slot number is unknown. Cannot route the appropriate bins to the target boards in the same crate')
+
+            #############################
+            # 1st Crossbar
+            #############################
+            # Selects data from all channelizers, and spread the bins betweeen
+            # the first 8 bin selectors so the data can go through the
+            # following bypassed crossbars.
+            cb1_bypass = False
+            cb1_four_bit = True
+            # Bin selectors grab data from all lanes
+            cb1_lanes = [(0, 3)] * number_of_cb1_bin_sel
+            # Set the bins selected by each bin selector
+            if cb1_bin_indices:
+                cb1_bin_select_map = cb1_bin_indices
+                cb1_bins = len(cb1_bin_indices[0])
+            else:  # Use default
+                cb1_bins = 128
+                cb1_bin_spacing = 1024 // cb1_bins  # = 8 bins, or 4 clocks
+                cb1_bin_select_map = [
+                    np.arange(cb1_bins) * cb1_bin_spacing + (i % cb1_bin_spacing)
+                    for i in range(number_of_cb1_bin_sel)]
+            cb1_combine_data_flags = 1 # we cannot combine the flags of two bins because we further bin-select them in crossbar 3
+            send_flags = False # There is not enough bandwidth on the backplane to send uncombined flags
+            cb1_output_words_per_bin = 4
+            cb1_output_bins = cb1_bins
+            cb1_input_lanes_per_output_lane = 16
+            cb1_output_data_flags_words_per_bin = send_flags * (cb1_output_words_per_bin * 4.0) / (32 if cb1_combine_data_flags else 16)  # This is 0.5 if we combine_flags
+            cb1_output_frame_flags_words_per_frame = 1 * send_flags
+
+
+            #################################
+            # Backplane PCB (intra-crate) shuffle
+            #################################
+            bp_shuffle_bypass = False
+
+            #############################
+            # 2nd Crossbar
+            #############################
+            # Bypassed. No channel reordering.
+
+            # CB2 packet aligner
+            cb2_timeout_period = 0
+            cb2_sof_window_stop = 55
+            # CB2 REMAP
+            cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
+            cb2_bypass = True
+
+            cb2_input_words_per_bin = cb1_output_words_per_bin
+            cb2_input_data_flags_words_per_bin = cb1_output_data_flags_words_per_bin
+            cb2_input_frame_flags_words_per_frame = cb1_output_frame_flags_words_per_frame
+            cb2_input_bins = cb1_output_bins
+            # cb2_lanes : Not applicable because of bypass
+            # cb2_bins : Not applicable because of bypass
+            # cb2_bin_spacing : Not applicable because of bypass
+            # cb2_bin_select_map : Not applicable because of bypass
+            cb2_output_words_per_bin = cb2_input_words_per_bin
+            cb2_output_bins = cb2_input_bins
+            cb2_input_lanes_per_output_lane = cb1_input_lanes_per_output_lane
+            cb2_output_data_flags_words_per_bin = cb2_input_data_flags_words_per_bin
+            cb2_output_frame_flags_words_per_frame = cb2_input_frame_flags_words_per_frame
+
+            crate_number = self.crate.crate_number or 0 if self.crate else 0
+            stream_type = 1
+
+            #################################
+            # Backplane QSFP (crate) shuffle
+            #################################
+            crate_shuffle_bypass = True
+
+
+            #############################
+            # 3rd Crossbar
+            #############################
+            # Crossbar 2 partially combined the channels in a way that
+            # Crossbar 3 can finish the job, i.e. channels are spread over its
+            # 8 input links.
+
+            # Remap input lanes so data is selected in proper channel order
+            cb3_lane_map = [0, 1, 2, 3, 4, 5, 6, 7]
+            cb3_bypass = False
+            cb3_input_words_per_bin = cb2_output_words_per_bin
+            cb3_input_data_flags_words_per_bin = cb2_output_data_flags_words_per_bin
+            cb3_input_frame_flags_words_per_frame = cb2_output_frame_flags_words_per_frame
+            cb3_input_bins = cb2_output_bins
+            cb3_lanes = [(0, 7)] * number_of_cb3_bin_sel
+            cb3_input_lanes_per_output_lane = cb3_lanes[0][1] - cb3_lanes[0][0] + 1  # 8 input lanes per bin sel output
+            cb3_combine_data_flags = False  # hardwired to False in crossbar 3
+
+            # Select the bins to be assigned to each bin selector output.
+            if cb3_bin_indices is not None:
+                cb3_bins = len(cb3_bin_indices[0])
+                cb3_bin_select_map = cb3_bin_indices
+            else:
+                # Default: we select 1/8th of the incoming bins from all the input lanes
+                # We merge data from 8 full bandwidth input lanes, so we select 1/8th of the bins on each output lane
+                cb3_bins = cb3_input_bins // 8
+                cb3_bin_spacing = 8  # use maximum possible number so we minimize FIFO usage
+                cb3_bin_select_map = [
+                    np.arange(cb3_bins) * cb3_bin_spacing + i
+                    for i in range(number_of_cb3_bin_sel)]
+
+            cb3_output_words_per_bin = cb3_input_words_per_bin * 8
+            cb3_output_bins = cb3_bins
+            cb3_output_data_flags_words_per_bin = (
+                cb3_input_data_flags_words_per_bin * cb3_input_lanes_per_output_lane
+                // (2 if cb3_combine_data_flags else 1))
+            cb3_output_frame_flags_words_per_frame = (
+                cb3_input_frame_flags_words_per_frame * cb3_input_lanes_per_output_lane)
 
         elif mode == 'shuffle256':
             if not self.slot:
@@ -3935,7 +4060,8 @@ class chFPGA_controller(IceBoardExt):
                     bs.STREAM_ID = stream_id[cb3_bin_sel * cb3.NUMBER_OF_OUTPUTS_PER_BIN_SEL] >> 4
                     bs.SEND_FLAGS = send_flags
                     bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
-                    bs.NUMBER_OF_DATA_FLAGS_WORDS_PER_BIN = cb3_input_data_flags_words_per_bin
+                    assert cb3_input_data_flags_words_per_bin == int(cb3_input_data_flags_words_per_bin), f'CB3 number of flag words is not an integer ({cb3_input_data_flags_words_per_bin})'
+                    bs.NUMBER_OF_DATA_FLAGS_WORDS_PER_BIN = int(cb3_input_data_flags_words_per_bin)
                     bs.NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME = cb3_input_frame_flags_words_per_frame
                     # print('CB3: FFWPF=%i' % bs.NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME)
                     bs.FIRST_LANE = cb3_lanes[cb3_bin_sel][0]
@@ -3974,18 +4100,17 @@ class chFPGA_controller(IceBoardExt):
             # bp_data_rate = 156.25e6* 50 * 32/33
             packet_rate = 800e6 / 2048 / frames_per_packet
             ethernet_data_rate = (packet_rate * ethernet_packet_size) * 8
-            self._logger.debug(
-                '%r: %s Ethernet packet size: %i bytes, %0.1f Gbit/s '
-                '(%i frames_per_packet, %i bins, %i data words/bin, %g data flags_words/bin, %i frame_flags_words/frame)' % (
-                    self,
-                    crossbar_name,
-                    ethernet_packet_size,
-                    ethernet_data_rate / 1e9,
-                    frames_per_packet,
-                    bins,
-                    data_words_per_bin,
-                    data_flags_words_per_bin,
-                    frame_flags_words_per_frame))
+            self._logger.info(
+                f'{self!r}: {crossbar_name}\n'
+                f'   UDP payload size: {payload_size} bytes\n'
+                f'   Ethernet packet size: {ethernet_packet_size} bytes\n'
+                f'   Ethernet data rate: {ethernet_data_rate/1e9:0.1f} Gbit/s\n'
+                f'   Packet geometry: {frames_per_packet} frames_per_packet\n'
+                f'                    {bins} bins\n'
+                f'                    {data_words_per_bin} data words/bin\n'
+                f',                   {data_flags_words_per_bin} data flags_words/bin\n'
+                f'                    {frame_flags_words_per_frame} frame_flags_words/frame)'
+                )
             # self._logger.info('%r: %s config: frames_per_packet=%i, cb1_lanes=%s, cb1_bypass=%s, '
             #                   'cb1_combine=%s, cb1_bins=%i, cb1_words_per_bin=%i' % (
             #                   self, frames_per_packet, cb1_lanes, bool(cb1_bypass), bool(cb1_combine_data_flags),

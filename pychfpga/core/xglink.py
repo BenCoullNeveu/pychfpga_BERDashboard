@@ -734,8 +734,8 @@ class XGLinkArray(XGLinkCore):
         self.RESET_STATS = 1
         self.RESET_STATS = 0
 
-    def get_rx_error_count(self, lane_group=None):
-        return self.get_rx_lane_monitor('ERROR_CTR', lane_group)
+    # async def get_rx_error_count(self, lane_group=None):
+    #     return await self.get_rx_lane_monitor('ERROR_CTR', lane_group)
 
     async def get_metrics(self, reset=True):
         """ Return metrics on the status of the rx links as a Metrics object.
@@ -775,13 +775,13 @@ class XGLinkArray(XGLinkCore):
 
         return metrics
 
-    def get_bp_rx_status(self, link_group=None):
+    async def get_bp_rx_status(self, link_group=None):
         """ Checks the status of the rx links. Returns a list of dict, each
         dict containing a number of {error_type:error_info} for the
         corresponding lane.
         """
         status = []
-        err, min_len, max_len, frame_det, rx_fifo, tx_fifo = self.get_rx_lane_monitor(
+        err, min_len, max_len, frame_det, rx_fifo, tx_fifo = await self.get_rx_lane_monitor(
             ['ERROR_CTR', 'MIN_FRAME_LENGTH', 'MAX_FRAME_LENGTH',
              'FRAME_DETECT', 'RX_FIFO_OVERFLOW', 'TX_FIFO_OVERFLOW'],
             link_group)
@@ -798,7 +798,7 @@ class XGLinkArray(XGLinkCore):
             status.append(lane_status)
         return status
 
-    def print_rx_lane_monitor(self, reset=False):
+    async def print_rx_lane_monitor(self, reset=False):
         """
         """
         if reset:
@@ -817,7 +817,7 @@ class XGLinkArray(XGLinkCore):
                             ' '.join(('%6s' % ('-N/A-', 'ok ')[matching_id[0] in active_slots])
                                      for matching_id in matching_gtx_ids)))
         for name in self.RX_LANE_MONITOR_TABLE:
-            print('%20s: %s' % (name, ' '.join('%6i' % v for v in self.get_rx_lane_monitor(name))))
+            print('%20s: %s' % (name, ' '.join('%6i' % v for v in await self.get_rx_lane_monitor(name))))
         print('%20s: %6s %s' % ('DMONITOR', 'N/A', ' '.join('%6i' % (g.DMONITOROUT & 0x7f) for g in self.gtx)))
         print('%20s: %6s %s' % ('BLOCK_LOCK', 'N/A', ' '.join('%6i' % g.BLOCK_LOCK for g in self.gtx)))
 

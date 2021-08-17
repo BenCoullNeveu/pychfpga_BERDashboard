@@ -304,6 +304,8 @@ class FPGAArray(object):
                     - 'shuffle16': A corner-turn operation is applied only within the 16 channelizer
                       outputs of this board.
 
+                    - 'shuffle128': A corner-turn operation is applied between the first 8 boards in a crate.
+
                     - 'shuffle256': The corner-turn operation is applies between 16 channelizers within
                       a board and between the 16 boards within a crate using the backplane PCB links.
 
@@ -454,7 +456,11 @@ class FPGAArray(object):
             # ioloop.make_current()
             # ioloop.run_sync(init)
             # old_ioloop.make_current()
-            asyncio.run(async_init(), debug=True)
+            try:
+                asyncio.run(async_init(), debug=True)
+            except BaseException as e:
+                print(f'fpga_array: run got exception {e}')
+                raise
         else:
             self._async_init = async_init
             # old_ioloop = IOLoop.current()
@@ -534,6 +540,7 @@ class FPGAArray(object):
         """
         self.ib = []  # make sure repr() has always something
         self.ic = []
+        self.hwm = {}
         self.sync_timestamp = None
 
         self.max_sync_time_difference = max_sync_time_difference
@@ -885,7 +892,7 @@ class FPGAArray(object):
             raise RuntimeError(f'Unresolved IceBoards {unresolved_iceboards}')
 
 
-        self.logger.info('%r: Hardware map is complete' % self)
+        self.logger.info(f'{self!r}: Hardware map is complete')
 
         self.logger.debug(f'HWM={self.hwm}')
 
@@ -1230,7 +1237,9 @@ class FPGAArray(object):
 
     def __repr__(self):
         """ Short string representing this object and suitable to use as a tag in a syslog entry"""
-        return '%s(%i_boards,%i_crates)' % (self.__class__.__name__, len(self.ib), len(self.ic))
+        ib = self.ib or self.hwm or []
+        ic = self.ic or {b.crate for b in self.hwm if b.crate} or []
+        return '%s(%i_boards,%i_crates)' % (self.__class__.__name__, len(ib), len(ic))
 
     def get_hwm_info(self):
         string = '%s object with the following hardware map:\n' % self.__class__.__name__
@@ -1526,14 +1535,21 @@ class FPGAArray(object):
                 - 'chan8': Corner-turn engine is bypassed and raw 8-bit data from 8
                   channelizers is sent directly to the 8 10G Ethernet links.
 
-                - 'shuffle16': Acquire, channelize and shuffle data within each Iceboard individually and
-                  send the data through the IceBoard QSFP+ ports. There is no data shuffling between boards.
-                  This is good for single board operation (or an array of boards operating independently)
+                - 'shuffle16': Acquire, channelize and shuffle data within
+                  each Iceboard individually and send the data through the
+                  IceBoard QSFP+ ports. There is no data shuffling between
+                  boards. This is good for single board operation (or an array
+                  of boards operating independently)
 
-                - 'shuffle256': Acquire, channelize and shuffle data within a crate to
-                    create a 16-board (256-channel) correlator. The shuffled data is
-                    sent through the IceBoard QSFP+ ports. There is no shuffling between
-                    crates.
+                - 'shuffle128': Acquire, channelize and shuffle data within a
+                  crate to create a 8-board (128-channel) correlator. The
+                  shuffled data is sent through the IceBoard QSFP+ ports.
+                  There is no shuffling between crates.
+
+                - 'shuffle256': Acquire, channelize and shuffle data within a
+                  crate to create a 16-board (256-channel) correlator. The
+                  shuffled data is sent through the IceBoard QSFP+ ports.
+                  There is no shuffling between crates.
 
                 - 'shuffle512': Acquire, channelize and shuffle data between pair of
                   crates to create a 32-board (512-channel) correlator. The shuffled
@@ -1618,7 +1634,7 @@ class FPGAArray(object):
             self.sync()
 
 
-        elif mode in ['shuffle256', 'shuffle512', 'shuffle16']:
+        elif mode in ['shuffle256', 'shuffle512', 'shuffle16', 'shuffle128']:
             if not all(self.ib.CROSSBAR2) or not all(self.ib.CROSSBAR3):
                 raise RuntimeError('All IceBoards must have their CROSSBAR2 and CROSSBAR 3 implemented')
             self.ib.BP_SHUFFLE.set_tx_power(13)
@@ -4257,31 +4273,32 @@ class FPGAArray(object):
             if ib.BP_SHUFFLE:  # makesure we have a shuffle block in this firmware
                 ib.BP_SHUFFLE.reset_stats()
 
-    def get_shuffle_status(self):
+    # def get_shuffle_status(self):
+    # """ Should be made async"""
 
-        status = {}
-        for crate in self.ic:
-            status[crate] = {}
+    #     status = {}
+    #     for crate in self.ic:
+    #         status[crate] = {}
 
-            for (slot, ib) in crate.slot.items():
-                status[crate][ib] = {}
+    #         for (slot, ib) in crate.slot.items():
+    #             status[crate][ib] = {}
 
-                status[crate][ib]['bp'] = ib.BP_SHUFFLE.get_bp_rx_status(0)
-                status[crate][ib]['qsfp'] = ib.BP_SHUFFLE.get_bp_rx_status(1)
+    #             status[crate][ib]['bp'] = await ib.BP_SHUFFLE.get_bp_rx_status(0)
+    #             status[crate][ib]['qsfp'] = await ib.BP_SHUFFLE.get_bp_rx_status(1)
 
-                status[crate][ib]['cb2'] = {}
-                status[crate][ib]['cb2']['align'] = ib.CROSSBAR2.get_align_status()
-                status[crate][ib]['cb2']['frame'] = ib.CROSSBAR2.get_frame_alignment_status()
-                status[crate][ib]['cb2']['bin'] = ib.CROSSBAR2.get_bin_sel_status()
+    #             status[crate][ib]['cb2'] = {}
+    #             status[crate][ib]['cb2']['align'] = ib.CROSSBAR2.get_align_status()
+    #             status[crate][ib]['cb2']['frame'] = ib.CROSSBAR2.get_frame_alignment_status()
+    #             status[crate][ib]['cb2']['bin'] = ib.CROSSBAR2.get_bin_sel_status()
 
-                status[crate][ib]['cb3'] = {}
-                status[crate][ib]['cb2']['align'] = ib.CROSSBAR3.get_align_status()
-                status[crate][ib]['cb2']['frame'] = ib.CROSSBAR3.get_frame_alignment_status()
-                status[crate][ib]['cb2']['bin'] = ib.CROSSBAR3.get_bin_sel_status()
+    #             status[crate][ib]['cb3'] = {}
+    #             status[crate][ib]['cb2']['align'] = ib.CROSSBAR3.get_align_status()
+    #             status[crate][ib]['cb2']['frame'] = ib.CROSSBAR3.get_frame_alignment_status()
+    #             status[crate][ib]['cb2']['bin'] = ib.CROSSBAR3.get_bin_sel_status()
 
-        return status
+    #     return status
 
-    def print_shuffle_status(self, reset_stats=False, verbose=1, grid=False):
+    async def print_shuffle_status(self, reset_stats=False, verbose=1, grid=False):
 
         for crate in self.ic:
             slots = crate.slot  # Get iceboards indexed by slot number
@@ -4296,15 +4313,15 @@ class FPGAArray(object):
                 for lane_group in ib.BP_SHUFFLE.lane_group_names:
                     if reset_stats:
                         ib.BP_SHUFFLE.reset_stats()
-                    errs.append(ib.BP_SHUFFLE.get_bp_rx_status(lane_group))
+                    errs.append(await ib.BP_SHUFFLE.get_bp_rx_status(lane_group))
 
                 # Gather status from the crossbars
                 for cb in [ib.CROSSBAR2, ib.CROSSBAR3]:
                     if reset_stats:
                         cb.reset_stats()
-                    errs.append(cb.get_align_status())
-                    errs.append(cb.get_frame_alignment_status())
-                    errs.append(cb.get_bin_sel_status())
+                    errs.append(await cb.get_align_status())
+                    errs.append(await cb.get_frame_alignment_status())
+                    errs.append(await cb.get_bin_sel_status())
 
                 for err in errs:
                     if err is None:
