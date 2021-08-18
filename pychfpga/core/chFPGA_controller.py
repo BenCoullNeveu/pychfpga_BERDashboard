@@ -477,6 +477,7 @@ class chFPGA_controller(IceBoardExt):
             processing_frequency=200e6,
             reference_frequency=10e6,
             adc_mode=0,
+            adc_bandwidth=2,
             adc_delay_table=None,
             data_width=4,
             group_frames=4,
@@ -594,7 +595,8 @@ class chFPGA_controller(IceBoardExt):
                     sampling_frequency=sampling_frequency,
                     reference_frequency=reference_frequency,
                     processing_frequency=processing_frequency,
-                    adc_mode=adc_mode)
+                    adc_mode=adc_mode,
+                    adc_bandwidth=adc_bandwidth)
                 # mezz.status()
             else:
                 self._logger.debug('%r:    Skipping FMC%i initialization since no board is present in that slot' % (

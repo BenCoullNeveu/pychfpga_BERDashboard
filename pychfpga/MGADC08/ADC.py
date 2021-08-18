@@ -82,11 +82,11 @@ class ADC_chip(object):
 
             gray_code (bool, default=False): selects if output is in binary (false) or gray code (True)
 
-            bandwidth (0-3, default=2), selects the analog bandwiddth of the ADC:
-                0= 500 MHz
-                1=600 MHz
-                2=1.5 GHz
-                3=2 GHz
+            bandwidth (0-3, default=2), selects the analog bandwidth of the ADC:
+                0 = 500 MHz
+                1 = 600 MHz
+                2 = 1.5 GHz
+                3 = 2 GHz
 
             full_scale (0-1, default=0), selects the full scale peak-to-peak
                 voltage: 0=500 mV full scale, 1=625 mV full scale

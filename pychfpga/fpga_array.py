@@ -155,6 +155,7 @@ class FPGAArray(object):
             max_sync_time_difference=100,
 
             adc_mode=0,
+            adc_bandwidth=2,
 
             mode=None,
             frames_per_packet=2,
@@ -436,6 +437,7 @@ class FPGAArray(object):
              sync_master_time_source=sync_master_time_source,
              max_sync_time_difference=max_sync_time_difference,
              adc_mode=adc_mode,
+             adc_bandwidth=adc_bandwidth,
              mode=mode,
              frames_per_packet=frames_per_packet,
              sampling_frequency=sampling_frequency,
@@ -517,6 +519,7 @@ class FPGAArray(object):
             max_sync_time_difference=20,
 
             adc_mode=0,
+            adc_bandwidth=2,
 
             mode=None,
             frames_per_packet=2,
@@ -1127,6 +1130,7 @@ class FPGAArray(object):
             await asyncio.gather(*[ib.open(adc_delay_table=ADC_DELAY_TABLE,
                                  init=open,
                                  adc_mode=adc_mode,
+                                 adc_bandwidth=adc_bandwidth,
                                  sampling_frequency=sampling_frequency,
                                  processing_frequency=processing_frequency,
                                  **kwargs
