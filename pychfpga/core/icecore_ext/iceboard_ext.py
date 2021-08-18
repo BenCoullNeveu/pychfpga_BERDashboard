@@ -521,14 +521,20 @@ class IceBoard(IceBoardBase, HardwareMap):
         serial = None
         slot_number = None
         if (await self.is_backplane_present_async()):
-            ipmi = await self._tuber_get_backplane_ipmi_async()  # Tuber call
-            part_number = ipmi.product.part_number
-            serial = ipmi.product.serial_number
-            icecrate_class = self.get_class_by_ipmi_part_number(base_class_name='IceCrate', part_number=part_number)
-            slot_number = await self.tuber_get_backplane_slot_async()
-            self.logger.debug(
-                f'{self!r}: discover_crate(): Detected Backplane '
-                f'Model {part_number} Serial {serial}')
+            try:
+                ipmi = await self._tuber_get_backplane_ipmi_async()  # Tuber call
+
+                part_number = ipmi.product.part_number
+                serial = ipmi.product.serial_number
+                icecrate_class = self.get_class_by_ipmi_part_number(base_class_name='IceCrate', part_number=part_number)
+                slot_number = await self.tuber_get_backplane_slot_async()
+                self.logger.debug(
+                    f'{self!r}: discover_crate(): Detected Backplane '
+                    f'Model {part_number} Serial {serial}')
+            except TuberRemoteError:
+                self.logger.warning(
+                    f'{self!r}: discover_crate(): Detected Backplane '
+                    f'but it has no IPMI information')
 
         if not icecrate_class:
             self.logger.warning(

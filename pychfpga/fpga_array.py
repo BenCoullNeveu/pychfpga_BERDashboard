@@ -571,13 +571,17 @@ class FPGAArray(object):
                 if log_level:
                     log_handlers = [h for h in parent_logger.handlers if isinstance(h, handler_type)]
                     if log_handlers:  # if a handler of that type already exist, just use it
-                        log_handler = log_handlers[0]
+                        print(f'Updating existing log handlers of {parent_logger} to {log_level}')
                     else:  # otherwise create a new one
                         log_handler = handler_type()
                         parent_logger.addHandler(log_handler)
-                    log_handler.setLevel(log_level.upper() if isinstance(log_level, str) else log_level)
-                    # make sure all messages from this handler are passed to the parent handler
-                    parent_logger.setLevel(min(parent_logger.level, log_handler.level))
+                        print(f'Adding new log handlers of {parent_logger} with level {log_level}')
+                    # set level for all handlers of this type
+                    for h in parent_logger.handlers:
+                        if isinstance(h, handler_type):
+                            h.setLevel(log_level.upper() if isinstance(log_level, str) else log_level)
+                            # make sure all messages from this handler are passed to the parent handler
+                            parent_logger.setLevel(min(parent_logger.level, h.level))
 
 
         # If no bitfile is provided, automatically select the bitfile in the
@@ -689,19 +693,17 @@ class FPGAArray(object):
         #     self.hwm = []
 
         self.hwm = IceBoard._instance_registry
-        # If the hwm parameter is a non-enpty list of  dicts, create the hardware map by instantiating the
+        # If the hwm parameter is a non-empty list of  dicts, create the hardware map by instantiating the
         # object of the type contained in the ``class`` element and passing it the remaining
         # elements as keyword arguments
 
-                    # self.hwm.append(ib)
-        # # Otherwise use the hardware map as is, hoping it is a valid hardware map
+        # Otherwise use the hardware map as is, hoping it is a valid hardware map
         # else:
         #     self.hwm = hwm
 
         # If subarrays are specified, remove boards that are not in those subarrays
         if subarrays is not None:
             print('Subarrays are: %r' % subarrays)
-            # ib_not_in_subarray = self.hwm.query(IceBoardPlus).filter(~IceBoardPlus.subarray.in_(subarrays))
             for ib in list(self.hwm):  # make a copy to be sure the list does not change during the loop
                 if ib.subarray is not None and ib.subarray not in subarrays:
                     ib.delete_instance()
@@ -803,44 +805,7 @@ class FPGAArray(object):
         #     self.logger.info('%r: Connection with %i ARM processors established. It took %s seconds'
         #                      % (self, len(self.hwm), time.time() - t0))
 
-        ########################################################
-        # Resolve missing serial/crate/slot info through the ARM
-        ########################################################
-        # Complete serial, crate and slot information on IceBoard that miss
-        # that information by talking directly to the ARM
-        # (i.e without using mDNS and pybonjour).
-        ib_without_serial = [ib for ib in self.hwm if ib.hostname and ib.serial is None]
-        if ib_without_serial:
-            t0 = time.time()
-            self.logger.info(f'{self!r}: Auto-Discovering the serial number of the IceBoards with known hostnames')
-            ad_boards = ', '.join(ib.hostname for ib in ib_without_serial)
-            self.logger.debug(f'{self!r}: Serial Auto-discovery is performed on the following boards: {ad_boards}')
-            # concurrently resolve serials
-            await asyncio.gather(*[ib.discover_serial_async() for ib in ib_without_serial])
-            # self.logger.info('%r: Got all discover_serial futures after %f seconds' % (self, time.time() - t0))
-              # [ib.discover_serial.async() for ib in ib_without_serial]
-            self.logger.info('%r: Finished Auto-Discovering serial number for IceBoards. Took %f seconds.'
-                             % (self, time.time() - t0))
 
-        if discover_slot:
-            ib_without_slot = [ib for ib in self.hwm if ib.hostname]
-            if ib_without_slot:
-                self.logger.info('%r: Auto-Discovering & validating the slot numbers for %i IceBoards '
-                                 'with known hostnames...' % (self, len(ib_without_slot)))
-                t0 = time.time()
-                await asyncio.gather(*[ib.discover_slot_async() for ib in ib_without_slot])
-                self.logger.info('%r: Finished Auto-Discovering slot numbers for IceBoards. Took %f seconds.'
-                                 % (self, time.time() - t0))
-        if discover_crate:
-            # select boards that do not have a crate, or ones that have a generic crate
-            ib_without_crate = [ib for ib in self.hwm if ib.hostname and (not ib.crate or not ib.crate.part_number)]
-            if ib_without_crate:
-                t0 = time.time()
-                self.logger.info('%r: Auto-Discovering crate information for IceBoards with known hostnames: %s'
-                                 % (self, ', '.join(ib.hostname for ib in ib_without_crate)))
-                await asyncio.gather(*[ib.discover_crate_async() for ib in ib_without_crate])
-                self.logger.info('%r: Finished Auto-Discovering crate serial numbers. Took %f seconds.'
-                                 % (self, time.time() - t0))
 
         ###########################################################################
         # mDNS discovery of boards and crates specified by model/serial number only
@@ -863,6 +828,48 @@ class FPGAArray(object):
                           iceboards=ib_to_discover,
                           icecrates=ic_to_discover,
                           timeout=mdns_timeout)
+
+        ########################################################
+        # Resolve missing serial/crate/slot info through the ARM
+        ########################################################
+        # Complete serial, crate and slot information on IceBoard that miss
+        # that information by talking directly to the ARM
+        # (i.e without using mDNS).
+        ib_without_serial = [ib for ib in self.hwm if ib.hostname and ib.serial is None]
+        if ib_without_serial:
+            t0 = time.time()
+            self.logger.info(f'{self!r}: Auto-Discovering the serial number of the IceBoards with known hostnames')
+            ad_boards = ', '.join(ib.hostname for ib in ib_without_serial)
+            self.logger.debug(f'{self!r}: Serial Auto-discovery is performed on the following boards: {ad_boards}')
+            # concurrently resolve serials
+            await asyncio.gather(*[ib.discover_serial_async() for ib in ib_without_serial])
+            # self.logger.info('%r: Got all discover_serial futures after %f seconds' % (self, time.time() - t0))
+              # [ib.discover_serial.async() for ib in ib_without_serial]
+            self.logger.info('%r: Finished Auto-Discovering serial number for IceBoards. Took %f seconds.'
+                             % (self, time.time() - t0))
+
+        if discover_slot:
+            # Find all boards with hostname for slot number check. We re-check
+            # the slot number of all boards, wether or not they already have
+            # one, so we can issue a warning if they differ. 
+            ib_without_slot = [ib for ib in self.hwm if ib.hostname]  
+            if ib_without_slot:
+                self.logger.info('%r: Auto-Discovering & validating the slot numbers for %i IceBoards '
+                                 'with known hostnames...' % (self, len(ib_without_slot)))
+                t0 = time.time()
+                await asyncio.gather(*[ib.discover_slot_async() for ib in ib_without_slot])
+                self.logger.info('%r: Finished Auto-Discovering slot numbers for IceBoards. Took %f seconds.'
+                                 % (self, time.time() - t0))
+        if discover_crate:
+            # select boards that do not have a crate, or ones that have a generic crate (no part number)
+            ib_without_crate = [ib for ib in self.hwm if ib.hostname and (not ib.crate or not ib.crate.part_number)]
+            if ib_without_crate:
+                t0 = time.time()
+                self.logger.info('%r: Auto-Discovering crate information for IceBoards with known hostnames: %s'
+                                 % (self, ', '.join(ib.hostname for ib in ib_without_crate)))
+                await asyncio.gather(*[ib.discover_crate_async() for ib in ib_without_crate])
+                self.logger.info('%r: Finished Auto-Discovering crate serial numbers. Took %f seconds.'
+                                 % (self, time.time() - t0))
 
         ###########################################################################
         # Exclude boards
@@ -968,7 +975,7 @@ class FPGAArray(object):
             self.print_flush()
             await asyncio.gather(*[ib.discover_mezzanines_async() for ib in self.hwm])
         for ib in self.hwm:
-            self.logger.debug(f'Mezzanines after discovery {ib}, {ib.mezzanine[1].iceboard}, {ib.mezzanine[2].iceboard}')
+            self.logger.debug(f"Mezzanines after discovery {ib}, {','.join('{}:{}'.format(i, m.iceboard) for i, m in ib.mezzanine.items())}")
 
         def get_mezz_name(ib, mezz_number):
             m = ib.mezzanine.get(mezz_number, None)
