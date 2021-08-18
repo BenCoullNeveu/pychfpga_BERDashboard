@@ -43,50 +43,53 @@ class ThreadData:
     def __exit__(self, type, value, traceback):
         self._lock.release()
 
-# How many time the longest delay betwen mdns replies do we wait until we
-# call it quits?
-AUTO_TIMEOUT_DELAY_FACTOR = 5
-
 async def mdns_discover(
     icecrates=None,
     iceboards=None,
     timeout=None,
-    auto_timeout=10,
+    inter_reply_timeout=10,
     clear_hwm=False):
     """ Automatically detect IceBoards and IceCrates on the network using mDNS
     and add them to the hardware map.
 
     Parameters:
 
-        icecrates: If ``icecrates`` is specified,  all the IceBoards that
-            are on crates having the model number and serial number listed in
-            ``icecrates`` are selected.
+        icecrates (list): List of icecrates whose IceBoards we want to add to the hardware map. It can contain:
 
-            ''icecrates''   can be in the format
+                [(model1, serial1), (model2, serial2), ...]: Matches specific
+                model and serial number. model can be "*" to match any
+                mmodel. serial can be "*" to match any serial. serial can be
+                a string or an integer.
 
-                [(model1, [serial1, serial2 ...]), (model2, [serial3, serial4, ...]), ...]
+                "*" is equivalent to [('*', '*')]  : matches any crate model
+                and serial, i.e. all discovered Iceboards from all crates
+                are added.
 
-                [(model1, serial1), (model2, serial2), ...]
-
-                [serial1, serial2, ...] # will match any crate model
-
-                "*" # will match any crate
-
-
-            If ``icecrates`` is None or an empty list, no crate is added.
-
-            If ``icecrates='*'``, all discovered Iceboards from all crates are added.
-
-        iceboards:  If ``iceboards`` is specified,  all the IceBoards with the
-            serial number found in the ``iceboards`` list are selected. If
-            None or an empty list, no board is added. If ``iceboards='*'``,
-            all discovered Iceboards are added.
+                None or an empty list: no iceboard are added on a crate
+                membership basis.
 
 
-        auto_timeout (int or float): If non-zero, mDNS search will stop when the delay
-            since the last reply  exceeds either :
-               1) AUTO_TIMEOUT_DELAY_FACTOR times the longest delay between replies so far
-               2) `auto_timeout`
+        iceboards (list):  List of iceboards we want to add to the hardware map.
+
+                [(model1, serial1), (model2, serial2), ...]: Matches specific
+                model and serial number. model can be "*" to match any
+                mmodel. serial can be "*" to match any serial. serial can be
+                a string or an integer.
+
+                "*" is equivalent to [('*', '*')]  : matches any iceboard model
+                and serial, i.e. all discovered Iceboards from all crates
+                are added.
+
+                None or an empty list: no iceboard are added on a crate
+                membership basis.
+
+        timeout (float): Maximum amount of time (in seconds) to wait for mDNS replies. 
+
+        inter_reply_timeout (int or float): If non-zero, mDNS search will stop
+            when the delay since the last reply  exceeds inter_reply_timeout
+            (in seconds). Can be used to shorten the search if we expect the
+            replies to come in a burst after some long delay. The search will
+            still stop after `timeout` even if the burst has started.
 
 
 
@@ -101,9 +104,12 @@ async def mdns_discover(
         iceboards = [('*', '*')]
     if icecrates == '*':
         icecrates = [('*', '*')]
-
-    iceboard_found = {(model, serial):None for model, serial in iceboards if model != "*" and serial != "*"}
-    icecrate_found = {(model, serial):None for model, serial in icecrates if model != "*" and serial != "*"}
+    # List of explicitely-specified (non-wildcard) boards and crates
+    expected_ibs = {(model, serial):None for model, serial in iceboards if model != "*" and serial != "*"}
+    expected_ics = {(model, serial):None for model, serial in icecrates if model != "*" and serial != "*"}
+    # Check if we expect an open-ended number of boards or crates
+    wild_ibs = [(model, serial) for model, serial in iceboards if model == "*" or serial == "*"]
+    wild_ics = [(model, serial) for model, serial in icecrates if model == "*" or serial == "*"]
 
     logger.debug(f'looking for ib={iceboards}, ic={icecrates}')
     t0 = time.time()
@@ -158,18 +164,18 @@ async def mdns_discover(
                 # ib_cls = IceBoard.get_class_by_ipmi_part_number(ib_part_number)
                 ib_obj = IceBoard.get_unique_instance(serial=ib_serial, hostname=addr)
                 # print(f'ib obj {ib_obj} has hostnme {ib_obj.hostname}')
-                for tib in iceboard_found:
+                for tib in expected_ibs:
                     if tuple_match(tib, (ib_part_number, ib_serial)):
-                        iceboard_found[tib] = True
+                        expected_ibs[tib] = True
             # Add the backplane if it does not already exist
             if bp_part_number and bp_serial:
                 bp_cls = IceCrate.get_class_by_ipmi_part_number(bp_part_number)
                 crate_number = ib_obj.crate.crate_number if ib_obj.crate else None
                 bp_obj = bp_cls.get_unique_instance(new_class=bp_cls, serial=bp_serial, crate_number =crate_number)
                 ib_obj.update_instance(crate=bp_obj, slot=slot)
-                for tib in icecrate_found:
+                for tib in expected_ics:
                     if tuple_match(tib, (bp_part_number, bp_serial)):
-                        icecrate_found[tib] = bp_obj
+                        expected_ics[tib] = bp_obj
         else:
             logger.debug(
                 f"DNS-SD: IceBoard SN{ib_serial} (crate {bp_part_number} SN{bp_serial} slot {bp_slot}) was detected "
@@ -198,7 +204,7 @@ async def mdns_discover(
             t = time.time()
             found_all_iceboards = not iceboard_found or all(iceboard_found.values())
             found_all_slots = not icecrate_found or all(ic and len(ic.slot)==ic.NUMBER_OF_SLOTS for ic in icecrate_found.values())
-            if found_all_iceboards and found_all_slots:
+            if not wild_ibs and not wild_ics and found_all_iceboards and found_all_slots:
                 logger.info('DNS-SD: All the boards and/or crates that were requested were found. Stopping the search')
                 break
             with time_info as ti:
@@ -207,7 +213,7 @@ async def mdns_discover(
                     last_msg_time = t
                 if (timeout and t - t0 > timeout):
                     break
-                if auto_timeout and ti.n and t-ti.last_time > auto_timeout:
+                if inter_reply_timeout and ti.n and t-ti.last_time > inter_reply_timeout:
                     break
             await asyncio.sleep(.1)
     except BaseException as e:
@@ -226,7 +232,7 @@ def mdns_resolve(name, timeout=1):
     Parameters:
 
         name (str): Host name to lookup. Normally ends with ".local" or
-            ".local.", which is added automatically if missing.
+            ".local.". Thhe '.local' will be added automatically if missing.
 
         timeout (float): time to wait for an answer, in seconds. The function will return
             as soon as there is an answer. mDNS devices are not obligated to
