@@ -35,6 +35,8 @@ class ChanCrossbar(Module_base):
 
     RESET_MON           = BitField(STATUS, 0, 0, doc='')
     ALIGN_FIFO_OVERFLOW = BitField(STATUS, 0, 1, doc='')
+    LANE_MONITOR_BIT    = BitField(STATUS, 0, 2, doc='ALIGN Monitoring bit. LANE_MONITOR_SOURCE selects the type of monitoring. LANE_MONITOR_SEL selects the bit within the work (which typically corresponds to the lane) ')
+    LANE_MONITOR_CTR    = BitField(STATUS, 0, 3, width=5, doc='Counts up (and rollback) when LANE_MONITR_BIT is high')
 
     # BIN_CTR            = BitField(STATUS, 2, 0, width=8, doc='')
     INPUT_FRAME_CTR    = BitField(STATUS, 1, 0, width=8, doc='')
@@ -176,6 +178,23 @@ class ChanCrossbar(Module_base):
         print('%20s: %s' % ('INPUT FRAME CTR', ' '.join('%6i' % v for v in input_frame_ctr)))
         print('%20s: %s' % ('ALIGN FRAME CTR', ' '.join('%6i' % v for v in align_frame_ctr)))
         # print '%20s: %s' % ('ALIGN GLOBAL FRAME CTR', '(common to all lanes) %6i' % self.ALIGN_GLOBAL_FRAME_CTR)
+
+    def print_align_monitor(self, reset=True, N=100):
+        """ Debug method to monitor the CHAN_ALIGN module monitoring bits. We print the number of times each bit was read as '1'
+        """
+        if reset:
+            self.reset_stats()
+
+        for source in range(16):
+            self.LANE_MONITOR_SOURCE=source;
+            print(f'Source {source:2}: ', end='')
+            for i in range(16):
+                self.LANE_MONITOR_SEL=i;
+                self.reset_stats()  # reset the bit counter now that we have selected the bit
+                s = sum(self.LANE_MONITOR_BIT for _ in range(N))
+                c = self.LANE_MONITOR_CTR
+                print(f"{s:3}({c:2})", end=" ", flush=True)
+            print()
 
     async def get_metrics(self, reset=True):
         """ Return the monitoring metrics for the 1st crossbar.

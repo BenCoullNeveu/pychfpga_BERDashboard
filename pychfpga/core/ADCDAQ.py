@@ -65,6 +65,13 @@ class ADCDAQ_base(Module_base):
     FIFO_UNDERFLOW_STICKY = BitField(STATUS, 10, 3, doc="'1' if the FIFO has underflowed since last clear or reset.  ")
     FIFO_EMPTY_STICKY     = BitField(STATUS, 10, 2, doc="'1' if the FIFO has been empty since last clear or reset. ")
     RAMP_ERR_CTR          = BitField(STATUS, 12, 0, width=16,doc='Counts how many words coming out of the ADC did not match the internal ramp generator')
+
+    FIFO_WR_EN            = BitField(STATUS, 13, 0, doc="")
+    FIFO_RD_EN            = BitField(STATUS, 13, 1, doc="")
+    FIFO_DATA_VALID       = BitField(STATUS, 13, 2, doc="")
+    DATA_READY            = BitField(STATUS, 13, 3, doc="")
+
+
     RAMP_CTR              = BitField(STATUS, 15, 0, width=8,doc='Free running word counter for readout interface, used to generate ramp at the ADCDAQ level')
     FIFO_WR_COUNT         = BitField(STATUS, 16, 0, width=8, doc='Number of words in the FIFO, as seen from the WR clock')
     FIFO_RD_COUNT         = BitField(STATUS, 17, 0, width=8, doc='Number of words in the FIFO, as seen from the RD clock (readout system)')

@@ -35,6 +35,7 @@ class SCALER_base(Module_base):
     SATURATE_ON_MINUS_7   = BitField(CONTROL, 0x02, 6, doc="When '1', Values will saturate at -7 instead of -8.")
     ZERO_ON_SATURATION    = BitField(CONTROL, 0x02, 5, doc="When '1', Both real and Imaginary parts are zeroed when either of them overflow.")
     SYNCHRONIZE_GAIN_BANK = BitField(CONTROL, 0x02, 4, doc="When '1', The target bank number will be enabled at the target frame number.")
+    CHAN_FIFO_OVERFLOW_RESET = BitField(CONTROL, 0x02, 3, doc="Resets the Channel FIFO overflow flag")
     ROUNDING_MODE         = BitField(CONTROL, 0x02, 0, width=2, doc="Set rounding mode.  0: Truncate, 1: Round, 2: Convergent Rounding")
     STATS_FRAME_COUNT     = BitField(CONTROL, 0x05, 0, width=24, doc="Number of frames to inclue in stats results.")
 
@@ -43,6 +44,7 @@ class SCALER_base(Module_base):
     STATS_READY            = BitField(STATUS, 0x00, 7, doc="Indicates that new stats results are ready")
     CURRENT_GAIN_BANK      = BitField(STATUS, 0x00, 6, doc="Currently active gain bank.")
     EIGHT_BIT_SUPPORT      = BitField(STATUS, 0x00, 5, doc="'1' when the SCALER supports 8-bit output")
+    CHAN_FIFO_OVERFLOW      = BitField(STATUS, 0x00, 4, doc="'Channel FIFO overflow flag, sticky")
 
     STATS_SCALER_OVERFLOWS = BitField(STATUS, 0x02, 0, width=16, doc="Stats result: number of scaler overflows")
     STATS_ADC_OVERFLOWS    = BitField(STATUS, 0x04, 0, width=16, doc="Stats result: number of ADC overflows")
