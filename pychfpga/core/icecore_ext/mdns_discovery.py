@@ -193,27 +193,28 @@ async def mdns_discover(
             # addr=_MDNS_ADDR,
             delay=100 #ms
             )
+        last_msg_time = None
         while True:
             t = time.time()
             found_all_iceboards = not iceboard_found or all(iceboard_found.values())
             found_all_slots = not icecrate_found or all(ic and len(ic.slot)==ic.NUMBER_OF_SLOTS for ic in icecrate_found.values())
             if found_all_iceboards and found_all_slots:
-                print('DNS-SD: All the boards and/or crates that were requested were found. Stopping the search')
+                logger.info('DNS-SD: All the boards and/or crates that were requested were found. Stopping the search')
                 break
             with time_info as ti:
-                print(f'mDNS searching: elapsed={t-t0:.1f}, elapsed since last time={t-ti.last_time:.1f}, dt_max={ti.dt_max}, n={ti.n}, last_time={ti.last_time}')
+                if last_msg_time is None or t - last_msg_time > 1:
+                    logger.info(f'mDNS searching: elapsed={t-t0:.1f}, elapsed since last time={t-ti.last_time:.1f}, dt_max={ti.dt_max}, n={ti.n}, last_time={ti.last_time}')
+                    last_msg_time = t
                 if (timeout and t - t0 > timeout):
                     break
                 if auto_timeout and ti.n and t-ti.last_time > auto_timeout:
                     break
-                # if (auto_timeout and ti.n > 1 and ti.dt_max and (t - ti.last_time > AUTO_TIMEOUT_DELAY_FACTOR * ti.dt_max)):
-                #     break
             await asyncio.sleep(.1)
     except BaseException as e:
-        print(f'mdns_discover: got the exception {e}')
+        logger.error(f'mdns_discover: got the exception {e}')
         raise
     finally:
-        print(f'mdns_discover: closing zeroconf')
+        logger.debug(f'mdns_discover: closing zeroconf')
         zeroconf.close()
     return IceBoard.get_all_instances(), IceCrate.get_all_instances()
 
