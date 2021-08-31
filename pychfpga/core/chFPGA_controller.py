@@ -3383,10 +3383,16 @@ class chFPGA_controller(IceBoardExt):
             else:  # Use default
                 cb1_bins = 128
                 cb1_bin_spacing = 1024 // cb1_bins  # = 8 bins, or 4 clocks
+
+                # *** JFC debug
+                cb1_bin_spacing = 8  # Normally  8 bins, which is the minimum
+                cb1_bins = 1024 // cb1_bin_spacing
+
+
                 cb1_bin_select_map = [
                     np.arange(cb1_bins) * cb1_bin_spacing + (i % cb1_bin_spacing)
                     for i in range(number_of_cb1_bin_sel)]
-            cb1_combine_data_flags = 1 # we cannot combine the flags of two bins because we further bin-select them in crossbar 3
+            cb1_combine_data_flags = 0 # we cannot combine the flags of two bins because we further bin-select them in crossbar 3
             send_flags = False # There is not enough bandwidth on the backplane to send uncombined flags
             cb1_output_words_per_bin = 4
             cb1_output_bins = cb1_bins
@@ -3410,6 +3416,8 @@ class chFPGA_controller(IceBoardExt):
             cb2_sof_window_stop = 55
             # CB2 REMAP
             cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
+            print(f'slot {self.slot-1}/15: CB2 lane map: {cb2_lane_map}') #[ 0  8  6 14  5  4 15  7  3  2 11  1 13 12  9 10]
+            cb2_lane_map[8:16] = [0,0,0,0,0,0,0,0]  # hack to make sure all the bin sel input lanes have valid data
             cb2_bypass = True
 
             cb2_input_words_per_bin = cb1_output_words_per_bin
