@@ -18,7 +18,7 @@ xformat: ['pdf']  # Output formats for the test reports. xml is always saved.
 submenus:
     # This list contains all the submenus accessible from the top level menu
     # Paths are relative to this config file's folder.
-    - {name: 'adc', path: './MGADC08/mgadc08_test_config.yaml'}
+    - {name: 'adc', path: './MGADC08/test_config.yaml'}
     - {name: 'mb',  path: './MGK7MB/mgk7mb_test_config.yaml'}
     - {name: 'bp',  path: './MGK7BP16/test_config.yaml'}
 
