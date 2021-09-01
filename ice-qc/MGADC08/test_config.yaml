@@ -9,34 +9,35 @@ comment: |
         this is indented more
 
 # test_results_folder: './test_results'
-test_results_folder: '../../../iceqc/MGADC08'
-xformat: ['pdf']  # Output formats for the test reports. xml is always saved.
+# test_results_folder: '../../../iceqc/MGADC08'
+# xformat: ['pdf']  # Output formats for the test reports. xml is always saved.
+xml_test_results_pathname: "../../../qc_results/{model}/{model}_SN{serial}/data/{isodate}_{session_name}.xml"
 
 model_number: 'MGADC08'
 default_serial: null
 
 instruments:
-    dmm:       {labpy_object: 'agilent_dmm', interface: 'prologix_eth', ip_addr: '11.11.11.130', gpib_addr: 22} # Agilent 34410A multimeter (we don't use the LAN connection so we can go back in local mode remotely)
-    ps12v:     {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '11.11.11.130', gpib_addr: 5}  # Agilent E3648A dual output power supply  12V on output 1, output 2 not used
-    ps3v3_2v5: {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '11.11.11.130', gpib_addr: 6}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
-    na:        {labpy_object: 'hp8753e',     interface: 'prologix_eth', ip_addr: '11.11.11.130', gpib_addr: 15} # HP8753E Network Analyzer
+    dmm:       {labpy_object: 'Agilent34410A'} # Agilent 34410A multimeter (Note: The LAN connection cannot go back in local mode remotely)
+    ps12v:     {labpy_object: 'AgilentPS',   adapter: 'TCPIP::PROLOGIX::011dd9::GPIB::5'}  # Agilent E3648A dual output power supply  12V on output 1, output 2 not used
+    ps3v3_2v5: {labpy_object: 'AgilentPS',   adapter: 'TCPIP::PROLOGIX::011dd9::GPIB::6'}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
+    na:        {labpy_object: 'HP8753E',     adapter: 'TCPIP::PROLOGIX::011dd9::GPIB::15'} # HP8753E Network Analyzer
     # ps18v:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '11.11.11.73', gpib_addr: 5}  # Agilent N5764A power supply
-    ps18v:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '10.10.10.151', gpib_addr: 5}  # Agilent N5764A power supply on Crate 0
+    # ps18v:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '10.10.10.151', gpib_addr: 5}  # Agilent N5764A power supply on Crate 0
 
 ?: &default_fpga_array
-    iceboards: ['0387']
+    hwm: 'mb 106'
 
 test_list:
     # This list all the tests that will be done my the test software, in the proper order
     # path is the argument given to nose to find the test fucntion, in the form of module_path:function or module_path:class.method
     # This path is also the path used by XReport to identify tests results, with the exception that the double semicolon '::' is replaced by a dot '.'
-    imp: {description: 'Impedance test (needs S/N)',               path: 'mgadc08_bench_tests.py::MGADC08BenchTests::impedance_test', required: yes, require_serial_number: yes, dependencies: null}
-    smk: {description: 'Smoke test (needs S/N)',                   path: 'mgadc08_bench_tests.py::MGADC08BenchTests::smoke_test',     required: yes, require_serial_number: yes, dependencies: imp}
-    eep: {description: 'EEPROM Programming and test (needs S/N)',  path: 'mgadc08_bench_tests.py::TestMGADC08Carrier::eeprom_test',  required: yes, require_serial_number: yes, dependencies: smk}
-    pow: {description: 'Power test',                               path: 'mgadc08_bench_tests.py::TestMGADC08Carrier::test_power',   required: yes, require_serial_number: no, dependencies: smk}
-    spi: {description: 'SPI & PLL test',                           path: 'mgadc08_bench_tests.py::TestMGADC08Carrier::spi_pll_test', required: yes, require_serial_number: no, dependencies: smk}
-    rmp: {description: 'Ramp test',                                path: 'mgadc08_bench_tests.py::TestMGADC08Carrier::ramp_test',    required: yes, require_serial_number: no, dependencies: smk}
-    s11: {description: 'S11 test',                                 path: 'mgadc08_bench_tests.py::TestMGADC08Carrier::s11_test',     required: yes, require_serial_number: no, dependencies: smk}
+    imp: {description: 'Impedance test (needs S/N)',               path: 'mgadc08_bench_tests.py::TestMGADC08Bench::test_impedance', required: yes, require_serial_number: yes, dependencies: null}
+    smk: {description: 'Smoke test (needs S/N)',                   path: 'mgadc08_bench_tests.py::TestMGADC08Bench::test_smoke',     required: yes, require_serial_number: yes, dependencies: imp}
+    eep: {description: 'EEPROM Programming and test (needs S/N)',  path: 'mgadc08_bench_tests.py::TestMGADC08Carrier::test_eeprom',  required: yes, require_serial_number: yes, dependencies: smk}
+    pow: {description: 'Power test',                               path: 'mgadc08_bench_tests.py::TestMGADC08Carrier::test_test_',   required: yes, require_serial_number: no, dependencies: smk}
+    spi: {description: 'SPI & PLL test',                           path: 'mgadc08_bench_tests.py::TestMGADC08Carrier::test_spi_pll', required: yes, require_serial_number: no, dependencies: smk}
+    rmp: {description: 'Ramp test',                                path: 'mgadc08_bench_tests.py::TestMGADC08Carrier::test_ramp',    required: yes, require_serial_number: no, dependencies: smk}
+    s11: {description: 'S11 test',                                 path: 'mgadc08_bench_tests.py::TestMGADC08Carrier::test_s11',     required: yes, require_serial_number: no, dependencies: smk}
 
 
 menu:
@@ -74,10 +75,10 @@ bench_tests:
     setup:
         instruments: [dmm, ps12v, ps3v3_2v5] # Subset of instruments we use in the bench tests
         rails:  # ps: name if the power supply, as in the instruments list above
-            vcc12v: {ps: 'ps12v',     output: 1, voltage: 12, current_limit: 0.200} # ps12v, Output 1
-            unused: {ps: 'ps12v',     output: 2, voltage: 0,  current_limit: 0.010} # ps12v, Output 2
-            vcc3v3: {ps: 'ps3v3_2v5', output: 1, voltage: 3.3, current_limit: 2.800} # ps3v3_2v5, Output 1
-            vcc2v5: {ps: 'ps3v3_2v5', output: 2, voltage: 2.5, current_limit: 1.000} # ps3v3_2v5, Output 2
+            vcc12v: {instr_name: 'ps12v',     output: 1, voltage: 12, current_limit: 0.200} # ps12v, Output 1
+            unused: {instr_name: 'ps12v',     output: 2, voltage: 0,  current_limit: 0.010} # ps12v, Output 2
+            vcc3v3: {instr_name: 'ps3v3_2v5', output: 1, voltage: 3.3, current_limit: 2.800} # ps3v3_2v5, Output 1
+            vcc2v5: {instr_name: 'ps3v3_2v5', output: 2, voltage: 2.5, current_limit: 1.000} # ps3v3_2v5, Output 2
 
     impedance:
         max_impedance: 1.0e+10  # any measurement more than this is probably not taken correctly
@@ -103,12 +104,13 @@ bench_tests:
            - ['1V8 test point', {vmin: 1.7, vmax: 1.95}]
 
 carrier_tests:
-    setup:
+    setup: # These are parameters common to all carrier tests
         fmc_slot: 1 # This is the FMC slot where we expect the Mezzanine to be
-        instruments: [ps18v]
+        instruments: []  # Add 'ps18v' if we want power controlled automatically
         configure_ps: false # if False, the power supply settings will not be changed
         vlt: 18
         curlmt: 5
+        check_mtu: False
         fpga_array: {<<: *default_fpga_array, no_mezz: True, prog: 0,  open: 0, mdns_timeout: 30}
 
     eeprom_test:
