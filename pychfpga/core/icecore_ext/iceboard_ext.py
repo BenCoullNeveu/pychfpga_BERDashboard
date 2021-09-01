@@ -87,9 +87,6 @@ class FMCMezzanine(FMCMezzanineBase, HardwareMap):
     async def get_mezzanine_power_async(self):
         return await self.iceboard.tuber_get_mezzanine_power_async(self.mezzanine)
 
-    # async def get_mezzanine_power(self):
-    #     return self.iceboard.get_mezzanine_power(self.mezzanine)
-
     async def is_mezzanine_present_async(self):
         return await self.iceboard.tuber_is_mezzanine_present_async(self.mezzanine)
 
@@ -1704,7 +1701,7 @@ class IceBoardExt(IceBoardPlus):
 
         return fpga_mac_addr
 
-    async def set_local_data_port_number(self, port):
+    async def set_local_data_port_number_async(self, port):
         """
         Sets the port number to which the FPGA is sending the data for UDP channel 1. Use
         `set_data_target_address` instead.
