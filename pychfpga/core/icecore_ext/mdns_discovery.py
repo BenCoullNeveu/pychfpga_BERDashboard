@@ -202,8 +202,8 @@ async def mdns_discover(
         last_msg_time = None
         while True:
             t = time.time()
-            found_all_iceboards = not iceboard_found or all(iceboard_found.values())
-            found_all_slots = not icecrate_found or all(ic and len(ic.slot)==ic.NUMBER_OF_SLOTS for ic in icecrate_found.values())
+            found_all_iceboards = not expected_ibs or all(expected_ibs.values())
+            found_all_slots = not expected_ics or all(ic and len(ic.slot)==ic.NUMBER_OF_SLOTS for ic in expected_ics.values())
             if not wild_ibs and not wild_ics and found_all_iceboards and found_all_slots:
                 logger.info('DNS-SD: All the boards and/or crates that were requested were found. Stopping the search')
                 break
