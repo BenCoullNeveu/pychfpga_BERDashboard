@@ -37,7 +37,7 @@ from wtl.metrics import Metrics
 
 # from .icecore.session import load_session as load_yaml
 # from .icecore import load_yaml  # Py3: non-database version
-from .icecore_ext.iceboard_ext import IceBoardExt, async_to_sync
+from .icecore_ext.iceboard_ext import IceBoardExt, async_to_sync, run_async
 
 from .chFPGA_receiver import chFPGA_receiver
 # from pychfpga.common import util  # Py3: does not seem to be used
@@ -1209,10 +1209,10 @@ class chFPGA_controller(IceBoardExt):
     def get_data_receiver(self, verbose=1):
         if self.recv:
             return self.recv
-        chFPGA_config = self.get_config(basic=True)  # get only the info needed to start the receiver
+        chFPGA_config = run_async(self.get_config_async(basic=True))  # get only the info needed to start the receiver
         self.recv = chFPGA_receiver(chFPGA_config, verbose=verbose)
         self.logger.debug('Started data receiver threads on %s:%i' % (self.recv.host_ip, self.recv.port_number))
-        self.set_local_data_port_number(self.recv.port_number)
+        run_async(self.set_local_data_port_number_async(self.recv.port_number))
         return self.recv
 
     def get_data_socket(self, port_number=0):
@@ -1237,7 +1237,7 @@ class chFPGA_controller(IceBoardExt):
                 (actual_ip_addr, actual_port_number) = sock.getsockname()
                 opened_sockets[actual_port_number] = sock
                 self._data_socket = sock
-                self.set_local_data_port_number(actual_port_number)
+                run_async(self.set_local_data_port_number_async(actual_port_number))
 
         return self._data_socket
 
