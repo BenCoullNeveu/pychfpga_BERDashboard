@@ -261,7 +261,7 @@ class TestMGADC08Carrier:
         # Expected model and serial of the mezzanine under test (if known)
         self.model = xr.params.model
         self.serial = xr.params.serial
-        self.slot = cfg.fmc_slot
+        self.fmc_slot = cfg.fmc_slot
 
 
 
@@ -313,6 +313,9 @@ class TestMGADC08Carrier:
 
         # This is executed once the test is done
 
+        # pass the model & possibly updated serial back to the parameters object
+        xr.params.model = self.model
+        xr.params.serial = self.serial
         xr.header('Cleaning up...')
         # testing function will now begin
 
@@ -332,24 +335,23 @@ class TestMGADC08Carrier:
             print()
             print('Testing Mezzanine Power with %r' % ib)
             # ib.discover_mezzanines()
-            mezz = ib.mezzanine.get(self.slot, None)
+            mezz = ib.mezzanine.get(self.fmc_slot, None)
             assert mezz, 'No Mezzanine was detected'
 
-            # Check model & serial
+            # Check & update model & serial
             # The ARM updateed its IPMI cache when we wrote the EEPROM, so this is up to date
             model = mezz.part_number
             serial = mezz.serial
             print('    Expected Mezzanine is Model %s SN%s:' % (self.model, self.serial))
             print('    Installed Mezzanine is Model %s SN%s:' % (model, serial))
-            self.xr.params.model = model
+            # self.xr.params.model = model
             assert model.lower() == self.model.lower() , 'The Mezzanine currently under test does not have the correct model number (expected %s, got %s)' % (self.model, model)
             print(f'Mezz serial is {serial}, self.serial={self.serial!r}')
             if self.serial is None:
                 print(f'Assigning serial {serial}')
-                self.xr.params.serial = serial  # pass the new serial to the menu system so we can update it
                 self.serial = serial
-
-            assert serial.lower() == self.serial.lower(), 'The Mezzanine currently under test does not have the correct model and serial numbers (expected %s SN%s, got %s SN%s)' % (self.model, self.serial, model, serial)
+            else:
+                assert serial.lower() == self.serial.lower(), 'The Mezzanine currently under test does not have the correct model and serial numbers (expected %s SN%s, got %s SN%s)' % (self.model, self.serial, model, serial)
 
             return ib, mezz
 
@@ -378,16 +380,16 @@ class TestMGADC08Carrier:
             print()
             print('Testing Mezzanine EEPROM with %r' % ib)
             # Check if PRSNT line is help low
-            tr.is_mezzanine_present = ib.is_mezzanine_present(self.slot)
+            tr.is_mezzanine_present = ib.is_mezzanine_present(self.fmc_slot)
             print()
             print('PRSNT line says that the Mezzanine is present: %s' % bool(tr.is_mezzanine_present))
-            assert tr.is_mezzanine_present, 'Mezzanine was not detected on FMC slot %i' % self.slot
+            assert tr.is_mezzanine_present, 'Mezzanine was not detected on FMC slot %i' % self.fmc_slot
 
             # Attempt to access the EEPROM
             # The EEPROM has 128 kBytes of data and requires 17 bits of addressing
             # 16 bits are provided in the data payload, and the 17th bit is in the I2C address, therefore creating 2 pages.
             # We check if the EEPROM responds to both addresses
-            eeprom = [ib.hw._fmca_eeprom, ib.hw._fmcb_eeprom][self.slot-1]
+            eeprom = [ib.hw._fmca_eeprom, ib.hw._fmcb_eeprom][self.fmc_slot-1]
             tr.is_eeprom_i2c_responding = [eeprom.is_present(page) for page in (0, 1)]
             print()
             print('EEPROM is responding to I2C addressing for [page 0, page 1]: %s' % bool(tr.is_eeprom_i2c_responding))
@@ -397,7 +399,7 @@ class TestMGADC08Carrier:
             # We don't fail on this. This is just for additional info
             print()
             try:
-                tr.eeprom_contents_from_fpga = ib.hw.read_mezzanine_eeprom(self.slot, 0, 32).decode('utf-8', 'ignore')
+                tr.eeprom_contents_from_fpga = ib.hw.read_mezzanine_eeprom(self.fmc_slot, 0, 32).decode('utf-8', 'ignore')
                 print('EEPROM content read by FPGA (first 32 characters) is: %s' % tr.eeprom_contents_from_fpga)
             except Exception as e:
                 print('Failed to read EEPROM with the FPGA  due to exception: %r' % e)
@@ -406,7 +408,7 @@ class TestMGADC08Carrier:
             # We don't fail on this. This is just for additional info
             print()
             try:
-                tr.eeprom_contents_from_arm = base64.decodestring(ib._mezzanine_eeprom_read_base64(self.slot)).decode('utf-8', 'ignore')
+                tr.eeprom_contents_from_arm = base64.decodestring(ib._mezzanine_eeprom_read_base64(self.fmc_slot)).decode('utf-8', 'ignore')
                 print('EEPROM content read by ARM is:')
                 print(wrap(repr(tr.eeprom_contents_from_arm)))
             except Exception as e:
@@ -416,12 +418,12 @@ class TestMGADC08Carrier:
             print()
             print('Discovering Mezzanine')
             ib.discover_mezzanines()
-            mezz = ib.mezzanine.get(self.slot, None)
+            mezz = ib.mezzanine.get(self.fmc_slot, None)
             print('    Mezzanine is %r:' % mezz)
 
             if mezz:
                 # If a Mezzanine is discovered, it must have valid IPMI data.
-                eeprom_data = ib._mezzanine_eeprom_read(self.slot)
+                eeprom_data = ib._mezzanine_eeprom_read(self.fmc_slot)
                 ipmi = mezz.decode_eeprom(eeprom_data)  # returns either a Tuber IPMI or a Python IPMI
                 tr.old_ipmi = repr(ipmi)
                 print()
@@ -511,11 +513,11 @@ class TestMGADC08Carrier:
 
                 print()
                 print('Writing IPMI data (%i bytes) to EEPROM...' % len(encoded_ipmi))
-                ib._mezzanine_eeprom_write_base64(self.slot, base64.b64encode(encoded_ipmi), 0)
+                ib._mezzanine_eeprom_write_base64(self.fmc_slot, base64.b64encode(encoded_ipmi), 0)
                 print('EEPROM WRITTEN with data')
 
                 # read back eeprom
-                read_back = base64.b64decode(ib._mezzanine_eeprom_read_base64(self.slot))
+                read_back = base64.b64decode(ib._mezzanine_eeprom_read_base64(self.fmc_slot))
                 print()
                 print('Read back %i bytes from EEPROM.')
                 tr.read_back = read_back = read_back[:len(encoded_ipmi)]
@@ -561,17 +563,17 @@ class TestMGADC08Carrier:
             # Power down mezzanine to get a baseline
             print()
             print('Turning mezzanine power OFF (just in case)')
-            run_async(ib.set_mezzanine_power_async(False, self.slot))
+            run_async(mezz.set_mezzanine_power_async(False))
             time.sleep(0.5)
 
             # Check that board power is off. The ARM checks this by looking at the voltage on the 12V_EN output.
-            tr.first_power_off_state = run_async(ib.get_mezzanine_power_async(self.slot))
+            tr.first_power_off_state = run_async(ib.get_mezzanine_power_async(self.fmc_slot))
             assert not tr.first_power_off_state, 'The ARM refused to turn OFF the Mezzanine power !'
 
             # Check that Power Good goes down when board is powered off to make sure we are not stuck to 0
             # For this to work, the GPIO should not have its internal pull up/downs enabled. This set-up is done by the FPGA hw module.
             assert ib.hw._gpio_power.read_reg(4) == 0, 'Pullups/pulldown are enabled on the IceBoard IOExpander. The Mezzanine Power Good signal cannot be read properly.'
-            tr.post_power_pg = ib.hw._gpio.read(pg_gpio[self.slot])
+            tr.post_power_pg = ib.hw._gpio.read(pg_gpio[self.fmc_slot])
             assert not tr.post_power_pg, 'The Power good line is ON even if the board is OFF!'
             print('Power good line is OFF as expected')
 
@@ -579,7 +581,7 @@ class TestMGADC08Carrier:
             # Turn Mezzanine ON
             print()
             print('Turning mezzanine power ON')
-            run_async(ib.set_mezzanine_power_async(True, self.slot))
+            run_async(mezz.set_mezzanine_power_async(True))
 
             # Check mezzanine voltages and currents
             print()
@@ -592,8 +594,8 @@ class TestMGADC08Carrier:
                 ])
             tr.rails = NameSpace()
             for rail_name, limits in list(cfg.rails.items()):
-                V = ib.get_mezzanine_voltage(mezz_rails[rail_name], self.slot)
-                I = ib.get_mezzanine_current(mezz_rails[rail_name], self.slot)
+                V = ib.get_mezzanine_voltage(mezz_rails[rail_name], self.fmc_slot)
+                I = ib.get_mezzanine_current(mezz_rails[rail_name], self.fmc_slot)
                 print('Rail %s: %.3fV@%.3fA,  limits = %s' % (rail_name, V, I, limits))
                 tr.rails[rail_name] = NameSpace(V=V, I=I)  # Namespace to store this rail results
                 if V < limits.vmin or V > limits.vmax or I < limits.imin or I > limits.imax:
@@ -601,7 +603,7 @@ class TestMGADC08Carrier:
                     assert False, 'Inadequate current or voltage on rail %s. Powering down.' % rail_name
 
             # Check that Power Good is ON
-            tr.post_power_pg = ib.hw._gpio.read(pg_gpio[self.slot])
+            tr.post_power_pg = ib.hw._gpio.read(pg_gpio[self.fmc_slot])
             assert tr.post_power_pg, 'The Power good line did not turn on!'
             print('Power good line is ON as expected')
 
@@ -612,12 +614,12 @@ class TestMGADC08Carrier:
             print()
             print('Test ended. Turning mezzanine power OFF')
 
-            if ib:
-                ib.set_mezzanine_power(False, self.slot)
-                tr.final_power_off_state = ib.get_mezzanine_power(self.slot)
+            if mezz:
+                mezz.set_mezzanine_power(False)
+                tr.final_power_off_state = run_async(mezz.get_mezzanine_power_async())
 
             print('ARM reports that Mezz power is %s' % bool(tr.final_power_off_state))
-            print('ARM reports that Mezz power is %s' % bool(ib.get_mezzanine_power(self.slot)))
+            print('ARM reports that Mezz power is %s' % bool(run_async(mezz.get_mezzanine_power_async())))
             print('GPIO OUT0 reg is', bin(ib.hw._gpio_power.read_reg(10)))
 
             xr.save_data(tr)
@@ -664,7 +666,7 @@ class TestMGADC08Carrier:
         try:
 
             ib, mezz = self._get_iceboard(**cfg.fpga_array)
-            ib.set_mezzanine_power(True, self.slot)
+            run_async(mezz.set_mezzanine_power_async(True))
             time.sleep(0.5)
 
             # test IO Expander
@@ -815,8 +817,8 @@ class TestMGADC08Carrier:
             tr.passed = passed
             print()
             print('Test ended. Turning mezzanine power OFF')
-            if ib:
-                ib.set_mezzanine_power(False, self.slot)
+            if mezz:
+                run_async(mezz.set_mezzanine_power_async(False))
             xr.save_data(tr)
 
     def set_adc_delays(self, ib):
@@ -939,12 +941,13 @@ class TestMGADC08Carrier:
             if r:
                 r.close()
             if ib:
-                ib.set_mezzanine_power(False, self.slot)
-                ib.set_mezzanine_power(False, 2 if self.slot==1 else 1)
+                for m in ib.mezzanine.values():
+                    run_async(m.set_mezzanine_power_async(False))
+                # run_async(mezz.set_mezzanine_power_async(False, 2 if self.fmc_slot==1 else 1))
             xr.save_data(tr)
 
-    def set_mezzanine_power(self, state):
-        run_async(self.ib.set_mezzanine_power_async(state, self.slot))
+    def set_mezzanine_power(self, state, slot=None):
+        run_async(self.ib.mezzanine[slot or self.fmc_slot].set_mezzanine_power_async(state))
 
     def test_s11(self, xr):
         """
@@ -985,8 +988,9 @@ class TestMGADC08Carrier:
 
             r = ib.get_data_receiver()
 
-            for adc in mezz.ADC:
-                adc.set_trim(cfg.adc_trim_value)
+            if cfg.adc_trim_value is not None:
+                for adc in mezz.ADC:
+                    adc.set_trim(cfg.adc_trim_value)
 
             passed_s11 = []
             passed_fr = []
@@ -1014,16 +1018,21 @@ class TestMGADC08Carrier:
 
             print("Starting channel-by-channel tests")
 
-            for channel in range(8):
+            for channel in cfg.channels:
                 # --------------------------------
                 #   Frequency Response Test
                 # --------------------------------
                 print()
                 print('Measuring analog frequency reponse of channel')
-                print('Testing CHANNEL %i' % (channel + 1))
-                xr.input('Connect cable to ***CHANNEL %i*** SMA and press [ENTER] or [Q] to abort.' % (channel + 1))
+                print(f'Testing ADC board  CHANNEL CH{channel}')
+                xr.input(f'Connect cable to ***CHANNEL CH{(channel)}*** SMA and press [ENTER] or [Q] to abort.')
                 plt.close('all')
 
+                logical_channel = (channel - 1) + (8 if self.fmc_slot==2 else 0)
+                # make sure we generate a signal on port 1
+                na.command('S21')
+                na.command('CONT')
+         
                 while True:
                     # na.command('CWFREQ 10 MHz') # kick the network analyser in CW mode early
                     # na.command('POWE %f DB' % power_level)  # should we wait for the power to stabilize?
@@ -1034,7 +1043,7 @@ class TestMGADC08Carrier:
                     fr_ok = []
                     resp = NameSpace(freq=[], data=[], dbfs=[])
                     for f in fr_freqs:
-                            print('   CHANNEL %02i, Sinewave %7.3f MHz @ %f dBm' % (channel+1, f, power_level)),
+                            print('   CHANNEL CH%i, Sinewave %7.3f MHz @ %f dBm' % (channel, f, power_level)),
                             # na.command('CWFREQ %f MHz' % f)
                             na.set_cw_source(freq=f*1e6)
                             print('.', end='')
@@ -1044,7 +1053,7 @@ class TestMGADC08Carrier:
                             trial = 0
                             while True:
                                 data = r.read_frames(cfg.number_of_frames)
-                                if channel in data:
+                                if logical_channel in data:
                                     break
                                 assert trial < 40, 'Did not receive data from the board.'
                                 trial += 1
@@ -1052,7 +1061,7 @@ class TestMGADC08Carrier:
                                     # answer = input_yes_no('Did not receive data from the board. Want to try again [Y] or quit [Q]?' )
                                     # assert answer, 'Interrupting test upon user request because of missing data'
                                 # else:
-                            data = data[channel].astype(float)
+                            data = data[logical_channel].astype(float)
                             # print "Got %i samples" % len(data)
                                     # break
                             resp.freq.append(f)
@@ -1061,7 +1070,8 @@ class TestMGADC08Carrier:
                             resp.dbfs.append(a)
                             if  min(fr_f) <= f <=max(fr_f):
                                 expected_a = np.interp(f, fr_f, fr_a)
-                                ok = a > expected_a
+                                # print(f'a={a}, expected_a={expected_a}')
+                                ok = bool(a > expected_a)
                             else:
                                 ok = True
                                 expected_a = None
@@ -1090,7 +1100,7 @@ class TestMGADC08Carrier:
                         plt.ylabel('Response [dB Full Scale]')
                         plt.xlabel('Frequency [MHz]')
                         plt.grid(1)
-                        plt.title('CHANNEL %02i Frequency respsonse, Input power =  %f dBm' % (channel+1, power_level))
+                        plt.title(f'{self.model} SN{self.serial} CHANNEL CH{channel} Frequency respsonse, Input power =  {power_level} dBm')
                         # plt.ion()
                         plt.pause(0.0001)
                         # plt.draw()
@@ -1108,7 +1118,7 @@ class TestMGADC08Carrier:
                     if all(fr_ok):
                         break
                     else:
-                        ans = input_yes_no('Frequency reponse test failed. Do you want to check connections and retry [Y/N or Quit=Q]?')
+                        ans = xr.input_yes_no('Frequency reponse test failed. Do you want to check connections and retry [Y/N or Quit=Q]?')
                         if not ans:
                             break
                 passed_fr.append(all(fr_ok))
@@ -1130,14 +1140,14 @@ class TestMGADC08Carrier:
                     wm = plt.get_current_fig_manager()
                     wm.window.wm_geometry("-0+0")
                     plt.clf()
-                    na.plot_s_params(freqs, s11_data, title='%s SN%s Channel %02i S11' % (self.model, self.serial, channel+1), xscale='lin', plot_phase=False)
+                    na.plot_s_params(freqs, s11_data, title='%s SN%s Channel CH%i S11' % (self.model, self.serial, channel), xscale='lin', plot_phase=False)
                     ix = np.where(np.logical_and(freqs>=400e6, freqs<=800e6))
                     ff = freqs[ix]
                     dd = 20 * np.log10(np.abs(s11_data[ix]))
                     plt.plot([400e6, 800e6], [cfg.s11_max]*2, 'r-')  # plot the limit
                     plt.pause(0.0001)
                     xr.insert_plot()
-                    print('   Worst case return loss is %0.1f dB. Limit is %0.1d dB' % (max(dd), cfg.s11_max))
+                    print('Worst case return loss is %0.1f dB. Limit is %0.1d dB' % (max(dd), cfg.s11_max))
                     if all(dd <= cfg.s11_max):
                         passed_s11.append(True)
                         print(' PASSED')
@@ -1166,8 +1176,8 @@ class TestMGADC08Carrier:
             print('Disconnect the mezzanine if you are finished with it')
             if r:
                 r.close()
-            if ib:
-                run_async(ib.set_mezzanine_power_async(False, self.slot))
+            if mezz:
+                run_async(mezz.set_mezzanine_power_async(False))
             xr.save_data(tr)
             if self.ps18v:
                 self.ps18v.output(state=False, readonly=False)
