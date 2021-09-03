@@ -70,22 +70,22 @@ class ReceiverThread(threading.Thread):
         self.Ncmac = 2 * (self.Nch + 1)
         # Pre-allocate the frame assembly array
         self.corr_data_block = np.zeros((self.Ncmac * self.Ncorr, self.MAX_CORR_FRAME_LENGTH), dtype=np.uint8)
-        self._stop = threading.Event()
-        self._flush = threading.Event()
+        self._stopping = threading.Event()  # changed from _stop which collided with Threading internals
+        self._flushing = threading.Event()
         self.verbose = verbose
         self.print_delay = 1
         self._send_every_frame = threading.Event()
         super(type(self), self).__init__()
 
     def stop(self):
-        self._stop.set()
+        self._stopping.set()
 
     # Currently the flush is unused...  Remove?
     def flush(self, state):
         if state:
-            self._flush.set()
+            self._flushing.set()
         else:
-            self._flush.clear()
+            self._flushing.clear()
 
     def send_every_frame(self, state):
         if state:
@@ -94,7 +94,7 @@ class ReceiverThread(threading.Thread):
             self._send_every_frame.clear()
 
     def is_stopped(self):
-        return self._stop.is_set()
+        return self._stopping.is_set()
 
     def run(self):
         #    timeout=1
@@ -116,10 +116,10 @@ class ReceiverThread(threading.Thread):
         # self.sock.setblocking(0)
         if self.verbose:
             print('Frame acquisition thread is running')
-        while not self._stop.is_set():
+        while not self._stopping.is_set():
             # data = self.sock.read_data(timeout_delay=timeout)
             # Read data from the UDP listening port
-            if self._flush.is_set():
+            if self._flushing.is_set():
                 try:
                     r1, w1, e1 = select.select([self.sock], [], [])
                     for e in r1:
@@ -352,7 +352,7 @@ class chFPGA_receiver(object):
         """
         self.frame_receiver.stop()
         self.frame_receiver.join(1)  # Wait up to the specified amount of time for the thread to complete
-        if self.frame_receiver.isAlive():
+        if not self.frame_receiver.is_stopped():
             raise RuntimeError('Could not terminate Frame Receiver thread')
         # self.frame_queue_corr.join()
         # self.frame_queue.join()
