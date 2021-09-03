@@ -4,6 +4,7 @@ concurrently on all its items.
 """
 
 import collections
+import collections.abc
 import logging
 import itertools
 import asyncio
@@ -91,7 +92,7 @@ class Ccoll(object):
         # Do not define a docstring here: for some reason ipython will use it
         # instead of the dynamic __doc__ defined below.
         self.logger = logging.getLogger(__name__)
-        if isinstance(objects, collections.Mapping):
+        if isinstance(objects, collections.abc.Mapping):
             if keys is not None:
                 raise TypeError('Cannot use the keys parameter when a mapping is provided')
             keys = objects.keys()
