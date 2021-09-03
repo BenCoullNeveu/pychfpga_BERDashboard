@@ -151,7 +151,7 @@ class SCALER_base(Module_base):
         self.cached_gain_table[bank] = gains
         self.cached_gain_timestamp[bank] = time.time() if gain_timestamp is None else gain_timestamp
 
-        gain_string = np.reshape(np.vstack((gains.imag, gains.real)).T, 2 * total_bins).astype('<i2').tostring()
+        gain_string = np.reshape(np.vstack((gains.imag, gains.real)).T, 2 * total_bins).astype('<i2').tobytes()
 
         # if timestamp is None:
         #     self.SYNCHRONIZE_GAIN_BANK = 0
