@@ -47,7 +47,8 @@ class ShuffleCrossbar(Module_base):
     TIMEOUT_PERIOD      = BitField(CONTROL, 1, 0, width=3, doc='')
 
     SOF_WINDOW_STOP    = BitField(CONTROL, 2, 0, width=8, doc='')
-    LANE_MAP_BYTE0     = BitField(CONTROL, 3, 0, width=8, doc='Lane map')
+    IGNORE_LANE        = BitField(CONTROL, 4, 0, width=16, doc='Lane ignore flags. Bit 0 is for Aligner input lane 0 etc.')
+    LANE_MAP_BYTE0     = BitField(CONTROL, 5, 0, width=8, doc='Lane map')
     # LANE_MAP_BYTE7     = BitField(CONTROL, 10, 0, width=8, doc='Lane map')
     # IGNORE_LANE        = BitField(CONTROL, 12, 0, width=16, doc='')
 
@@ -248,7 +249,7 @@ class ShuffleCrossbar(Module_base):
             {lane_number: {channels:[channel numbers...], bins:[bin numbers ...], stream_id:x, ...}, ...}
         """
 
-        remap_out = {output_lane: data[input_lane] for output_lane, input_lane in enumerate(self.get_lane_map())}
+        remap_out = {output_lane: data[input_lane] for output_lane, input_lane in enumerate(self.get_lane_map()) if input_lane in data}
 
         cb_out = OrderedDict()
         N = self.NUMBER_OF_OUTPUT_LANES // self.NUMBER_OF_BIN_SEL

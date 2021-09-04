@@ -2467,11 +2467,12 @@ class FPGAArray(object):
                         self.logger.debug('%r: In %r, %s has no corresponding transmitter'
                                           % (self, ib.crate, rx))
 
-        # Get the exhaustive frequency map that is implemented by the current corner
-        freq_map = self.get_frequency_map(format='l:bb')
-        # Retain only one bin number  for each bin
-        self.corner_turn_frequency_bins = {lane_id: sorted(set(data['data']) - set([None]))
-                                           for lane_id, data in freq_map.items()}
+        if mode != 'shuffle128': # ***JFC: temporary hack
+            # Get the exhaustive frequency map that is implemented by the current corner
+            freq_map = self.get_frequency_map(format='l:bb')
+            # Retain only one bin number  for each bin
+            self.corner_turn_frequency_bins = {lane_id: sorted(set(data['data']) - set([None]))
+                                               for lane_id, data in freq_map.items()}
 
         # Double check that the frequency map that we obtained matches our target bin map.
         if mode == 'shuffle256' or mode == 'shuffle512':

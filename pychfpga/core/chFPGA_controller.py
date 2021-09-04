@@ -3190,6 +3190,9 @@ class chFPGA_controller(IceBoardExt):
             cb3_output_frame_flags_words_per_frame = 0  # debug
 
             stream_type = 0
+            cb2_ignore_lane = 0
+            cb3_ignore_lane = 0
+
 
         elif mode == 'chan4':
             """
@@ -3417,7 +3420,9 @@ class chFPGA_controller(IceBoardExt):
             # CB2 REMAP
             cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
             print(f'slot {self.slot-1}/15: CB2 lane map: {cb2_lane_map}') #[ 0  8  6 14  5  4 15  7  3  2 11  1 13 12  9 10]
+            cb2_ignore_lane = sum((1<<lane) for lane in cb2_lane_map[8:16])
             cb2_lane_map[8:16] = [0,0,0,0,0,0,0,0]  # hack to make sure all the bin sel input lanes have valid data
+            print(f'slot {self.slot-1}/15: CB2 lane map: {cb2_lane_map}') #[ 0  8  6 14  5  4 15  7  3  2 11  1 13 12  9 10]
             cb2_bypass = True
 
             cb2_input_words_per_bin = cb1_output_words_per_bin
@@ -3452,6 +3457,7 @@ class chFPGA_controller(IceBoardExt):
 
             # Remap input lanes so data is selected in proper channel order
             cb3_lane_map = [0, 1, 2, 3, 4, 5, 6, 7]
+            cb3_ignore_lane = 0
             cb3_bypass = False
             cb3_input_words_per_bin = cb2_output_words_per_bin
             cb3_input_data_flags_words_per_bin = cb2_output_data_flags_words_per_bin
@@ -4033,6 +4039,7 @@ class chFPGA_controller(IceBoardExt):
             else:  # otherwise, the bin selector overrides
                 stream_id = [((stream_type << 12) | (crate_number << 8) | (slot_number << 4) | lane)
                              for lane in range(cb2.NUMBER_OF_CROSSBAR_OUTPUTS)]
+            cb2.IGNORE_LANE = cb2_ignore_lane
             cb2.set_lane_map(cb2_lane_map)
             if cb2_timeout_period is not None:
                 cb2.TIMEOUT_PERIOD = cb2_timeout_period
@@ -4058,6 +4065,7 @@ class chFPGA_controller(IceBoardExt):
         # Configure CROSSBAR 3
         ###########################
         if cb3:
+            cb3.IGNORE_LANE = cb3_ignore_lane
             cb3.set_lane_map(cb3_lane_map)
             if cb3_bypass:  # if we bypass, just remap the stream ids from the previous crossbar
                 stream_id = [stream_id[i] for i in cb3_lane_map]
