@@ -161,7 +161,7 @@ class Chassis(object):
         x = struct.pack(
             'BBB B%is B%is B x 0q' % (lprt, lser),
             0x01,            # version
-            length / 8,      # length
+            length // 8,      # length
             self.type_code,  # chassis type
             0xc0 | lprt, self.part_number,
             0xc0 | lser, self.serial_number,
@@ -222,14 +222,14 @@ class Board(object):
             'BBB BBB B%is B%is B%is B%is B%is B x 0q' % (
                 lman, lprd, lser, lprt, lfru),
             0x01,       # version
-            length/8,   # length
+            length//8,   # length
             0x00,       # language code (english)
             mfg_date >> 16, (mfg_date >> 8) & 0xff, mfg_date & 0xff,
-            0xc0 | lman, self.manufacturer,
-            0xc0 | lprd, self.product_name,
-            0xc0 | lser, self.serial_number,
-            0xc0 | lprt, self.part_number,
-            0xc0 | lfru, self.fru_file,
+            0xc0 | lman, self.manufacturer.encode(),
+            0xc0 | lprd, self.product_name.encode(),
+            0xc0 | lser, self.serial_number.encode(),
+            0xc0 | lprt, self.part_number.encode(),
+            0xc0 | lfru, self.fru_file.encode(),
             0xc1
         )
 
@@ -292,15 +292,15 @@ class Product(object):
                 lman, lprd, lprt, lver, lser, ltag, lfru
             ),
             0x01,       # version
-            length/8,   # length
+            length//8,   # length
             0x00,       # language code (english)
-            0xc0 | lman, self.manufacturer,
-            0xc0 | lprd, self.product_name,
-            0xc0 | lprt, self.part_number,
-            0xc0 | lver, self.product_version,
-            0xc0 | lser, self.serial_number,
-            0xc0 | ltag, self.asset_tag,
-            0xc0 | lfru, self.fru_file,
+            0xc0 | lman, self.manufacturer.encode(),
+            0xc0 | lprd, self.product_name.encode(),
+            0xc0 | lprt, self.part_number.encode(),
+            0xc0 | lver, self.product_version.encode(),
+            0xc0 | lser, self.serial_number.encode(),
+            0xc0 | ltag, self.asset_tag.encode(),
+            0xc0 | lfru, self.fru_file.encode(),
             0xc1
         )
 
@@ -466,11 +466,11 @@ class FRU(object):
         header = struct.pack(
             "B BBBBB x B",
             0x01,   # version
-            internal_offset / 8,
-            chassis_offset / 8,
-            board_offset / 8,
-            product_offset / 8,
-            multi_offset / 8,
+            internal_offset // 8,
+            chassis_offset // 8,
+            board_offset // 8,
+            product_offset // 8,
+            multi_offset // 8,
             0x00,   # checksum placeholder
         )
 
