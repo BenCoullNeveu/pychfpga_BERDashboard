@@ -4502,7 +4502,7 @@ class FPGAArray(object):
         orphan_iceboards = [ib for ib in iceboards if not ib.crate or not ib.crate.serial]
         corner_label = 'Standalone\nICEBoards'
         # col_labels = ['-'] * len(orphan_iceboards)
-        col_labels = ['\nSN%s\n%s\nVirt. slot %s' % (ib.serial, ib.hostname, ib.slot) for ib in orphan_iceboards]
+        col_labels = [f'Virt. slot {ib.slot}\nSN{ib.serial}\n{ib.hostname}' for ib in orphan_iceboards]
         # for i, ib in enumerate(orphan_iceboards):
         #    col_labels[i] += '\n%s' % ib.hostname
         table = []
