@@ -253,7 +253,9 @@ def mdns_resolve(name, timeout=1):
     # print('found', info)
     zeroconf.close()
     if info:
-        return socket.inet_ntop(socket.AF_INET, info.addresses_by_version(version=IPVersion.V4Only)[0])
+        ips = info.addresses_by_version(version=IPVersion.V4Only)
+        if ips:
+            return socket.inet_ntop(socket.AF_INET, ips[0])
     else:
         return None
 
