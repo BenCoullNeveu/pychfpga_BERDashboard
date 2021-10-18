@@ -1,19 +1,8 @@
-# Notes:
-#     - Semicolumns must be followed by a space
-#     - Floats must have a decimal point *AND* an exponent sign if an exponent is used (i.e. 10.0 and 10.e+3 is valid, 10e3, 10.e3, 10e+3 are all invalid)
-aliases:
-comment: |
-    This is a long note
+# test_results_folder: ""  # don't specify here to use value pased by the previous menu
+# test_results_folder_uses_git: false  # don't specify here to use value pased by the previous menu
+# xml_test_results_pathname: # relative to test_results_folder, don't speficy to get default pattern "./{model}/{model}_SN{serial}/data/{isodate}_{session_name}.xml"
 
-    That extends many lines
-        this is indented more
-
-# test_results_folder: './test_results'
-# test_results_folder: '../../../iceqc/MGADC08'
-# xformat: ['pdf']  # Output formats for the test reports. xml is always saved.
-xml_test_results_pathname: "../../../qc_results/{model}/{model}_SN{serial}/data/{isodate}_{session_name}.xml"
-
-model_number: 'MGADC08'
+model_number: 'MGADC08' # required to run the tests (generate data folder name, configure EEPROM etc.)
 default_serial: null
 
 instruments:
@@ -21,6 +10,8 @@ instruments:
     ps12v:     {labpy_object: 'AgilentPS',   adapter: 'TCPIP::PROLOGIX::011dd9::GPIB::5'}  # Agilent E3648A dual output power supply  12V on output 1, output 2 not used
     ps3v3_2v5: {labpy_object: 'AgilentPS',   adapter: 'TCPIP::PROLOGIX::011dd9::GPIB::6'}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
     na:        {labpy_object: 'HP8753E',     adapter: 'TCPIP::PROLOGIX::011dd9::GPIB::15'} # HP8753E Network Analyzer
+    # na:        {labpy_object: 'KeysightN9923', interface: 'lan', ip_addr: '10.11.1.116', gpib_addr: 15} # HP8753E Network Analyzer
+
     # ps18v:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '11.11.11.73', gpib_addr: 5}  # Agilent N5764A power supply
     # ps18v:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '10.10.10.151', gpib_addr: 5}  # Agilent N5764A power supply on Crate 0
 
@@ -61,6 +52,7 @@ menu:
     - { key: 'R',                    action: summary, description: 'Generate combined summary for all available DUTs'                       }
     - { key: 'Q',                    action: exit, description: 'Exit'                                                }
     - {                              action: text, description: "or Enter or scan board's serial number or menu item" }
+    - { regex: '45844-0000-(\d{4})', action: board_info, model: 'MGADC08', serial: '{0}', next_key: '1'}  # 29821-0000-nnnn are MGADC08 Serial nnnn
     - { regex: '29821-0000-(\d{4})', action: board_info, model: 'MGADC08', serial: '{0}', next_key: '1'}  # 29821-0000-nnnn are MGADC08 Serial nnnn
     - { regex: '35896-0000-(\d{4})', action: board_info, model: 'MGADC08', serial: '{0}', next_key: '1'}  # 35896-0000-nnnn are MGADC08 Serial nnnn
     - { regex: '38161-0000-(\d{4})', action: board_info, model: 'MGADC08', serial: '{0}', next_key: '1'}  # 38161-0000-nnnn are MGADC08 Serial nnnn
@@ -88,7 +80,7 @@ bench_tests:
         # zmin: minimum impedance below which the test will fail
            - ['J7-2 (12V)',     {delay: 0.1, zmin: 500}]
            - ['J7-3 (2.5V)',    {delay: 0.1, zmin: 500}]
-           - ['J7-4 (3.3V)',    {delay: 0.1, zmin: 500}]
+           - ['J7-4 (3.3V)',    {delay: 0.1, zmin: 100}]  # From digico file
            - ['3V3 test point', {delay: 0.1, zmin: 500}]
            - ['1V8 test point', {delay: 0.1, zmin: 300}]
 
@@ -159,17 +151,19 @@ carrier_tests:
     s11_test:
         instruments: [na] # Subset of instruments we use in these tests
         dummy_instruments: no
-        fpga_array: {<<: *default_fpga_array, prog: 1,  open: 1, adc_bandwidth=3}
-        # s11_max : -15 # in dB # CHIME
-        s11_max : -10 # in dB # CHORD
+        fpga_array: {<<: *default_fpga_array, prog: 1,  open: 1, adc_bandwidth=1}
+        s11_max : -15 # in dB # CHIME
+        # fpga_array: {<<: *default_fpga_array, prog: 1,  open: 1, adc_bandwidth=1} # CHORD
+        # s11_max : -10 # in dB # CHORD
 
         adc_trim_value: null  # 0-15, default is 8. null= no change. Was 15 for many mezzannes. Applies to all channels.
         channels: [1,2,3,4,5,6,7,8] # ADC channels to test , as labeled on the board
         # frequency response measurement parameters
         number_of_frames: 1
-        # freqs: [17, 47, 93,  153, 207, 307, 353, 407, 507, 553, 653, 707, 753, 807, 853, 907, 953, 1007, 1047, 1065, 1107, 1147, 1165, 1207]  # MHz
 
-        # frequencies for wideband mezzanines
-        freqs: [17, 47, 93,  153, 207, 307, 353, 407, 507, 553, 653, 707, 753, 807, 853, 907, 953, 1007, 1047, 1065, 1107, 1147, 1165, 1207, 1288, 1333, 1407, 1475, 1523, 1608, 1663, 1704]  # MHz
+        # CHIME
+        freqs: [17, 47, 93,  153, 207, 307, 353, 407, 507, 553, 653, 707, 753, 807, 853, 907, 953, 1007, 1047, 1065, 1107, 1147, 1165, 1207]  # MHz
+        # CHORD
+        # freqs: [17, 47, 93,  153, 207, 307, 353, 407, 507, 553, 653, 707, 753, 807, 853, 907, 953, 1007, 1047, 1065, 1107, 1147, 1165, 1207, 1288, 1333, 1407, 1475, 1523, 1608, 1663, 1704]  # MHz
         power_level: -6 # dBm  # stimulus power
         expected_frequency_response: [[200, -3], [900, -6]]
