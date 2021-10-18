@@ -40,16 +40,51 @@ TEST_CONFIG_FILE = './mgadc08_test_config.yaml'
 def wrap(obj, width=80):
     return textwrap.fill(str(obj), width)
 
+class TestUtils:
+    """
 
-class TestMGADC08Bench:
+    """
+    def open_instrument(self, name):
+        """ Open an instrument defined in the instrument list in the config file"""
+        instr_params = self.cfg.instruments[name].copy()
+        class_name = instr_params.pop('labpy_object')
+        print(f'calling open instrument on class {class_name} with parameters {instr_params}')
+        return labpy.open_instrument(class_name, **instr_params)
+
+    def open_ps(self, name='ps18v', state=True):
+        """ Open and setup the power supply for the motherboard if is in the instrument list and manual operation is not forced
+
+        Note: the following instance attributes must exist when this method is called: 
+            self.ps18v (can be None)
+            self.xr
+        """
+
+        # if supply is already turned on
+        if 'ps18v' in self.cfg.instruments and self.cfg.get('manual_ps', False):
+            self.ps18v = self.open_instruments(name) 
+        else:
+            self.ps18v = None
+
+        # initialize power supply if we have one
+        if self.ps18v:
+            if state  and self.ps18v.status()['status'] == 'OK' and self.instr.ps18v.status()['power'] > 1:
+                return
+            else:
+                self.ps18v.set_output(state=False) #Ensuring power on N5764A is off
+                self.ps18v.clear() #Clearing any previous protection
+                self.ps18v.set_voltage(voltage=cfg.vlt) #Setting voltage to 18V, power still off
+                self.ps18v.set_current_limit(current=cfg.curlmt, ocp=True) #Setting current limit and turning on ocp feature
+                self.ps18v.set_output(state=state) #Ensuring power on N5764A is off
+        else:
+            if state:
+                self.xr.input('Turn ON power to the Iceboard, wait for the front LEDs to blink (about 20 s), and press ENTER')
+
+        return self.ps18v
+
+class TestMGADC08Bench(TestUtils):
     """
     Perform impedance & power tests on the MGADC08 Mezzanine.
     """
-
-    def open_instrument(self, name):
-        instr_params = self.cfg.instruments[name].copy()
-        class_name = instr_params.pop('labpy_object')
-        return labpy.open_instrument(class_name, **instr_params)
 
     @pytest.fixture(autouse=True)
     def setUp(self, xr):
@@ -66,8 +101,6 @@ class TestMGADC08Bench:
         self.dmm.display('Ready for','MGADC08 tests')
 
         # Disable power supply outputs
-        # self.instr.ps12v.output_enable(0)
-        # self.instr.ps3v3_2v5.output_enable(0)
         self.adc_ps_output_enable(False)
 
         # Set-up power supply voltages and current limits
@@ -242,13 +275,16 @@ class TestMGADC08Bench:
             print('------------------------------------------------')
             xr.input('Disconnect power cable from the mezzanine and press ENTER')
 
-class TestMGADC08Carrier:
+class TestMGADC08Carrier(TestUtils):
 
-    def open_instrument(self, name):
-        instr_params = self.cfg.instruments[name].copy()
-        class_name = instr_params.pop('labpy_object')
-        print(f'calling open instrument on class {class_name} with parameters {instr_params}')
-        return labpy.open_instrument(class_name, **instr_params)
+
+    def check_mtu(self):
+        stat_command = ['ifconfig', 'eno1']
+        x = subprocess.check_output(stat_command).decode()
+        m = re.search('mtu 9000', x)
+        if (m == None ):
+            print("\nNeed to change the ethernet port MTU setting. Please enter password when asked.")
+            os.system('sudo ifconfig eno1 mtu 9000')
 
     @pytest.fixture(autouse=True)
     def setUp(self, extra, xr):
@@ -264,41 +300,20 @@ class TestMGADC08Carrier:
         self.fmc_slot = cfg.fmc_slot
 
 
-
         if cfg.check_mtu:
-            stat_command = ['ifconfig', 'eno1']
-            x = subprocess.check_output(stat_command).decode()
-            m = re.search('mtu 9000', x)
-            if (m == None ):
-                print("\nNeed to change the ethernet port MTU setting. Please enter password when asked.")
-                os.system('sudo ifconfig eno1 mtu 9000')
+            self.check_mtu()
 
         print('\n-------------------------------')
         print('  - Make sure the mezzanine is mounted to the iceboard (or connected via the extension cable), and the iceboard is properly set up (see handbook).')
         print("  - The mezzanine mustn't have a power cable connected to it.")
 
-        if 'ps18v' in self.cfg.instruments:
-
-            self.ps18v = self.open_instrument('ps18v')  # open only instruments listed in cfg.instruments
-            if(self.instr.ps18v.status()['status'] != 'OK' or self.instr.ps18v.status()['power'] == 0.0):
-
-                xr.input('Press ENTER to enable power supply: ')
-
-                self.instr.ps18v.output(state=False, readonly=False) #Ensuring power on N5764A is off
-                self.instr.ps18v.clear() #Clearing any previous protection
-                self.instr.ps18v.control_voltage(voltage=cfg.vlt, readonly=False) #Setting voltage to 18V, power still off
-                self.instr.ps18v.set_current_limit(current=cfg.curlmt, ocp=True) #Setting current limit and turning on ocp feature
-                self.instr.ps18v.output(state=True, readonly=False)
-
-        else:
-            self.ps18v = None
-            xr.input('Turn ON power to the Iceboard, wait for the front LEDs to blink (about 20 s), and press ENTER')
-
-        # Check that the motherboard is there
+        self.ps18v = self.open_ps(state=True) # Get supply and make sure it is turned on
+ 
+         # Check that the motherboard is there
         print("Waiting for iceboard to boot and show up on the network (30 second timeout)")
         ca = pychfpga.FPGAArray(**cfg.fpga_array)
-        assert(len(ca.ib) == 1), 'Could not find iceboard'
-
+        assert len(ca.ib) > 0, 'Could not find any Iceboard'
+        assert len(ca.ib) ==1, "Found more than one Iceboard"
 
         if 'dmm' in self.cfg.instruments:
             self.dmm = self.open_instrument('dmm')
@@ -317,7 +332,6 @@ class TestMGADC08Carrier:
         xr.params.model = self.model
         xr.params.serial = self.serial
         xr.header('Cleaning up...')
-        # testing function will now begin
 
         if self.dmm:
             self.dmm.local()
