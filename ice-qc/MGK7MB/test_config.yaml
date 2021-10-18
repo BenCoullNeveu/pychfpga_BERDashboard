@@ -6,32 +6,19 @@ ready_check: 0 #If this is set to 0, the tests can be strung together without lo
 #Test 10: solo test
 #Test 11-14 : Requires backplane + ARM Ethernet + Flashcard + SPF(FPGA ethernet) + Heatsink + QSFP cable + Mezzanines (PLL programmer and RS232 cable can be left in place)
 
-# Notes:
-#     - Semicolumns must be followed by a space
-#     - Floats must have a decimal point *AND* an exponent sign if an exponent is used (i.e. 10.0 and 10.e+3 is valid, 10e3, 10.e3, 10e+3 are all invalid)
-aliases:
-comment: |
-    This is a long note
 
-    That extends many lines
-        this is indented more
-
-# test_results_folder: './test_results'
-#test_results_folder: '../test_results/motherboard_qc'
-test_results_folder: '../../test_data'
-fpga_bit_file: '../../pychfpga/fpga_bitstreams/chFPGA_MGK7MB_Rev2.bit'
+# test_results_folder: ""  # don't specify here to use value pased by the previous menu
+# test_results_folder_uses_git: false  # don't specify here to use value pased by the previous menu
+# xml_test_results_pathname: # relative to test_results_folder, don't speficy to get default pattern "./{model}/{model}_SN{serial}/data/{isodate}_{session_name}.xml"
 model_number: 'MGK7MB'
-xformat: ['pdf']  # Output formats for the test reports. xml is always saved.
 
-default_model: 'MGK7MB'
-default_serial: null
+fpga_bit_file: '../../pychfpga/fpga_bitstreams/chFPGA_MGK7MB_Rev2.bit'
+
 
 #For changing prologix address, use ./nfcli --list to find devices
 instruments:
-    dmm:       {labpy_object: 'agilent_dmm', interface: 'lan', ip_addr: '10.11.1.79', gpib_addr: 22} # Agilent 34410A multimeter (we don't use the LAN connection so we can go back in local mode remotely)
-#    ps18v:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '11.11.11.73', gpib_addr: 5}  # Agilent N5764A power supply
-#   ps3v3_2v5: {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 6}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
-#   na:        {labpy_object: 'hp8753e',     interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 14} # HP8753E Network Analyzer
+    dmm:       {labpy_object: 'agilent_dmm', adapter: "TCPIP::IDN::*34410*"} # Agilent 34410A multimeter
+#   ps18v:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '11.11.11.73', gpib_addr: 5}  # Agilent N5764A power supply
 
 
 ?: &default_fpga_array
@@ -43,20 +30,21 @@ test_list:
     # This list all the tests that will be done by the test software, in the proper order
     # path is the argument given to nose to find the test fucntion, in the form of module_path:function or module_path:class.method
     # This path is also the path used by XReport to identify tests results, with the exception that the semicolon ':' is replaced by a dot '.'
-    insp:  {description: 'Inspection test',          path: 'mgk7mb_test.py::MGK7MBBenchTests::insp_test',       required: yes, require_serial_number: yes, dependencies: null}
-    res:   {description: 'Resistance test',          path: 'mgk7mb_test.py::MGK7MBBenchTests::res_test',        required: yes, require_serial_number: yes, dependencies: null}
-    powup: {description: 'Powerup test',             path: 'mgk7mb_test.py::MGK7MBBenchTests::powerup_test',    required: yes, require_serial_number: yes, dependencies: null}
-    pll:   {description: 'Program PLL',              path: 'mgk7mb_test.py::MGK7MBBenchTests::pll_test',        required: yes, require_serial_number: yes, dependencies: null}
-    mem:   {description: 'Test ARM memory',          path: 'mgk7mb_test.py::MGK7MBBenchTests::mem_test',        required: yes, require_serial_number: yes, dependencies: null}
-    sens:  {description: 'Read board power sensors', path: 'mgk7mb_test.py::TestMGK7MBNetwork::test_sens',     required: yes, require_serial_number: yes, dependencies: null}
-    ser:   {description: 'Save serial number',       path: 'mgk7mb_test.py::TestMGK7MBNetwork::ser_test',      required: yes, require_serial_number: yes, dependencies: null}
-    i2c:   {description: 'ARM i2c bus tests',        path: 'mgk7mb_test.py::TestMGK7MBNetwork::test_i2c',      required: yes, require_serial_number: yes, dependencies: null}
-    fpga:  {description: 'FPGA tests',               path: 'mgk7mb_test.py::TestMGK7MBNetwork::test_fpga',     required: yes, require_serial_number: yes, dependencies: null}
-    gtx:   {description: 'GTX testing',              path: 'mgk7mb_test.py::TestMGK7MBNetwork::gtx_test',      required: yes, require_serial_number: yes, dependencies: null}
-    mezz:  {description: 'Basic mezz test',          path: 'mgk7mb_test.py::TestMGK7MBNetwork::mezz_test',     required: yes, require_serial_number: yes, dependencies: null}
-    rmp:   {description: 'Ramp testing',             path: 'mgk7mb_test.py::TestMGK7MBNetwork::ramp_test',      required: yes, require_serial_number: yes, dependencies: null}
-    clk:   {description: 'Clock testing',            path: 'mgk7mb_test.py::TestMGK7MBNetwork::test_clock',    required: yes, require_serial_number: yes, dependencies: null}
-    qsfp:  {description: 'QSFP testing',             path: 'mgk7mb_test.py::TestMGK7MBNetwork::qsfp_test',     required: yes, require_serial_number: yes, dependencies: null}
+    insp:  {description: 'Inspection test',          path: 'mgk7mb_test.py::TestMGK7MBBench::test_insp',       required: yes, require_serial_number: yes, dependencies: null}
+    res:   {description: 'Resistance test',          path: 'mgk7mb_test.py::TestMGK7MBBench::test_res',        required: yes, require_serial_number: yes, dependencies: insp}
+    powup: {description: 'Powerup test',             path: 'mgk7mb_test.py::TestMGK7MBBench::test_powerup',    required: yes, require_serial_number: yes, dependencies: res}
+    pll:   {description: 'Program PLL',              path: 'mgk7mb_test.py::TestMGK7MBBench::test_pll',        required: yes, require_serial_number: yes, dependencies: powup}
+    mem:   {description: 'Test ARM memory',          path: 'mgk7mb_test.py::TestMGK7MBBench::test_mem',        required: yes, require_serial_number: yes, dependencies: pll}
+    ser:   {description: 'Save serial number',       path: 'mgk7mb_test.py::TestMGK7MBNetwork::test_ser',      required: yes, require_serial_number: yes, dependencies: mem}
+    clk:   {description: 'Clock testing',            path: 'mgk7mb_test.py::TestMGK7MBNetwork::test_clock',    required: yes, require_serial_number: yes, dependencies: ser}
+    i2c:   {description: 'ARM i2c bus tests',        path: 'mgk7mb_test.py::TestMGK7MBNetwork::test_i2c',      required: yes, require_serial_number: yes, dependencies: clk}
+    sens:  {description: 'Read board power sensors', path: 'mgk7mb_test.py::TestMGK7MBNetwork::test_sens',     required: yes, require_serial_number: yes, dependencies: i2c}
+    fpga:  {description: 'FPGA tests',               path: 'mgk7mb_test.py::TestMGK7MBNetwork::test_fpga',     required: yes, require_serial_number: yes, dependencies: sens}
+    gtx:   {description: 'GTX testing',              path: 'mgk7mb_test.py::TestMGK7MBNetwork::test_gtx',      required: yes, require_serial_number: yes, dependencies: fpga}
+    mezz:  {description: 'Basic mezz test',          path: 'mgk7mb_test.py::TestMGK7MBNetwork::test_mezz',     required: yes, require_serial_number: yes, dependencies: gtx}
+    rmp:   {description: 'Ramp testing',             path: 'mgk7mb_test.py::TestMGK7MBNetwork::test_ramp',      required: yes, require_serial_number: yes, dependencies: mezz}
+    qsfp:  {description: 'QSFP testing',             path: 'mgk7mb_test.py::TestMGK7MBNetwork::test_qsfp',     required: yes, require_serial_number: yes, dependencies: rmp}
+
 menu:
     # The menu item will match the user input to either the 'key' field or to the regular expression 'regex'. The matching dictionary is returned.
     # If a regular expression is given, string parameters are replaced by string_param.format(regex_matched_group_list), i.e. '{0}' is replaced by the first matched group etc. The 'key' and 'regex' fields are excluded from this conversion.
@@ -95,10 +83,9 @@ menu:
 
 motherboard_tests:
     network:
-         instruments: [] # Subset of instruments we use in the network tests
+         eth_interface: 'enp8s0' # name of ethernet interface on which the IceBoard is connected. Used to check jumbo frames.
 
     impedance:
-        instruments: [dmm]
         max_impedance: 1.0e+10  # any measurement more than this is probably not taken correctly
         test_points:
         # delay: delay to wait before taking the measurement
@@ -115,7 +102,6 @@ motherboard_tests:
            - ['1.8V (L9)',      {delay: 0.2, zmin: 150}]
 
     powerup:
-        instruments: [dmm]
         manual_ps: true
         vlt: 18
         curlmt: 2
@@ -123,7 +109,6 @@ motherboard_tests:
         imin: 0.5
 
     pll:
-        instruments: []
         manual_ps: true
         vlt: 18
         curlmt: 2
@@ -149,7 +134,6 @@ motherboard_tests:
             #- 0x20009DD8
 
     mem_test:
-        instruments: [dmm]
         manual_ps: true
         vlt: 18
         curlmt: 5
@@ -162,7 +146,7 @@ motherboard_tests:
 
         current:
             VCC3V3:     {nom: 2.00,  pmargin: 0.30,  amargin: 0}     # 30%
-            VCC12V0:    {nom: 0.1,  pmargin: 0.0,  amargin: 0.1}   # +-100mA
+            VCC12V0:    {nom: 0.00,  pmargin: 0.0,  amargin: 0.1}   # +-100mA (2021-04-11 JFC Change to +-100mA like in the comment)
             VCC5V5:     {nom: 1.069, pmargin: 0.30,  amargin: 0}     # 30%
             VCC1V0_GTX: {nom: 3.8,   pmargin: 0.00,  amargin: 4}  # +-1A (Change by R.Dubois for A.Gilbert 170922)
             VCC1V0:     {nom: -3.8,   pmargin: 0.00,  amargin: 4}   # +-1A (Change by R.Dubois for A.Gilbert 170922)
@@ -176,7 +160,7 @@ motherboard_tests:
             VCC12V0:    {nom: 12,    pmargin: 0.05,  amargin: 0}     # 5%
             VCC5V5:     {nom: 5.5,   pmargin: 0.05,  amargin: 0}     # 5%
             VCC1V0_GTX: {nom: 1.05,  pmargin: 0.05,  amargin: 0}     # 5%
-            VCC1V0:     {nom: 1,     pmargin: 0.05,  amargin: 0}     # 5%
+            VCC1V0:     {nom: 1,     pmargin: 0.055,  amargin: 0}     # 5% (2021-07-21 JFC: increases to 5.5% to allow coule of boards to pass)
             VCC1V2:     {nom: 1.2,   pmargin: 0.05,  amargin: 0}     # 5%
             VCC1V5:     {nom: 1.5,   pmargin: 0.05,  amargin: 0}     # 5%
             VCC1V8:     {nom: 1.8,   pmargin: 0.05,  amargin: 0}     # 5%
@@ -200,7 +184,7 @@ motherboard_tests:
 
         fmcoffvoltage:
             VCC3V3:     {nom: 0.4,   pmargin: 0.00,  amargin: 0.4}     # +-0.4V
-            VCC12V0:    {nom: 0.4,   pmargin: 0.00,  amargin: 0.4}     # +-0.4V
+            VCC12V0:    {nom: 2.0,   pmargin: 0.00,  amargin: 2.0}     # was +-0.4V. 2021-05-12 JFC changed to 0-2V because the rail takes a long time (30s) to dscharge. Other rails are ok 
             VADJ:       {nom: 0.4,   pmargin: 0.00,  amargin: 0.4}     # +-0.4V
 
     ser_test:
@@ -257,7 +241,8 @@ motherboard_tests:
         restart_avahi: false
         manufacturer: "3M Company"
 #        serial: "V10E6005"
-        serial: "V20B9886"
+#        serial: "V20B9886"
+        serial: "V15DB038" # cable at McGill
 
     gtx_test:
         manual_ps: true

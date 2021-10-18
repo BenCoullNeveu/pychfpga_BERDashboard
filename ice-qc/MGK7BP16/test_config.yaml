@@ -1,30 +1,8 @@
-# Notes:
-#     - Semicolumns must be followed by a space
-#     - Floats must have a decimal point *AND* an exponent sign if an exponent is used (i.e. 10.0 and 10.e+3 is valid, 10e3, 10.e3, 10e+3 are all invalid)
-aliases:
-comment: |
-    This is a long note
 
-    That extends many lines
-        this is indented more
-
-# test_results_folder: './test_results'
-xml_test_results_pathname: ../../../qc_results/{model}/{model}_SN{serial}/data/{isodate}_{session_name}.xml
-
-model_number: 'MGK7BP16'
-xformat: ['pdf']  # Output formats for the test reports. xml is always saved.
-
-# default_model: 'MGK7BP16'
-# default_serial: None
-
-# To get manufacturer names please download http://standards.ieee.org/regauth/oui/oui.txt to /usr/local/etc/oui.txt
-# Reading leases from /var/lib/dhcp/dhcpd.leases
-# MAC                IP              hostname       valid until         manufacturer
-# ===============================================================================================
-# 00:30:d3:06:9b:56  10.3.0.3        funcgen        2021-04-26 19:31:43 -NA-
-# 00:30:d3:0b:4e:f6  10.3.0.4        MULTIMETER     2021-04-26 19:31:35 -NA-
-# 08:00:11:1b:70:df  10.3.0.2        ScopeWinter    2021-04-26 20:57:46 -NA-
-# d4:36:39:f1:d0:94  10.3.0.5        -NA-           2021-04-26 19:30:41 -NA-
+# test_results_folder: ""  # don't specify here to use value pased by the previous menu
+# test_results_folder_uses_git: false  # don't specify here to use value pased by the previous menu
+# xml_test_results_pathname: # relative to test_results_folder, don't speficy to get default pattern "./{model}/{model}_SN{serial}/data/{isodate}_{session_name}.xml"
+model_number: 'MGK7BP16'  # required to run the tests (generate data folder name, configure EEPROM etc.)
 
 
 #For changing prologix address, use ./nfcli --list to find devices
@@ -32,10 +10,6 @@ instruments:
     dmm:       {labpy_object: 'Agilent34410A', interface: 'lan', ip_addr: '10.3.0.4', gpib_addr: 22} # Agilent 34410A multimeter (we don't use the LAN connection so we can go back in local mode remotely)
     scope:     {labpy_object: 'TDS3034B', host: '10.3.0.2'} # TEK-TDS3034B oscilloscope; note the "host" since it's a vxi11 instrument
     generator: {labpy_object: 'Agilent33220A', interface: 'lan', ip_addr: '10.3.0.3', gpib_addr: 14, ip_port: 5025, timeout: 0.5}
-    # funcgen:   {labpy_object: 'TDS3034B', interface: 'lan', ip_addr: '10.3.0.2'}
-#    ps18v:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '11.11.11.73', gpib_addr: 5}  # Agilent N5764A power supply
-#   ps3v3_2v5: {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 6}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
-#   na:        {labpy_object: 'hp8753e',     interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 14} # HP8753E Network Analyzer
 
 
 # DEBUGGING options
@@ -57,7 +31,7 @@ test_list:
     ctt: {description: 'Clock/Time/Trig Test',        path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_clk_time_trig',required: yes, require_serial_number: yes, dependencies: null}
     snc: {description: 'Sync Test',                   path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_sync',         required: yes, require_serial_number: yes, dependencies: null}
     clk: {description: 'Clock Output Test',           path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_clock_output', required: yes, require_serial_number: yes, dependencies: null}
-    led: {description: 'Reset LEDs Test',              path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_reset_LEDs',  required: yes, require_serial_number: yes, dependencies: null}
+    led: {description: 'Reset LEDs Test',             path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_reset_LEDs',  required: yes, require_serial_number: yes, dependencies: null}
     sen: {description: 'BP Sensor test',              path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_sensor',       required: no,  require_serial_number: yes, dependencies: null}
     qsf: {description: 'QSFP Connector test',         path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_qsfp',         required: yes, require_serial_number: yes, dependencies: null}
     res: {description: 'Board Reset test',            path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_reset',        required: yes, require_serial_number: yes, dependencies: null}
