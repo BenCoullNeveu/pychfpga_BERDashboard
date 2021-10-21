@@ -40,16 +40,60 @@ TEST_CONFIG_FILE = './mgadc08_test_config.yaml'
 def wrap(obj, width=80):
     return textwrap.fill(str(obj), width)
 
+class TestUtils:
+    """
 
-class TestMGADC08Bench:
+    """
+    def open_instrument(self, name):
+        """ Open an instrument defined in the instrument list in the config file"""
+        instr_params = self.cfg.instruments[name].copy()
+        class_name = instr_params.pop('labpy_object')
+        print(f'calling open instrument on class {class_name} with parameters {instr_params}')
+        return labpy.open_instrument(class_name, **instr_params)
+
+    def open_ps(self, name='ps18v', state=True):
+        """ Open and setup the power supply for the motherboard if is in the instrument list and manual operation is not forced
+
+        Note: the following instance attributes must exist when this method is called: 
+            self.ps18v (can be None)
+            self.xr
+        """
+
+        # if supply is already turned on
+        if 'ps18v' in self.cfg.instruments and not self.cfg.get('manual_ps', False):
+            self.ps18v = self.open_instruments(name) 
+        else:
+            self.ps18v = None
+
+        # initialize power supply if we have one
+        if self.ps18v:
+            # configure the power supply if it is not already powered on
+            if self.ps18v.status()['status'] != 'OK' or self.instr.ps18v.status()['power'] < 1:
+                self.ps18v.set_output(state=False) #Ensuring power on N5764A is off
+                self.ps18v.clear() #Clearing any previous protection
+                self.ps18v.set_voltage(voltage=cfg.vlt) #Setting voltage to 18V, power still off
+                self.ps18v.set_current_limit(current=cfg.curlmt, ocp=True) #Setting current limit and turning on ocp feature
+        return self.ps18v
+
+    def set_ps_output(self, state=False):
+        if self.ps18v:
+            if state:
+                self.xr.input('Press [ENTER] when ready to power ON the Iceboard')
+                self.ps18v.set_output(state=True)
+            else:
+                self.ps18v.set_output(state=False) #Ensuring power on N5764A is off
+
+        else:
+            if state:
+                self.xr.input('Turn ON power to the Iceboard and press [ENTER]')
+            else:
+                self.xr.input('Turn OFF power to the Iceboard and press [ENTER]')
+
+
+class TestMGADC08Bench(TestUtils):
     """
     Perform impedance & power tests on the MGADC08 Mezzanine.
     """
-
-    def open_instrument(self, name):
-        instr_params = self.cfg.instruments[name].copy()
-        class_name = instr_params.pop('labpy_object')
-        return labpy.open_instrument(class_name, **instr_params)
 
     @pytest.fixture(autouse=True)
     def setUp(self, xr):
@@ -66,8 +110,6 @@ class TestMGADC08Bench:
         self.dmm.display('Ready for','MGADC08 tests')
 
         # Disable power supply outputs
-        # self.instr.ps12v.output_enable(0)
-        # self.instr.ps3v3_2v5.output_enable(0)
         self.adc_ps_output_enable(False)
 
         # Set-up power supply voltages and current limits
@@ -242,18 +284,21 @@ class TestMGADC08Bench:
             print('------------------------------------------------')
             xr.input('Disconnect power cable from the mezzanine and press ENTER')
 
-class TestMGADC08Carrier:
+class TestMGADC08Carrier(TestUtils):
 
-    def open_instrument(self, name):
-        instr_params = self.cfg.instruments[name].copy()
-        class_name = instr_params.pop('labpy_object')
-        print(f'calling open instrument on class {class_name} with parameters {instr_params}')
-        return labpy.open_instrument(class_name, **instr_params)
+
+    def check_mtu(self):
+        stat_command = ['ifconfig', 'eno1']
+        x = subprocess.check_output(stat_command).decode()
+        m = re.search('mtu 9000', x)
+        if (m == None ):
+            print("\nNeed to change the ethernet port MTU setting. Please enter password when asked.")
+            os.system('sudo ifconfig eno1 mtu 9000')
 
     @pytest.fixture(autouse=True)
     def setUp(self, extra, xr):
         # xr.summary.pass
-        self.xr=xr  # used by other methods
+        self.xr = xr  # used by other methods
         xr.header('Setting-up')
         self.cfg = xr.config
         # print(f'cfg={self.cfg}')
@@ -263,47 +308,26 @@ class TestMGADC08Carrier:
         self.serial = xr.params.serial
         self.fmc_slot = cfg.fmc_slot
 
-
-
         if cfg.check_mtu:
-            stat_command = ['ifconfig', 'eno1']
-            x = subprocess.check_output(stat_command).decode()
-            m = re.search('mtu 9000', x)
-            if (m == None ):
-                print("\nNeed to change the ethernet port MTU setting. Please enter password when asked.")
-                os.system('sudo ifconfig eno1 mtu 9000')
+            self.check_mtu()
 
         print('\n-------------------------------')
         print('  - Make sure the mezzanine is mounted to the iceboard (or connected via the extension cable), and the iceboard is properly set up (see handbook).')
-        print("  - The mezzanine mustn't have a power cable connected to it.")
-
-        if 'ps18v' in self.cfg.instruments:
-
-            self.ps18v = self.open_instrument('ps18v')  # open only instruments listed in cfg.instruments
-            if(self.instr.ps18v.status()['status'] != 'OK' or self.instr.ps18v.status()['power'] == 0.0):
-
-                xr.input('Press ENTER to enable power supply: ')
-
-                self.instr.ps18v.output(state=False, readonly=False) #Ensuring power on N5764A is off
-                self.instr.ps18v.clear() #Clearing any previous protection
-                self.instr.ps18v.control_voltage(voltage=cfg.vlt, readonly=False) #Setting voltage to 18V, power still off
-                self.instr.ps18v.set_current_limit(current=cfg.curlmt, ocp=True) #Setting current limit and turning on ocp feature
-                self.instr.ps18v.output(state=True, readonly=False)
-
-        else:
-            self.ps18v = None
-            xr.input('Turn ON power to the Iceboard, wait for the front LEDs to blink (about 20 s), and press ENTER')
-
-        # Check that the motherboard is there
-        print("Waiting for iceboard to boot and show up on the network (30 second timeout)")
-        ca = pychfpga.FPGAArray(**cfg.fpga_array)
-        assert(len(ca.ib) == 1), 'Could not find iceboard'
-
+        print("  - The mezzanine must NOT have a power cable connected directly to it.")
 
         if 'dmm' in self.cfg.instruments:
             self.dmm = self.open_instrument('dmm')
         else:
             self.dmm = None
+
+        self.ps18v = self.open_ps() # Get supply and make sure it is turned on
+ 
+         # Check that the motherboard is there
+        # print("Waiting for iceboard to boot and show up on the network (30 second timeout)")
+        # ca = pychfpga.FPGAArray(**cfg.fpga_array)
+        # assert len(ca.ib) > 0, 'Could not find any Iceboard'
+        # assert len(ca.ib) ==1, "Found more than one Iceboard"
+
 
 
         xr.header('Testing...')
@@ -317,7 +341,6 @@ class TestMGADC08Carrier:
         xr.params.model = self.model
         xr.params.serial = self.serial
         xr.header('Cleaning up...')
-        # testing function will now begin
 
         if self.dmm:
             self.dmm.local()
@@ -328,7 +351,17 @@ class TestMGADC08Carrier:
             self.dmm.display(line1, line2)
 
     def _get_iceboard(self, **kwargs):
-            a = pychfpga.FPGAArray(**kwargs)
+            try:
+                print('Connecting to the IceBoard...')
+                a = pychfpga.FPGAArray(**kwargs, mdns_timeout=1)
+            except RuntimeError:  # if we can't find the board
+                a = None
+
+            if not a: # turn on the supply and try again if we did not find the board 
+                self.set_ps_output(state=True)
+                print('Searching for the IceBoard for up to 30 seconds...')
+                a = pychfpga.FPGAArray(**kwargs, mdns_timeout=30)
+
             assert len(a.ib), 'No Iceboard was found with parameters %s' % kwargs
             assert len(a.ib) == 1, 'One than one Iceboard was found with parameters %s' % kwargs
             ib = a.ib[0]
@@ -376,11 +409,11 @@ class TestMGADC08Carrier:
         tr = NameSpace() # test results container
         passed = False
         try:
-            ib, mezz =  self.get_iceboard(**cfg.fpga_array)
+            ib, mezz =  self._get_iceboard(**cfg.fpga_array)
             print()
             print('Testing Mezzanine EEPROM with %r' % ib)
             # Check if PRSNT line is help low
-            tr.is_mezzanine_present = ib.is_mezzanine_present(self.fmc_slot)
+            tr.is_mezzanine_present = run_async(ib.tuber_is_mezzanine_present_async(self.fmc_slot))
             print()
             print('PRSNT line says that the Mezzanine is present: %s' % bool(tr.is_mezzanine_present))
             assert tr.is_mezzanine_present, 'Mezzanine was not detected on FMC slot %i' % self.fmc_slot
@@ -408,7 +441,7 @@ class TestMGADC08Carrier:
             # We don't fail on this. This is just for additional info
             print()
             try:
-                tr.eeprom_contents_from_arm = base64.decodestring(ib._mezzanine_eeprom_read_base64(self.fmc_slot)).decode('utf-8', 'ignore')
+                tr.eeprom_contents_from_arm = run_async(ib._mezzanine_eeprom_read_async(self.fmc_slot))
                 print('EEPROM content read by ARM is:')
                 print(wrap(repr(tr.eeprom_contents_from_arm)))
             except Exception as e:
@@ -417,14 +450,15 @@ class TestMGADC08Carrier:
             # Attempt to auto-detect the mezzanine type to see if the EEPROM already programmed
             print()
             print('Discovering Mezzanine')
-            ib.discover_mezzanines()
+            run_async(ib.discover_mezzanines_async())
             mezz = ib.mezzanine.get(self.fmc_slot, None)
             print('    Mezzanine is %r:' % mezz)
 
             if mezz:
                 # If a Mezzanine is discovered, it must have valid IPMI data.
-                eeprom_data = ib._mezzanine_eeprom_read(self.fmc_slot)
+                eeprom_data = run_async(ib._mezzanine_eeprom_read_async(self.fmc_slot))
                 ipmi = mezz.decode_eeprom(eeprom_data)  # returns either a Tuber IPMI or a Python IPMI
+                is_mcgill_format = (eeprom_data[0] == 0x0d)
                 tr.old_ipmi = repr(ipmi)
                 print()
                 print('The board IPMI information found in its EEPROM is')
@@ -456,13 +490,13 @@ class TestMGADC08Carrier:
                 else:
                     print('The board model and serial number found on the EEPROM match the expected values')
                     create_new_ipmi = False
-                    if not isinstance(ipmi, pychfpga.ipmi_fru.FRU):
+                    if is_mcgill_format:
+                        print('The IPMI data was the old McGill format and can be re-written in the standard IPMI format, with any additional information stored in MULTI fields. ')
+                        write_ipmi = xr.input_yes_no('Do you want to proceed and refresh the EEPROM contents with the new IPMI format?')
+                    else:
                         print(' *** NOTE ***')
                         print('The IPMI data was read by the ARM and might not include MULTI fields that may be on the EEPROM. Writing will be disabled to avoid losing that information')
                         write_ipmi = False
-                    else:
-                        print('The IPMI data was the old McGill format and can be re-written in the standard IPMI format, with any additional information stored in MULTI fields. ')
-                        write_ipmi = xr.input_yes_no('Do you want to proceed and refresh the EEPROM contents with the new IPMI format?')
 
 
             else:  # Mezzanine not detected, we assume the EEPROM is not programmed
@@ -513,11 +547,11 @@ class TestMGADC08Carrier:
 
                 print()
                 print('Writing IPMI data (%i bytes) to EEPROM...' % len(encoded_ipmi))
-                ib._mezzanine_eeprom_write_base64(self.fmc_slot, base64.b64encode(encoded_ipmi), 0)
+                run_async(ib._tuber_mezzanine_eeprom_write_base64_async(self.fmc_slot, base64.b64encode(encoded_ipmi), 0))
                 print('EEPROM WRITTEN with data')
 
                 # read back eeprom
-                read_back = base64.b64decode(ib._mezzanine_eeprom_read_base64(self.fmc_slot))
+                read_back = run_async(ib._mezzanine_eeprom_read_async(self.fmc_slot))
                 print()
                 print('Read back %i bytes from EEPROM.')
                 tr.read_back = read_back = read_back[:len(encoded_ipmi)]
@@ -567,7 +601,7 @@ class TestMGADC08Carrier:
             time.sleep(0.5)
 
             # Check that board power is off. The ARM checks this by looking at the voltage on the 12V_EN output.
-            tr.first_power_off_state = run_async(ib.get_mezzanine_power_async(self.fmc_slot))
+            tr.first_power_off_state = run_async(ib.tuber_get_mezzanine_power_async(self.fmc_slot))
             assert not tr.first_power_off_state, 'The ARM refused to turn OFF the Mezzanine power !'
 
             # Check that Power Good goes down when board is powered off to make sure we are not stuck to 0
@@ -587,16 +621,16 @@ class TestMGADC08Carrier:
             print()
             print('Checking mezzanine currents and voltages')
             time.sleep(cfg.pow_stab_time)  # wait for the voltages to stabilize
-            mezz_rails = NameSpace([  # Use NameSpace and list to preserve order
+            mezz_rails = dict([  
                 ('vadj', ib.RAIL.MEZZ_VADJ),
                 ('vcc3v3', ib.RAIL.MEZZ_VCC3V3),
                 ('vcc12v', ib.RAIL.MEZZ_VCC12V0)
                 ])
             tr.rails = NameSpace()
             for rail_name, limits in list(cfg.rails.items()):
-                V = ib.get_mezzanine_voltage(mezz_rails[rail_name], self.fmc_slot)
-                I = ib.get_mezzanine_current(mezz_rails[rail_name], self.fmc_slot)
-                print('Rail %s: %.3fV@%.3fA,  limits = %s' % (rail_name, V, I, limits))
+                V = run_async(ib.tuber_get_mezzanine_voltage_async(mezz_rails[rail_name], self.fmc_slot))
+                I = run_async(ib.tuber_get_mezzanine_current_async(mezz_rails[rail_name], self.fmc_slot))
+                print(f'Rail {rail_name}: {V:.3f}V@{I:.3f}A,  limits = {limits}')
                 tr.rails[rail_name] = NameSpace(V=V, I=I)  # Namespace to store this rail results
                 if V < limits.vmin or V > limits.vmax or I < limits.imin or I > limits.imax:
                     # stop immediately as soon as we fail one of these tests. We can't go further anyway. This will powewr off the supplies
@@ -615,12 +649,12 @@ class TestMGADC08Carrier:
             print('Test ended. Turning mezzanine power OFF')
 
             if mezz:
-                mezz.set_mezzanine_power(False)
+                run_async(mezz.set_mezzanine_power_async(False))
                 tr.final_power_off_state = run_async(mezz.get_mezzanine_power_async())
-
-            print('ARM reports that Mezz power is %s' % bool(tr.final_power_off_state))
-            print('ARM reports that Mezz power is %s' % bool(run_async(mezz.get_mezzanine_power_async())))
-            print('GPIO OUT0 reg is', bin(ib.hw._gpio_power.read_reg(10)))
+                print('ARM reports that Mezz power is %s' % bool(tr.final_power_off_state))
+                print('ARM reports that Mezz power is %s' % bool(run_async(mezz.get_mezzanine_power_async())))
+            if ib:
+                print('GPIO OUT0 reg is', bin(ib.hw._gpio_power.read_reg(10)))
 
             xr.save_data(tr)
 
@@ -684,7 +718,7 @@ class TestMGADC08Carrier:
                 print('    after Reset, read 0x%02x' % (r))
                 assert io.read(io.REG_OLATA)==0, 'Mezzanine SPI Reset did not reset the IO Expander registers. '
             print('   IO Expander communication OK')
-            mezz.init() # reinitialize mezzanine so other tests will work
+            run_async(mezz.init()) # reinitialize mezzanine so other tests will work
 
             # Check PCB temperature
             print()
@@ -763,8 +797,9 @@ class TestMGADC08Carrier:
                     continue
                 break
 
+            ch = 8 if self.fmc_slot==2 else 0 # base channel number for that mezanine
             # ADC PLL lock test
-            mezz.init()  # reset ADC  to make sure we have the right frequency divider ratio of 2
+            run_async(mezz.init())  # reset ADC  to make sure we have the right frequency divider ratio of 2
             resolution = 2./cfg.pll_gate_time * 8
             err_max = max(cfg.pll_freq_err_max*1e6, resolution) + 1
             print()
@@ -773,7 +808,7 @@ class TestMGADC08Carrier:
                 for freq in cfg.pll_frequencies:
                     print('   Locking PLL at %f MHz' % freq)
                     mezz.ADC_PLL.init(freq, gate_time=cfg.pll_gate_time)
-                    read_adc_freq = ib.FreqCtr.read_frequency('ADC_CLK0', gate_time=0.1) / 1e6
+                    read_adc_freq = ib.FreqCtr.read_frequency(f'ADC_CLK{ch}', gate_time=0.1) / 1e6
                     read_pll_freq = read_adc_freq * 8
                     freq_err = read_pll_freq - freq
                     print('      ADC clock Frequency: %0.6f MHz (x4 = %0.6f MHz, err=%0.0f Hz (max=%0.0f Hz))' % (read_adc_freq, read_pll_freq, freq_err*1e6, err_max))
@@ -786,7 +821,7 @@ class TestMGADC08Carrier:
             mezz.ADC_PLL.init(freq)
             mezz.ADC_PLL.init(freq)
             for i in range(8):
-                read_adc_freq = ib.FreqCtr.read_frequency('ADC_CLK%i' % i, gate_time=cfg.pll_gate_time) / 1e6
+                read_adc_freq = ib.FreqCtr.read_frequency(f'ADC_CLK{ch+i}', gate_time=cfg.pll_gate_time) / 1e6
                 read_pll_freq = read_adc_freq * 8
                 freq_err = read_pll_freq - freq
                 resolution = 2./cfg.pll_gate_time * 8

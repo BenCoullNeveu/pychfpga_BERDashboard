@@ -47,7 +47,7 @@ async def mdns_discover(
     icecrates=None,
     iceboards=None,
     timeout=None,
-    inter_reply_timeout=10,
+    inter_reply_timeout=None,
     clear_hwm=False):
     """ Automatically detect IceBoards and IceCrates on the network using mDNS
     and add them to the hardware map.
@@ -89,7 +89,7 @@ async def mdns_discover(
             when the delay since the last reply  exceeds inter_reply_timeout
             (in seconds). Can be used to shorten the search if we expect the
             replies to come in a burst after some long delay. The search will
-            still stop after `timeout` even if the burst has started.
+            still stop after `timeout` even if the burst has started. This feature is disabled if `inter_reply_timeout` is `None`.
 
 
 
@@ -253,7 +253,9 @@ def mdns_resolve(name, timeout=1):
     # print('found', info)
     zeroconf.close()
     if info:
-        return socket.inet_ntop(socket.AF_INET, info.addresses_by_version(version=IPVersion.V4Only)[0])
+        ips = info.addresses_by_version(version=IPVersion.V4Only)
+        if ips:
+            return socket.inet_ntop(socket.AF_INET, ips[0])
     else:
         return None
 

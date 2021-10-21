@@ -343,8 +343,8 @@ class IceBoard(IceBoardBase, Motherboard):
     async def _mezzanine_eeprom_read_async(self, mezzanine):
         """ Returns the contents of the specified mezzanine's EEPROM.
         """
-        data = await self._tuber_mezzanine_eeprom_read_base64_async(mezzanine)
-        return base64.decodebytes(data.encode())
+        data = await self._tuber_mezzanine_eeprom_read_base64_async(mezzanine) # returns a str
+        return base64.decodebytes(data.encode())  # encode the str into bytes before calling base64.decodebytes()
 
 
     # Backplane/crate-related methods
@@ -1622,7 +1622,9 @@ class IceBoardExt(IceBoardPlus):
         the the '}' or 0xFF are found. Otherwise, this method will return
         None, which will signal to the upper software that it can attempt to
         reading the IPMI standard data decoded by the ARM.
-                """
+        """
+
+        # First try to read the EEPROM using the raw ARM method (if it exists)
         try:
             data = await self._tuber_mezzanine_eeprom_read_base64_async(mezzanine)
             return base64.decodebytes(data.encode())
@@ -1632,6 +1634,8 @@ class IceBoardExt(IceBoardPlus):
                 f"_mezzanine_eeprom_read_base64() method. Attempting to read "
                 f"the Mezzanine EEPROM through the FPGA.")
 
+        # We failed, so we will attempt to read it via the FPGA
+        # First check if the FPGA is programmed; we need it!
         fpga_programmed = await self.is_fpga_programmed_async()
         if not fpga_programmed:
             self.logger.debug(
@@ -1639,20 +1643,21 @@ class IceBoardExt(IceBoardPlus):
                 f"EEPROM through the FPGA.")
             return(None)
 
+        # Get the first byte to determine if this is a McGill format. 
         eeprom_data = self.hw.read_mezzanine_eeprom(mezzanine, 0, 1)
-        if ord(eeprom_data[0]) == 0x0d:  # if this is McGill format
+        if eeprom_data[0] == 0x0d:  # if this is McGill format
             self.logger.debug(
                 f"{self!r}: EEPROM in Mezzanine {mezzanine} is McGill format. The FPGA will "
                 f"be reading only bytes until the terminator character. ")
             # Read the eeprom block by block until we detect the end of the
             # dictionary
             block_size = 32
-            string = ''
+            string = bytearray()
             for i in range(512 / block_size):  # read 32 blocks of 16 bytes
                 data_block = self.hw.read_mezzanine_eeprom(
                     mezzanine, addr=i*block_size, length=block_size, retry=3)
                 string += data_block
-                if ('}' in data_block) or (chr(255) in data_block):
+                if (b'}' in data_block) or (255 in data_block):
                     break
             return(string)
         else:  # If not McGill format,
@@ -2609,6 +2614,11 @@ class IceBoardHardware(object):
         return self._motherboard_eeprom_data.write(addr, data, **kwargs)
 
     def read_mezzanine_eeprom(self, mezzanine, addr, length, **kwargs):
+        """
+        Reads the mezzanine EEPROM via the FPGA.
+
+        Return: bytes
+        """
         eeprom_object = self._FMC_EEPROM_TABLE[mezzanine]
         return eeprom_object.read(addr, length, **kwargs)
 

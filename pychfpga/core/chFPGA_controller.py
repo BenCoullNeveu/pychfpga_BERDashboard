@@ -3096,6 +3096,9 @@ class chFPGA:
         cb2_bin_indices = bin_map.get('cb2', None)
         cb3_bin_indices = bin_map.get('cb3', None)
 
+        cb2_ignore_lane = 0
+        cb3_ignore_lane = 0
+
         if not (cb1_bin_indices is None or len(cb1_bin_indices) == number_of_cb1_bin_sel):
             raise ValueError('1st crossbar bin map should have %i lists of bins. Ir currently has %i' % (
                 number_of_cb1_bin_sel, len(cb1_bin_indices)))
