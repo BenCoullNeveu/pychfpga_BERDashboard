@@ -6,17 +6,25 @@ model_number: 'MGADC08' # required to run the tests (generate data folder name, 
 default_serial: null
 
 instruments:
+    # Digico setup 
+    dmm:       {labpy_object: 'agilent_dmm', adapter: 'TCPIP::VXI11::IDN::*Agilent*34410*'} # Agilent 34410A multimeter (we don't use the LAN connection so we can go back in local mode remotely)
+    ps12v:     {labpy_object: 'AgilentE3648A',   adapter: 'TCPIP::PROLOGIX::01-1d-d9::GPIB::5'}  # Agilent E3648A dual output power supply  12V on output 1, output 2 not used
+    ps3v3_2v5: {labpy_object: 'AgilentE3648A',   adapter: 'TCPIP::PROLOGIX::01-1d-d9::GPIB::6'}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
+    na:        {labpy_object: 'KeysightN9923', adapter: 'TCPIP::IDN::*Keysight*N9923*'} # Keysight portable Network Analyzer
+
+
+    # McGill setup
     # dmm:       {labpy_object: 'Agilent34410A'} # Agilent 34410A multimeter (Note: The LAN connection cannot go back in local mode remotely)
-    ps12v:     {labpy_object: 'AgilentPS',   adapter: 'TCPIP::PROLOGIX::011dd9::GPIB::5'}  # Agilent E3648A dual output power supply  12V on output 1, output 2 not used
-    ps3v3_2v5: {labpy_object: 'AgilentPS',   adapter: 'TCPIP::PROLOGIX::011dd9::GPIB::6'}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
-    na:        {labpy_object: 'HP8753E',     adapter: 'TCPIP::PROLOGIX::011dd9::GPIB::15'} # HP8753E Network Analyzer
-    # na:        {labpy_object: 'KeysightN9923', interface: 'lan', ip_addr: '10.11.1.116', gpib_addr: 15} # HP8753E Network Analyzer
+    # ps12v:     {labpy_object: 'AgilentPS',   adapter: 'TCPIP::PROLOGIX::011dd9::GPIB::5'}  # Agilent E3648A dual output power supply  12V on output 1, output 2 not used
+    # ps3v3_2v5: {labpy_object: 'AgilentPS',   adapter: 'TCPIP::PROLOGIX::011dd9::GPIB::6'}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
+    # na:        {labpy_object: 'HP8753E',     adapter: 'TCPIP::PROLOGIX::011dd9::GPIB::15'} # HP8753E Network Analyzer
 
     # ps18v:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '11.11.11.73', gpib_addr: 5}  # Agilent N5764A power supply
     # ps18v:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '10.10.10.151', gpib_addr: 5}  # Agilent N5764A power supply on Crate 0
 
 ?: &default_fpga_array
-    hwm: 'mb 106'
+    # hwm: 'mb 106' # Digico golden Iceboard
+    hwm: 'mb 455'
 
 test_list:
     # This list all the tests that will be done my the test software, in the proper order
@@ -25,7 +33,7 @@ test_list:
     imp: {description: 'Impedance test (needs S/N)',               path: 'mgadc08_bench_tests.py::TestMGADC08Bench::test_impedance', required: yes, require_serial_number: yes, dependencies: null}
     smk: {description: 'Smoke test (needs S/N)',                   path: 'mgadc08_bench_tests.py::TestMGADC08Bench::test_smoke',     required: yes, require_serial_number: yes, dependencies: imp}
     eep: {description: 'EEPROM Programming and test (needs S/N)',  path: 'mgadc08_bench_tests.py::TestMGADC08Carrier::test_eeprom',  required: yes, require_serial_number: yes, dependencies: smk}
-    pow: {description: 'Power test',                               path: 'mgadc08_bench_tests.py::TestMGADC08Carrier::test_test_',   required: yes, require_serial_number: no, dependencies: smk}
+    pow: {description: 'Power test',                               path: 'mgadc08_bench_tests.py::TestMGADC08Carrier::test_power',   required: yes, require_serial_number: no, dependencies: smk}
     spi: {description: 'SPI & PLL test',                           path: 'mgadc08_bench_tests.py::TestMGADC08Carrier::test_spi_pll', required: yes, require_serial_number: no, dependencies: smk}
     rmp: {description: 'Ramp test',                                path: 'mgadc08_bench_tests.py::TestMGADC08Carrier::test_ramp',    required: yes, require_serial_number: no, dependencies: smk}
     s11: {description: 'S11 test',                                 path: 'mgadc08_bench_tests.py::TestMGADC08Carrier::test_s11',     required: yes, require_serial_number: no, dependencies: smk}
@@ -98,13 +106,13 @@ bench_tests:
 
 carrier_tests:
     setup: # These are parameters common to all carrier tests
-        fmc_slot: 1 # This is the FMC slot where we expect the Mezzanine to be
+        fmc_slot: 2 # This is the FMC slot where we expect the Mezzanine to be. 1 = FMCA and 2=FMCB
         instruments: []  # Add 'ps18v' if we want power controlled automatically
         configure_ps: false # if False, the power supply settings will not be changed
         vlt: 18
         curlmt: 5
         check_mtu: False
-        fpga_array: {<<: *default_fpga_array, no_mezz: True, prog: 0,  open: 0, mdns_timeout: 30}
+        # fpga_array: {<<: *default_fpga_array, no_mezz: True, prog: 0,  open: 0, mdns_timeout: 30}
 
     eeprom_test:
         instruments: [dmm] # Subset of instruments we use in these tests
@@ -116,9 +124,9 @@ carrier_tests:
 
     test_power:
         # instruments: [dmm] # Subset of instruments we use in these tests
-        fpga_array: {<<: *default_fpga_array, no_mezz: 1, prog: 1,  open: 1}
+        fpga_array: {<<: *default_fpga_array, no_mezz: false, prog: 1,  open: 1}
 
-        pow_stab_time: 0.5  # Tibe to wait after board power on and voltage measurmeents
+        pow_stab_time: 0.5  # Time to wait after board power on and voltage measurmeents
         rails:
             vcc12v: {vmin: 11.9, vmax: 12.2, imin: 0.010, imax: 0.140} #
             vcc3v3: {vmin: 3.2,  vmax: 3.4,  imin: 2.400, imax: 2.900} #
@@ -126,7 +134,7 @@ carrier_tests:
 
     spi_pll_test:
         # instruments: [dmm] # Subset of instruments we use in these tests
-        fpga_array: {<<: *default_fpga_array, no_mezz: 1, prog: 1,  open: 1}
+        fpga_array: {<<: *default_fpga_array, no_mezz: false, prog: 1,  open: 1}
 
         pcb_temp: {tmin: 10, tmax: 60, iterations: 10}
         adc_temp: {tmin: 10, tmax: 85, iterations: 10}
