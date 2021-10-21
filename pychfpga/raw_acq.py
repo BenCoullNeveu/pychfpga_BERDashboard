@@ -47,7 +47,7 @@ from pychfpga.core import CORR
 
 
 class RawAcqReceiver(object):
-    ''' Implement an array of multi-threaded UDP Raw data receiver.
+    """ Implement an array of multi-threaded UDP Raw data receiver and the data processor that will handle the received data.
 
     The object offers `start` and `stop` methods to start and stop the receivers, a method to grab a
     snapshot of the current data, and a method to start a thred that continuously writes the data to
@@ -60,11 +60,7 @@ class RawAcqReceiver(object):
         The performance ofthis receiver is limited by Python. It is meant to be used mostly for debugging.
 
         Should probably fix the 'serve forever bits'
-    '''
-
-    # QUEUE_MAXSIZE = 10240 #: Maximum number of elements in a queue, just in
-    # case we can't read the queue as fast as we fill it. Otherwise we can use
-    # infinite memory.
+    """
 
     def __init__(self):
         self.log = log.get_logger(self)
@@ -252,6 +248,10 @@ class RawAcqReceiver(object):
         self.buf_packet_length = np.empty(self.BUF_SIZE, dtype=np.uint16)
         self.n = 0  # number of packets currently stored in the buffer
 
+
+        # Create the packet processors
+
+        # Raw data processor (ADC or FFT output)
         self.raw_packet_processor = RawPacketProcessor(
             self,
             stream_ids=stream_ids,
@@ -259,6 +259,7 @@ class RawAcqReceiver(object):
             adc_rms_refresh_count=adc_rms_refresh_count,
             fft_offset_encoding=fft_offset_encoding)
 
+        # Correlator data processor
         self.corr_packet_processor = CorrPacketProcessor(
             self,
             firmware_integration_period=corr_firmware_integration_period,
@@ -482,6 +483,25 @@ class RawAcqReceiver(object):
         #         self.process_packets()
 
     def receive_packets(self, reset_stats=True, timeout=0.001, stop_condition=None, max_time_between_processing=1):
+        """ This method is run in a thread to continuously receive packets in
+        the buffer form all sockets and call process_packets when the buffer
+        is sufficiently full or there is no more data immediately available.
+
+        Parameters:
+
+            reset_stats (bool): Unused. To be removed.
+
+            timeout (float): Maximum time (in seconds) we will wait for packet. Sets how fast we figure out no more dta is coming.
+
+            stop_condition (func or None): Function that returns True to stop the receive loop and the thread. If None, the function is not called.
+
+            max_time_between_processing (float): Maximum time (in seconds) the system will
+                wait until processing packets. This is to ensure that data will be
+                processed even if the buffer is not full. This is useful when data
+                is coming slowly, but we still want the processing (and resulting
+                metrics refreshes) will happen  at regular intervals.
+
+        """
 
         self.log.info(f"{self!r}: Starting packet processing")
         self.old_timestamp = None
@@ -494,14 +514,14 @@ class RawAcqReceiver(object):
         last_processing_time = time.time()
         while self.started and (stop_condition is None or not stop_condition()):
             try:
-                # Check which sockets have data and read it into the buffer
+                # Check which sockets have data and read it into the buffer. Continue adding data to the buffer as long as some socket has something.
                 # print(f'selecting sockets {self.sockets}')
                 sockets_with_data, [], [] = select.select(self.sockets, [], [], timeout)
                 # print(f' sockets with data:{sockets_with_data}')
                 if sockets_with_data:
                     for sock in sockets_with_data:
                         t0 = time.time()
-                        self.buf_packet_length[self.n] = sock.recv_into(self.buf[self.n])
+                        self.buf_packet_length[self.n] = sock.recv_into(self.buf[self.n])  # data is transferred directly into the preallocated buffer, which is fast!
                         self.n += 1
                         self.packet_max_readout_time = max(time.time() - t0, self.packet_max_readout_time)
                         # Process packets if the buffer is full or if we have
@@ -513,8 +533,9 @@ class RawAcqReceiver(object):
                             self.n = 0
                             last_processing_time = time.time()
                 elif self.n:
-                    # There was not data after the timeout. The pause might be
-                    # much longer. Let's process whatever data we have so the user
+                    # There was not data after the timeout. Its probable the pause might be
+                    # much longer since data comes in burst, so we don't want to wait for `max_time_between_processing`.
+                    # Let's process whatever data we have so the user
                     # does not have to wait too long for it.
                     self.process_packets()
                     self.n = 0
@@ -1760,13 +1781,6 @@ class CorrPacketProcessor(object):
         self.firmware_integration_period = firmware_integration_period
         self.frame0_irigb_time = frame0_irigb_time
 
-        # Correlator geometry
-
-        self.NCHAN = CORR.NCHAN
-        self.NCORR = CORR.NCORR
-        self.NCMAC = CORR.NCMAC_PER_CORR
-        self.NPROD = CORR.NPROD_PER_CMAC
-        self.PACKET_SIZE = CORR.NBYTES_PER_HEADER + CORR.NPROD_PER_CMAC * CORR.NBYTES_PER_PROD
 
         # Define numpy data types that will be used to efficiently parse the data
         self.product_dtype = np.dtype(dict(
@@ -1884,7 +1898,7 @@ class CorrPacketProcessor(object):
             return
 
         # Eliminate packets with the wrong length
-        self.buf_packet_length_ok[buf_ix] = self.buf_packet_length[buf_ix] == self.PACKET_SIZE
+        self.buf_packet_length_ok[buf_ix] = self.buf_packet_length[buf_ix] == self.RAW_PACKET_LENGTH
         self.metrics_corr_packet_length_error += np.sum(self.buf_packet_length_ok[buf_ix] == False)
         buf_ix = buf_ix[self.buf_packet_length_ok[buf_ix]]
 
