@@ -461,7 +461,7 @@ class FPGAArray(object):
             try:
                 asyncio.run(async_init(), debug=True)
             except BaseException as e:
-                print(f'fpga_array: run got exception {e}')
+                # print(f'fpga_array: run got exception {e}')  # maybe add message to log?
                 raise
         else:
             self._async_init = async_init
@@ -1410,7 +1410,7 @@ class FPGAArray(object):
         for el in elements:
             if '.' in el:  # if hostname
                 hostname, slot, crate_number = split_fields(el, 3)
-                print(f'Adding IceBoard {hostname}, {slot}, {crate_number}')
+                # print(f'Adding IceBoard {hostname}, {slot}, {crate_number}')
                 ib = IceBoard.get_unique_instance(hostname=hostname, slot=slot, crate_number=crate_number)
                 current_class = None
             elif el[0].isdigit(): # if a serial
@@ -1418,7 +1418,7 @@ class FPGAArray(object):
                     raise RuntimeError('A part number must be specified before a target serial number')
                 if issubclass(current_class, IceBoard):
                     serial, slot, crate_number = split_fields(el, 3)
-                    print(f'Adding IceBoard {serial}, {slot}, {crate_number}')
+                    # print(f'Adding IceBoard {serial}, {slot}, {crate_number}')
                     ib = IceBoard.get_unique_instance(new_class=current_class, serial=serial, slot=slot, crate_number=crate_number)
                 elif issubclass(current_class, IceCrate):
                     serial, crate_number = split_fields(el, 2)
@@ -4848,25 +4848,25 @@ class FPGAArray(object):
 
 
 ICE_PATTERNS = [
-        { 'regex': '(MGK7)?BP1',           'cur_state': None,  'next_state': 'ic',  'entry': ('MGK7BP1', None, None),  'store_in': None        },  # Sets the curent model and type to the One-slot backplane; matches MGK7BP1, BP1
-        { 'regex': '(MGK7)?BP16',          'cur_state': None,  'next_state': 'ic',  'entry': ('MGK7BP16', None, None), 'store_in': None        },  # Sets the curent model and type to the 16-slot backplane; matches MGK7BP16, BP16
-        { 'regex': '(?:|SN)?(\d+)',        'cur_state': 'ic',  'next_state': 'ic',  'entry': (None, 0, None),          'store_in': 'icecrates' },  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
-        { 'regex': '(?:|SN)?(\d+):(\d*)',  'cur_state': 'ic',  'next_state': 'ic',  'entry': (None, 0, 1),             'store_in': 'icecrates' },  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
-        { 'regex': '\*',                   'cur_state': 'ic',  'next_state': None,  'entry': (None, '*', None),        'store_in': 'icecrates' },  # Stores a an item that selects all units of the current model
+        { 'regex': r'(MGK7)?BP1',           'cur_state': None,  'next_state': 'ic',  'entry': ('MGK7BP1', None, None),  'store_in': None        },  # Sets the curent model and type to the One-slot backplane; matches MGK7BP1, BP1
+        { 'regex': r'(MGK7)?BP16',          'cur_state': None,  'next_state': 'ic',  'entry': ('MGK7BP16', None, None), 'store_in': None        },  # Sets the curent model and type to the 16-slot backplane; matches MGK7BP16, BP16
+        { 'regex': r'(?:|SN)?(\d+)',        'cur_state': 'ic',  'next_state': 'ic',  'entry': (None, 0, None),          'store_in': 'icecrates' },  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
+        { 'regex': r'(?:|SN)?(\d+):(\d*)',  'cur_state': 'ic',  'next_state': 'ic',  'entry': (None, 0, 1),             'store_in': 'icecrates' },  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
+        { 'regex': r'\*',                   'cur_state': 'ic',  'next_state': None,  'entry': (None, '*', None),        'store_in': 'icecrates' },  # Stores a an item that selects all units of the current model
 
-        { 'regex': '(\d+\.\d+\.\d+\.\d+)', 'cur_state': None,  'next_state': None,  'entry': (None, 0),                'store_in': 'iceboards' },  # Stores a motherboard item based on its IP address only
-        { 'regex': '(\w+\.local)',         'cur_state': None,  'next_state': None,  'entry': (None, 0),                'store_in': 'iceboards' },  # Stores a motherboard item based on its local hostname only
-        { 'regex': '(MGK7)?MB',            'cur_state': None,  'next_state': 'ib',  'entry': ('MGK7MB', None),         'store_in': None        },  # Sets the curent model and type to the ICEBoard (motherboard); matches MGK7MB, MB
-        { 'regex': '(?:|SN)?(\d+)',        'cur_state': 'ib',  'next_state': 'ib',  'entry': (None, 0),                'store_in': 'iceboards' },  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
-        { 'regex': '\*',                   'cur_state': 'ib',  'next_state': None,  'entry': (None, '*'),              'store_in': 'iceboards' },  # Stores a an item that selects all units of the current model
+        { 'regex': r'(\d+\.\d+\.\d+\.\d+)', 'cur_state': None,  'next_state': None,  'entry': (None, 0),                'store_in': 'iceboards' },  # Stores a motherboard item based on its IP address only
+        { 'regex': r'(\w+\.local)',         'cur_state': None,  'next_state': None,  'entry': (None, 0),                'store_in': 'iceboards' },  # Stores a motherboard item based on its local hostname only
+        { 'regex': r'(MGK7)?MB',            'cur_state': None,  'next_state': 'ib',  'entry': ('MGK7MB', None),         'store_in': None        },  # Sets the curent model and type to the ICEBoard (motherboard); matches MGK7MB, MB
+        { 'regex': r'(?:|SN)?(\d+)',        'cur_state': 'ib',  'next_state': 'ib',  'entry': (None, 0),                'store_in': 'iceboards' },  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
+        { 'regex': r'\*',                   'cur_state': 'ib',  'next_state': None,  'entry': (None, '*'),              'store_in': 'iceboards' },  # Stores a an item that selects all units of the current model
 
-        { 'regex': '(MG)?ADC08',           'cur_state': None,  'next_state': 'adc', 'entry': ('MGADC08', None),        'store_in': None        },  # Sets the curent model and type to the CHIME Mezzanine;  matches MGADC08, ADC08
-        { 'regex': '29821-0000-(\d{4})',   'cur_state': None,  'next_state': None,  'entry': ('MGADC08', 0),           'store_in': 'mezzanines'},  # Stores a MGADC08 mezzanine item based on serial number extracted from the Digico barcodes (29821-000-ssss, where ssss=serial number)
-        { 'regex': '35896-0000-(\d{4})',   'cur_state': None,  'next_state': None,  'entry': ('MGADC08', 0),           'store_in': 'mezzanines'},  # Stores a MGADC08 mezzanine item based on serial number extracted from the Digico barcodes
-        { 'regex': '(?:|SN)?(\d+)',        'cur_state': 'adc', 'next_state': 'adc', 'entry': (None, 0),                'store_in': 'mezzanines'},  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
+        { 'regex': r'(MG)?ADC08',           'cur_state': None,  'next_state': 'adc', 'entry': ('MGADC08', None),        'store_in': None        },  # Sets the curent model and type to the CHIME Mezzanine;  matches MGADC08, ADC08
+        { 'regex': r'29821-0000-(\d{4})',   'cur_state': None,  'next_state': None,  'entry': ('MGADC08', 0),           'store_in': 'mezzanines'},  # Stores a MGADC08 mezzanine item based on serial number extracted from the Digico barcodes (29821-000-ssss, where ssss=serial number)
+        { 'regex': r'35896-0000-(\d{4})',   'cur_state': None,  'next_state': None,  'entry': ('MGADC08', 0),           'store_in': 'mezzanines'},  # Stores a MGADC08 mezzanine item based on serial number extracted from the Digico barcodes
+        { 'regex': r'(?:|SN)?(\d+)',        'cur_state': 'adc', 'next_state': 'adc', 'entry': (None, 0),                'store_in': 'mezzanines'},  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
 
-        { 'regex': 'crate',                'cur_state': None,  'next_state': 'cr', 'entry': (None,),                    'store_in': None        },  #
-        { 'regex': '(\d+)',                'cur_state': 'cr',  'next_state': 'cr', 'entry': (0,),                        'store_in': 'crates' },
+        { 'regex': r'crate',                'cur_state': None,  'next_state': 'cr', 'entry': (None,),                    'store_in': None        },  #
+        { 'regex': r'(\d+)',                'cur_state': 'cr',  'next_state': 'cr', 'entry': (0,),                        'store_in': 'crates' },
         ]
 
 def parse_hw_string(hw_string, remap_table={}, dut_id_patterns=ICE_PATTERNS):
