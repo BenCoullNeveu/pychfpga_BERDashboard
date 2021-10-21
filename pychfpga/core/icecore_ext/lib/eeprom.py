@@ -24,6 +24,8 @@ class eeprom(object):
             bus_name,
             address_width,
             write_page_size=0,
+            max_read_length=4, # max number of bytes to read at a time
+            max_write_length=3, # max number of bytes to write at a time
             verbose=1):
         """
         """
@@ -37,6 +39,8 @@ class eeprom(object):
         self.write_page_size = write_page_size
         self.address_mask = (1 << address_width) - 1
         self.address_page_mask = write_page_size - 1
+        self.max_read_length = max_read_length
+        self.max_write_length = max_read_length
 
     def _get_addr_bytes(self, addr):
         """
@@ -92,7 +96,7 @@ class eeprom(object):
         data = b""
         while length:
             # print '.',
-            block_length = min(length, 4)
+            block_length = min(length, self.max_read_length)
             if addr is None:
                 addr_bytes = [0]
             else:
@@ -101,11 +105,11 @@ class eeprom(object):
             # while True:
             try:
 
-                block_data = self.i2c.write_read(
+                block_data = bytes(self.i2c.write_read(
                     self.address + addr_bytes[0], addr_bytes[1:],
                     read_length=block_length,
                     retry=retry,
-                    **kwargs).tobytes()
+                    **kwargs))
                 # break
             except Exception:
                 # self.logger.warning('I2C Error while reading EEPROM at memory address %i. Retrying...' % addr)
@@ -147,7 +151,7 @@ class eeprom(object):
             #  1) The number of bytes to send
             #  2) The number of bytes that the I2C interface can send ( 3 - number of address bytes)
             #  3) The number of bytes until the end of the page
-            block_length = min(len(data), 3-len(addr_bytes)+1, (addr | self.address_page_mask) - addr + 1)
+            block_length = min(len(data), self.max_write_length-len(addr_bytes)+1, (addr | self.address_page_mask) - addr + 1)
             self.i2c.write_read(
                 self.address | addr_bytes[0],
                 addr_bytes[1:] + data[:block_length],
