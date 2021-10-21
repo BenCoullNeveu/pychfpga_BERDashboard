@@ -28,7 +28,7 @@ from pychfpga import FpgaBitstream
 
 # local packages
 from memtest_rs232 import MemTestRS232
-from cdce620005_pll_QC import CDCE620005Pair
+import cdce620005_pll_QC as cdce620005 
 
 
 TEST_CONFIG_FILE = './MGK7MB/mgk7mb_test_config.yaml'
@@ -50,20 +50,27 @@ class TestUtils:
         class_name = instr_params.pop('labpy_object')
         return labpy.open_instrument(class_name, **instr_params)
 
-    def open_ps(self, name='ps18v'):
-        """ Opens a power supply and configures it"""
+    def open_ps(self, name='ps18v', voltage=None, current=None):
+        """ Opens a power supply and configures it
+
+        The `voltage` and `current` to be programmed can be specified. If `None`, the global values from
+        the config file in ``motherboard_tests.global_settings`` will be
+        used.
+        """
         # open power supply instrument if it is in the list of instruments and if we don't force manual operation
-        if 'ps18v' in self.cfg.instruments and self.cfg.get('manual_ps', False):
+        if 'ps18v' in self.cfg.instruments and not self.cfg.get('manual_ps', False):
             self.ps18v = self.open_instruments(name) 
         else:
             self.ps18v = None
 
         # initialize power supply if we have one
         if self.ps18v:
+            voltage = voltage if voltage is not None else self.cfg.motherboard_tests.global_settings.ps_voltage
+            current = current if current is not None else self.cfg.motherboard_tests.global_settings.ps_current
             self.ps18v.set_output(state=False) #Ensuring power on N5764A is off
             self.ps18v.clear() #Clearing any previous protection
-            self.ps18v.set_voltage(voltage=cfg.vlt) #Setting voltage to 18V, power still off
-            self.ps18v.set_current_limit(current=cfg.curlmt, ocp=True) #Setting current limit and turning on ocp feature
+            self.ps18v.set_voltage(voltage=voltage) #Setting voltage to 18V, power still off
+            self.ps18v.set_current_limit(current=current, ocp=True) #Setting current limit and turning on ocp feature
         return self.ps18v
 
 class TestMGK7MBBench(TestUtils):
@@ -339,17 +346,24 @@ class TestMGK7MBBench(TestUtils):
             xr.input("Press [ENTER] when ready to apply power to the board")
             self.ps18v.set_output(state=True)
 
-        cdce = CDCE620005Pair() # instantiate PLL (two PLLs included)
+        try:
+            pll1 = cdce620005.CDCE620005(cfg.ftdi_url, port=0) # instantiate PLL1
+            pll2 = cdce620005.CDCE620005(cfg.ftdi_url, port=1) # instantiate PLL2
+        except Exception:
+            print('Error opening serial port using the USB FTDI cable. '
+                  'Please ensure that the USB permissions has been set '
+                  'according to pyftdi install instructions.')
+            raise
 
         #cdce.write_pll_reg(cdce.pll1port, 0 , 0) #temporarily make reg 0 on pll 1 wrong
 
         print("\nComparing PLL1 desired settings with measured settings:")
-        meas_pll1_regs = cdce.read_pll1()
-        pll1_cmp = cdce.comp_reg(cfg.pll1regs, meas_pll1_regs)
+        meas_pll1_regs = pll1.read_pll()
+        pll1_cmp = cdce620005.comp_reg(cfg.pll1regs, meas_pll1_regs)
 
         print("\nComparing PLL2 desired settings with measured settings:")
-        meas_pll2_regs = cdce.read_pll2()
-        pll2_cmp = cdce.comp_reg(cfg.pll2regs, meas_pll2_regs)
+        meas_pll2_regs = pll2.read_pll()
+        pll2_cmp = cdce620005.comp_reg(cfg.pll2regs, meas_pll2_regs)
 
         if (all(v==0 for v in meas_pll1_regs) and all(v==0 for v in meas_pll1_regs)):
             while (xr.input_yes_no("All the registers in both PLLs are 0.  Please ensure that dongle orientated correctly on the program header. Ready to continue? [Y/N]", additional_answers=[]) != True):
@@ -363,11 +377,11 @@ class TestMGK7MBBench(TestUtils):
 
         if pll1_cmp == 0:
             print("\nDifferences were detected on PLL1 - Programing it")
-            cdce.program_pll1(cfg.pll1regs, write_eeprom=True)
+            pll1.program_pll(cfg.pll1regs, write_eeprom=True)
             time.sleep(2)
-            meas_pll1_regs=cdce.read_pll1()
+            meas_pll1_regs = pll1.read_pll()
             print("\nComparing settings again:")
-            pll1_cmp=cdce.comp_reg(cfg.pll1regs, meas_pll1_regs)
+            pll1_cmp = cdce620005.comp_reg(cfg.pll1regs, meas_pll1_regs)
             if pll1_cmp:
                 print("PLL1 successfully programed")
             else:
@@ -377,11 +391,11 @@ class TestMGK7MBBench(TestUtils):
 
         if pll2_cmp ==0:
             print("\nDifferences were detected on PLL2 - Programing it")
-            cdce.program_pll2(cfg.pll2regs,write_eeprom=True)
+            pll2.program_pll(cfg.pll2regs,write_eeprom=True)
             time.sleep(2)
-            meas_pll2_regs=cdce.read_pll2()
+            meas_pll2_regs = pll2.read_pll()
             print("\nComparing settings again:")
-            pll2_cmp=cdce.comp_reg(cfg.pll2regs, meas_pll2_regs)
+            pll2_cmp = cdce620005.comp_reg(cfg.pll2regs, meas_pll2_regs)
             if pll2_cmp:
                 print("PLL2 successfully programed")
             else:
@@ -438,9 +452,14 @@ class TestMGK7MBBench(TestUtils):
         print("This is the lower row of 3 pins, with the red wire towards the LEDs.")
 
 
-        #chmod 777 /dev/ttyUSB* allowed access to screen, probably not the right thing to do!
-        #Should probably write another permissions file as for the PLL test
-        ser = MemTestRS232()
+        try:
+            ser = MemTestRS232(cfg.ftdi_url)
+        except Exception:
+            print('Error opening serial port using the USB FTDI cable. '
+                  'Please ensure that the USB permissions has been set '
+                  'according to pyftdi install instructions.')
+            raise
+
         print(f"Found RS232 dongle on port {ser.dev}")
 
         if manual_ps:
@@ -1244,7 +1263,7 @@ class TestMGK7MBNetwork(TestUtils):
         """
         xr.header('Ramp test')
 
-        eth_if = self.cfg.motherboard_tests.network.eth_interface  # config options pertaining to setup
+        eth_if = self.cfg.motherboard_tests.global_settings.eth_interface  # config options pertaining to setup
 
         stat_command = ['ifconfig', eth_if]
         x = subprocess.check_output(stat_command)
@@ -1365,7 +1384,7 @@ class TestMGK7MBNetwork(TestUtils):
     def test_qsfp(self, xr):
 
         """
-        QC0012: Check that QSFP is detected and that their eeprom can be read
+        QC0012: Check that the QSFP cables are detected over I2C and that their eeprom can be read
 
         Procedure:
 
@@ -1380,10 +1399,10 @@ class TestMGK7MBNetwork(TestUtils):
 
         print('\n-------------------------------')
         print("Please ensure QSFP cable is plugged into the motherboard in both ports, and sufficient cooling for FPGA")
-        (ib, ibs) = self.connect_to_board(questions=self.cfg.ready_check)
+        (ib, _) = self.connect_to_board(questions=self.cfg.ready_check)
 
-        self.prog_fpga(ib)
-        ib.open_sync()
+        # self.prog_fpga(ib)
+        # ib.open_sync()
 
         xr.header('Test-Results')
         qsfp_info = []
@@ -1403,17 +1422,20 @@ class TestMGK7MBNetwork(TestUtils):
                 time.sleep(1)
                 ib.set_qsfp_gpio(ib.QSFP_GPIO.ResetL, i, True)
                 ib.set_qsfp_gpio(ib.QSFP_GPIO.ModSelL, i, False)
-                qsfp_info.append(base64.b64decode(ib._qsfp_eeprom_read_base64(i, 148, 16)).strip().decode())
-                qsfp_info.append(base64.b64decode(ib._qsfp_eeprom_read_base64(i, 196, 16)).strip().decode())
-                print(f"QSFP module {i} manufactured by {qsfp_info[0]}. Serial number: {qsfp_info[1]}")
+                mfg = base64.b64decode(ib._qsfp_eeprom_read_base64(i, 148, 16)).strip().decode()
+                serial = base64.b64decode(ib._qsfp_eeprom_read_base64(i, 196, 16)).strip().decode()
+                qsfp_info.append(mfg)
+                qsfp_info.append(serial)
+                print(f"QSFP cable {i} manufactured by {mfg}. Serial number: {serial}")
+                assert re.search(cfg.manufacturer, mfg), f"Cannot find string '{cfg.manufacturer}' in the manufacturer data. I2C read error?" 
 
-            if re.search(cfg.manufacturer,qsfp_info[0]) and re.search(cfg.manufacturer,qsfp_info[2]) and\
-               re.search(cfg.serial,qsfp_info[1]) and re.search(cfg.serial,qsfp_info[3]) :
-                print("Detected that the cable was manufactured by " + cfg.manufacturer + " and has serial " + cfg.serial + " as indicated in the config file.")
-                passed = True
-            else:
-                passed = False
-                assert False,"Cable did not read correctly or is not specified correctly in the test config"
+            # if  and re.search(cfg.manufacturer,qsfp_info[2]) and\
+            #    re.search(cfg.serial,qsfp_info[1]) and re.search(cfg.serial,qsfp_info[3]) :
+            #     print("Detected that the cable was manufactured by " + cfg.manufacturer + " and has serial " + cfg.serial + " as indicated in the config file.")
+            #     passed = True
+            # else:
+            #     passed = False
+            #     assert False,"Cable did not read correctly or is not specified correctly in the test config"
         finally:
             self.params.test_locals = locals()
 
