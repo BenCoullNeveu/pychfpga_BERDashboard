@@ -514,13 +514,19 @@ class FRU(object):
     def decode(cls, data):
         """ Convert IPMI binary data into a FRU object.
 
-        ``str`` is the string to decode.
+        Parameters:
 
-        For slow access devices, ``str`` can be function str(addr, length)
-        that is to obtain the IPMI binary data piece by piece as needed so
-        that all the memory device does not have to be read at once.  If
-        length = -1, all data from addr to the end of the IPMI storage should
-        be returned.
+            data (bytes or function):  data to decode. For slow access
+                devices, `data` can be function where data(addr, length) returns
+                portion of the data buffer. Using a function is useful to obtain
+                the IPMI binary data piece by piece as needed so that all the
+                memory device does not have to be read at once.  If length = -1,
+                all data from addr to the end of the IPMI storage should be
+                returned.
+
+        Returns:
+
+            FRU instance representing the decoded data.
 
         """
 
