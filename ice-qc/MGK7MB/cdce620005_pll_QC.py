@@ -39,6 +39,30 @@ Todo:
     - Write config from file
     - get config
 
+Note:
+
+    Default PLL config for the IceBoard
+    #pll1_regs = [ 0x01260320,
+    #              0xEB060301,
+    #              0x011E0302,
+    #              0xEB040303,
+    #              0xEB860314,
+    #              0x101C1E75,
+    #              0x849F4FE6,
+    #              0xBDB23BE7,
+    #              0x20009CF8 ]
+
+
+    #pll2_regs = [ 0xEB840320,
+    #              0xEB840301,
+    #              0xEB840302,
+    #              0xEB860303,
+    #              0xEB400014,
+    #              0x101C1E75,
+    #              0x84BF49A6,
+    #              0xBDB23BE7,
+    #              0x20009DD8 ]
+
 
 
 """
@@ -52,7 +76,10 @@ from pyftdi import spi
 
 
 class CDCE620005:
-    def __init__(self, port):
+
+    opened_controllers = {}  # {url:SpiController instance, ...}
+
+    def __init__(self, ftdi_url='ftdi://ftdi:232h/1', port=0, freq=100e3, mode=0):
         """
 
         Parameters:
@@ -60,6 +87,14 @@ class CDCE620005:
             port: configured FTDI SPI port object obtained by calling get_port(...) on a SPiController object.
         """
         self.port = port
+        self.dev = ftdi_url
+
+        if ftdi_url in self.opened_controllers:
+            self.spi = self.opened_controllers[ftdi_url]
+        else:
+            self.spi = self.opened_controllers[ftdi_url] = spi.SpiController(cs_count=4)
+            self.spi.configure(ftdi_url)
+        self.port = self.spi.get_port(cs=port, freq=freq, mode=mode)
 
     def write_read_word(self, word):
 
@@ -97,98 +132,26 @@ class CDCE620005:
         if write_eeprom:
             self.write_read_word(0x0000001F)  # Write to EEPROM, but do not permanently lock it
 
-class CDCE620005Pair:
-    """ Provides access to two CDCE620005 devices accessed over a single FTDI USB dongle """
 
-    def __init__(self):
-        # find USB devices
-        # import usb.core
-        # dev = usb.core.find(find_all=True)
-        # loop through devices, printing vendor and product ids in decimal and hex
-        # for cfg in dev:
-        #   sys.stdout.write('Decimal VendorID=' + str(cfg.idVendor) + ' & ProductID=' + str(cfg.idProduct) + '\n')
-        #   sys.stdout.write('Hexadecimal VendorID=' + hex(cfg.idVendor) + ' & ProductID=' + hex(cfg.idProduct) + '\n\n')
+def print_reg(reg):
+    """ Prints the PLL register values provided in `reg`"""
+    for i in range(8):
+         print('Config Register %i: 0x%08X' % (i, reg[i]))
 
-        # s=spi.SpiController(cs_count=4, silent_clock=False)
-        # s.configure(0x403, 0x6014, 0)
-        # self.pll1port=s.get_port(0)
-        # self.pll1port.set_frequency(1000)
-        # self.pll2port=s.get_port(1)
-        # self.pll2port.set_frequency(1000)
-        s=spi.SpiController(cs_count=4)  # silent clock is no longer available in modern versions of pyftdi
-        s.configure('ftdi://ftdi:232h/1')
-        # self.pll1port=s.get_port(cs=0, freq=1e3, mode=0)
-        # self.pll2port=s.get_port(cs=1, freq=1e3, mode=0)
-        plls = [CDCE620005(s.get_port(cs=i, freq=100e3, mode=0)) for i in range(2)]
-        self.pll1 = plls[0] 
-        self.pll2 = plls[1]
+    if(len(reg)==9):
+        print('Status Register %i: 0x%08X' % (8, reg[8]))
 
 
-    def read_pll1(self):
-        regstore = self.pll1.read_pll()
-        return regstore
+def comp_reg(desreg, measreg ):
+    """ Check if the desired register values `desreg` match the measured register values `measreg` """
+    passed = True
+    for i in range(8):
+        if(desreg[i] == measreg[i]):
+            print('Register %i: should be 0x%08X and we measure 0x%08X: SAME' % (i, desreg[i], measreg[i]))
+        else:
+            print('Register %i: should be 0x%08X and we measure 0x%08X: DIFFERENT!' % (i, desreg[i], measreg[i]))
+            passed = False
+    if not passed:
+        print("A difference was detected between the desired configuration and measured configuration")
 
-    def read_pll2(self):
-        regstore = self.pll2.read_pll()
-        return regstore
-
-    def program_pll1(self, regs, write_eeprom=False):
-        self.pll1.program_pll(regs=regs, write_eeprom=write_eeprom)
-
-    def program_pll2(self, regs, write_eeprom=False):
-        self.pll1.program_pll(regs=regs, write_eeprom=write_eeprom)
-
-    # def program_pll1(port=self.pll1port, regs, write_eeprom=False):
-    #     regs = [ 0x01260320,
-    #              0xEB060301,
-    #              0x011E0302,
-    #              0xEB040303,
-    #              0xEB860314,
-    #              0x101C1E75,
-    #              0x849F4FE6,
-    #              0xBDB23BE7,
-    #              0x20009CF8 ]
-
-    #     for reg, v in enumerate(regs):
-    #         write_pll_reg(port, reg, v)
-    #     if write_eeprom:
-    #         write_pll(port, 0x0000001F)  # Write to EEPROM, but do not permanently lock it
-
-    # def program_pll2(port=self.pll2port, write_eeprom=False):
-    #     regs = [ 0xEB840320,
-    #              0xEB840301,
-    #              0xEB840302,
-    #              0xEB860303,
-    #              0xEB400014,
-    #              0x101C1E75,
-    #              0x84BF49A6,
-    #              0xBDB23BE7,
-    #              0x20009DD8 ]
-
-    #     for reg, v in enumerate(regs):
-    #         write_pll_reg(port, reg, v)
-    #     if write_eeprom:
-    #         write_pll(port, 0x0000001F)  # Write to EEPROM, but do not permanently lock it
-
-
-
-    def print_reg(self, reg):
-        for i in range(8):
-             print('Config Register %i: 0x%08X' % (i, reg[i]))
-
-        if(len(reg)==9):
-            print('Status Register %i: 0x%08X' % (8, reg[8]))
-
-
-    def comp_reg(self, desreg, measreg ):
-        passed = True
-        for i in range(8):
-            if(desreg[i] == measreg[i]):
-                print('Register %i: should be 0x%08X and we measure 0x%08X: SAME' % (i, desreg[i], measreg[i]))
-            else:
-                print('Register %i: should be 0x%08X and we measure 0x%08X: DIFFERENT!' % (i, desreg[i], measreg[i]))
-                passed = False
-        if not passed:
-            print("A difference was detected between the desired configuration and measured configuration")
-
-        return passed
+    return passed
