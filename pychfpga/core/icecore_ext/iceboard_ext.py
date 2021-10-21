@@ -17,12 +17,14 @@ import nest_asyncio
 from wtl.metrics import Metrics
 
 # Local packages
-
+from .motherboard import Motherboard
+from .async_utils import run_async, async_to_sync
 from ..icecore.hardware_assets import IceBoardBase
-from ..icecore.hardware_assets import FMCMezzanineBase
 from ..icecore.tuber import TuberError, TuberNetworkError, TuberRemoteError
 from .hardware_map import HardwareMap
+from .lib.bsb_mmi import BSB_MMI  # Byte-serial interface protocol definition
 from .icecrate_ext import IceCrate
+from .icemezz_ext import FMCMezzanine
 from .ccoll import Ccoll
 
 from .. import I2C as i2c
@@ -37,63 +39,8 @@ from .lib import qsfp
 from .lib import gpio
 
 
-def run_async(awaitable):
-    """
-    Run the current loop until the awaitable is resolved.
 
-    Is used to run an async function from a sync function, assuming there is a valid current event loop .
-
-    We use nest_asyncio to allow run_until_complete() call to operate even if the current loop is already running. Native asyncio does not allow that.
-    """
-    nest_asyncio.apply()  # make sure we can run in an already running loop
-    return asyncio.run(awaitable)
-
-
-def async_to_sync(fn):
-    """
-    Wraps an async coroutine function into a function that can be called synchronously (without the await statement).
-
-    This assumes there is a event loop.
-    """
-    def sync_fn(*args, **kwargs):
-        return run_async(fn(*args, **kwargs))
-    return sync_fn
-
-
-class FMCMezzanine(FMCMezzanineBase, HardwareMap):
-    """
-    Provides the basic methods needed to operate a mezzanine.
-    """
-
-    part_number = None
-    _ipmi_part_numbers = None  # Must match part number in IPMI data
-
-
-    def __init__(self, serial=None, mezzanine=None, iceboard=None):
-        self.logger = logging.getLogger(__name__)
-        self.serial = serial
-        self.mezzanine = mezzanine  # mezzanine slot number on IceBoard
-        self.iceboard = iceboard  # carrier IceBoard object
-
-    def get_id(self):
-        """ Return a string that identifies uniquely the mezzanine board.
-        Comprises the model number and the serial number.
-        """
-        return '%s_SN%s' % (self.part_number, self.serial)
-
-    async def set_mezzanine_power_async(self, state):
-        await self.iceboard.tuber_set_mezzanine_power_async(bool(state), self.mezzanine)
-
-    async def get_mezzanine_power_async(self):
-        return await self.iceboard.tuber_get_mezzanine_power_async(self.mezzanine)
-
-    async def is_mezzanine_present_async(self):
-        return await self.iceboard.tuber_is_mezzanine_present_async(self.mezzanine)
-
-    def is_mezzanine_present(self):
-        return self.iceboard.is_mezzanine_present(self.mezzanine)
-
-class IceBoard(IceBoardBase, HardwareMap):
+class IceBoard(IceBoardBase, Motherboard):
     """ Provide the basic code needed to operate the Iceboard (i.e. Tuber-
     provided code and a few Python wrappers)
 
@@ -106,12 +53,12 @@ class IceBoard(IceBoardBase, HardwareMap):
     Parameters:
 
     """
-    _class_registry = {}  # {part_number:class}
-    _instance_registry = {}  # {(model,serial):instance}
 
     part_number = 'MGK7MB'
     _ipmi_part_numbers = ['MGK7MB']
-    tuber_objname = 'IceBoard'  # use the generic support functions provided by the IceBoard's ARM processor.
+
+    # Define the set of functions provided by the IceBoard's ARM processor. This is used by Tuber, which comes with IceBoardBase.
+    tuber_objname = 'IceBoard'
 
     NUMBER_OF_FMC_SLOTS = 2
 
@@ -160,192 +107,8 @@ class IceBoard(IceBoardBase, HardwareMap):
         called when the hardware map is completed and stable.
 
         """
-        if not serial and not hostname:
-            raise ValueError('Must specify either a serial number or hostname for IceBoard')
-
-        if isinstance(serial, int):  # make sure serial is a string
-            serial = f'{serial:04d}' # IceBoard serials have 4 digits
-
         super().__init__(hostname=hostname, serial=serial, **kwargs)  # pass on the remaining kwargs. crate and mezzanine are cleared.
 
-        self.slot = slot
-        self.subarray = subarray
-
-        self.crate = None
-        self._cached_repr = None  # important to avoid infinite recursions through repr(). Clear on updates to account for the new parameters.
-        self.logger = logging.getLogger(__name__)
-
-        self.logger.debug(
-            f"{self!r}: Created {self.__class__.__name__}(hostname={hostname}, "
-            f"serial={serial}, slot={slot}, subarray={subarray}), "
-            f"crate={self.crate}")
-
-    def __repr__(self):
-        """ Provides a concise string representation of this Iceboard that is
-        informative enough to be used for logs.
-        """
-
-        if self._cached_repr:
-            return self._cached_repr
-        else:
-            self._cached_repr = f"{self.__class__.__name__}({self.get_string_id()})"
-            return self._cached_repr
-
-    def get_string_id(self):
-        """ Return a string that identifies uniquely the IceBord in the most convenient representation.
-
-        Preference order:
-
-            - (0,3)  # crate 0 , 4th slot (tuples always use zero-based indices)
-            - (MGK7BP16_SN025, 3)  # Same, but without crate number info
-            - MGK7MB_SN0234 # no crate info at all (even with virtual slot)
-            - 10.10.10.244 # motherboard serial number not discovered
-            - id=140529531550992 # nothing, last resort
-
-        """
-        if self.crate and self.crate.crate_number is not None and self.slot:
-            return f"({self.crate.crate_number},{self.slot-1})"
-        if self.crate and self.crate.part_number and self.crate.serial and self.slot:
-            return f"({self.crate.part_number}_SN{self.crate.serial},{self.slot-1})"
-        elif self.serial:
-            return f"{self.part_number}_SN{self.serial}"
-        elif self.hostname:
-            return self.hostname
-        else:
-            return f"id={id(self)}"
-
-
-    @classmethod
-    def get_unique_instance(cls,
-                            new_class=None,
-                            serial=None,
-                            hostname=None,
-                            slot=None,
-                            subarray=None,
-                            crate_number=None,
-                            **kwargs):
-        """
-        Creates a new IceCrate instance if one with matching hostname or
-        serial number does not exist, otherwise return an existing one
-        augmented with the new serial or hostname information.
-
-        Existing instances are those who match either the specified hostname
-        or part_number/serial number. If no board is found, a new instance of
-        class `new_class` is created. Otherwise, the existing instance is
-        updated with the parameters  that are not `None`.
-
-
-        All creation and update operations maintain the integrity of the
-        references between IceBoards, IceCrates and Mezzanines.
-
-        Use this method to create IceBoards objects instead of instantiating
-        them directly from the target class in order to maintain the hardware
-        map integrity.
-
-        Parameters:
-
-            new_class (IceBoard or subclass): class desired for the returned instance. If None, the class of an existing object is not changed, and a new object is created with the class `cls`
-
-            serial (str): serial number of the IceBoard to look for, and to assign to a new instance or existing matching instance.
-
-            hostname (str): hostname of the IceBoard to look for, and to assign to a new instance or existing matching instance.
-
-            slot (int): slot number in which the board is located in a crate
-                or backplane, or virtual slot number if the board is not in a
-                crate. Is assigned to the new or existing matching Iceboard.
-
-                If the slot number is changed, the associated IceCrate slot mapping is updated.
-
-            subarray: Arbitrary value used to group Iceboards in logical arrays. Is assigned to new instance or existing matching instance.
-
-            crate_number: For convenience, if `crate_number` is specified, the
-                new or existing board is associated with the IceCrate instance
-                that matches the specified crate number, or one is created
-                with that crate number to hold the desired crate number value.
-        """
-        # print(f"In et_unique_instance")
-
-        matching_crates = [
-            c for c in cls._instance_registry
-            if (hostname is not None and c.hostname == hostname)
-            or ((new_class or cls).part_number and serial and c.part_number == (new_class or cls).part_number and c.serial == serial)]
-
-        # print(f"Matches: {matching_crates}")
-        if not len(matching_crates):  # no matching crate, create one
-            # print(f"{cls!r}: Creating Iceboard")
-            ib = (new_class or cls)(serial=serial, hostname=hostname, slot=slot, subarray=subarray, **kwargs)
-            # print(f"{cls!r}: Updating Iceboard with crate_number={crate_number}")
-            return ib.update_instance(crate_number=crate_number)
-        elif len(matching_crates) == 1: # one match, update existing one
-            return matching_crates[0].update_instance(new_class=new_class, serial=serial, hostname=hostname, slot=slot, subarray=subarray, crate_number=crate_number, **kwargs)
-        else:
-            raise RuntimeError('Multiple IceBoards with same keys (should never happen)')
-
-    def update_instance(self,
-                        new_class=None,
-                        serial=None,
-                        hostname=None,
-                        slot=None,
-                        subarray=None,
-                        crate_number=None,
-                        crate=None,
-                        **kwargs):
-        """
-        Update the class, serial or hostname info of specified IceCrate
-        subclass instance. If the class needs to be changed, a new class
-        instance is created and the IceBoard references are updated to the new class.
-
-        Paremeters:
-
-        """
-        serial = serial or self.serial
-        hostname = hostname or self.hostname
-        slot = slot if slot is not None else self.slot
-        subarray = subarray if subarray is not None else self.subarray
-        crate_number = crate_number if crate_number is not None else self.crate.crate_number if self.crate else None
-
-        if new_class and self.__class__ is not new_class:
-            other = new_class(serial=serial, hostname=hostname, slot=slot, subarray=subarray, **kwargs)
-            self.logger.debug(f"{self!r}: Updating newly created instance...")
-            other.update_instance(crate_number=crate_number, crate=self.crate) # update crate and backrefs
-            # Update Mezzanine references to the new instance
-            for fmc, mezz in self.mezzanine.items():
-                other.mezzanine[fmc] = mezz
-                mezz.iceboard = other
-            self.delete_instance()
-            return other
-        else:  # otherwise update serial and hostname
-            if kwargs:
-                raise NotImplementedError(f'Cannot update existing {self.__class__.__name__} instance with additional keyword arguments {kwargs}')
-            self.hostname = hostname
-            self.serial = serial
-            self.subarray = subarray
-            # remove previous crate backref if it exists
-            if self.crate and self.slot:
-                self.crate.slot.pop(self.slot, None)
-            # Assign new slot
-            self.slot = slot
-            # eattach crate by crate number if specified
-            self.logger.debug(f"{self!r}: Updating with with crate_number={crate_number}...")
-            if crate_number is not None:
-                self.crate = IceCrate.get_unique_instance(crate_number=crate_number)
-            elif crate:
-                self.crate = crate
-            # Create new crate backref
-            if self.crate and self.slot:
-                self.crate.slot[self.slot] = self
-
-            self._cached_repr = None  # Clear on updates to account for the new parameters.
-            return self
-
-
-    def set_cache(self):
-        """ Caches key ORM-dependent values to prevent access to the ORM
-        object and accelerate the code.
-
-        Call this only when you know that the ORM won't change.
-        """
-        self._cached_repr = None
 
 
     async def ping_async(self, timeout=0.1):
@@ -1045,9 +808,9 @@ class IceBoardExt(IceBoardPlus):
     _SYSTEM_I2C_BASE_ADDR = _SYSTEM_BASE_ADDR + 0x05000
 
     # Match those with what is used by Module
-    _CONTROL_BASE_ADDR = 0x000000
-    _STATUS_BASE_ADDR = 0x080000
-    _RAM_BASE_ADDR = 0x100000
+    _CONTROL_BASE_ADDR = BSB_MMI._CONTROL_BASE_ADDR
+    _STATUS_BASE_ADDR  = BSB_MMI._STATUS_BASE_ADDR
+    _RAM_BASE_ADDR     = BSB_MMI._RAM_BASE_ADDR
 
     _CHFPGA_COOKIE = 0x42  # Expected cookie value for chFPGA, both on the SPI and UDP MMI
 
