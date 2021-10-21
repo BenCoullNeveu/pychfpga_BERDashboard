@@ -16,3 +16,6 @@ out_*/
 /.venv/
 \.DS_Store
 /*.egg-info/
+.Xil
+*.str
+*.jou
