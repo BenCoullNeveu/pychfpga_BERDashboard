@@ -15,29 +15,31 @@ import os
 import subprocess
 
 # Pypi packages
-import serial
-import serial.tools.list_ports
+import pyftdi.serialext
+
+# import serial
+# import serial.tools.list_ports
 
 class MemTestRS232:
 
-    @staticmethod
-    def find_single_device(hwids):
-        """ Find a device whose hardware ID that contains one of the strings isted in ``hwhids``. hwids typically contains the VendorID and ProductID in the form 'aaaa:bbbb' 
-        """
+    # @staticmethod
+    # def find_single_device(hwids):
+    #     """ Find a device whose hardware ID that contains one of the strings isted in ``hwhids``. hwids typically contains the VendorID and ProductID in the form 'aaaa:bbbb' 
+    #     """
 
-        devs = []
-        for dev in serial.tools.list_ports.comports():
-            for hwid in hwids:
-                if hwid in dev.hwid:
-                    devs.append(dev.device) 
+    #     devs = []
+    #     for dev in serial.tools.list_ports.comports():
+    #         for hwid in hwids:
+    #             if hwid in dev.hwid:
+    #                 devs.append(dev.device) 
 
-        # devs = device_by_id(id_vendor, id_product)
-        if len(devs) == 0:
-            raise ValueError(f"Unable to find device with id cointaining {hids}")
-        elif len(devs) > 1:
-            raise ValueError(f"Unable to find device with id cointaining {hids}")
-        else:
-            return devs[0]
+    #     # devs = device_by_id(id_vendor, id_product)
+    #     if len(devs) == 0:
+    #         raise ValueError(f"Unable to find device with id cointaining {hwids}")
+    #     elif len(devs) > 1:
+    #         raise ValueError(f"Unable to find device with id cointaining {hwids}")
+    #     else:
+    #         return devs[0]
 
     def find_dev_windows():
         import serial.tools.list_ports as listports
@@ -81,12 +83,13 @@ class MemTestRS232:
         ser.flushOutput()#flush output buffer, aborting current output
         return ser
 
-    def __init__(self):
+    def __init__(self, ftdi_url='ftdi://ftdi:232h/1'):
         if sys.platform == 'win32':
             dev = find_dev_windows()
             assert dev, "RS232 Dongle not found!"
+            ser =  serial.Serial(dev, 115200, timeout=1)
         else:
-            dev = self.find_single_device(['0403:6015', '0403:6014'])
+            # dev = self.find_single_device(['0403:6015', '0403:6014'])
 
             #Modifying permisions of USB RS232 device if needed
             #Would request password
@@ -96,7 +99,9 @@ class MemTestRS232:
             #     print("\nNeed to change the permissions of %s. Please enter password when asked." %rs232dongle_dev)
             #     os.system('sudo chmod 777 /dev/ttyUSB*')
 
-        ser =  serial.Serial(dev, 115200, timeout=1)
+            # ser =  serial.Serial(dev, 115200, timeout=1)
+            ser = pyftdi.serialext.serial_for_url(ftdi_url, baudrate=115200)
+            dev = ftdi_url
         # ser = setup_serial(rs232dongle_dev)
         self.ser = ser
         self.dev = dev
