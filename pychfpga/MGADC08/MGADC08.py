@@ -165,11 +165,12 @@ class FMCMezzanine_MGADC08(FMCMezzanine):
                 ),
                 multi=MultiDict(dict_out)
             )
-        # if this not the McGill Format, we assume try the standard IPMI
-        try:
-            return FRU.decode(eeprom_data)
-        except ValueError:
-            return None
+        else:
+            # if this not the McGill Format, we try the standard IPMI
+            try:
+                return FRU.decode(eeprom_data)
+            except ValueError:
+                return None
 
 
 
