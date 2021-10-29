@@ -9,10 +9,9 @@ encouraged to create a subclass.
 """
 
 import asyncio
-
-from . import tuber, tworoutine
-
-
+import datetime
+import base64
+from . import tuber, tworoutine, hw
 
 class IceCrateBase:
     """
@@ -113,8 +112,8 @@ class IceBoardBase(tuber.TuberObject):
         pretends to be valid can make this kind of debugging very painful.
         """
 
-        fru = ipmi_fru.FRU(
-            board=ipmi_fru.Board(
+        fru = hw.ipmi_fru.FRU(
+            board=hw.ipmi_fru.Board(
                 mfg_date=datetime.datetime.now(),
                 manufacturer="Winterland",
                 product_name="IceBoard",
@@ -122,7 +121,7 @@ class IceBoardBase(tuber.TuberObject):
                 serial_number=serial_number,
                 fru_file="",
             ),
-            product=ipmi_fru.Product(
+            product=hw.ipmi_fru.Product(
                 manufacturer="Winterland",
                 product_name="IceBoard",
                 part_number=part_number,
@@ -158,8 +157,8 @@ class IceBoardBase(tuber.TuberObject):
         been programmed. Chickens and eggs.
         """
 
-        fru = ipmi_fru.FRU(
-            board=ipmi_fru.Board(
+        fru = hw.ipmi_fru.FRU(
+            board=hw.ipmi_fru.Board(
                 mfg_date=datetime.datetime.now(),
                 manufacturer="Winterland",
                 product_name="IceCrate",
@@ -167,7 +166,7 @@ class IceBoardBase(tuber.TuberObject):
                 serial_number=serial_number,
                 fru_file="",
             ),
-            product=ipmi_fru.Product(
+            product=hw.ipmi_fru.Product(
                 manufacturer="Winterland",
                 product_name="IceCrate",
                 part_number=part_number,
@@ -179,7 +178,7 @@ class IceBoardBase(tuber.TuberObject):
             # multi=Multi(...), when it's supported by this code
         )
         b64_string = base64.b64encode(fru.encode())
-        return self._backplane_eeprom_write_base64(b64_string)
+        return self._tuber_backplane_eeprom_write_base64_async(b64_string)
 
     @property
     def tuber_uri(self):
