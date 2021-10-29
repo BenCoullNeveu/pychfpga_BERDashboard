@@ -37,7 +37,10 @@ Config:
 	- Set spash screen message:"user= cisco, password=as usual"
 	- Set password to the usual
 	- Enable jumbo frames (Port-management->port settings)
-	- Set-up link aggregation. Aggregate links 1-4 and 24-27 in LAG1. Select Enable LACP *before* clocking ok, otherwise you cannot change it unless you remove all the ports.
+
+Optional:
+
+	- Set-up link aggregation if needed. Aggregate links 1-4 and 24-27 in LAG1. Select Enable LACP *before* clicking ok, otherwise you cannot change it unless you remove all the ports.
 
 
 Container switch
