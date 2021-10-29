@@ -83,7 +83,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
             '80': self.get_phase_lock_status,
             '81': self.get_leap_seconds,
             '82': None,  # Undocumented, #82,0,1,8,8,F,F
-            '84': None,  # Undocumented, #84,1,0,5,3,2,1,F
+            '84': None,  # Undocumented, #84,1,0,5,3,2,1,F  # probablu BNC output configuration
             '85': None,  # Undocumented, '#85,0058
             '86': None,  # Undocumented #86,99.99,99.99,00.41,99.99,00.41
             }
@@ -338,6 +338,34 @@ class SpectrumInstrumentsTM4D(SocketContext):
         if fmt not in [0, 1]:
             raise ValueError(f'{self!r}: format can be 0=GPS or 1=UTC')
         self.command('26', fmt)
+
+    def set_bnc_output_source(self, outa=None, outb=None, outc=None, outd=None, oute=None, outf=None):
+        """ Selects the source of the TM4 BNC output.
+
+        Parameters:
+            outx (int): output source.
+                0: Mux1
+                1: Mux2
+                2: 1PP2C or Custom-1
+                3: Custom-2
+                4: Custom-3
+                5: POP
+                6: Custom-4
+                7: FILPPS
+                8: GPSPPS
+                9: Reserved
+                10: Reserved
+                None: OFF
+
+
+        """
+        self.command('28',
+                     'F' if outa is None else outa,
+                     'F' if outb is None else outb,
+                     'F' if outc is None else outc,
+                     'F' if outd is None else outd,
+                     'F' if oute is None else oute,
+                     'F' if outf is None else outf)
 
 
     # Get commands
@@ -816,6 +844,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
             self.set_serial_time_code_format(2) # IRIG-B007, including BCD year and SBS
             self.set_position(lat, lon, alt)
             self.set_pps_output_source(1) # FILPPS only when fully locked
+            self.set_bnc_output_source(0,1,7) # OutA=Mux1, OutB=Mux2, OutC=FILPPS
             self.set_multiplexer_output_source(6, 0) # Mux1=IRIGB, Mux2= 10 MHz
             self.set_user_time_bias(0)
             self.set_antenna_alarm_enable(True)
