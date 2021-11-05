@@ -1065,7 +1065,8 @@ class FPGAMaster(object):
 
 
         # Setup noise injection for normal operation
-        self.setup_noise_injection(conf.fpga.noise_injection)
+        # Allow the noise injection field to be omitted or null
+        self.setup_noise_injection(conf.fpga.get('noise_injection',{}))
 
         # Start correlator data transmission if present in the FPGA-based
         # firmware correlationlator is present in the FPGA
@@ -1230,7 +1231,7 @@ class FPGAMaster(object):
 
         """
 
-        ni_params = self.config.fpga.noise_injection
+        ni_params = self.config.fpga.get('noise_injection', {})
         if name not in ni_params:
             raise RuntimeError(f"Unknown noise injection source name. Valid sources are: {','.join(ni_params.keys())}")
         p = ni_params[name]
@@ -2217,7 +2218,9 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
     async def _get_noise_injection_metrics(self, metrics):
         """ Adds metrics on the noise injection sources
         """
-        for ni_name, p in self.fpga_master.config.fpga.noise_injection.items():
+        # Get the global noise injection parameters. Make sure we handle a missing ot None noise injection field.
+        ni_params = self.fpga_master.config.fpga.get('noise_injection',{}) or {}
+        for ni_name, p in ni_params.items():
             # skip noise injection sources that don't specify a board
             if not p.board:
                 continue
