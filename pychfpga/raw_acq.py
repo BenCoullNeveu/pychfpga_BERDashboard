@@ -271,7 +271,7 @@ class RawAcqReceiver(object):
         failed_src = [src_addr for src_addr, src_if_addr in src_if_addrs.items() if not src_if_addr]
         if failed_src:
             raise RuntimeError('Cannot ping %s, so cannot determine interface through which these data sources are reached.' %
-                ','.join('%s:%s' (src_addr) for arc_addr in failed_src))
+                ','.join('%s:%s' % (src_addr) for arc_addr in failed_src))
 
 
         # Determine the interface and port to which each receiver should listen to.
