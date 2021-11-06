@@ -13,7 +13,7 @@ import threading
 from zeroconf import IPVersion, ServiceBrowser, ServiceStateChange, Zeroconf
 
 # Local packages
-from . import IceBoard, IceCrate
+from . import Motherboard, IceCrate
 
 def _to_int(v):
     try:
@@ -97,7 +97,7 @@ async def mdns_discover(
     logger = logging.getLogger(__name__)
 
     if clear_hwm:
-        IceBoard.clear_hardware_map()
+        Motherboard.clear_hardware_map()
 
     # Normalize iceboard and icecrate target lists to the [ (model,[serial1, serial2]), ...] format
     if iceboards == '*':
@@ -144,7 +144,7 @@ async def mdns_discover(
         int_ib_serial = _to_int(ib_serial)
         slot = _to_int(bp_slot)
 
-        logger.debug(f"DNS-SD: Discovered IceBoard SN{ib_serial} ({addr}) in "
+        logger.debug(f"DNS-SD: Discovered motherboard {ib_part_number} SN{ib_serial} ({addr}) in "
                      f"IceCrate {bp_part_number} SN{bp_serial}  slot {bp_slot}.")
 
         # Check if the motherboard matches the search criteria
@@ -161,8 +161,8 @@ async def mdns_discover(
 
         if icecrate_match or iceboard_match:
             if ib_part_number and ib_serial:
-                # ib_cls = IceBoard.get_class_by_ipmi_part_number(ib_part_number)
-                ib_obj = IceBoard.get_unique_instance(serial=ib_serial, hostname=addr)
+                ib_cls = Motherboard.get_class_by_ipmi_part_number(ib_part_number)
+                ib_obj = ib_cls.get_unique_instance(serial=ib_serial, hostname=addr)
                 # print(f'ib obj {ib_obj} has hostnme {ib_obj.hostname}')
                 for tib in expected_ibs:
                     if tuple_match(tib, (ib_part_number, ib_serial)):
@@ -178,8 +178,8 @@ async def mdns_discover(
                         expected_ics[tib] = bp_obj
         else:
             logger.debug(
-                f"DNS-SD: IceBoard SN{ib_serial} (crate {bp_part_number} SN{bp_serial} slot {bp_slot}) was detected "
-                f"but was not added because it did not match the IceBoard serial {iceboards} "
+                f"DNS-SD: Motherboard {ib_part_number} SN{ib_serial} (crate {bp_part_number} SN{bp_serial} slot {bp_slot}) was detected "
+                f"but was not added because it did not match the motherboard serial {iceboards} "
                 f"or crate serial {icecrates}")
         t = time.time()
         with time_info as ti:
@@ -222,7 +222,7 @@ async def mdns_discover(
     finally:
         logger.debug(f'mdns_discover: closing zeroconf')
         zeroconf.close()
-    return IceBoard.get_all_instances(), IceCrate.get_all_instances()
+    return Motherboard.get_all_instances(), IceCrate.get_all_instances()
 
 
 def mdns_resolve(name, timeout=1):
@@ -261,11 +261,11 @@ def mdns_resolve(name, timeout=1):
 
 def test():
     logging.basicConfig(level=logging.DEBUG)
-    IceBoard.clear_hardware_map()
+    Motherboard.clear_hardware_map()
     ibs, ics = asyncio.run(mdns_discover(iceboards='*', icecrates='*', timeout=5))
     for ib in sorted(ibs, key=lambda ib:ib.slot):
         if ib.crate:
             crate_txt = f' in slot {ib.slot:2d} of crate {ib.crate.part_number}_SN{ib.crate.serial}'
         else:
             crate_txt = f' (standalone board in virtual slot {ib.slot})'
-        print(f'IceBoard {ib.part_number}_SN{ib.serial} @ {ib.hostname}' + crate_txt)
+        print(f'Motherboard {ib.part_number}_SN{ib.serial} @ {ib.hostname}' + crate_txt)
