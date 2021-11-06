@@ -64,21 +64,38 @@ class Motherboard(HardwareMap):
         the hardware or do complex set-up; this is done by init(), which will
         be called when the hardware map is completed and stable.
 
+
+        Board initialization is done in 4 steps:
+
+            open_platform_async() establish communication with the motherboard's on-board processor. This enables access to the methods provided by the motherboard.
+
+            set_fpga_bitstream_async(): programs the FPGA with the target firmware. The Firmware instance is created, but is not yet usable.
+
+            open_fpga_async() establishes the communication link with the FPGA.
+
+            init_fpga_async() initializes the firmware in the desired operational state.
+
+
         """
         if not serial and not hostname:
             raise ValueError(f'Must specify either a serial number or hostname for {self.__class__.__name__}')
 
+
+        self.fpga = None  # No firmware loaded by default
+        self.other_args = kwargs
         if isinstance(serial, int):  # make sure serial is a string
             serial = f'{serial:04d}'  # Motherboard serials have 4 digits
 
-        super().__init__(**kwargs)  # pass on the remaining kwargs. crate and mezzanine are cleared.
+        super().__init__()
 
         self.hostname = hostname
         self.serial = serial
         self.slot = slot
         self.subarray = subarray
+        self.firmware_name = None
 
-        self.crate = None
+        self.crate = None  # Crate (or backplane) object on which the motherboard is mounted
+        self.mezzanine = {}  # Mezzanines attached to this motherboard ({slot:mezz_object, ...})
         self._cached_repr = None  # important to avoid infinite recursions through repr(). Clear on updates to account for the new parameters.
         self.logger = logging.getLogger(__name__)
 
@@ -98,29 +115,24 @@ class Motherboard(HardwareMap):
             self._cached_repr = f"{self.__class__.__name__}({self.get_string_id()})"
             return self._cached_repr
 
-    def get_string_id(self):
-        """ Return a string that identifies uniquely the Motherboard in the most convenient representation.
-
-        Preference order:
-
-            - (0,3)  # crate 0 , 4th slot (tuples always use zero-based indices)
-            - (MGK7BP16_SN025, 3)  # Same, but without crate number info
-            - MGK7MB_SN0234 # no crate info at all (even with virtual slot)
-            - 10.10.10.244 # motherboard serial number not discovered
-            - id=140529531550992 # nothing, last resort
-
+    def __getattr__(self, name):
+        """ Look for attributes in the firmware object if not found in the motherboard.
         """
-        if self.crate and self.crate.crate_number is not None and self.slot:
-            return f"({self.crate.crate_number},{self.slot-1})"
-        if self.crate and self.crate.part_number and self.crate.serial and self.slot:
-            return f"({self.crate.part_number}_SN{self.crate.serial},{self.slot-1})"
-        elif self.serial:
-            return f"{self.part_number}_SN{self.serial}"
-        elif self.hostname:
-            return self.hostname
+        if self.fpga:
+            return getattr(self.fpga, name)
         else:
-            return f"id={id(self)}"
+            raise AttributeError(f'Unknown attribute {name}')
 
+    def __dir__(self):
+        """ Returns bothe the Motherboard's and FPGA Firmware's attributes"""
+        return list(set(super().__dir__() +
+                       (self.fpga.__dir__() if self.fpga else [])))
+
+
+    # *************************
+    # Motherboard-specific hardware map management methods
+    # *************************
+    # Overrides the HardwareMap methods
 
     @classmethod
     def get_unique_instance(cls,
@@ -169,6 +181,8 @@ class Motherboard(HardwareMap):
                 new or existing board is associated with the IceCrate instance
                 that matches the specified crate number, or one is created
                 with that crate number to hold the desired crate number value.
+
+            **kwargs: Any other argument is stored in the other_args dictionary, and will be transferred if this instance is converted into a new class.
         """
         # print(f"In et_unique_instance")
 
@@ -210,9 +224,9 @@ class Motherboard(HardwareMap):
         slot = slot if slot is not None else self.slot
         subarray = subarray if subarray is not None else self.subarray
         crate_number = crate_number if crate_number is not None else self.crate.crate_number if self.crate else None
-
+        other_args = {**self.other_args, **kwargs}
         if new_class and self.__class__ is not new_class:
-            other = new_class(serial=serial, hostname=hostname, slot=slot, subarray=subarray, **kwargs)
+            other = new_class(serial=serial, hostname=hostname, slot=slot, subarray=subarray, **other_args)
             self.logger.debug(f"{self!r}: Updating newly created instance...")
             other.update_instance(crate_number=crate_number, crate=self.crate) # update crate and backrefs
             # Update Mezzanine references to the new instance
@@ -227,6 +241,7 @@ class Motherboard(HardwareMap):
             self.hostname = hostname
             self.serial = serial
             self.subarray = subarray
+            self.other_args = other_args
             # remove previous crate backref if it exists
             if self.crate and self.slot:
                 self.crate.slot.pop(self.slot, None)
@@ -246,7 +261,203 @@ class Motherboard(HardwareMap):
             return self
 
 
+    # *************************
+    # Board identification
+    # *************************
+
+
+    def get_id(self, lane=None, default_crate=None, default_slot=None, numeric_only=False):
+        """ Returns a (crate, slot) tuple representing a unique IceBoard ID,
+        using numeric values whenever possible. A `lane` field can be
+        optionally appended.
+
+        Parameters:
+
+            lane (int): caller-provided lane number to be appended to the returned tuple. Used to
+                create channel or lane ID tuples.
+
+            default_crate: Default values to return in the crate field if
+                there is no crate, or there is a crate but there is no
+                crate_number. If None, either the crate number or crate string
+                id is used.
+
+            default slot: Default values to return in the slot field if there
+                is no slot number.
+
+            numeric_only (bool): If true, an exception will be raised if there
+                is no valid crate number and slot number. `default_crate` and
+                `default_crate` are ignored.
+
+        Returns:
+            A (crate_id, slot_or_board_id) tuple, where:
+
+             - crate_id is the first of the following:
+                - ``numeric_crate_number`` (int) if there is a crate and the crate number is known
+                - `default_crate` if `default_crate` is not `None`
+                - ``crate_model_serial_string`` (str) model and serial number string if those exist
+                - `None` if none  of the above is true
+
+             - slot_or_board_id is the first of the following:
+                - ``zero_based_slot_number`` (int) zero-based slot number if there is a valid slot
+                  number (i.e. bool(self.slot) is True), whether or not there is a crate;
+                - `default_slot` if  `default_slot` is not None;
+                - ``board_model_serial_string`` (str) if the board has a valid model and serial number;
+                - ``hostname`` (str) hostname if the board has a known hostname;
+                - ``None`` if none of the above is true.
+        Notes:
+            - A board is always represented by a 2-element tuple. A crate is always represented by a
+              one-element tuple, and a channel/lane is a 3-element tuple.
+            - The user is responsible for handling all possible types of crate (int, str, None) or
+              slot (int, str) tuple elements
+            - crate can be None, but slot can never be None: it will be replaced by the string ID of
+              the board so the tuple always refer to a specific board.
+            - If the crate provides a numeric slot number, the user must rely on external
+              information to infer which board serial number correspond to the specified ID
+            - If the crate provides a numeric crate number, the user must rely on external
+              information to infer which crate serial number correspond to the specified ID
+            - the id must be unique, even if we have multiple stand-alone boards. There should at
+              least a non-None crate or slot field (i.e. no (None, None) tuple) Examples:
+
+            Examples:
+
+            Board in a crate/backplane:
+            - (2, 3): board on 4th slot of backplane with crate number 2
+            - (2, 0): board on crate number 2 without slot number, and default_slot=0
+            - (2, None): board on crate number 2 without slot information, and default_slot=None
+            - ('MGK7BP16_SN023', 3): board on 4th slot of backplane without crate number and
+              default_crate=None
+            - (0, 3): board on 4th slot of backplane without crate number and default_crate=0
+            - ('MGK7BP1_SN001', None): board on crate without crate_number,  without default_crate,
+              without slot number, without default_slot (e.g. unconfigured single-slot test
+              backplane)
+
+            Stand-alone board (no backplane/crate):
+            - (0, 0): No backplane, crate number nor slot_number, with default_crate=0 and
+              default_slot=0
+            - (None, 3): No backplane, but the board slot number was manually set to  self.slot=4
+              (not a typical case)
+            - (None, 'MGK7MB_SN0372'): No crate nor slot information, and no default_crate nor
+              default_slot
+
+        """
+        if self.crate: # if there is a crate/backplane, do not allow empty crate field but allow empty slot.
+            crate_number = self.crate.crate_number
+            if crate_number is None:  # if there is no valid crate number
+                if numeric_only:
+                    raise RuntimeError('The crate %s does not have a valid crate number' % self.crate)
+                crate_number = default_crate if default_crate is not None else self.crate.get_string_id()
+
+            if self.slot:  # if there is a valid slot (not 0 or None)
+                slot = self.slot - 1
+            else:
+                if numeric_only:
+                    raise RuntimeError('The crate %s does not have a valid slot number' % self.crate)
+                slot = default_slot
+
+        else:  # if there is no crate, allow empty crate but not an empty slot
+            if numeric_only:
+                raise RuntimeError('There is no crate nor numeric crate number')
+            crate_number = default_crate
+            # If there is no backplane AND no slot info (None or 0), we need to use the board
+            # model/serial in the slot field to make the tuple unique.
+            slot = self.slot - 1 if self.slot else default_slot if default_slot is not None else self.get_string_id()
+        return (crate_number, slot) if lane is None else (crate_number, slot, lane)
+        # if not self.crate
+        #     crate or self.slot is None:
+        #     return (self.get_string_id(), ) if lane is None else (self.get_string_id(), lane)
+        # else:
+        #     return self.get_crate_id(self.slot - 1) + (tuple() if lane is None else (lane,) )
+
+    def get_crate_id(self, slot=None):
+        """ Return the crate ID tuple optionally appended by the specified slot number.slot
+
+        Parameters:
+
+            slot (int): slot number to append to the tuple. Should be zero-based.slot
+
+        Returns:
+
+            (crate_id, ) if `slot` is `None`, else (crate_id, slot).
+            ``crate_id`` is the crate number if it exists, otherwise it is a
+            string that uniquely defined the crate.
+        """
+        return self.crate.get_id(slot=slot)
+
+    def get_string_id(self):
+        """ Return a string that identifies uniquely the Motherboard in the most convenient representation.
+
+        Preference order:
+
+            - (0,3)  # crate 0 , 4th slot (tuples always use zero-based indices)
+            - (MGK7BP16_SN025, 3)  # Same, but without crate number info
+            - MGK7MB_SN0234 # no crate info at all (even with virtual slot)
+            - 10.10.10.244 # motherboard serial number not discovered
+            - id=140529531550992 # nothing, last resort
+
+        """
+        if self.crate and self.crate.crate_number is not None and self.slot:
+            return f"({self.crate.crate_number},{self.slot-1})"
+        if self.crate and self.crate.part_number and self.crate.serial and self.slot:
+            return f"({self.crate.part_number}_SN{self.crate.serial},{self.slot-1})"
+        elif self.serial:
+            return f"{self.part_number}_SN{self.serial}"
+        elif self.hostname:
+            return self.hostname
+        else:
+            return f"id={id(self)}"
+
+
     def set_cache(self):
         """ Caches key values to accelerate the code.
         """
         self._cached_repr = None
+
+
+    # *************************
+    # FPGA Programming methods
+    # *************************
+
+    async def set_fpga_bitsream_async(self, firmware_class, force=True):
+        """ Programs the FPGA with the specified bitstream
+        """
+        raise NotImplementedError('This method must be implemented by a subclass')
+
+    async def is_fpga_programmed_async(self):
+        raise NotImplementedError('This method must be implemented by a subclass')
+
+
+    # *************************
+    # Board pinging methods
+    # *************************
+
+    async def ping_async(self, timeout=0.1):
+        """
+        Returns a boolean indicating whether a tuber object is available at
+        the specified ARM hostname.
+        """
+        raise NotImplementedError('This method must be implemented by a subclass')
+
+    # *************************
+    # Discovery methods
+    # *************************
+
+    async def discover_serial_async(self, update=True):
+        """
+        Discover the serial number of this board, and update the hardware map accordingly if `update=True`
+        """
+        raise NotImplementedError('This method must be implemented by a subclass')
+
+
+    async def open_platform_async(self):
+        """ Establish a communication link with the platform, which enables access to functions provided by the local processor"""
+        raise NotImplementedError('This method must be implemented by a subclass')
+
+
+    async def open_fpga_async(self):
+        """ Establish a communication link with the FPGA."""
+        raise NotImplementedError('This method must be implemented by a subclass')
+
+
+    async def init_fpga_async(self):
+        """ Initializes  the FPGA firmware."""
+        raise NotImplementedError('This method must be implemented by a subclass')
