@@ -4281,8 +4281,18 @@ class FPGAArray(object):
                 for lane_group in ib.BP_SHUFFLE.lane_group_names:
                     if reset_stats:
                         ib.BP_SHUFFLE.reset_stats()
-                    errs.append(await ib.BP_SHUFFLE.get_bp_rx_status(lane_group))
-
+                    ee = await ib.BP_SHUFFLE.get_bp_rx_status(lane_group)  # list of N error status dicts  [lane0_errors, lane1 errors, ...]
+                    if verbose > 1:  # if verbise, add the matching TX (slot,lane) for each rx lane on that slot
+                        eh = []
+                        for lane, e in enumerate(ee):
+                            if lane_group == 'pcb':
+                                h = {'Tx':f'{ib.crate.get_matching_tx((slot, lane))}', 'Rx': f'{(slot,lane)}'}
+                            else:
+                                h = {}
+                            eh.append({**h, **e})
+                        errs.append(eh)
+                    else:
+                        errs.append(ee)
                 # Gather status from the crossbars
                 for cb in [ib.CROSSBAR2, ib.CROSSBAR3]:
                     if reset_stats:
@@ -4303,10 +4313,11 @@ class FPGAArray(object):
                             ('\n'.join(['%s=%s' % (k, v) for (k, v) in e.items()]) or '-')
                             for e in err)
                 info[slot] = col_data
+            info = dict(sorted(info.items())) # sort the info dict by key
             print('Crate %s Crossbar and Shuffle status' % crate.get_string_id())
 
             # Fill in columns for any missing board in the crate
-            number_of_rows = len(next(iter(info.values())))  # that is weird. review.
+            number_of_rows = max(len(e) for e in info.values())
             for slot in slot_range:
                 if slot not in info.keys():
                     info[slot] = [''] * number_of_rows

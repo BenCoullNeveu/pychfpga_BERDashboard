@@ -45,6 +45,7 @@ except ImportError:
 from pychfpga import __version__
 from pychfpga.core import CORR
 
+
 class RawAcqReceiver(object):
     """ Implement an array of multi-threaded UDP Raw data receiver and the data processor that will handle the received data.
 
@@ -76,14 +77,15 @@ class RawAcqReceiver(object):
         self.started = False
         self.stream_ids = []
         self.sockets = []  # Empty indicates that the receiver is not started
-        self.lock = threading.RLock()  # Locks access to data while the
-                                       # receiver thread is populating it
-        self.is_locked=False #debug
+
+        # Define a lock to control access to data while the receiver thread is populating it
+        self.lock = threading.RLock()
+        self.is_locked = False  # debug
         self.raw_packet_processor = None
         self.corr_packet_processor = None
 
     def __repr__(self):
-        return '%s(%s)' % (self.__class__.__name__, self.name)
+        return f'{self.__class__.__name__}({self.name})'
 
     async def start_async(
             self,
@@ -98,12 +100,12 @@ class RawAcqReceiver(object):
             fft_offset_encoding=True,
             metrics_refresh_time=1,
             adc_rms_refresh_count=60,
-            corr_firmware_integration_period=0,  #used to compute timestamps
+            corr_firmware_integration_period=0,  # used to compute timestamps
             corr_software_integration_period=0,  # no corr processing until changed
             jump_thresholds=[],
-            hostname=None, # not used, but may be passed by start_client()
-            post=None # # not used, but may be passed by start_client()
-            ):
+            hostname=None,  # not used, but may be passed by start_client()
+            post=None  # not used, but may be passed by start_client()
+    ):
         """ Start a raw data receiver for each specified port.
 
         For each port we monitor, create a data queue and start a
@@ -229,6 +231,8 @@ class RawAcqReceiver(object):
         # Raw buffer & buffer unpacking objetcs
         #######################################
 
+        # Define numpy data types that will be used to efficiently parse the data
+
         # We create a pre-allocated receiver buffer `buf` of BUF_SIZE packets
         # of size PACKET_SIZE. PACKET_SIZE is big enough to contain a raw data
         # packet or a correlator packet.
@@ -252,8 +256,7 @@ class RawAcqReceiver(object):
             stream_ids=stream_ids,
             metrics_refresh_time=metrics_refresh_time,
             adc_rms_refresh_count=adc_rms_refresh_count,
-            fft_offset_encoding=fft_offset_encoding
-            )
+            fft_offset_encoding=fft_offset_encoding)
 
         # Correlator data processor
         self.corr_packet_processor = CorrPacketProcessor(
@@ -261,7 +264,7 @@ class RawAcqReceiver(object):
             firmware_integration_period=corr_firmware_integration_period,
             software_integration_period=corr_software_integration_period,
             # frame0_irigb_time = self.frame0_irigb_time
-            )
+        )
 
         # Determine the interface from which data will be coming from each source by pinging them
         # returns a dictionary that maps each source to an interface IP and target port
@@ -270,9 +273,10 @@ class RawAcqReceiver(object):
         print('IF addr=', src_if_addrs)
         failed_src = [src_addr for src_addr, src_if_addr in src_if_addrs.items() if not src_if_addr]
         if failed_src:
-            raise RuntimeError('Cannot ping %s, so cannot determine interface through which these data sources are reached.' %
-                ','.join('%s:%s' (src_addr) for arc_addr in failed_src))
-
+            failed_addrs = ','.join(f'{a}:{p}' for a, p in failed_src)
+            raise RuntimeError(
+                f'Cannot ping {failed_addrs}, so cannot determine interface '
+                f'through which these data sources are reached.')
 
         # Determine the interface and port to which each receiver should listen to.
         #
@@ -283,16 +287,21 @@ class RawAcqReceiver(object):
         # If we want the UDP interface to listen to specific interface, we look all the interfaces
         # from the sources associated with a port must use the same interface.
         #
-        # Expand the port info to identify the interface and sources associated with each individual socket that we will create
+        # Expand the port info to identify the interface and sources
+        # associated with each individual socket that we will create
         #
-        # target port number: a specific port number, a port name (assigned one random port to all sources), or 0 (assign a random port to each source)
-        socket_if_ip = {} # interfaces accessed by each port. Should be only one for named and non-zero ports.
-        socket_sources = {} # list of sources associated with each port
+        # target port number: a specific port number, a port name (assigned
+        # one random port to all sources), or 0 (assign a random port to each
+        # source)
+
+        # interfaces accessed by each port. Should be only one for named and non-zero ports.
+        socket_if_ip = {}
+        socket_sources = {}  # list of sources associated with each port
         for port_info in self.ports:
             # Create a list that associate a port to each source. If port==0,
             # a different port name is given to each source, otherwise all
             # ports have the specified port (number or name)
-            ports = [(port_info['port'] if port_info['port'] else ('_random_port_%i' % i))
+            ports = [(port_info['port'] if port_info['port'] else (f'_random_port_{i}'))
                      for i, _ in enumerate(port_info['sources'])]
             for port, src in zip(ports, port_info['sources']):
                 socket_sources.setdefault(port, []).append(src)
@@ -300,7 +309,9 @@ class RawAcqReceiver(object):
                 if_ip = '0.0.0.0' if self.listen_to_all_interfaces else src_if_addrs[tuple(src)][0]
                 # Check if we have multiple interfaces associated with specified or named ports
                 if port in socket_if_ip and socket_if_ip[port] != if_ip:
-                    raise RuntimeError('Data sources for port %s are accessed via different interfaces %s and %s.' % (port, socket_if_ip[port], if_ip))
+                    raise RuntimeError(
+                        f'Data sources for port {port} are accessed via '
+                        f'different interfaces {socket_if_ip[port]} and {if_ip}.')
                 socket_if_ip[port] = if_ip
         # At this point, there is one socket per port_name, and no port_name is zero
 
@@ -313,7 +324,7 @@ class RawAcqReceiver(object):
             # will assign a random port number. If port_name is a number, ask
             # the system to open the socket at that port.
             port = 0 if isinstance(port_name, str) else port_name
-            self.log.info("%r: Creating socket for port ID '%s' on (%s:%s)" % (self, port_name, if_ip, port))
+            self.log.info(f"{self!r}: Creating socket for port ID '{port_name}' on ({if_ip}:{port})")
             sock = self.get_udp_socket((if_ip, port))
             self.sockets.append(sock)
             # Store actual port IP/port allocated by the system
@@ -321,26 +332,24 @@ class RawAcqReceiver(object):
             self.port_number.append(actual_socket_port[port_name])
 
             # Check if the port and IP that were given are what we expect. This should never happen.
-            if ((actual_socket_if_ip[port_name] != socket_if_ip[port_name]) or
-                (port and port != actual_socket_port[port_name])):
-               self.log.warn(
-                    'The socket for port ID %s was not created at the expected '
-                    'address: got %s:%s instead of %s:%s' % (
-                        port_name,
-                        actual_socket_if_ip[port_name],
-                        actual_socket_port[port_name],
-                        socket_if_ip[port_name],
-                        port))
+            if ((actual_socket_if_ip[port_name] != socket_if_ip[port_name])
+                    or (port and port != actual_socket_port[port_name])):
+                self.log.warn(
+                    f'The socket for port ID {port_name} was not created at the expected '
+                    f'address: got {actual_socket_if_ip[port_name]}:{actual_socket_port[port_name]} '
+                    f'instead of {socket_if_ip[port_name]}:{port}')
 
-            self.log.info("%r: receiver %s: UDP Socket created for port  '%s' at %s:%i" % (self, self.name, port_name, actual_socket_if_ip[port_name], actual_socket_port[port_name]))
+            self.log.info(
+                f"{self!r}: receiver {self.name}: UDP Socket created for "
+                f"port '{port_name}' at {actual_socket_if_ip[port_name]}:{actual_socket_port[port_name]}")
 
         self.started = True
         if start_thread:
             self.start_processing_thread()
         # Build a mac address loopup table for all source interfaces
-        if_ips = {if_addr[0] for if_addr in src_if_addrs.values()} # set of unique interface IPs used by all sources
-        mac = {if_ip:self._get_mac_address(if_ip) for if_ip in if_ips} # map between ip and mac addresses
-        self.log.info('%r: Available Interfaces are %s' % (self, mac))
+        if_ips = {if_addr[0] for if_addr in src_if_addrs.values()}  # set of unique interface IPs used by all sources
+        mac = {if_ip: self._get_mac_address(if_ip) for if_ip in if_ips}  # map between ip and mac addresses
+        self.log.info(f'{self!r}: Available Interfaces are {mac}')
 
         # Create the dict that provides the target ip address, port address and mac address for each source
         dest_ifs = []
@@ -350,13 +359,12 @@ class RawAcqReceiver(object):
                 dest_if_ip = src_if_addrs[tuple(src)][0]
                 dest_mac = mac[dest_if_ip]
                 dest = (dest_if_ip, dest_port, dest_mac)
-                dest_ifs.append( (tuple(src), dest))
-
+                dest_ifs.append((tuple(src), dest))
 
         result = dict(
             status='started',
-            target_addr=dest_ifs # return as a list of tuples, json does not support tuple-indexed dicts
-            )
+            target_addr=dest_ifs  # return as a list of tuples, json does not support tuple-indexed dicts
+        )
         return result
 
     def get_udp_socket(self, addr):
@@ -382,8 +390,6 @@ class RawAcqReceiver(object):
 
         return sock
 
-
-
     async def _ping_async(self, addr, timeout=0.3):
         """
         Establish a TCP connection with `addr`  at and return the interface and local port used for the connection.
@@ -406,26 +412,24 @@ class RawAcqReceiver(object):
             if_addr = s.getsockname()
             s.close()
         except (socket.timeout, Exception) as e:
-            self.log.warn('Could not establish a TCP connection with %s:%s. Error is:\n %s' % (addr[0], addr[1], e))
+            self.log.warn(f'Could not establish a TCP connection with {addr[0]}:{addr[1]}. Error is:\n {e}')
             if_addr = None
 
         return if_addr
 
-
     async def ping_sources_async(self):
         if not self.ports:
             return None
-        self.log.info('%r: Pinging all data sources' % (self))
+        self.log.info(f'{self!r}: Pinging all data sources')
         # Determine the interface from which data will be coming from each source by pinging them
         src_addrs = [tuple(src) for port_info in self.ports
-                              for src in port_info['sources']]
+                     for src in port_info['sources']]
         src_if_addrs = await asyncio.gather(*[self._ping_async(src) for src in src_addrs])
         for src_addr, src_if_addr in zip(src_addrs, src_if_addrs):
             old_count = self.ping_error_count.setdefault(src_addr, 0)
             if not src_if_addr:
                 self.ping_error_count[src_addr] = old_count + 1
         return dict(zip(src_addrs, src_if_addrs))
-
 
     def _get_mac_address(self, if_addr):
         """ Return the MAC address of the interface with address `if_addr`.
@@ -435,7 +439,9 @@ class RawAcqReceiver(object):
             if_addr (str): address of the interface (not any target)
 
         Returns:
-            a string describing the mac address of the interface in the format 'xx:xx:xx:xx:xx:xx'. *None* if no match was found.
+
+            a string describing the mac address of the interface in the format
+            'xx:xx:xx:xx:xx:xx'. *None* if no match was found.
         """
         interfaces = netifaces.interfaces()
         mac_list = []
@@ -443,7 +449,7 @@ class RawAcqReceiver(object):
             afs = netifaces.ifaddresses(interface)
             if netifaces.AF_INET not in afs or netifaces.AF_LINK not in afs:
                 continue
-            self.log.debug('checking interface %s with AF %s' % (interface, afs))
+            self.log.debug(f'checking interface {interface} with AF {afs}')
             ips = [af for af in afs[netifaces.AF_INET] if af['addr'] == if_addr]
             if ips:
                 for eth_if in afs[netifaces.AF_LINK]:
@@ -454,7 +460,6 @@ class RawAcqReceiver(object):
             return mac_list[0]
         else:
             return None
-
 
     def stop(self):
         self.started = False
@@ -497,7 +502,7 @@ class RawAcqReceiver(object):
 
         """
 
-        self.log.info("%r: Starting packet processing" % self)
+        self.log.info(f"{self!r}: Starting packet processing")
         self.old_timestamp = None
         self.n_ant_rec = 0
         self.n = 0
@@ -537,8 +542,6 @@ class RawAcqReceiver(object):
             except KeyboardInterrupt:
                 break
 
-
-
     def process_packets(self):
         """
         Process the data in the buffer by identifying the packet type (ADC,
@@ -564,7 +567,7 @@ class RawAcqReceiver(object):
                 if p:
                     p.process_packets()
         except Exception as e:
-            self.log.error('process_packets: exception %r' % e)
+            self.log.error(f'process_packets: exception {e!r}')
             raise
 
         t3 = time.time()
@@ -572,11 +575,9 @@ class RawAcqReceiver(object):
         self.packet_max_processing_time = max(t3 - t0, self.packet_max_processing_time)
         self.packet_current_processing_time += t3 - t0
 
-
     async def get_metrics_async(self):
         """ Gather metrics from all packet processors"""
         metrics = Metrics(default_type='gauge')
-
 
         # Node stats
 
@@ -597,14 +598,13 @@ class RawAcqReceiver(object):
 
         await asyncio.sleep(0)
 
-
         # IOloop health stats
         metrics.add('raw_acq_ioloop_max_response_time', value=self.ioloop_max_response_time)
         metrics.add('raw_acq_ioloop_min_response_time', value=self.ioloop_min_response_time)
         self.ioloop_max_response_time = None
         self.ioloop_min_response_time = None
 
-        metrics.add('raw_acq_run_time', value= 0 if self.start_time is None else time.time() - self.start_time )
+        metrics.add('raw_acq_run_time', value=0 if self.start_time is None else time.time() - self.start_time)
 
         if self.started:
             # Number of packet received by this receiver
@@ -634,11 +634,12 @@ class RawAcqReceiver(object):
             metrics.add('raw_acq_packet_max_processing_time', value=packet_max_processing_time)
 
             with self.lock:
-                packet_avg_processing_time = (self.packet_current_processing_time * 1.0 * self.NCHAN / self.current_processed_packets) if self.current_processed_packets else 0
+                packet_avg_processing_time = (
+                    (self.packet_current_processing_time * 1.0 * self.NCHAN / self.current_processed_packets)
+                    if self.current_processed_packets else 0)
                 self.packet_current_processing_time = 0
                 self.current_processed_packets = 0
             metrics.add('raw_acq_packet_avg_processing_time', value=packet_avg_processing_time)
-
 
             # Get metrics from packet processors
             for proc in [self.raw_packet_processor, self.corr_packet_processor]:
@@ -662,10 +663,12 @@ class RawAcqReceiver(object):
                         if port in ports:
                             results[port] = dropped_packets
                     except ValueError:
-                        self.log.warning('%r: Bad value while reading system UDP statistics. Problematic line is %s' % (self, cols))
-                    time.sleep(0) # relinquish some time to the thread? Not sure if it helps.
+                        self.log.warning(
+                            f'{self!r}: Bad value while reading system UDP statistics. '
+                            f'Problematic line is {cols}')
+                    time.sleep(0)  # relinquish some time to the thread? Not sure if it helps.
         except IOError:
-            self.log.warning('%r: Could not read system UDP statistics' % self)
+            self.log.warning(f'{self!r}: Could not read system UDP statistics')
 
         return results
 
@@ -675,8 +678,10 @@ class RawAcqReceiver(object):
     async def check_ioloop_response_time_async(self):
         t = time.time()
         if self.ioloop_last_time is not None:
-            self.ioloop_max_response_time = max(self.ioloop_max_response_time or 0, t-self.ioloop_last_time)
-            self.ioloop_min_response_time = min(self.ioloop_min_response_time or float('inf'), t-self.ioloop_last_time)
+            self.ioloop_max_response_time = max(self.ioloop_max_response_time or 0, t - self.ioloop_last_time)
+            self.ioloop_min_response_time = min(
+                self.ioloop_min_response_time or float('inf'),
+                t - self.ioloop_last_time)
         self.ioloop_last_time = t
 
     def expand_path(self, path, extra_fields={}):
@@ -688,7 +693,7 @@ class RawAcqReceiver(object):
             'run_name': self.run_name or 'Unknown',
             'run_folder': self.run_folder or '.',
             'corr_name': self.corr_name or 'Unknown'
-            }
+        }
         fields.update(extra_fields)
         return os.path.expanduser(path % fields)
 
@@ -721,13 +726,19 @@ class RawPacketProcessor(object):
     DATA_SIZE = 2048  # number of bytes of data in packets
     RAW_PACKET_LENGTH = 10 + DATA_SIZE  # total packet size, header + data
 
-    def __init__(self, raw_acq_receiver, stream_ids, metrics_refresh_time=10, adc_rms_refresh_count=100, fft_offset_encoding=True):
+    def __init__(self,
+                 raw_acq_receiver,
+                 stream_ids,
+                 metrics_refresh_time=10,
+                 adc_rms_refresh_count=100,
+                 fft_offset_encoding=True):
         self.log = log.get_logger(self)
         self.recv = raw_acq_receiver
 
         # Raw data-specific parameters
-        self.stream_ids = np.array(stream_ids, dtype=np.uint16) # list of stream ids that we expect to receive
-        self.chan_ids = list(zip(*[v.tolist() for v in self.unpack_stream_id(self.stream_ids)])) # make sure all tuple elements are native int
+        self.stream_ids = np.array(stream_ids, dtype=np.uint16)  # list of stream ids that we expect to receive
+        # make sure all tuple elements are native int
+        self.chan_ids = list(zip(*[v.tolist() for v in self.unpack_stream_id(self.stream_ids)]))
 
         self.NCHAN = len(stream_ids)
 
@@ -743,7 +754,6 @@ class RawPacketProcessor(object):
             ('data', np.int8, self.DATA_SIZE),
             ('padding', np.int8, self.recv.buf.shape[-1] - self.RAW_PACKET_LENGTH)])
 
-
         # Useful views into the packet buffer for raw data
         self.buf = self.recv.buf
         self.buf_packet_length = self.recv.buf_packet_length
@@ -758,7 +768,7 @@ class RawPacketProcessor(object):
         self.buf_data = self.buf_struct['data'][:, 0]
 
         # Computed buffer parameters
-        self.buf_ts = np.empty(self.BUF_SIZE, dtype=np.uint64) # maskeed buf_ts_dirty
+        self.buf_ts = np.empty(self.BUF_SIZE, dtype=np.uint64)  # maskeed buf_ts_dirty
         self.buf_source = np.empty(self.BUF_SIZE, dtype=np.uint8)
         self.buf_bank = np.empty(self.BUF_SIZE, dtype=np.uint8)
 
@@ -766,15 +776,15 @@ class RawPacketProcessor(object):
         self.buf_packet_length_ok = np.empty(self.BUF_SIZE, dtype=bool)
 
         # Compute the map that associates a stream id with a channel index
-        self.sid_map = {sid:ix for ix, sid in enumerate(stream_ids)}
-        # Channel index associated with each buffer entry. sid_map is used to update this array each time a block of packets is processed.
+        self.sid_map = {sid: ix for ix, sid in enumerate(stream_ids)}
+        # Channel index associated with each buffer entry. sid_map is used to
+        # update this array each time a block of packets is processed.
         self.buf_chan_ix = np.empty(self.BUF_SIZE, dtype=np.uint16)
 
         # port number / crate/slot mismatch counters
         self.chan_number_mismatch_count = 0
         self.crate_number_mismatch_count = 0
         self.slot_number_mismatch_count = 0
-
 
         # Statistics on how much time it takes to process valid ADC, FFT or
         # CORR packets. The packet count includes only valid packets (right
@@ -795,23 +805,25 @@ class RawPacketProcessor(object):
         self.fft_current_processing_time = 0
         self.fft_current_processed_packets = 0
 
-
         self.adc_hdf5_max_processing_time = 0
         self.adc_metrics_max_processing_time = 0
         self.adc_total_hdf5_processing_time = 0
         self.adc_rms_max_processing_time = 0
 
         # Channel-indexed arrays
-        self.stream_id = np.array(stream_ids, dtype=np.uint16) # Stream ID associated with each channel
-        self.adc_frames = np.zeros(self.NCHAN, dtype=np.uint32) # Number of packet received for each channel
+        self.stream_id = np.array(stream_ids, dtype=np.uint16)  # Stream ID associated with each channel
+        self.adc_frames = np.zeros(self.NCHAN, dtype=np.uint32)  # Number of packet received for each channel
 
-        self.fixed_port_numbers = False # If True, checks if the crate/slot matches the port number. Assumes that the port numbers have been assigned using a predetermined scheme.
-
+        # If fixed_port_numbers is True, checks if the crate/slot matches the
+        # port number. Assumes that the port numbers have been assigned using
+        # a predetermined scheme.
+        self.fixed_port_numbers = False
         # ADC Metrics
         self.start_time = time.time()
         self.metrics_refresh_time = metrics_refresh_time
         self.metrics_last_time = np.zeros(self.NCHAN, dtype=np.float64)
-        self.metrics_raw_data = np.zeros((self.BUF_SIZE, self.DATA_SIZE), dtype=np.int8) # need to store repeated channels
+        # raw data metric storage. need to store repeated channels
+        self.metrics_raw_data = np.zeros((self.BUF_SIZE, self.DATA_SIZE), dtype=np.int8)
         self.metrics_updated = np.zeros(self.NCHAN, dtype=np.int8)
         self.metrics_rms = np.zeros(self.NCHAN, dtype=np.float32)
         self.metrics_min = np.zeros(self.NCHAN, dtype=np.float32)
@@ -822,10 +834,9 @@ class RawPacketProcessor(object):
         self.metrics_adc_packet_length_error = np.zeros(self.NCHAN, dtype=np.int32)
         self.metrics_fft_packet_length_error = np.zeros(self.NCHAN, dtype=np.int32)
 
-        self.expected_ramp = np.arange(-128, self.DATA_SIZE - 128, dtype=np.int8) # Fixed. Used to test ramp errors
+        self.expected_ramp = np.arange(-128, self.DATA_SIZE - 128, dtype=np.int8)  # Fixed. Used to test ramp errors
         self.metrics_ramp_error_count = np.zeros(self.NCHAN, dtype=np.float32)
         self.metrics_ramp_bit_error_count = np.zeros(self.NCHAN, dtype=np.float32)
-
 
         # ADC HDF5 file writer parameters
         self.hdf5_write_time = 0
@@ -839,39 +850,39 @@ class RawPacketProcessor(object):
 
         # ADC averaged RMS processing
         self.adc_rms_rlock = threading.RLock()
-        self.adc_rms_refresh_count = adc_rms_refresh_count # Number of frames to average
-        self.adc_rms = np.zeros(self.NCHAN, dtype=np.float32) # final averaged values
+        self.adc_rms_refresh_count = adc_rms_refresh_count  # Number of frames to average
+        self.adc_rms = np.zeros(self.NCHAN, dtype=np.float32)  # final averaged values
         self.adc_rms_timestamp = np.zeros(self.NCHAN, dtype=np.float64)
-        self.adc_rms_buffer = np.zeros(self.NCHAN, dtype=np.float32) # used to accumulate square values
-        self.adc_rms_mean_buffer = np.zeros(self.NCHAN, dtype=np.int32) # used to accumulate square values
+        self.adc_rms_buffer = np.zeros(self.NCHAN, dtype=np.float32)  # used to accumulate square values
+        self.adc_rms_mean_buffer = np.zeros(self.NCHAN, dtype=np.int32)  # used to accumulate square values
         self.adc_rms_frame_count = np.zeros(self.NCHAN, dtype=np.int32)
         self.adc_rms_updated = np.zeros(self.NCHAN, dtype=bool)
 
-
         # FFT processing
-        self.fft_offset_encoding_mask = -128 if fft_offset_encoding else 0  # xor'ed with the FFT data to convert into 2's complement
+
+        # value to xor with the FFT data to convert into 2's complement
+        self.fft_offset_encoding_mask = -128 if fft_offset_encoding else 0
         self.fft_lock = threading.RLock()  # Locks access to data while the receiver thread is populating it
         self.fft_rms_started = np.zeros(self.NCHAN, dtype=bool)
         self.fft_rms_done = np.zeros(self.NCHAN, dtype=np.int8)
-        self.fft_target_bank =  np.zeros(self.NCHAN, dtype=np.int8)
-        self.fft_rms_buffer =  np.zeros((self.NCHAN, self.DATA_SIZE // 2), dtype=np.int32)
-        self.fft_rms_current =  np.zeros((self.NCHAN, self.DATA_SIZE // 2), dtype=np.int32)
-        self.fft_rms_old =  np.zeros((self.NCHAN, self.DATA_SIZE // 2), dtype=np.int32)
-        self.fft_n_frames =  np.zeros(self.NCHAN, dtype=np.int32)
+        self.fft_target_bank = np.zeros(self.NCHAN, dtype=np.int8)
+        self.fft_rms_buffer = np.zeros((self.NCHAN, self.DATA_SIZE // 2), dtype=np.int32)
+        self.fft_rms_current = np.zeros((self.NCHAN, self.DATA_SIZE // 2), dtype=np.int32)
+        self.fft_rms_old = np.zeros((self.NCHAN, self.DATA_SIZE // 2), dtype=np.int32)
+        self.fft_n_frames = np.zeros(self.NCHAN, dtype=np.int32)
         self.fft_rms_average = np.zeros(self.NCHAN, dtype=np.int32) + 100
         self.fft_rms = np.zeros((self.NCHAN, self.DATA_SIZE // 2), dtype=np.float32)
-        self.fft_overflow =  np.zeros((self.NCHAN, self.DATA_SIZE // 2), dtype=np.int32)
+        self.fft_overflow = np.zeros((self.NCHAN, self.DATA_SIZE // 2), dtype=np.int32)
         self.fft_metrics_updated = np.zeros(self.NCHAN, dtype=np.int8)
         self.fft_mean_rms = np.zeros(self.NCHAN, dtype=np.int64)  # debug
-        self.fft_mean_rms_old = np.zeros(self.NCHAN, dtype=np.int64) # debug
+        self.fft_mean_rms_old = np.zeros(self.NCHAN, dtype=np.int64)  # debug
 
         # Full frame capture
         self.capture_start = False
         self.capture_done = False
         self.capture_timestamp = None
-        self.capture_data = np.zeros((self.NCHAN, self.DATA_SIZE), dtype=np.int8)  # pre-allocate data (channels x bins) for all ports,  for a single timestamp
-        # self.all_ts = np.zeros((self.NCHAN), dtype=np.int32) # pre-allocate timestamps storage for the current data for all ports (should all be the same)
-
+        # pre-allocate data (channels x bins) for all ports,  for a single timestamp
+        self.capture_data = np.zeros((self.NCHAN, self.DATA_SIZE), dtype=np.int8)
 
     def stop(self):
         if self.hdf5_file:
@@ -922,16 +933,14 @@ class RawPacketProcessor(object):
             buf_ix (ndarray): index array that indicates the indices of the ADC data entries in the rx buffer.
         """
 
-
-           #### Process raw ADC data packets (raw capture source 0) ###
+        # Process raw ADC data packets (raw capture source 0) ###
         (buf_ix, ) = np.where(self.buf_cookie[:self.recv.n] == 0xA0)
 
         if not buf_ix.size:
             return
 
-
         self.buf_packet_length_ok[buf_ix] = self.buf_packet_length[buf_ix] == self.RAW_PACKET_LENGTH
-        self.metrics_adc_packet_length_error += np.sum(self.buf_packet_length_ok[buf_ix]==False)
+        self.metrics_adc_packet_length_error += np.sum(self.buf_packet_length_ok[buf_ix] == False)
         buf_ix = buf_ix[self.buf_packet_length_ok[buf_ix]]
 
         if not buf_ix.size:
@@ -944,19 +953,21 @@ class RawPacketProcessor(object):
 
         self.buf_ts[buf_ix] = self.buf_ts_dirty[buf_ix] & 0xFFFFFFFFFFFF
 
-
         while buf_ix.size:
 
             same_ts = self.buf_ts[buf_ix] == self.buf_ts[buf_ix[0]]
 
             # Select the buffer index that have the same timestamp and have a valid stream ID
-            bix = np.array([b for b in buf_ix[same_ts].tolist() if self.buf_stream_id[b] in self.sid_map], dtype=np.int16)  # make sure we have an integer array, even with an empty list
+            # make sure we have an integer array, even with an empty list
+            bix = np.array([b for b in buf_ix[same_ts].tolist() if self.buf_stream_id[b] in self.sid_map],
+                           dtype=np.int16)
+
             # Find the channel index of each incoming packets by looking up their STREAM ID.
-            ix = np.array([self.sid_map[sid] for sid in self.buf_stream_id[bix].tolist()], dtype=np.int16) # iterating over a list of int is much faster than over an array of int32
+            # iterating over a list of int is much faster than over an array of int32
+            ix = np.array([self.sid_map[sid] for sid in self.buf_stream_id[bix].tolist()], dtype=np.int16)
 
             # removed selected buffer indices for the next iteration
             buf_ix = buf_ix[same_ts == False]
-
 
             # if we used fixed port numbers, check that the crate and slot part of the stream ID matches the port number
             # if self.fixed_port_numbers:
@@ -972,28 +983,25 @@ class RawPacketProcessor(object):
             #     ix = ix[not bad]
             #     buf_ix = buf_ix[not bad]
 
-
             # keep track of an average rms value for the flagging broker
             # self.rms_cache[ix] = np.std(data)
-
 
             # keep track of how many packets we received for each channel. Useful to detect packet loss.
             self.adc_frames[ix] += 1
 
-
             t0 = time.time()
 
-            ### Process ADC metrics ###
+            # Process ADC metrics ###
             self.process_adc_metrics(bix, ix)
 
             t1 = time.time()
 
-            ### Write ADC data to disk ###
+            # Write ADC data to disk ###
             self.process_adc_hdf5(bix, ix)
 
             t2 = time.time()
 
-            ### Compute averaged RMS values ###
+            # Compute averaged RMS values ###
             self.process_adc_rms(bix, ix)
 
             t3 = time.time()
@@ -1002,7 +1010,6 @@ class RawPacketProcessor(object):
             self.adc_total_hdf5_processing_time += t2 - t1
             self.adc_hdf5_max_processing_time = max(t2 - t1, self.adc_hdf5_max_processing_time)
             self.adc_rms_max_processing_time = max(t3 - t2, self.adc_rms_max_processing_time)
-
 
     def process_adc_metrics(self, buf_ix, ix):
         """ Process the data to be used to produce raw-ADC-related metrics.
@@ -1019,7 +1026,6 @@ class RawPacketProcessor(object):
 
         """
 
-
         # Create a boolean array that identifies the channel index of entries that have exprired metrics
         t0 = time.time()
         # print('ix=', ix)
@@ -1029,7 +1035,7 @@ class RawPacketProcessor(object):
         cix = ix[is_expired]
         if cix.size:
             # print('Updated expired metrics', np.sort(cix))
-             # indices of buffer entries that correspond to expired metrics
+            # indices of buffer entries that correspond to expired metrics
             bix = buf_ix[is_expired]
             # move the data in a preallocated, contiguous memory block so
             # numpy does not have to do this each time we access it
@@ -1043,7 +1049,8 @@ class RawPacketProcessor(object):
             self.metrics_last_time[cix] = t0
             self.metrics_updated[cix] = True  # will be cleared when the metrics is read out
             self.metrics_mean[cix] = np.mean(data, axis=-1)
-            self.metrics_rms[cix] = np.sqrt(np.mean((data - self.metrics_mean[cix, None])**2, axis=-1))  # faster than std()
+            # compute rms value. Using sqrt(mean()) is faster than using std()
+            self.metrics_rms[cix] = np.sqrt(np.mean((data - self.metrics_mean[cix, None])**2, axis=-1))
             self.metrics_min[cix] = np.min(data, axis=-1)
             self.metrics_max[cix] = np.max(data, axis=-1)
             self.metrics_maxdiff[cix] = np.max(np.abs(np.diff(data, axis=-1)), axis=-1)
@@ -1062,7 +1069,6 @@ class RawPacketProcessor(object):
             #     self.jumps[jump_id] = (
             #         self.jumps.get(jump_id, 0) +
             #         np.sum(np.abs(np.diff(adc_data)) > threshold))
-
 
     def process_adc_hdf5(self, buf_ix, ix):
         """ Write data to HDF file
@@ -1083,7 +1089,9 @@ class RawPacketProcessor(object):
             # find buffer index of entries that should be written
             bix = buf_ix[is_old]
             if bix.size:
-                # update the last time of the channels . We use the boolean array directly, since we don't need to reuse an channel index array anymore
+                # update the last time of the channels . We use the boolean
+                # array directly, since we don't need to reuse an channel
+                # index array anymore
                 self.hdf5_last_time[ix[is_old]] = t0
                 # save the selected entries. Unfortunately, the array indexing
                 # buf_x[bix] will cause copies to be created for each
@@ -1100,7 +1108,7 @@ class RawPacketProcessor(object):
             # takes so we can get an average that informs us of the maximum
             # packet rate we can sustain
             dt = time.time() - t0
-            # self.log.info('%r: it took %.3f ms to write %i packets to HDF5 file' % (self, dt*1000, len(bix)))
+            # self.log.info(f'{self!r}: it took {dt*1000:.3f} ms to write {len(bix) packets to HDF5 file')
             self.hdf5_block_writes += 1
 
     def start_adc_hdf5(self,
@@ -1108,23 +1116,25 @@ class RawPacketProcessor(object):
                        base_filename,
                        capture_duration=60,
                        capture_refresh_time=0,
-                       elements_per_file=2048*64):
+                       elements_per_file=2048 * 64):
         if self.hdf5_file:
             self.stop_adc_hdf5()
             # raise RuntimeError('HDF5 dataWriter is already running')
-        self.log.info('%r: Starting HDF5 raw data data writer with base_dir=%s, base_filename=%s, capture_duration=%r (type=%s), elements_per_file=%r' %
-            (self, base_dir, base_filename, capture_duration, type(capture_duration), elements_per_file))
+        self.log.info(
+            f'{self!r}: Starting HDF5 raw data data writer '
+            f'with base_dir={base_dir}, base_filename={base_filename}, '
+            f'capture_duration={capture_duration} (type={type(capture_duration)}), '
+            f'elements_per_file={elements_per_file}')
         self.elements_per_file = elements_per_file
 
-        self.hdf5_start_time = time.time() # used to keep track of how long the disk capture has been running
+        self.hdf5_start_time = time.time()  # used to keep track of how long the disk capture has been running
 
         self.hdf5_refresh_time = capture_refresh_time
 
         # Schedule for the acquisition to stop if capture_ducation is non-zero
         if capture_duration:
-            self.log.info('%r: HDF5 raw data data writer will be stopped in %f seconds' % (self, capture_duration))
+            self.log.info(f'{self!r}: HDF5 raw data data writer will be stopped in {capture_duration} seconds')
             asyncio.get_event_loop().call_later(capture_duration, self.stop_adc_hdf5)
-
 
         # Create the target folder
         extra_fields = dict(
@@ -1133,26 +1143,27 @@ class RawPacketProcessor(object):
         self.hdf5_base_dir = self.recv.expand_path(base_dir, extra_fields)
         try:
             os.makedirs(self.hdf5_base_dir)
-        except:
-            self.log.warning("%r: couldn't make directory '%s'. Using current directory." %
-                (self, self.hdf5_base_dir))
+        except Exception:
+            self.log.warning(f"{self!r}: couldn't make directory '{self.hdf5_base_dir}'. Using current directory.")
             self.hdf5_base_dir = './'
 
         self.hdf5_file = HDF5RawWriter(base_dir=self.hdf5_base_dir,
                                        filename=base_filename,
                                        elements_per_file=self.elements_per_file)
 
-
     def stop_adc_hdf5(self):
         if not self.hdf5_file:
-            raise RuntimeError('%r: HDF5 dataWriter is not running. Cannot stop it.' % self)
-        self.log.info('%r: Stopping HDF5 data writer' % self)
+            raise RuntimeError(f'{self!r}: HDF5 dataWriter is not running. Cannot stop it.')
+        self.log.info(f'{self!r}: Stopping HDF5 data writer')
         hdf5_file = self.hdf5_file
-        self.hdf5_file = None # Stop the thread from using the file before we close it
+        self.hdf5_file = None  # Stop the thread from using the file before we close it
         hdf5_file.close()
         self.hdf5_start_time = None
-        self.log.info('%r: Write %i data blocks in %.3f s total (%.0f ms/write)' % (self, self.hdf5_block_writes, self.adc_hdf5_max_processing_time, (self.adc_hdf5_max_processing_time * 1000. / self.hdf5_block_writes)) if self.hdf5_block_writes else 0)
-
+        write_rate = ((self.adc_hdf5_max_processing_time * 1000. / self.hdf5_block_writes)
+                      if self.hdf5_block_writes else 0)
+        self.log.info(
+            f'{self!r}: Write {self.hdf5_block_writes} data blocks in {self.adc_hdf5_max_processing_time:.3f} s total'
+            f'({write_rate:.0f} ms/write)')
 
     def process_adc_rms(self, buf_ix, ix):
         """ Compute averaged RMS values
@@ -1178,8 +1189,6 @@ class RawPacketProcessor(object):
                 self.adc_rms_buffer[cix] = 0
                 self.adc_rms_updated[cix] = 1
 
-
-
     async def get_adc_rms_async(self):
         """ Return the latest averaged ADC RMS values.
 
@@ -1190,9 +1199,11 @@ class RawPacketProcessor(object):
 
                 chan_id: a (crate, slot, channel) tuple
 
-                timestamp: the ctime at which the rms value was refreshed for the last time. ``None`` if it was never refreshed.
+                timestamp: the ctime at which the rms value was refreshed for
+                    the last time. ``None`` if it was never refreshed.
 
-                rms (float): the RMS value for that channel, averged over the number of frames that was specified at initialization
+                rms (float): the RMS value for that channel, averged over the
+                    number of frames that was specified at initialization
         """
         with self.adc_rms_rlock:
             result = list(zip(
@@ -1200,7 +1211,6 @@ class RawPacketProcessor(object):
                 self.adc_rms_timestamp.tolist(),
                 self.adc_rms.tolist()))
         return result
-
 
         #########################################
         # Update averaged RMS values
@@ -1211,14 +1221,14 @@ class RawPacketProcessor(object):
         # self.current_crate[j][chan] = crate_number
         # self.current_slot[j][chan] = slot_number
 
-
     def process_adc_frame_capture(self, buf_ix, ix):
         """
 
         #########################################
         # Capture a full set of data with the same timestamp
         #########################################
-        # Accumulate packets in a buffer. Settarget timestamp from the hihest timestamp of a packet that contains multiple timestamps
+        # Accumulate packets in a buffer. Settarget timestamp from the highest
+        # timestamp of a packet that contains multiple timestamps
         """
         pass
         # if self.capture:
@@ -1256,7 +1266,6 @@ class RawPacketProcessor(object):
         #         self.old_timestamp = None
         #         self.capture_start = False
 
-
     async def get_data_async(self):
         """
         Grab data from the queue until we have a frame for all channels for a single timestamp.
@@ -1282,7 +1291,7 @@ class RawPacketProcessor(object):
         #             self.all_ts[j][chan] = timestamp
         #             self.all_data[j][chan, :] = adc_data
         #             self.n_ant_rec = 1
-        #Should use the returned port.  cheating here.
+        # Should use the returned port.  cheating here.
         if self.start_capture:
             raise RuntimeError('Data set capture is already in progress')
         self.start_capture = True
@@ -1291,28 +1300,26 @@ class RawPacketProcessor(object):
 
         return self.all_ts, self.ports, self.all_data
 
-
     def process_fft_packets(self):
-        """ Process the FFT data (or more precisely, the data at the output of the scaler) This corresponds to data tagged with source=1.
+        """
+        Process the FFT data (or more precisely, the data at the output of the
+        scaler) This corresponds to data tagged with source=1.
 
         - Compute an average per-bin RMS over self.fft_rms_average samples
 
         """
-
 
         (buf_ix, ) = np.where(self.buf_cookie[:self.recv.n] == 0xA1)
 
         if not buf_ix.size:
             return
 
-
         self.buf_packet_length_ok[buf_ix] = self.buf_packet_length[buf_ix] == self.RAW_PACKET_LENGTH
-        self.metrics_fft_packet_length_error += np.sum(self.buf_packet_length_ok[buf_ix]==False)
+        self.metrics_fft_packet_length_error += np.sum(self.buf_packet_length_ok[buf_ix] == False)
         buf_ix = buf_ix[self.buf_packet_length_ok[buf_ix]]
 
         if not buf_ix.size:
             return
-
 
         self.processed_packets += buf_ix.size
         # self.current_processed_packets += buf_ix.size
@@ -1321,45 +1328,51 @@ class RawPacketProcessor(object):
 
         self.buf_ts[buf_ix] = self.buf_ts_dirty[buf_ix] & 0xFFFFFFFFFFFF
 
-
         while buf_ix.size:
 
             same_ts = self.buf_ts[buf_ix] == self.buf_ts[buf_ix[0]]
 
             # Select the buffer index that have the same timestamp and have a valid stream ID
-            bix = np.array([b for b in buf_ix[same_ts].tolist() if self.buf_stream_id[b] in self.sid_map], dtype=np.int16)
+            bix = np.array([b for b in buf_ix[same_ts].tolist() if self.buf_stream_id[b] in self.sid_map],
+                           dtype=np.int16)
             # Find the channel index of each incoming packets by looking up their STREAM ID.
-            ix = np.array([self.sid_map[sid] for sid in self.buf_stream_id[bix].tolist()], dtype=np.int16) # iterating over a list of int is much faster than over an array of int32
+            ix = np.array([self.sid_map[sid] for sid in self.buf_stream_id[bix].tolist()],
+                          dtype=np.int16)  # iterating over a list of int is much faster than over an array of int32
             # Remove selected buffer indices for the next iteration
             buf_ix = buf_ix[same_ts == False]
 
-
             # print('Processing %i FFT frames (%i remains).************************ ' % (bix.size, buf_ix.size))
 
-
             with self.fft_lock:
-                # Accumulate the square of the magnitude of the frequency samples. This corresponds to re**2 + im**2. We never actually use complex numbers, which saves CPU cycles.
+                # Accumulate the square of the magnitude of the frequency
+                # samples. This corresponds to re**2 + im**2. We never
+                # actually use complex numbers, which saves CPU cycles.
                 #
                 # We xor with -128 to convert offect binary into two's complement (do not use +128, it is an int16)
                 # We then right-shift by four, which preserves the sign
                 #
-                # Square of values from -8 to 7 fit in an int8, but not the sum of two. So we add the squares re and im values separately into the int32 buffer
-                # todo: check if there is a more efficient way to do this
-                # c = ((self.buf_data[buf_ix, ::2]^-128)>>4).astype(complex)+ 1j*((self.buf_data[buf_ix, 1::2]^-128)>>4).astype(complex)
+                # Square of values from -8 to 7 fit in an int8, but not the
+                # sum of two. So we add the squares re and im values
+                # separately into the int32 buffer todo: check if there is a
+                # more efficient way to do this
+                #
+                # c = ((self.buf_data[buf_ix,
+                # ::2]^-128)>>4).astype(complex)+ 1j*((self.buf_data[buf_ix,
+                # 1::2]^-128)>>4).astype(complex)
                 self.fft_rms_current[ix] = ((self.buf_data[bix, ::2] ^ self.fft_offset_encoding_mask) >> 4) ** 2
                 self.fft_rms_current[ix] += ((self.buf_data[bix, 1::2] ^ self.fft_offset_encoding_mask) >> 4) ** 2
                 self.fft_overflow[ix, ::2] += (self.buf_data[bix, ::4] & 0b0100) != 0
                 self.fft_overflow[ix, 1::2] += (self.buf_data[bix, ::4] & 0b0010) != 0
 
-
                 self.fft_metrics_updated[ix] = True
-
 
                 # Extract the bank number for the incoming FFT packets
                 self.buf_bank[bix] = (self.buf_flags[bix] >> 6) & 1
 
                 # keep only those channels who are not done and who match the target bank
-                is_valid = np.logical_and(self.fft_rms_done[ix] == False, self.fft_target_bank[ix] == self.buf_bank[bix])
+                is_valid = np.logical_and(
+                    self.fft_rms_done[ix] == False,
+                    self.fft_target_bank[ix] == self.buf_bank[bix])
                 # print(is_valid, ix, bix, (self.buf_data[bix] ^ -128) >> 4)
                 cix = ix[is_valid]
                 if cix.size:
@@ -1375,7 +1388,8 @@ class RawPacketProcessor(object):
                         # print('Processing: %i FFT packets are done.************************ ' % cix.size)
 
                         self.fft_rms_done[cix] = True
-                        self.fft_rms[cix] = np.sqrt(self.fft_rms_buffer[cix].astype(np.float32) / self.fft_n_frames[cix, None])
+                        self.fft_rms[cix] = np.sqrt(
+                            self.fft_rms_buffer[cix].astype(np.float32) / self.fft_n_frames[cix, None])
                         self.fft_rms_buffer[cix] = 0
                         # print('Completed channels', np.sort(cix))
 
@@ -1400,8 +1414,6 @@ class RawPacketProcessor(object):
             self.fft_rms_done[ix] = False
             self.fft_rms_started[ix] = True
 
-
-
     async def get_fft_rms_async(self, all_done=True):
         """ Returns FFT RMS data products that are ready.
 
@@ -1412,33 +1424,15 @@ class RawPacketProcessor(object):
                 stream_ids is a ndarray(N)  containing the stream ID of completed channels
                 rms is an ndarray(N, 1024) containing the corresponding rms-averages FFT spetra
         """
-        # t0 = time.time()
-        # await self.start_fft_rms_async(stream_ids=stream_ids, target_gain_bank=target_gain_bank, number_of_frames=number_of_frames)
-
-        # ix = np.array([self.sid_map[sid] for sid in stream_ids], dtype=np.int16)
-
-        # t1 = time.time()
-        # self.log.info('%r: get_fft_rms: done vector= %s' % (self, self.fft_rms_done))
-        # if self.lock.locked():
-        #     print('get_fft_rms: is locked!')
-        # with threading.Lock():
         with self.fft_lock:
-            # if all_done and not any(self.fft_rms_done[self.fft_rms_started]):
-            #     return np.array([], dtype=np.int16),np.array([])))
-            #     # while not all(self.fft_rms_done):
-                #     # print(self.fft_rms_done[ix])
-                #     time.sleep(0.001) # give some time to run the receiver thread
-                #     await asyncio.sleep(0)
-            # t2 = time.time()
-            # print('FFT RMS acquisition done, setup=%.3f ms, acq=%.3f ms, total=%.3f' % ((t1-t0)*1000, (t2-t1)*1000, (t2-t0)*1000))
+            # print('FFT RMS acquisition done, setup=%.3f ms, acq=%.3f ms, total=%.3f' %
+            #    ((t1-t0)*1000, (t2-t1)*1000, (t2-t0)*1000))
             ix = np.logical_and(self.fft_rms_started, self.fft_rms_done)
             sid = self.stream_ids[ix]
             rms = self.fft_rms[ix]
             self.fft_rms_started[ix] = False
-        self.log.info('%r: get_fft_rms returned FFT RMS vectors from %i channels' % (self, sid.size))
+        self.log.info(f'{self!r}: get_fft_rms returned FFT RMS vectors from {sid.size} channels')
         return ((sid, rms))
-
-
 
     async def get_metrics_async(self, metrics):
         """ Gathers the Raw acquisition related metrics (ADC and FFT)
@@ -1447,7 +1441,6 @@ class RawPacketProcessor(object):
 
             metrics (object): Metrics object in which the metrics will be added
         """
-
 
         # Disk usage on the HDF5 file destination volume
         if hasattr(os, 'statvfs') and self.hdf5_base_dir:
@@ -1460,7 +1453,8 @@ class RawPacketProcessor(object):
             await asyncio.sleep(0)
 
         # HDF5 file writing stats
-        metrics.add('raw_acq_hdf5_run_time', value= 0 if self.hdf5_start_time is None else time.time() - self.hdf5_start_time )
+        metrics.add('raw_acq_hdf5_run_time', value=(
+            0 if self.hdf5_start_time is None else time.time() - self.hdf5_start_time))
 
         metrics.add('raw_acq_hdf5_write_time', value=self.hdf5_write_time)
         self.hdf5_write_time = 0
@@ -1471,14 +1465,10 @@ class RawPacketProcessor(object):
 
         await asyncio.sleep(0)
 
-
-
         metrics.add('raw_acq_processed_packets', value=self.processed_packets)
         metrics.add('raw_acq_processed_adc_packets', value=self.adc_processed_packets)
         metrics.add('raw_acq_processed_fft_packets', value=self.fft_processed_packets)
         metrics.add('raw_acq_hdf5_data_block_writes', value=self.hdf5_block_writes)
-
-
 
         # Generate metrics on the maximum processing time since the value was queried
         with self.lock:
@@ -1499,11 +1489,14 @@ class RawPacketProcessor(object):
         metrics.add('raw_acq_adc_hdf5_max_processing_time', value=adc_hdf5_max_processing_time)
         metrics.add('raw_acq_adc_rms_max_processing_time', value=adc_rms_max_processing_time)
 
-
         # Generate metrics on the average processing time since last query
         with self.lock:
-            adc_avg_processing_time = (self.adc_current_processing_time * 1.0 * self.NCHAN / self.adc_current_processed_packets) if self.adc_current_processed_packets else 0
-            fft_avg_processing_time = (self.fft_current_processing_time * 1.0 * self.NCHAN / self.fft_current_processed_packets) if self.fft_current_processed_packets else 0
+            adc_avg_processing_time = (
+                (self.adc_current_processing_time * 1.0 * self.NCHAN / self.adc_current_processed_packets)
+                if self.adc_current_processed_packets else 0)
+            fft_avg_processing_time = (
+                (self.fft_current_processing_time * 1.0 * self.NCHAN / self.fft_current_processed_packets)
+                if self.fft_current_processed_packets else 0)
             self.adc_current_processing_time = 0
             self.fft_current_processing_time = 0
             self.adc_current_processed_packets = 0
@@ -1511,8 +1504,6 @@ class RawPacketProcessor(object):
 
         metrics.add('raw_acq_adc_avg_processing_time', value=adc_avg_processing_time)
         metrics.add('raw_acq_fft_avg_processing_time', value=fft_avg_processing_time)
-
-
 
         await asyncio.sleep(0)
 
@@ -1531,7 +1522,8 @@ class RawPacketProcessor(object):
                 metrics_adc_packet_length_error = self.metrics_adc_packet_length_error[ix]
 
             crate, slot, chan = self.unpack_stream_id(self.stream_id[ix])
-            # print('Addingn rms metric for cix=%s : crate=%s, slot=%s, chan=%s, value = %f' % (ix, crate, slot, chan, self.metrics_rms[ix]))
+            # print('Addingn rms metric for cix=%s : crate=%s, slot=%s, chan=%s, value = %f'
+            # % (ix, crate, slot, chan, self.metrics_rms[ix]))
             metrics.add('raw_acq_adc_frames', value=adc_frames, crate=crate, slot=slot, chan=chan)
             metrics.add('raw_acq_rms', value=metrics_rms, crate=crate, slot=slot, chan=chan)
             metrics.add('raw_acq_min', value=metrics_min, crate=crate, slot=slot, chan=chan)
@@ -1539,12 +1531,14 @@ class RawPacketProcessor(object):
             metrics.add('raw_acq_mean', value=metrics_mean, crate=crate, slot=slot, chan=chan)
             metrics.add('raw_acq_max_diff', value=metrics_maxdiff, crate=crate, slot=slot, chan=chan)
             metrics.add('raw_acq_ramp_errors', value=metrics_ramp_error_count, crate=crate, slot=slot, chan=chan)
-            metrics.add('raw_acq_adc_packet_length_error', value=metrics_adc_packet_length_error, crate=crate, slot=slot, chan=chan)
+            metrics.add('raw_acq_adc_packet_length_error',
+                        value=metrics_adc_packet_length_error, crate=crate, slot=slot, chan=chan)
             # for bit, count in enumerate(self.metrics_ramp_bit_error_count[ix]):
             #     metrics.add('raw_acq_ramp_bit_errors', value=count, crate=crate, slot=slot, chan=chan, bit=bit)
             # for i, count in enumerate(self.metrics_jumps[ix]):
-            #     metrics.add('raw_acq_jumps', value= count, crate=crate, slot=slot, chan=chan, threshold=self.threshold[i])
-            time.sleep(0.0001) # relinquish some time to the thread? Not sure if it helps.
+            #     metrics.add('raw_acq_jumps', value= count, crate=crate,
+            #                 slot=slot, chan=chan, threshold=self.threshold[i])
+            time.sleep(0.0001)  # relinquish some time to the thread? Not sure if it helps.
             await asyncio.sleep(0)
         self.metrics_updated[cix] = False
 
@@ -1554,7 +1548,6 @@ class RawPacketProcessor(object):
         #     print('fft rms differ!')
         # self.fft_mean_rms_old[ix] = self.fft_mean_rms[ix]
 
-
         # self.is_locked=True
         cix, = np.where(self.fft_metrics_updated)  # boolean ndarray
         # self.fft_mean_rms[cix] = np.sum(self.fft_rms_current[cix, 1:].astype(np.float32), axis=-1)
@@ -1563,13 +1556,15 @@ class RawPacketProcessor(object):
                 stream_id = self.stream_id[ix]
                 fft_rms_current = self.fft_rms_current[ix]
                 metrics_fft_packet_length_error = self.metrics_fft_packet_length_error[ix]
-                fft_scaler_overflows = self.fft_overflow[ix, 1:] # skip bin 0
+                fft_scaler_overflows = self.fft_overflow[ix, 1:]  # skip bin 0
 
             crate, slot, chan = self.unpack_stream_id(stream_id)
             metrics.add('raw_acq_fft_rms', value=np.sqrt(np.mean(fft_rms_current)), crate=crate, slot=slot, chan=chan)
-            metrics.add('raw_acq_fft_packet_length_error', value=metrics_fft_packet_length_error, crate=crate, slot=slot, chan=chan)
-            metrics.add('raw_acq_fft_scaler_overflows', value=np.sum(fft_scaler_overflows), crate=crate, slot=slot, chan=chan)
-            time.sleep(0.0001) # relinquish some time to the thread? Not sure if it helps.
+            metrics.add('raw_acq_fft_packet_length_error',
+                        value=metrics_fft_packet_length_error, crate=crate, slot=slot, chan=chan)
+            metrics.add('raw_acq_fft_scaler_overflows',
+                        value=np.sum(fft_scaler_overflows), crate=crate, slot=slot, chan=chan)
+            time.sleep(0.0001)  # relinquish some time to the thread? Not sure if it helps.
             await asyncio.sleep(0)
             self.fft_metrics_updated[cix] = False
             # self.is_locked=False
@@ -1607,21 +1602,25 @@ class RawPacketProcessor(object):
 #######################################################
 
 
-
 class HDF5RawWriter(object):
     """ Object representing a HDF5 file containing raw data
     """
-    def __init__(self, base_dir='.', filename='%(file_number)06d.h5', elements_per_file=2048*64, crate_and_slot_from_port=False, chunk_size=1024):
+    def __init__(self,
+                 base_dir='.',
+                 filename='%(file_number)06d.h5',
+                 elements_per_file=2048 * 64,
+                 crate_and_slot_from_port=False,
+                 chunk_size=1024):
         self.log = log.get_logger(self)
-        self.N_SAMP = 2048 # data bytes per frame
+        self.N_SAMP = 2048  # data bytes per frame
         self.base_dir = base_dir
         self.filename = filename
         self.chunk_size = chunk_size
-        #self.N_CHANNELS = 1
+        # self.N_CHANNELS = 1
         self.crate_and_slot_from_port = crate_and_slot_from_port
         # self.filename = filestring
         self.file_number = 0
-        self.nn = 0 # sample number of the first sample of the current file
+        self.nn = 0  # sample number of the first sample of the current file
         self.elements_per_file = elements_per_file
         self.f = None
         self.start_new_hdf5_file()
@@ -1641,10 +1640,10 @@ class HDF5RawWriter(object):
         self.lock_filename = self.current_filename + '.lock'
 
         # # create a lock file
-        with open(self.lock_filename,'w') as h:
+        with open(self.lock_filename, 'w') as h:
             h.write('locked\n')
 
-        self.log.info('%r: Opening raw data HDF5 file %s' % (self, self.current_filename))
+        self.log.info(f'{self!r}: Opening raw data HDF5 file {self.current_filename}')
         self.f = h5py.File(self.current_filename, 'w', libver='earliest')
         self.f.attrs["git_version_tag"] = "0.1"
         self.f.attrs["system_user"] = "root"
@@ -1655,57 +1654,61 @@ class HDF5RawWriter(object):
         self.f.attrs["file_name"] = self.current_filename  # was filestring
         self.f.attrs["data_type"] = "ADC snapshot data"
         self.f.attrs["rawadc_version"] = 0.1
-        self.f.attrs["timestamping_warning"] = "Done on file write, may be significantly different from snapshot acquistion time"
+        self.f.attrs["timestamping_warning"] = (
+            "Done on file write, may be significantly "
+            "different from snapshot acquistion time")
 
         # timestamp
         self.compound_dtype = np.dtype([('fpga_count', np.uint64), ('ctime', np.float64)])
-        self.timestampDataset = self.f.create_dataset('timestamp',
-            (1, 1), dtype=self.compound_dtype, maxshape=(None, 1), chunks=(self.chunk_size, 1))
+        self.timestampDataset = self.f.create_dataset(
+            'timestamp', (1, 1), dtype=self.compound_dtype,
+            maxshape=(None, 1), chunks=(self.chunk_size, 1))
         self.timestampDataset.attrs['axis'] = ['snapshot']
 
         # slot number
-        self.slotDataset = self.f.create_dataset('slot', (1, 1),
-            dtype=np.uint8, maxshape=(None, 1), chunks=(self.chunk_size, 1))
+        self.slotDataset = self.f.create_dataset(
+            'slot', (1, 1), dtype=np.uint8,
+            maxshape=(None, 1), chunks=(self.chunk_size, 1))
         self.slotDataset.attrs['axis'] = ['snapshot']
 
         # crate number
-        self.crateDataset = self.f.create_dataset('crate', (1, 1),
-            dtype=np.uint32, maxshape=(None, 1), chunks=(self.chunk_size, 1))
+        self.crateDataset = self.f.create_dataset(
+            'crate', (1, 1), dtype=np.uint32,
+            maxshape=(None, 1), chunks=(self.chunk_size, 1))
         self.crateDataset.attrs['axis'] = ['snapshot']
 
         # channel number
-        self.chanDataset = self.f.create_dataset('adc_input', (1, 1),
-            dtype=np.uint8, maxshape=(None, 1), chunks=(self.chunk_size, 1))
+        self.chanDataset = self.f.create_dataset(
+            'adc_input', (1, 1), dtype=np.uint8,
+            maxshape=(None, 1), chunks=(self.chunk_size, 1))
         self.chanDataset.attrs['axis'] = ['snapshot']
 
         # ADC data
-        self.timestreamDataset = self.f.create_dataset('timestream',
-            (1, self.N_SAMP), dtype=np.int8,
+        self.timestreamDataset = self.f.create_dataset(
+            'timestream', (1, self.N_SAMP), dtype=np.int8,
             maxshape=(None, self.N_SAMP), chunks=(self.chunk_size, self.N_SAMP))
         self.timestreamDataset.attrs['axis'] = ['snapshot', 'timestream']
 
         self.index_map = self.f.create_group("index_map")
 
-        self.snapshot_index_map = self.index_map.create_dataset('snapshot',
-            (1,), dtype=np.uint32, maxshape=(None,), chunks=(self.chunk_size, ))
+        self.snapshot_index_map = self.index_map.create_dataset(
+            'snapshot', (1,), dtype=np.uint32,
+            maxshape=(None,), chunks=(self.chunk_size,))
 
-        self.timestream_index_map = self.index_map.create_dataset("timestream",
-            (2048,), dtype=np.uint16)
+        self.timestream_index_map = self.index_map.create_dataset(
+            "timestream", (2048,), dtype=np.uint16)
         self.timestream_index_map[:] = np.arange(2048)
 
         # self.n_times = 1
-        self.n = 0 # number of samples fince start of file
-
+        self.n = 0  # number of samples fince start of file
 
     def write(self, timestamp, stream_id, flags, timestream):
         """
         """
-
-
         n1 = self.n
         self.n = n2 = n1 + timestamp.shape[0]
 
-        # self.log.info('%r: Writing %i entries to HDF5 file %s' % (self, timestamp.size, self.current_filename))
+        # self.log.info(f'{self!r}: Writing {timestamp.size} entries to HDF5 file {self.current_filename}')
 
         self.timestampDataset.resize((self.n, 1))
         self.crateDataset.resize((self.n, 1))
@@ -1716,7 +1719,7 @@ class HDF5RawWriter(object):
         current_time = time.time()
         slot_number = (stream_id >> 4) & 0xF
         crate_number = (stream_id >> 8) & 0xF
-        chan_number = (stream_id ) & 0xF
+        chan_number = (stream_id) & 0xF
 
         # we have to build a compound array to assign elements to it using the
         # field names. Doing that directly on the dataset does nothing.
@@ -1735,20 +1738,21 @@ class HDF5RawWriter(object):
         if n2 >= self.elements_per_file:
             self.start_new_hdf5_file()
 
-
     def close(self):
         if self.f:
             self.snapshot_index_map.resize((self.n,))
             self.snapshot_index_map[:] = np.arange(self.n) + self.nn
             self.nn += self.n
 
-            self.log.info('%r: Closing HDF5 file %s' % (self, self.current_filename))
+            self.log.info(f'{self!r}: Closing HDF5 file {self.current_filename}')
             self.f.close()
             try:
                 os.remove(self.lock_filename)
                 # os.rename(self.lock_filename, self.filename)
             except OSError:
-                self.log.error('%r: Unable to rename HDF5 lock file from %s to %s' % (self, self.lock_filename, self.current_filename))
+                self.log.error(
+                    f'{self!r}: Unable to rename HDF5 lock file '
+                    f'from {self.lock_filename} to {self.current_filename}')
 
 
 #######################################################
@@ -1774,7 +1778,7 @@ class CorrPacketProcessor(object):
     def __init__(self,
                  raw_acq_receiver,
                  firmware_integration_period=1,
-                 software_integration_period=100, # Can be changed by hdf start
+                 software_integration_period=100,  # Can be changed by hdf start
                  frame0_irigb_time=0,
                  ):
         self.log = log.get_logger(self)
@@ -1799,8 +1803,6 @@ class CorrPacketProcessor(object):
             ('ts', '<u4', 1),
             ('data', self.product_dtype, self.NPROD)])
 
-
-
         self.corr_processed_packets = 0
         self.corr_max_processing_time = 0
         self.corr_current_processed_packets = 0
@@ -1808,8 +1810,6 @@ class CorrPacketProcessor(object):
         self.metrics_corr_packet_length_error = 0
 
         # Header fields
-
-
 
         # Pre-allocate buffers
         # Buffer in which the correlator packets will be assembled
@@ -1823,14 +1823,14 @@ class CorrPacketProcessor(object):
         # Various views of the buffer to allow quick and easy access to the packet contents
         self.buf_struct = self.buf.view(self.packet_dtype)
         # Header fields
-        self.buf_cookie = self.buf_struct['cookie'][:,0]
-        self.buf_corr = self.buf_struct['corr'][:,0]
-        self.buf_cmac = self.buf_struct['cmac'][:,0]
-        self.buf_ts = self.buf_struct['ts'][:,0] # watch out! Covers part of the stream id
+        self.buf_cookie = self.buf_struct['cookie'][:, 0]
+        self.buf_corr = self.buf_struct['corr'][:, 0]
+        self.buf_cmac = self.buf_struct['cmac'][:, 0]
+        self.buf_ts = self.buf_struct['ts'][:, 0]  # watch out! Covers part of the stream id
         # data fields
-        self.buf_data_h = self.buf_struct['data'][:,0]['h']
-        self.buf_data_l = self.buf_struct['data'][:,0]['l']
-        self.buf_data_sat = self.buf_struct['data'][:,0]['sat']
+        self.buf_data_h = self.buf_struct['data'][:, 0]['h']
+        self.buf_data_l = self.buf_struct['data'][:, 0]['l']
+        self.buf_data_sat = self.buf_struct['data'][:, 0]['sat']
 
         # Temporary storage to extract the real/imaginary part from the 5-byte packed product
         self.temp32 = np.empty((self.BUF_SIZE, self.NPROD), dtype=np.int32)
@@ -1883,10 +1883,9 @@ class CorrPacketProcessor(object):
         self.process_corr_packets()
         t1 = time.time()
 
-       # self.buffer_preprocessing_time = max(t1 - t0, self.buffer_preprocessing_time)
+        # self.buffer_preprocessing_time = max(t1 - t0, self.buffer_preprocessing_time)
         self.corr_max_processing_time = max(t1 - t0, self.corr_max_processing_time)
         self.corr_current_processing_time += t1 - t0
-
 
     def process_corr_packets(self):
         """ Process the firmware correlator data
@@ -1932,11 +1931,12 @@ class CorrPacketProcessor(object):
                     self.last_ts = self.buf_ts[buf_ix[0]]
                     self.state = 'flush2'
 
-            # Discard packets until we have a timestamp jump of at least 1 frames to flush the probably partial first frame
+            # Discard packets until we have a timestamp jump of at least 1
+            # frames to flush the probably partial first frame
             elif self.state == 'flush2':
                 buf_ix = self.flush(buf_ix, 1)
                 if buf_ix.size:
-                    print('Flushed %i UDP packets in total' % (self.flushed_packets))
+                    print(f'Flushed {self.flushed_packets} UDP packets in total')
                     self.state = 'align'
 
             # Wait until the frame is aligned to our integration period
@@ -1950,8 +1950,7 @@ class CorrPacketProcessor(object):
                 self.integ(buf_ix)
                 buf_ix = buf_ix[[]]
             else:
-                raise RuntimeError('Unknown correlator state %s' % self.state)
-
+                raise RuntimeError(f'Unknown correlator state {self.state}')
 
     def flush(self, bix, jump=2):
         """ Flush the UDP buffer until the timout occurs or the packet timestamp jumps by more `threshold` or more.
@@ -1974,26 +1973,27 @@ class CorrPacketProcessor(object):
                 return bix[i:]
             self.last_ts = ts
             self.flushed_packets += 1
-            print('FLushing packet until jump of %i. ts=%i' % (jump, ts))
+            print(f'FLushing packet until jump of {jump}. ts={ts}')
         return bix[[]]
 
-
     def align(self, bix):
-        """ Flush packets until we receive the packet that is part of the first frame of the specified integration period.
+        """ Flush packets until we receive the packet that is part of the
+        first frame of the specified integration period.
 
         This first packet is left in the buffer.
         """
         print('align: Waiting for first frame of the specified integration period')
         for i, bi in enumerate(bix):
             ts = self.buf_ts[bi]
-            if (ts % self.software_integration_period) == 0: # if the frame is on an integration period
-                print('   Found first frame of period at timestamp %i (integration index %i/%i)' % (ts, ts % self.software_integration_period, self.software_integration_period))
+            if (ts % self.software_integration_period) == 0:  # if the frame is on an integration period
+                print(f'   Found first frame of period at timestamp {ts} '
+                      f'(integration index {ts % self.software_integration_period}/{self.software_integration_period})')
                 return bix[i:]
             if ts != self.last_ts:
-                print('   Discarding correlator timestamp %i (integration index %i/%i)' % (ts, ts % self.software_integration_period, self.software_integration_period))
+                print(f'   Discarding correlator timestamp {ts} '
+                      f'(integration index {ts % self.software_integration_period}/{self.software_integration_period})')
             self.last_ts = ts
         return bix[[]]
-
 
     def integ(self, bix):
         """
@@ -2013,15 +2013,15 @@ class CorrPacketProcessor(object):
 
 
 
-        The receiver can do software integration for unlimited time at a firmware integration period of 5000 frames (12.8 ms).
+        The receiver can do software integration for unlimited time at a
+        firmware integration period of 5000 frames (12.8 ms).
 
 
         """
-
         while bix.size:
             is_current = (self.buf_ts[bix] // self.software_integration_period) == self.current_integ
             ix = bix[is_current]
-            bix = bix[is_current==False]
+            bix = bix[is_current == False]
             if ix.size:
                 self.packets += ix.size
                 self.accumulate_data(ix)
@@ -2032,10 +2032,10 @@ class CorrPacketProcessor(object):
                     self.packets = 0
                 self.current_integ = self.buf_ts[bix[0]] // self.software_integration_period
 
-
-        # packets = 0
-        # print('Accumulating software frame #%i, starting with correlator frame number %i (%i/%i)' % (current_integ, self.last_ts, self.last_ts % self.software_integration_period, self.software_integration_period))
-
+        # packets = 0 print('Accumulating software frame #%i, starting with
+        # correlator frame number %i (%i/%i)' % (current_integ, self.last_ts,
+        # self.last_ts % self.software_integration_period,
+        # self.software_integration_period))
 
     def save_data(self):
         packets = self.packets
@@ -2043,21 +2043,22 @@ class CorrPacketProcessor(object):
         # Write data to HDF5 file
         if self.hdf5_file:
 
-            print('Received %i packets' % (packets))
-            print('Got %.1f%% of the packets, and between %.1f%% and %.1f%% of the correlator frames' % (
-                    packets / (self.NCORR * self.NCMAC * self.software_integration_period) * 100,
-                    np.min(self.count) / self.software_integration_period * 100,
-                    np.max(self.count) / self.software_integration_period * 100))
+            print(f'Received {packets} packets')
+            pct_pkts = packets / (self.NCORR * self.NCMAC * self.software_integration_period) * 100
+            pct_frames_min = np.min(self.count) / self.software_integration_period * 100
+            pct_frames_max = np.max(self.count) / self.software_integration_period * 100
+            print(f'Got {pct_pkts:.1f}% of the packets, and between '
+                  f'{pct_frames_min:.1f}% and {pct_frames_max:.1f}% of the correlator frames')
 
-            self.sat_cplx.real = self.sat[..., 0] / 32.0 # real sat flag is masked with 0x20
-            self.sat_cplx.imag = self.sat[..., 1] / 16.0 # imag sat flag is masked with 0x10
+            self.sat_cplx.real = self.sat[..., 0] / 32.0  # real sat flag is masked with 0x20
+            self.sat_cplx.imag = self.sat[..., 1] / 16.0  # imag sat flag is masked with 0x10
             self.data.real = self.acc_re
             self.data.imag = self.acc_im
-            print( self.current_integ, self.software_integration_period, self.firmware_integration_period)
+            print(self.current_integ, self.software_integration_period, self.firmware_integration_period)
             fpga_frame_number = self.current_integ * self.software_integration_period * self.firmware_integration_period
             irigb_time = (fpga_frame_number * 2560 + self.frame0_irigb_time)
 
-            print('AutoCorr data for (0,0) is:', self.acc_re[:,0,0])
+            print('AutoCorr data for (0,0) is:', self.acc_re[:, 0, 0])
             self.hdf5_file.write(
                 self.current_integ,
                 fpga_frame_number,
@@ -2066,7 +2067,7 @@ class CorrPacketProcessor(object):
                 self.count,
                 self.sat_cplx)
         else:
-            print('Got an unused integrated correlator frame with %i packets' % packets)
+            print('fGot an unused integrated correlator frame with {packets} packets')
 
         # Convert the products in the matrix format
         # m = self.raw_to_vector_map
@@ -2077,7 +2078,6 @@ class CorrPacketProcessor(object):
 
         # count = self.count[m[0], m[1]]
         # sat_cplx = self.sat_cplx[m[0], m[1], m[2]]
-
 
     def clear_data(self):
         self.acc_re[:] = 0
@@ -2142,14 +2142,11 @@ class CorrPacketProcessor(object):
             dt2 = t3 - t2
             dt = t3 - t1
             timestamps = set(self.buf_ts[bix])
-            print('Processing & accumulating %i packets from correlator frames %s;  took %.3f ms (%.3f ms/corr frame) (%.3f + %.3f ms)' % (
-                n,
-                ','.join('%i (%i/%i)' % (ts, ts % self.software_integration_period, self.software_integration_period) for ts in timestamps),
-                dt * 1000,
-                dt / (self.NCORR * self.NCMAC) * 1000,
-                dt1 * 1000,
-                dt2 * 1000))
-
+            frames = ','.join(f'{ts} ({ts % self.software_integration_period}/{self.software_integration_period})'
+                              for ts in timestamps)
+            print(f'Processing & accumulating {n} packets from correlator frames {frames}; '
+                  f' took {dt * 1000:.3f} ms ({dt / (self.NCORR * self.NCMAC) * 1000:.3f} ms/corr frame) '
+                  f' ({dt1 * 1000:.3f} + {dt2 * 1000:.3f} ms)')
 
     async def get_metrics_async(self, metrics):
 
@@ -2160,8 +2157,6 @@ class CorrPacketProcessor(object):
             metrics.add('raw_acq_corr_hdf5_current_total_samples', value=self.hdf5_file.n_total)
 
         return
-
-
 
     def start_corr_hdf5(self,
                         base_dir=None,
@@ -2177,16 +2172,18 @@ class CorrPacketProcessor(object):
             self.stop_corr_adc_hdf5()
             # raise RuntimeError('HDF5 dataWriter is already running')
 
-        self.log.info('%r: Starting correlator HDF5 data writer with base_dir=%s, base_filename=%s, capture_duration=%r (type=%s), n_inputs=%d, elements_per_file=%d, soft_integ=%s, firm_integ=%s, irigb_time=%s' %
-            (self, base_dir, base_filename, capture_duration, type(capture_duration),
-                capture_n_inputs, elements_per_file,
-                software_integration_period,firmware_integration_period, frame0_irigb_time ))
+        self.log.info(
+            f'{self!r}: Starting correlator HDF5 data writer with '
+            f'base_dir={base_dir}, base_filename={base_filename}, '
+            f'capture_duration={capture_duration} (type={type(capture_duration)}), '
+            f'n_inputs={capture_n_inputs}, elements_per_file={elements_per_file}, '
+            f'soft_integ={software_integration_period}, firm_integ={frame0_irigb_time}, irigb_time={frame0_irigb_time}')
 
         self.software_integration_period = software_integration_period
         self.firmware_integration_period = firmware_integration_period
         # Update time of frame 0 from last sync.
         self.frame0_irigb_time = frame0_irigb_time
-        self.state = 'align' # restart correlation product receiver
+        self.state = 'align'  # restart correlation product receiver
 
         base_dir = base_dir or '%(run_folder)s/corr'
         base_filename = base_filename or '%(elapsed_seconds)08d_%(file_number)04d.h5'
@@ -2194,15 +2191,14 @@ class CorrPacketProcessor(object):
         self.n_inputs = capture_n_inputs
         self.elements_per_file = elements_per_file
 
-        self.hdf5_start_time = time.time() # used to keep track of how long the disk capture has been running
+        self.hdf5_start_time = time.time()  # used to keep track of how long the disk capture has been running
 
         # self.hdf5_refresh_time = capture_refresh_time
 
         # Schedule for the acquisition to stop if capture_ducation is non-zero
         if capture_duration:
-            self.log.info('%r: HDF5 correlator data writer will be stopped in %f seconds' % (self, capture_duration))
+            self.log.info(f'{self!r}: HDF5 correlator data writer will be stopped in {capture_duration} seconds')
             asyncio.get_event_loop().call_later(capture_duration, self.stop_corr_hdf5)
-
 
         # Create the target folder
         self.hdf5_start_time = time.time()
@@ -2214,8 +2210,8 @@ class CorrPacketProcessor(object):
 
         try:
             os.makedirs(self.hdf5_base_dir)
-        except:
-            self.log.warning("%r: couldn't make directory '%s'. Using current directory." % (self, self.hdf5_base_dir))
+        except Exception:
+            self.log.warning(f"{self!r}: couldn't make directory '{self.hdf5_base_dir}'. Using current directory.")
             self.hdf5_base_dir = './'
 
         try:
@@ -2223,23 +2219,20 @@ class CorrPacketProcessor(object):
                                             filename=base_filename,
                                             elements_per_file=self.elements_per_file,
                                             n_inputs=self.n_inputs)
-            self.log.info('%r: Correlator HDF5 data writer is started' % self)
+            self.log.info(f'{self!r}: Correlator HDF5 data writer is started')
         except Exception as e:
-            self.log.error('%r: Could not open correlaor file %s/%s. Error is\n%r' % (self, self.hdf5_base_dir, base_filename, e))
+            self.log.error(
+                f'{self!r}: Could not open correlaor file {self.hdf5_base_dir}/{base_filename}. '
+                f'Error is\n{e!r}')
 
     def stop_corr_hdf5(self):
         if not self.hdf5_file:
-            raise RuntimeError('%r: Correlator HDF5 dataWriter is not running. Cannot stop it.' % self)
-        self.log.info('%r: Stopping Correlator HDF5 data writer' % self)
+            raise RuntimeError(f'{self!r}: Correlator HDF5 dataWriter is not running. Cannot stop it.')
+        self.log.info(f'{self!r}: Stopping Correlator HDF5 data writer')
         hdf5_file = self.hdf5_file
-        self.hdf5_file = None # Stop the thread from using the file before we close it
+        self.hdf5_file = None  # Stop the thread from using the file before we close it
         hdf5_file.close()
         self.hdf5_start_time = None
-
-
-
-
-
 
 
 #######################################################
@@ -2249,6 +2242,7 @@ class CorrPacketProcessor(object):
 #######################################################
 #######################################################
 #######################################################
+
 
 class HDF5CorrWriter(object):
     """ Object representing a HDF5 file containing N-squared correlation data
@@ -2261,10 +2255,9 @@ class HDF5CorrWriter(object):
                  n_freq_bins=1024,
                  sample_freq=800.,
                  include_counts=True,
-                 include_sat=True): #, crate_and_slot_from_port = False):
+                 include_sat=True):
 
         self.log = log.get_logger(self)
-
 
         self.filename = filename
         self.base_dir = base_dir
@@ -2275,14 +2268,16 @@ class HDF5CorrWriter(object):
         self.include_counts = include_counts
         self.include_sat = include_sat
 
-
         self.prod_dtype = np.dtype([('input_a', np.uint16), ('input_b', np.uint16)])
         # self.prod_axis = np.array([(i, j) for i, j in itertools.product(range(inputs_per_file), repeat=2) if i >= j],
         #                           dtype=self.prod_dtype)
 
-        # Compute the index arrays that will build the product vector form the raw correlator data for the desired inputs
+        # Compute the index arrays that will build the product vector form the
+        # raw correlator data for the desired inputs
         (i, j) = np.triu_indices(self.n_inputs)
-        self.prod_axis = np.array(list(zip(i,j)), dtype=self.prod_dtype)
+        self.prod_axis = np.array(list(zip(i, j)), dtype=self.prod_dtype)
+        # Pre-compute the matrix that will be used to re-index the raw data
+        # vectors from the correlator into an easy-to-index matrix format.
         self.raw_to_vector_map = CORR.get_raw_to_matrix_map()[..., i, j]
         self.n_prod = len(i)
 
@@ -2293,13 +2288,13 @@ class HDF5CorrWriter(object):
         self.freq_axis = np.array([(k, df) for k in (self.sample_freq - df * np.arange(self.n_freq_bins))],
                                   dtype=self.freq_dtype)
         self.f = None
-        self.file_number = 0 # current file number
-        self.n_total = 0 # total number of elements written so far in all files
+        self.file_number = 0  # current file number
+        self.n_total = 0  # total number of elements written so far in all files
         self.start_new_hdf5_file()
 
     def start_new_hdf5_file(self):
         self.close()
-        fields=dict(
+        fields = dict(
             file_number=self.file_number,
             elapsed_seconds=time.time() - self.start_time)
 
@@ -2309,7 +2304,6 @@ class HDF5CorrWriter(object):
         self.n = 0
         self.file_number += 1
 
-
     def open(self, filename):
 
         self.current_filename = filename
@@ -2318,8 +2312,8 @@ class HDF5CorrWriter(object):
         with open(self.lock_filename, 'w') as h:
             h.write('locked\n')
 
-        #self.log.info('%r: Opening raw data HDF5 file %s' % (self, self.filename))
-        print('%r: Opening HDF5 file %s' % (self, self.filename))
+        # self.log.info(f'{self!r}: Opening raw data HDF5 file {self.filename}'
+        print(f'{self!r}: Opening HDF5 file {self.filename}')
         self.f = h5py.File(self.current_filename, 'w', libver='earliest')
         self.f.attrs["instrument_name"] = "D3A"
         self.f.attrs["acquisition_name"] = "corr"
@@ -2328,15 +2322,23 @@ class HDF5CorrWriter(object):
         # We use complex128, which can store 53-bit integers exactly.
         # Complex64 offers 23-bit integers, which does not leave a lot of room
         # for integration of the incoming 18-bit data.
-        self.vis = self.f.create_dataset('vis',(1, 1024, self.n_prod), dtype=np.complex128, maxshape=(None, 1024, self.n_prod))
+        self.vis = self.f.create_dataset(
+            'vis', (1, 1024, self.n_prod),
+            dtype=np.complex128,
+            maxshape=(None, 1024, self.n_prod))
         self.vis.attrs['axis'] = ['time', 'freq', 'prod']
         if self.include_counts:
-            self.counts = self.f.create_dataset('counts',(1, 1024, self.n_prod), dtype=np.uint32, maxshape=(None, 1024, self.n_prod))
+            self.counts = self.f.create_dataset(
+                'counts', (1, 1024, self.n_prod),
+                dtype=np.uint32,
+                maxshape=(None, 1024, self.n_prod))
             self.counts.attrs['axis'] = ['time', 'freq', 'prod']
         if self.include_sat:
-            self.sat = self.f.create_dataset('sat',(1, 1024, self.n_prod), dtype=np.complex64, maxshape=(None, 1024, self.n_prod))
+            self.sat = self.f.create_dataset(
+                'sat', (1, 1024, self.n_prod),
+                dtype=np.complex64,
+                maxshape=(None, 1024, self.n_prod))
             self.sat.attrs['axis'] = ['time', 'freq', 'prod']
-
 
         self.index_map = self.f.create_group("index_map")
 
@@ -2368,7 +2370,9 @@ class HDF5CorrWriter(object):
         m = self.raw_to_vector_map
 
         current_time = time.time()
-        print('shapes are: raw_data %r, counts %r, sat %r' % (raw_data[m[0], m[1], m[2]].dtype, counts[m[0], m[1]].dtype,saturations[m[0], m[1], m[2]].dtype))
+        print(f'shapes are: raw_data {raw_data[m[0], m[1], m[2]].dtype}'
+              f'counts {counts[m[0], m[1]].dtype}, '
+              f'sat {saturations[m[0], m[1], m[2]].dtype}')
         self.time[n1] = (integ_number, fpga_frame_number, irigb_time, current_time)
         self.vis[n1] = raw_data[m[0], m[1], m[2]]
         if self.include_counts:
@@ -2383,13 +2387,15 @@ class HDF5CorrWriter(object):
         if self.f:
             # self.snapshot_index_map.resize((self.n,))
             # self.snapshot_index_map[:] = np.arange(self.n) + self.n_total
-            self.log.info('%r: Closing HDF5 file %s' % (self, self.current_filename))
+            self.log.info(f'{self!r}: Closing HDF5 file {self.current_filename}')
             self.f.close()
             try:
                 os.remove(self.lock_filename)
                 # os.rename(self.lock_filename, self.filename)
             except OSError:
-                self.log.error('%r: Unable to rename HDF5 lock file from %s to %s' % (self, self.lock_filename, self.current_filename))
+                self.log.error(
+                    f'{self!r}: Unable to rename HDF5 lock file '
+                    f'from {self.lock_filename} to {self.current_filename}')
 
 
 ################################################
@@ -2408,23 +2414,25 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
 
     def __init__(self, address='', port=DEFAULT_PORT, logging_params={}):
         self.receiver = RawAcqReceiver()
-        super(RawAcqAsyncRESTServer, self).__init__(address=address, port=port,  heartbeat_string='Rs')
+        super(RawAcqAsyncRESTServer, self).__init__(address=address, port=port, heartbeat_string='Rs')
         # self.add_periodic_callback(self.receiver.print_stats, 3000)
-        self.add_periodic_callback(self.receiver.ping_sources_async, 20000) # ping the raw_acq data sources periodically to ensure the switches tables always know how to route the packets to here
+
+        # Add a callback to ping the raw_acq data sources periodically to ensure the switches
+        # routing tables always know how to route the packets to their destination
+        self.add_periodic_callback(self.receiver.ping_sources_async, 20000)
+
+        # Start a periodic callback to check the ioloop response time as its health indicator
         self.add_periodic_callback(self.receiver.check_ioloop_response_time_async, 3000)
         self.startup_time = datetime.datetime.utcnow()
-
-
 
     async def shutdown(self):
         self.receiver.stop()
 
-
     @endpoint('start')
     async def start(self, **config):
-        self.log.info('%r: Received start command with %r' % (self, config))
+        self.log.info(f'{self!r}: Received start command with {config}')
         if self.receiver.is_running():
-            self.log.info('%r: Receiver is already running. Stopping it and restarting a new one' % (self))
+            self.log.info(f'{self!r}: Receiver is already running. Stopping it and restarting a new one')
             self.receiver.stop()
             # raise RuntimeError('Server is already started')
 
@@ -2432,11 +2440,11 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
         comet_config = config.pop('comet_broker', {})
         enable_comet = comet_config.get('enabled', None)
         print(f'comet_broker={comet_config}, enabled={enable_comet}')
-        if enable_comet is None: # if the comet_broker.enable parameter is not specified
+        if enable_comet is None:  # if the comet_broker.enable parameter is not specified
             msg = "Missing config value 'comet_broker.enabled'."
             self.log.error(msg)
-            raise RuntimeError('Cannot start comet broker: %s' % (msg))
-        if enable_comet: # if comet parameters are present and comet is is enabled
+            raise RuntimeError(f'Cannot start comet broker: {msg}')
+        if enable_comet:  # if comet parameters are present and comet is is enabled
             if comet is None:
                 msg = "Failure importing comet for configuration tracking.  Please install the " \
                       "comet package or set 'comet_broker/enabled' to False in config."
@@ -2449,7 +2457,7 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
                 msg = "Failure registering initial config with comet broker: 'comet_broker/{}' " \
                       "not defined in config.".format(exc[0])
                 self.log.error(msg)
-                raise RuntimeError('Cannot start comet broker: %s' % (msg))
+                raise RuntimeError(f'Cannot start comet broker: {msg}')
             comet_manager = comet.Manager(comet_host, comet_port)
             try:
                 comet_manager.register_start(self.startup_time, __version__)
@@ -2458,26 +2466,30 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
                 msg = "Comet failed registering raw_acq start and initial config. " \
                       "The Comet client returned the following error: {}".format(exc)
                 self.log.error(msg)
-                raise RuntimeError('Cannot start comet broker: %s' % (msg))
+                raise RuntimeError(f'Cannot start comet broker: {msg}')
         else:
             self.log.warning("Config registration DISABLED. This is only OK for testing.")
         # config.pop('hostname', None)
         # config.pop('port', None)
         result = await self.receiver.start_async(**config)
-        self.log.info('%r: UDP receiver started. Returned %r' % (self, result))
+        self.log.info(f'{self!r}: UDP receiver started. Returned {result!r}')
         return result
-
 
     @endpoint('stop')
     async def stop(self):
         if not self.receiver.is_running():
-            self.log.warning('%r: Server is not running' % self)
+            self.log.warning(f'{self!r}: Server is not running')
         self.receiver.stop()
         return "stopped receiver"
 
-
     @endpoint('start-raw-hdf5')
-    async def start_raw_hdf5(self, base_dir='./', base_filename='RawAcq', capture_duration=0, capture_refresh_time=0, elements_per_file=2048*64):
+    async def start_raw_hdf5(
+            self,
+            base_dir='./',
+            base_filename='RawAcq',
+            capture_duration=0,
+            capture_refresh_time=0,
+            elements_per_file=2048 * 64):
         self.receiver.raw_packet_processor.start_adc_hdf5(
             base_dir=base_dir,
             base_filename=base_filename,
@@ -2493,38 +2505,41 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
 
     @endpoint('status')
     async def status(self):
-        self.log.info('%r: getting status request' % self)
+        self.log.info(f'{self!r}: getting status request')
         return dict(started=self.receiver.is_running() if self.receiver else False)
 
     @endpoint('get-packets')
     async def get_packets(self):
-        self.log.info('%r: received get_packets command' % self)
+        self.log.info(f'{self!r}: received get_packets command')
         ts, ports, data = await self.receiver.raw_packet_processor.get_data()
         return dict(ts=ts.tolist(), ports=ports, data=data.tolist())
 
     @endpoint('start-fft-rms')
     async def start_fft_rms(self, stream_ids=[], target_gain_bank=0, number_of_frames=100):
-        self.log.info('%r: received start_fft_rms command' % self)
-        await self.receiver.raw_packet_processor.start_fft_rms_async(stream_ids=stream_ids, target_gain_bank=target_gain_bank, number_of_frames=number_of_frames)
+        self.log.info(f'{self!r}: received start_fft_rms command')
+        await self.receiver.raw_packet_processor.start_fft_rms_async(
+            stream_ids=stream_ids,
+            target_gain_bank=target_gain_bank,
+            number_of_frames=number_of_frames)
         return
 
     @endpoint('get-fft-rms')
     async def get_fft_rms(self):
-        self.log.info('%r: received get_fft_rms command' % self)
+        self.log.info(f'{self!r}: received get_fft_rms command')
         ix, rms = await self.receiver.raw_packet_processor.get_fft_rms_async()
         return (ix.tolist(), rms.tolist())
 
     @endpoint('start-corr-hdf5')
     async def start_corr_hdf5(self,
-                        base_dir=None,
-                        base_filename=None,
-                        capture_duration=0,
-                        capture_n_inputs=4,
-                        elements_per_file=256,
-                        software_integration_period=100,
-                        firmware_integration_period=1,
-                        frame0_irigb_time=0,
-                        ):
+                              base_dir=None,
+                              base_filename=None,
+                              capture_duration=0,
+                              capture_n_inputs=4,
+                              elements_per_file=256,
+                              software_integration_period=100,
+                              firmware_integration_period=1,
+                              frame0_irigb_time=0,
+                              ):
         self.receiver.corr_packet_processor.start_corr_hdf5(
             base_dir=base_dir,
             base_filename=base_filename,
@@ -2533,10 +2548,8 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
             elements_per_file=elements_per_file,
             firmware_integration_period=firmware_integration_period,
             software_integration_period=software_integration_period,
-            frame0_irigb_time=frame0_irigb_time
-            )
-        return "started correlator hdf5 writing to disk with parameters %r." % firmware_integration_period
-
+            frame0_irigb_time=frame0_irigb_time)
+        return f"started correlator hdf5 writing to disk with parameters {firmware_integration_period}."
 
     @endpoint('stop-corr-hdf5')
     async def stop_corr_hdf5(self):
@@ -2555,7 +2568,7 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     @endpoint('get-monitoring-data')
     async def get_monitoring_data(self):
         t0 = time.time()
-        self.log.info('%r: Received monitoring metrics request' % self)
+        self.log.info(f'{self!r}: Received monitoring metrics request')
         if self.receiver:
             metrics = await self.receiver.get_metrics_async()
         t1 = time.time()
@@ -2568,12 +2581,16 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
             body=metrics.get_gzip(),
             headers={'Content-Encoding': 'gzip'})
         t2 = time.time()
-        self.log.info('%r: Returning raw_acq %i metrics. The request took %.3f seconds (%.3fs to format metrics, %.3fs to encode them)' % (self, len(metrics), t2 - t0, t1 - t0, t2 - t1))
+        self.log.info(
+            f'{self!r}: Returning raw_acq {len(metrics)} metrics. '
+            f'The request took {t2 - t0:.3f} seconds '
+            f'({t1 - t0:.3f}s to format metrics, {t2 - t1:.3f}s to encode them)')
         return response
 
 ################################################
 # RawAcq REST Client
 ################################################
+
 
 class RawAcqAsyncRESTClient(AsyncRESTClient):
     """
@@ -2605,8 +2622,8 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
                  hostname='localhost',
                  port=RawAcqAsyncRESTServer.DEFAULT_PORT,
                  base_dir='~/data',
-                 base_filename= None,
-                 create_server = True,
+                 base_filename=None,
+                 create_server=True,
                  **config):
         super().__init__(
             hostname=hostname,
@@ -2619,53 +2636,56 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
         self.base_filename = base_filename or name
         self.config = config
 
-
-
     async def ping(self):
         try:
             await self.get('status')
-            self.log.info("Successfully pinged raw_acq server at %s:%i" % (self.hostname, self.port))
+            self.log.info(f"Successfully pinged raw_acq server at {self.hostname}:{self.port}")
         except Exception as e:
             self.log.debug(repr(e))
-            self.log.error("Can't ping raw_acq server at %s:%i" % (self.hostname, self.port))
+            self.log.error("Can't ping raw_acq server at {self.hostname}:{self.port}")
             return False
-        return True # return raises an exception: we don't want it in the try block
-
+        return True  # return raises an exception: we don't want it in the try block
 
     async def status(self):
         result = await self.get('status')
         return result
 
-
     async def start(self, **config):
         """ Start the RaqAcq remote server with the keyword argument as configuration data"""
         self.log.info(f'{self!r}: Starting remote RawAcq server at {self.hostname}:{self.port}')
-        self.log.debug('%s: Starting remote RawAcq server at %s:%i with config: %r' % (self, self.hostname, self.port, config))
+        self.log.debug(
+            f'{self!r}: Starting remote RawAcq server '
+            f'at {self.hostname}:{self.port} with config: {config!r}')
         result = await self.post('start', **config)
         return result
-
 
     async def stop(self):
         result = await self.get('stop')
         return result
 
-
     async def get_packets(self):
         data = await self.get('get-packets')
         return data
 
-
     async def start_fft_rms(self, stream_ids=[], target_gain_bank=0, number_of_frames=100):
-        await self.post('start-fft-rms', stream_ids=stream_ids, target_gain_bank=target_gain_bank, number_of_frames=number_of_frames)
-
+        await self.post(
+            'start-fft-rms',
+            stream_ids=stream_ids,
+            target_gain_bank=target_gain_bank,
+            number_of_frames=number_of_frames)
 
     async def get_fft_rms(self):
         ix, rms = await self.get('get-fft-rms')
         return (ix, rms)
 
-
-    async def start_raw_hdf5(self, base_dir=None, base_filename=None, capture_duration=0, capture_refresh_time=0, elements_per_file=2048*64):
-        result = await self.post('start-raw-hdf5',
+    async def start_raw_hdf5(self,
+                             base_dir=None,
+                             base_filename=None,
+                             capture_duration=0,
+                             capture_refresh_time=0,
+                             elements_per_file=2048 * 64):
+        result = await self.post(
+            'start-raw-hdf5',
             base_dir=base_dir or self.hdf5_base_dir,
             base_filename=base_filename or self.base_filename,
             capture_duration=capture_duration,
@@ -2673,23 +2693,22 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
             elements_per_file=elements_per_file)
         return result
 
-
     async def stop_raw_hdf5(self):
         result = await self.get('stop-raw-hdf5')
         return result
 
+    async def start_corr_hdf5(
+            self,
+            base_dir=None, base_filename=None,
+            capture_duration=0,
+            elements_per_file=2048 * 64,
+            capture_n_inputs=4,
+            software_integration_period=1,
+            firmware_integration_period=1,
+            frame0_irigb_time=0):
 
-    async def start_corr_hdf5(self,
-        base_dir=None, base_filename=None,
-        capture_duration=0,
-        elements_per_file=2048*64,
-        capture_n_inputs=4,
-        software_integration_period=1,
-        firmware_integration_period=1,
-        frame0_irigb_time=0
-        ):
-
-        result = await self.post('start-corr-hdf5',
+        result = await self.post(
+            'start-corr-hdf5',
             base_dir=base_dir,
             base_filename=base_filename,
             capture_duration=capture_duration,
@@ -2700,14 +2719,13 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
             frame0_irigb_time=frame0_irigb_time)
         return result
 
-
     async def stop_corr_hdf5(self):
         result = await self.get('stop-corr-hdf5')
         return result
 
-
     async def estimate_gains(self):
         return (await self.post('estimate_gains'))   # estimate-gains?
+
 
 def main():
     """ Command-line interface to operate the RawAcq server.
@@ -2773,7 +2791,6 @@ def main():
     Send a command to server:
 
         ./raw_acq stop # send stop command to server on localhost:54322
-        ./raw_acq jfc.erh power_off # power off supplies used by server running at theaddress specified in the jfc.erh config
     """
     # Setup logging
     log.setup_basic_logging('DEBUG')
@@ -2782,9 +2799,10 @@ def main():
         sys.argv[1:],
         RawAcqAsyncRESTServer,
         RawAcqAsyncRESTClient,
-        object_name ='RawAcq',
+        object_name='RawAcq',
         server_config_path='raw_acq.servers')
     return client, server
+
 
 if __name__ == '__main__':
     client, server = main()
