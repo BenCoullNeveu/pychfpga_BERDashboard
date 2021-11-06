@@ -15,6 +15,7 @@ import numpy as np
 # Local packages
 from .Module import Module_base, BitField
 
+
 class SCALER_base(Module_base):
     """ Implements interface to the SCALER module within a procecessor pipeline"""
     # Create local variables for page numbers tomake the table more readable
@@ -92,7 +93,8 @@ class SCALER_base(Module_base):
     #     Sets the scaler's fixed gain complex value.
     #     """
 
-    #     if complex_gain.real<-32768 or complex_gain.real > 32767 or complex_gain.imag<-32768 or complex_gain.imag>32767:
+    #     if complex_gain.real<-32768 or complex_gain.real > 32767 or complex_gain.imag<-32768 or
+    #                complex_gain.imag>32767:
     #         raise ValueError("Invalid fixed gain")
 
     #     self.FIXED_GAIN_REAL = np.int16(complex_gain.real)
@@ -167,7 +169,6 @@ class SCALER_base(Module_base):
         for page in range(8):  # there are 8 pages of coefficients per bank
             self.WRITE_COEFF_BANK = 8 * bank + page
             self.write_ram(0, gain_string[512 * page: 512 * (page + 1)])
-
             # there are 128 coefficients per page ( 4 byte per coefficient = 512 bytes total per page)
             # for ix in range(128):
             #     bin = page*128 + ix
@@ -180,10 +181,9 @@ class SCALER_base(Module_base):
         # self.READ_COEFF_BANK = bank
 
     def get_gain_table(self, bank=0, use_cache=False):
-        """
-        Gets the scaler's complex gain table for the specified bank.  Converts to numpy complex array.
+        """Gets the scaler's complex gain table for the specified bank. Converts to numpy complex array.
 
-        Parameters:
+        Args:
 
             bank (int): bank number for which the gain is requested
 
@@ -200,7 +200,7 @@ class SCALER_base(Module_base):
             self.WRITE_COEFF_BANK = 8 * bank + page  # Sets which page/bank being read? Not sure if will work...
             page_table = self.read_ram(0, length=512)
             for ix in range(128):  # there are 128 coefficients per page (4 byte per coeff = 512 bytes total per page)
-                g_imag, g_real = struct.unpack('<hh', page_table[4*ix: 4*ix + 4])
+                g_imag, g_real = struct.unpack('<hh', page_table[4 * ix: 4 * ix + 4])
                 gain_table.append(g_real + 1j * g_imag)  # [bin] = g_real +1j*g_imag
         return gain_table
 
@@ -232,7 +232,7 @@ class SCALER_base(Module_base):
         if not four_bits:
             raise RuntimeError('8-bit mode not supported by simulation model yet')
 
-        word = [None]*4
+        word = [None] * 4
         (flags, word[0], word[1], word[2], word[3]) = scaler_input
 
         (number_of_frames, words_per_frame) = word.shape
@@ -243,8 +243,8 @@ class SCALER_base(Module_base):
         else:
             if any(word < -1 << 17) or any(word >= 1 << 17):
                 raise ValueError('input values overflows a signed 18-bit word')
-            data_real = np.reshape([word(0), word(2)], (number_of_frames, 2*words_per_frame), order='F')
-            data_imag = np.reshape([word(1), word(3)], (number_of_frames, 2*words_per_frame), order='F')
+            data_real = np.reshape([word(0), word(2)], (number_of_frames, 2 * words_per_frame), order='F')
+            data_imag = np.reshape([word(1), word(3)], (number_of_frames, 2 * words_per_frame), order='F')
             gains = self.get_gain_table()  # 16 bits
             shift_left = self.SHIFT_LEFT
             rounding_mode = self.ROUNDING_MODE
