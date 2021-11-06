@@ -54,9 +54,9 @@ from pychfpga.core.icecore_ext import Ccoll
 from pychfpga.core.icecore_ext import mdns_discover
 
 # from pychfpga.core.icecore import IceBoardPlus
-from pychfpga.core.icecore_ext import IceBoard, IceBoardPlus, IceCrate
+from pychfpga.core.icecore_ext import Motherboard, IceBoard, IceCrate, ZCU111
+# from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.MGADC08.MGADC08 import FMCMezzanine_MGADC08  # Import to make sure this Mezzanine is registered  so it can be discovered
-from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.Agilent_N5764A import AgilentN5764A
 # from pychfpga.gpu_node import GpuNodeHandler
 from pychfpga import Metrics
@@ -66,32 +66,6 @@ from pychfpga import load_yaml_config
 
 #####################################
 
-class FPGABitstream(object):
-    """ Helper object used to load and store a FPGA bitstream. You don't have
-    to use it, but it makes the code look nicer"""
-    bitstream = None
-
-    def __init__(self, filename, auto_reload=True):
-        self.filename = filename
-        self.auto_reload = auto_reload
-        if not self.auto_reload:
-            self._load()
-
-    def __str__(self):
-        """ Return the bitstream as a string. """
-        if self.auto_reload:
-            try:
-                self._load()
-            except IOError:
-                if not self.bitstream:
-                    raise
-        return self.bitstream
-
-    def _load(self):
-        with open(self.filename, 'rb') as file_:
-            self.bitstream = file_.read()
-        self.crc32 = zlib.crc32(self.bitstream) & 0xFFFFFFFF  # compute CRC32 of the data
-        self.base64 = base64.b64encode(self.bitstream)
 
 
 # Default ADC delays
@@ -148,7 +122,7 @@ class FPGAArray(object):
             # reference_frequency=10e6,
             # data_width=4,
 
-            sync_method='distributed_time',
+            sync_method=None,
             sync_source=None,
             sync_master=None,
             sync_master_time_source=None,
@@ -187,7 +161,7 @@ class FPGAArray(object):
                 - *str* or *list of str* : A string or list of strings that describes the hardware to be
                   added to the hardware map in the format:
 
-                  ``hwm := {Iceboard_descriptors | Icecrate_descriptors | mezzanine_descriptors} ...``
+                  ``hwm := {board_descriptors | crate_descriptors | mezzanine_descriptors} ...``
 
                   where
 
@@ -196,8 +170,7 @@ class FPGAArray(object):
                   ``Icecrate_descriptors := {[MGK7]BP16 serial[:crate_number] [serial[:crate_number]] ...}``,
 
                   Autodiscovery is used as needed to complete the hardware map
-                  (see notes below). See `parse_hw_string` for a description of
-                  the syntax
+                  (see notes below).
 
                 - *list of dict*: list of dicts that describe the hardware map elements to create.
 
@@ -562,7 +535,6 @@ class FPGAArray(object):
         # setup pychfpga package logging
         ###########################################
         # This sets the logging that comes out from *all* the modules within *pychfpga* package
-        # (e.g. pychfpga.core.chfpga_controller.chFPGA_controller(), pychfpga.fpga_array.FPGAArray(), etc.)
         # We are careful not to set the root logger, which might have its own
         if stderr_log_level or syslog_log_level:
             parent_logger_name = __name__.rsplit('.', 1)[0] if '.' in __name__ else ''
@@ -587,25 +559,6 @@ class FPGAArray(object):
                             parent_logger.setLevel(min(parent_logger.level, h.level))
 
 
-        # If no bitfile is provided, automatically select the bitfile in the
-        # current repository based on the operational mode.
-        if bitfile is None:
-            if mode == 'corr16':
-                filename = 'SIFPGA_MGK7MB.bit'
-            else:
-                filename = 'chFPGA_MGK7MB_Rev2.bit'
-
-            bitfile = os.path.join(
-                os.path.dirname(__file__),
-                'fpga_bitstreams',
-                filename)
-
-        # Tempporary hack to determine the nominal processing frequency of the
-        # selected firmware. This should be read out from the firmware.
-        if os.path.split(bitfile)[1].startswith('chord'):
-                processing_frequency = 300e6
-        else:
-                processing_frequency = 200e6
 
         self.logger.info('%r: ------------------------' % self)
         self.logger.info('%r: F P G A   A R R A Y' % self)
@@ -630,8 +583,6 @@ class FPGAArray(object):
         self.logger.info('%r: ------------------------' % self)
 
 
-        self.logger.info(f'{self!r}: Firmware professing frequency is {processing_frequency/1e6:.3f} MHz')
-
         __main__._host_interface_ip_addr = if_ip
 
         # COnvert the FPGA IP-setting function name to an actual function
@@ -643,7 +594,7 @@ class FPGAArray(object):
                 "Valid strings are  %s" %
                 (fpga_ip_addr_fn, ', '.join("'%s'" % fn for fn in self.FPGA_IP_ADDR_FN_TABLE)))
 
-        IceBoard.clear_hardware_map()
+        Motherboard.clear_hardware_map()
         # Fix up a few parameters for convenience
         # Add `iceboards'
         if isinstance(iceboards, (str, int)):
@@ -658,7 +609,7 @@ class FPGAArray(object):
         if icecrates:
             self.process_str_hwm(f"MGK7BP16 {' '.join(str(ic) for ic in icecrates)}")
 
-        # print(f'HWM before = {IceBoard.get_all_instances()}')
+        # print(f'HWM before = {Motherboard.get_all_instances()}')
 
         # iceboards = [self._to_integer(x) for x in iceboards]
 
@@ -695,7 +646,7 @@ class FPGAArray(object):
         #     # self.hwm = HardwareMap()  # Create empty hardware map
         #     self.hwm = []
 
-        self.hwm = IceBoard._instance_registry
+        self.hwm = Motherboard._instance_registry
         # If the hwm parameter is a non-empty list of  dicts, create the hardware map by instantiating the
         # object of the type contained in the ``class`` element and passing it the remaining
         # elements as keyword arguments
@@ -789,24 +740,6 @@ class FPGAArray(object):
         #                 ib.hostname = socket.gethostbyname(ib.hostname)
         #         self.logger.info('%r: Finished resolving IP addresses. It took %s seconds' % (self, time.time() - t0))
 
-        ########################################################
-        # Establish Tuber communication (ARM only)
-        ########################################################
-        # All the boards in the hardware map should have a hostname now. Let's
-        # initialize ARM/Tuber. We start by forcing Tuber to asynchronously
-        # request and cache the Tuber methods. This validates the connection
-        # and makes the timing of future requests faster and more predictable
-        # in timing
-        #
-        # We do this now because we need access to the tuber methods for
-        # resolving the missing serial/crate/slot info.
-        # if self.hwm:
-        #     self.logger.info(f'{self!r}: Establishing communication with the IceBoard ARM '
-        #                      'processors with explicit hostnames')
-        #     t0 = time.time()
-        #     result await asyncio.gather(*[ib.ping_async() for ib in self.hwm if ib.hostname])
-        #     self.logger.info('%r: Connection with %i ARM processors established. It took %s seconds'
-        #                      % (self, len(self.hwm), time.time() - t0))
 
 
 
@@ -815,10 +748,10 @@ class FPGAArray(object):
         ###########################################################################
         # We add the boards/crates that are specified by serial number
         # The serial and slot numbers will be set based on the data returned by the MDNS TXT fields
-        ib_to_discover = [(ib.part_number, ib.serial) for ib in IceBoard.get_all_instances() if ib.serial and not ib.hostname]
+        ib_to_discover = [(ib.part_number, ib.serial) for ib in Motherboard.get_all_instances() if ib.serial and not ib.hostname]
         ic_to_discover = [(ic.part_number, ic.serial) for ic in IceCrate.get_all_instances() if ic.serial and not ic.slot]
         # Remove iceboards with wildcard serial numbers
-        for ib in IceBoard.get_all_instances():
+        for ib in Motherboard.get_all_instances():
             if ib.serial == '*':
                 ib.delete_instance()
         if ib_to_discover or ic_to_discover:
@@ -832,10 +765,27 @@ class FPGAArray(object):
                           icecrates=ic_to_discover,
                           timeout=mdns_timeout)
 
+
         ########################################################
-        # Resolve missing serial/crate/slot info through the ARM
+        # Establish communication with the motherboards
         ########################################################
-        # Complete serial, crate and slot information on IceBoard that miss
+        # At this point all the motherboards should have a hostname. We need
+        # to establish communication with them to self-discover the missing
+        # serial/slot/crate information.
+
+        if self.hwm:
+            self.logger.info(f'{self!r}: Establishing communication with the Motherboards')
+            t0 = time.time()
+            result = await asyncio.gather(*[ib.open_platform_async() for ib in self.hwm if ib.hostname])
+            self.logger.info('%r: Connection with %i ARM processors established. It took %s seconds'
+                             % (self, len(self.hwm), time.time() - t0))
+
+
+
+        ########################################################
+        # Resolve missing serial/crate/slot info through the motherboard's on-board processor
+        ########################################################
+        # Complete serial, crate and slot information on Motherboard that miss
         # that information by talking directly to the ARM
         # (i.e without using mDNS).
         ib_without_serial = [ib for ib in self.hwm if ib.hostname and ib.serial is None]
@@ -877,25 +827,25 @@ class FPGAArray(object):
         ###########################################################################
         # Exclude boards
         ###########################################################################
-        for ib in IceBoard.get_all_instances():
+        for ib in Motherboard.get_all_instances():
             if ib.serial and exclude_iceboards:
                 int_serial = self._to_int(ib.serial)
                 if ib.serial in exclude_iceboards or int_serial in exclude_iceboards:
                     ib.delete_instance()
                     self.logger.info(
-                        f'{self!r}: Removing IceBoard {ib} based on '
+                        f'{self!r}: Removing Motherboard {ib} based on '
                         f'exclusion list: {exclude_iceboards}')
 
         ###########################################################################
         # Cleanup hardware map
         ###########################################################################
-        used_icecrates = {ib.crate for ib in IceBoard.get_all_instances()}
+        used_icecrates = {ib.crate for ib in Motherboard.get_all_instances()}
         unused_icecrates = set(IceCrate.get_all_instances()) - used_icecrates
         for ic in unused_icecrates:
             self.logger.warning(f'{self!r}: Removing unused IceCrate {ic}(part_number={ic.part_number}, serial={ic.serial}, crate_number={ic.crate_number})')
             ic.delete_instance()
 
-        unresolved_iceboards = [ib for ib in IceBoard.get_all_instances() if not ib.hostname]
+        unresolved_iceboards = [ib for ib in Motherboard.get_all_instances() if not ib.hostname]
         if unresolved_iceboards:
             for ib in unresolved_iceboards:
                 self.logger.info(f'{self!r}: Unresolved {ib}(part_number={ib.part_number}, serial={ib.serial}, hostname={ib.hostname})')
@@ -989,18 +939,17 @@ class FPGAArray(object):
         # Update generic iceboard objects with firmware-specific ones
         ################################
         # For now, we assume that all the boards boards with two MGADC08
-        # boards are running firmware that is supported by
-        # chFPGA_controller (i.e. chFPGA or siFPGA).
+        # boards are running the chFPGA firmware variant.
         self.logger.debug(f'Before reassignment, HWM={list(self.hwm)}')
         for ic in IceCrate.get_all_instances():
             self.logger.debug(f'{ic}(serial={ic.serial}, crate_number={ic.crate_number}')
-        for i, ib in enumerate(list(self.hwm)):  # use list() so we can modify self.ib in the loop.
-            # print('Board %r has mezzanines %s. Is instance of chFPGA_controller: %s'
-            #       % (ib, ','.join('%i:%s' % (k, m.part_number) for k,m in ib.mezzanine.items()), isinstance(ib, chFPGA_controller)))
-            if all(m.part_number == FMCMezzanine_MGADC08.part_number for m in ib.mezzanine.values() if m) and not isinstance(ib, chFPGA_controller):
-                new_ib = ib.update_instance(new_class=chFPGA_controller)
-                self.logger.debug(f'Replaced {ib!r} with {new_ib!r}')
-                self.logger.debug(f'Mezzanines after {new_ib}, {new_ib.mezzanine}')
+        # for i, ib in enumerate(list(self.hwm)):  # use list() so we can modify self.ib in the loop.
+        #     # print('Board %r has mezzanines %s. Is instance of chFPGA_controller: %s'
+        #     #       % (ib, ','.join('%i:%s' % (k, m.part_number) for k,m in ib.mezzanine.items()), isinstance(ib, chFPGA_controller)))
+        #     if all(m.part_number == FMCMezzanine_MGADC08.part_number for m in ib.mezzanine.values() if m) and not isinstance(ib, chFPGA_controller):
+        #         new_ib = ib.update_instance(new_class=chFPGA_controller)
+        #         self.logger.debug(f'Replaced {ib!r} with {new_ib!r}')
+        #         self.logger.debug(f'Mezzanines after {new_ib}, {new_ib.mezzanine}')
 
 
         #################################
@@ -1008,7 +957,7 @@ class FPGAArray(object):
         #################################
         if any(not c.part_number for c in IceCrate.get_all_instances()):
             raise RuntimeError('There are generic IceCrates left in the hardware map')
-        if any(not i.part_number for i in IceBoard.get_all_instances()):
+        if any(not i.part_number for i in Motherboard.get_all_instances()):
             raise RuntimeError('There are generic IceBoards left in the hardware map')
 
 
@@ -1027,7 +976,7 @@ class FPGAArray(object):
 
 
         #################################
-        # Print the IceBoard table
+        # Print the Motherboard table
         #################################
         self.logger.debug(f'New HWM={self.hwm}')
         for ib in self.hwm:
@@ -1044,102 +993,50 @@ class FPGAArray(object):
         # self.ic = Ccoll.unique((c for c in ib.crate if c) if self.ib else [])
         self.ic = Ccoll(self.ic)
 
-        #################################
-        # Program the FPGAs
-        #################################
-
-        # Tell the IceBoard to run chFPGA firmware, program the FPGA, and establish communication with it
-        if self.ib:
-
-            # We have our final hardware map. Update the `repr` caches
-            for ib in self.ib:
-                ib.set_cache()
-            # ib.set_handler(IceBoardPlusHandler, fpga_bitstream)
-
-            # Configure the FPGA with the bitstream associated with the handler
-            if prog:
-                self.logger.info(f'{self!r}: Configuring FPGAs...')
-                # Associate the bitstream with the target Handler
-                self.fpga_bitstream = FPGABitstream(bitfile, auto_reload=False)
-                self.logger.info(f'{self!r}: Loaded bitfile: {bitfile}')
-                # str(self.fpga_bitstream)
-                # self.ib.register_fpga_bitstream(self.fpga_bitstream)
-                await asyncio.gather(*[ib.set_fpga_bitstream_async(self.fpga_bitstream, force=(prog > 1)) for ib in self.ib])
-                self.logger.info(f'{self!r}: Done configuring FPGAs')
+        # We have our final hardware map. Update the `repr` caches
+        for ib in self.ib:
+            ib.set_cache()
 
         self.print_flush()
 
-        #################################
-        # Initialize
-        #################################
+        self.logger.info(f'{self!r}: Done creating {self!r}')
 
-        if self.ib and open is not None and open > 0:
+        ####################################
+        # Program the FPGAs and open link to firmware
+        ####################################
 
-            ########################
-            # Initialize core FPGA firmware (establish FPGA UDP communications)
-            ########################
-            async def open_core(ib, max_trials=3):
-                """ Try to open the FPGA core firmware (including UDP
-                communications) and reprogram the FPGA and retry a number of
-                times if this fails.
+        await asyncio.gather(*[self.prog_and_open_fpga(
+                ib=ib,
+                prog=prog,
+                open=open,
+                bitfile=bitfile,
+                udp_retries=udp_retries,
+                fpga_ip_addr_fn=fpga_ip_addr_fn,
+                interface_ip_addr=if_ip)
+            for ib in self.ib])
 
-                Parameters:
+        ################################################
+        # Initialize the FPGA firmware
+        ################################################
 
-                    ib: IceBoard handler
+        self.logger.info(f'{self!r}: Initializing FPGA firmware')
 
-                    max_trials (int): Maximun allowed number of reprogramming and retrials before raising an error.
-
-                Exceptions:
-
-                    IOError: Raised if the iceboard's open_core still raaises
-                        an IOError after the maximum number of trials.
-
-                """
-                trial = 1
-                while True:
-                    try:
-                        self.logger.info(
-                            f'{self!r}: Initializing core FPGA firmware for {ib!r}: '
-                            f'Trial {trial}/{max_trials}.')
-
-                        # Initialize FPGA UDP communications. Overrides
-                        # default parameters that were temporarily set when
-                        # the iceboard handler object was created.
-                        await ib.open_core(
-                            udp_retries=udp_retries,
-                            fpga_ip_addr_fn=fpga_ip_addr_fn,
-                            interface_ip_addr=if_ip)
-                        return
-                    except IOError as e:
-                        self.logger.warning('%r: Error while initializing core firmware on trial %i/%i. Error is: \n%r'
-                                          % (self, trial, max_trials, e))
-                        if trial >= max_trials:
-                            raise IOError('%r: Unable to initializing FPGA core firmware after %i trials. Giving up.'
-                                          % (self, trial))
-                        else:
-                            trial += 1
-                            self.logger.warning('%r: Reprogramming FPGA and trying again.' % (self))
-                            await ib.set_fpga_bitstream_async(self.fpga_bitstream, force=True)
-            await asyncio.gather(*[open_core(ib) for ib in self.ib])
-
-            ########################
-            # Initialize application specific FPGA firmware
-            ########################
-
-            self.logger.info(f'{self!r}: Initializing FPGA firmware (calling ib.open(adc_mode={adc_mode}))')
-            await asyncio.gather(*[ib.open(adc_delay_table=ADC_DELAY_TABLE,
-                                 init=open,
-                                 adc_mode=adc_mode,
-                                 adc_bandwidth=adc_bandwidth,
-                                 sampling_frequency=sampling_frequency,
-                                 processing_frequency=processing_frequency,
-                                 **kwargs
-                                 # reference_frequency=reference_frequency,
-                                 ) for ib in self.ib])
+        if self.ib and (open or 0) > 0:
+            await asyncio.gather(*[ib.init_fpga_async(
+                    adc_delay_table=ADC_DELAY_TABLE,
+                    init=open,
+                    adc_mode=adc_mode,
+                    adc_bandwidth=adc_bandwidth,
+                    sampling_frequency=sampling_frequency,
+                    **kwargs
+                ) for ib in self.ib])
 
             ########################
             # Initializing SYNC method
             ########################
+            # As a convenience, set default sync method to irig-b if all boards have a crate
+            if sync_method is None and all(self.ib.crate):
+                sync_method = 'irig-b'
             if sync_method or sync_source:
                 self.logger.info(f'{self!r}: Setting SYNC method')
                 self.set_sync_method(
@@ -1175,7 +1072,66 @@ class FPGAArray(object):
         # Completed
         #################################
 
-        self.logger.info(f'{self!r}: Done creating {self!r}')
+
+    async def prog_and_open_fpga(self, ib, prog, open, bitfile=None, max_trials=3, **kwargs):
+        """ Try to open communication with the FPGA and reprogram the FPGA and retry a number of
+        times if this fails.
+
+        Parameters:
+
+            ib: IceBoard handler
+
+            max_trials (int): Maximun allowed number of reprogramming and retrials before raising an error.
+
+        Exceptions:
+
+            IOError: Raised if the motherboard's open() method still raises
+                an IOError after the maximum number of trials.
+
+        """
+        for trial in range(1, max_trials+1):
+            if not prog:
+                return
+
+            # Configure the FPGA with the bitstream associated with the handler
+            self.logger.info(f'{self!r}: Configuring FPGAs...')
+            # Determine the proper firmware name if not specified
+            if bitfile:  # if we force a specific firmware name
+                ib.firmware_name = bitfile
+            elif not ib.firmware_name:  # set default firmware names for legacy hardware maps where firmware_name is not specified
+                if isinstance(ib, IceBoard):
+                    if mode == 'corr16':
+                        ib.firmware_name = 'SIFPGA_MGK7MB.bit'
+                    else:
+                        ib.firmware_name = 'chFPGA_MGK7MB_Rev2.bit'
+            if not ib.firmware_name:
+                raise ValueError('Firmware name has not been specified')
+
+            await ib.set_fpga_bitstream_async(force=(prog > 1) or trial > 1)
+            self.logger.info(f'{self!r}: Done configuring FPGAs')
+
+            if not (open or 0) > 0:
+                return
+
+            try:
+                self.logger.info(
+                    f'{self!r}: Initializing core FPGA firmware for {ib!r}: '
+                    f'Trial {trial}/{max_trials}.')
+
+                # Initialize FPGA UDP communications. Overrides
+                # default parameters that were temporarily set when
+                # the iceboard handler object was created.
+                await ib.open_fpga_async(**kwargs)
+                return
+            except IOError as e:
+                self.logger.warning('%r: Error while initializing core firmware on trial %i/%i. Error is: \n%r'
+                                  % (self, trial, max_trials, e))
+                if trial == max_trials:
+                    raise IOError('%r: Unable to initializing FPGA core firmware after %i trials. Giving up.'
+                                  % (self, trial))
+                else:
+                    self.logger.warning('%r: Reprogramming FPGA and trying again.' % (self))
+
 
     @staticmethod
     def _to_integer(x):
@@ -1314,7 +1270,7 @@ class FPGAArray(object):
 
                    {"class": class_name, "arg1":arg1, ...}
 
-                ``class_name`` is a string describing the name of of a IceBoard or IceCrate class (or subclass).
+                ``class_name`` is a string describing the name of of a Motherboard or IceCrate class (or subclass).
 
                 ``"arg1":arg1`` are the arguments passed to the class constructor.
 
@@ -1335,7 +1291,7 @@ class FPGAArray(object):
         self.logger.debug(f'{self!r}: Creating Hardware Map from list {hwm}')
         # self.hwm = []  # Create empty hardware map
         icecrate_classes = {c.__name__: c for c in IceCrate.get_all_classes()}
-        iceboard_classes = {c.__name__: c for c in IceBoard.get_all_classes()}
+        iceboard_classes = {c.__name__: c for c in Motherboard.get_all_classes()}
 
         # First pass: check 1) if the class names are valid and 2) create the crate instances
         for hwm_entry in hwm:
@@ -1358,7 +1314,7 @@ class FPGAArray(object):
             class_name = params.pop('class')
             if class_name in iceboard_classes:
                 self.logger.debug(f"Calling getuniqueinstance class={class_name}")
-                ib = IceBoard.get_unique_instance(new_class=iceboard_classes[class_name], **params)
+                ib = Motherboard.get_unique_instance(new_class=iceboard_classes[class_name], **params)
                 # self.logger.debug('%r: Crate %r is in %r' % (self, crate_number, params))
 
 
@@ -1383,7 +1339,7 @@ class FPGAArray(object):
             hw_string = ' '.join(str(s) for s in hw_string)
 
         if hw_string == '*':
-            IceBoard.get_unique_instance(serial='*')
+            Motherboard.get_unique_instance(serial='*')
             return
         # Split the string in ' '- or '_'-separated elements
         elements = str(hw_string).replace('_', ' ').strip().split(' ')
@@ -1410,23 +1366,23 @@ class FPGAArray(object):
         for el in elements:
             if '.' in el:  # if hostname
                 hostname, slot, crate_number = split_fields(el, 3)
-                # print(f'Adding IceBoard {hostname}, {slot}, {crate_number}')
-                ib = IceBoard.get_unique_instance(hostname=hostname, slot=slot, crate_number=crate_number)
+                # print(f'Adding Motherboard {hostname}, {slot}, {crate_number}')
+                ib = Motherboard.get_unique_instance(hostname=hostname, slot=slot, crate_number=crate_number)
                 current_class = None
             elif el[0].isdigit(): # if a serial
                 if not current_class:
                     raise RuntimeError('A part number must be specified before a target serial number')
-                if issubclass(current_class, IceBoard):
+                if issubclass(current_class, Motherboard):
                     serial, slot, crate_number = split_fields(el, 3)
-                    # print(f'Adding IceBoard {serial}, {slot}, {crate_number}')
-                    ib = IceBoard.get_unique_instance(new_class=current_class, serial=serial, slot=slot, crate_number=crate_number)
+                    # print(f'Adding Motherboard {serial}, {slot}, {crate_number}')
+                    ib = Motherboard.get_unique_instance(new_class=current_class, serial=serial, slot=slot, crate_number=crate_number)
                 elif issubclass(current_class, IceCrate):
                     serial, crate_number = split_fields(el, 2)
                     IceCrate.get_unique_instance(new_class=current_class, serial=serial, crate_number=crate_number)
                 else:
-                    raise TypeError(f'Trying to create object {current_class} that is other than IceBoard or IceCrate')
+                    raise TypeError(f'Trying to create object {current_class} that is other than Motherboard or IceCrate')
             else: # otherwise, assume it is a part number
-                matching_classes = [c for c in [IceBoard] + IceCrate.get_all_classes() if c.part_number and c.part_number.upper().endswith(el.upper())]
+                matching_classes = [c for c in Motherboard.get_all_classes() + IceCrate.get_all_classes() if c.part_number and c.part_number.upper().endswith(el.upper())]
                 if not matching_classes:
                     raise RuntimeError(f'Cannot find a part number that ends in {el}')
                 elif len(matching_classes) == 1:
@@ -2568,7 +2524,7 @@ class FPGAArray(object):
         Parameters:
 
         method: (string)
-            - 'distributed_time': All boards receive and decode IRIG-B time
+            - 'distributed_time' or 'irig-b' or 'irigb': All boards receive and decode IRIG-B time
               signal and trigger a SYNC event at a target time sent to every
               board in the array.
 
@@ -2611,8 +2567,8 @@ class FPGAArray(object):
               connectors. The master board is configured to generate this
               trigger signal on its SMA connector.
 
-            - 'local_soft_trigger': Each board generates its won SYNC trigger
-              when it receives a software command to do so.
+            - 'local_soft_trigger' or 'local': Each board generates its own
+              SYNC trigger when it receives a software command to do so.
 
 
         source: (string): source of the time or trigger signal for the slave
@@ -2662,7 +2618,7 @@ class FPGAArray(object):
         self.sync_master = master
         self.sync_method = method
 
-        if method == 'distributed_time':
+        if method in ('distributed_time', 'irig-b', 'irigb'):
             source = source or 'bp_time'
             self.ib.set_sync_source('irigb')
             self.ib.set_irigb_source_sync(source)
@@ -2699,7 +2655,7 @@ class FPGAArray(object):
                 raise ValueError('In the centralized soft trigger mode, no master_time_source must be specified')
             self.ib.set_sync_source(source)
             master.set_user_output_source('sync')
-        elif method == 'local_soft_trigger':
+        elif method in ('local_soft_trigger', 'local'):
             if master:
                 raise ValueError('In the local soft trigger mode, a master board should NOT specified')
             if master_time_source:
@@ -4479,7 +4435,7 @@ class FPGAArray(object):
         """
 
         if not len(self.ib):
-            print('[ There are no IceBoards in the hardware map ]')
+            print('[ There are no Motherboards in the hardware map ]')
             return
 
         # Process func and end up with a dict of {iceboard:cell_text}
@@ -4500,9 +4456,9 @@ class FPGAArray(object):
 
         # Print a table of crate-less (stand-alone) iceboard
         orphan_iceboards = [ib for ib in iceboards if not ib.crate or not ib.crate.serial]
-        corner_label = 'Standalone\nICEBoards'
+        corner_label = 'Standalone\nMotherboards'
         # col_labels = ['-'] * len(orphan_iceboards)
-        col_labels = [f'Virt. slot {ib.slot}\nSN{ib.serial}\n{ib.hostname}' for ib in orphan_iceboards]
+        col_labels = [f'Virt. slot {ib.slot}\n{ib.part_number}_SN{ib.serial}\n{ib.hostname}' for ib in orphan_iceboards]
         # for i, ib in enumerate(orphan_iceboards):
         #    col_labels[i] += '\n%s' % ib.hostname
         table = []
@@ -4846,167 +4802,170 @@ class FPGAArray(object):
             else:
                 self.logger.warning("%r: Communication with FPGA is not initialized. Cannot set ADC delays" % (self))
 
+#####
+# parser below staged for deletion
+#####
+# ICE_PATTERNS = [
+#         { 'regex': r'(MGK7)?BP1',           'cur_state': None,  'next_state': 'ic',  'entry': ('MGK7BP1', None, None),  'store_in': None        },  # Sets the curent model and type to the One-slot backplane; matches MGK7BP1, BP1
+#         { 'regex': r'(MGK7)?BP16',          'cur_state': None,  'next_state': 'ic',  'entry': ('MGK7BP16', None, None), 'store_in': None        },  # Sets the curent model and type to the 16-slot backplane; matches MGK7BP16, BP16
+#         { 'regex': r'(?:|SN)?(\d+)',        'cur_state': 'ic',  'next_state': 'ic',  'entry': (None, 0, None),          'store_in': 'icecrates' },  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
+#         { 'regex': r'(?:|SN)?(\d+):(\d*)',  'cur_state': 'ic',  'next_state': 'ic',  'entry': (None, 0, 1),             'store_in': 'icecrates' },  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
+#         { 'regex': r'\*',                   'cur_state': 'ic',  'next_state': None,  'entry': (None, '*', None),        'store_in': 'icecrates' },  # Stores a an item that selects all units of the current model
 
-ICE_PATTERNS = [
-        { 'regex': r'(MGK7)?BP1',           'cur_state': None,  'next_state': 'ic',  'entry': ('MGK7BP1', None, None),  'store_in': None        },  # Sets the curent model and type to the One-slot backplane; matches MGK7BP1, BP1
-        { 'regex': r'(MGK7)?BP16',          'cur_state': None,  'next_state': 'ic',  'entry': ('MGK7BP16', None, None), 'store_in': None        },  # Sets the curent model and type to the 16-slot backplane; matches MGK7BP16, BP16
-        { 'regex': r'(?:|SN)?(\d+)',        'cur_state': 'ic',  'next_state': 'ic',  'entry': (None, 0, None),          'store_in': 'icecrates' },  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
-        { 'regex': r'(?:|SN)?(\d+):(\d*)',  'cur_state': 'ic',  'next_state': 'ic',  'entry': (None, 0, 1),             'store_in': 'icecrates' },  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
-        { 'regex': r'\*',                   'cur_state': 'ic',  'next_state': None,  'entry': (None, '*', None),        'store_in': 'icecrates' },  # Stores a an item that selects all units of the current model
+#         { 'regex': r'(\d+\.\d+\.\d+\.\d+)', 'cur_state': None,  'next_state': None,  'entry': (None, 0),                'store_in': 'iceboards' },  # Stores a motherboard item based on its IP address only
+#         { 'regex': r'(\w+\.local)',         'cur_state': None,  'next_state': None,  'entry': (None, 0),                'store_in': 'iceboards' },  # Stores a motherboard item based on its local hostname only
+#         { 'regex': r'(MGK7)?MB',            'cur_state': None,  'next_state': 'ib',  'entry': ('MGK7MB', None),         'store_in': None        },  # Sets the curent model and type to the ICEBoard (motherboard); matches MGK7MB, MB
+#         { 'regex': r'ZCU111',               'cur_state': None,  'next_state': 'ib',  'entry': ('ZCU111', None),         'store_in': None        },  # Sets the curent model and type to the ICEBoard (motherboard); matches MGK7MB, MB
+#         { 'regex': r'(?:|SN)?(\d+)',        'cur_state': 'ib',  'next_state': 'ib',  'entry': (None, 0),                'store_in': 'iceboards' },  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
+#         { 'regex': r'\*',                   'cur_state': 'ib',  'next_state': None,  'entry': (None, '*'),              'store_in': 'iceboards' },  # Stores a an item that selects all units of the current model
 
-        { 'regex': r'(\d+\.\d+\.\d+\.\d+)', 'cur_state': None,  'next_state': None,  'entry': (None, 0),                'store_in': 'iceboards' },  # Stores a motherboard item based on its IP address only
-        { 'regex': r'(\w+\.local)',         'cur_state': None,  'next_state': None,  'entry': (None, 0),                'store_in': 'iceboards' },  # Stores a motherboard item based on its local hostname only
-        { 'regex': r'(MGK7)?MB',            'cur_state': None,  'next_state': 'ib',  'entry': ('MGK7MB', None),         'store_in': None        },  # Sets the curent model and type to the ICEBoard (motherboard); matches MGK7MB, MB
-        { 'regex': r'(?:|SN)?(\d+)',        'cur_state': 'ib',  'next_state': 'ib',  'entry': (None, 0),                'store_in': 'iceboards' },  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
-        { 'regex': r'\*',                   'cur_state': 'ib',  'next_state': None,  'entry': (None, '*'),              'store_in': 'iceboards' },  # Stores a an item that selects all units of the current model
+#         { 'regex': r'(MG)?ADC08',           'cur_state': None,  'next_state': 'adc', 'entry': ('MGADC08', None),        'store_in': None        },  # Sets the curent model and type to the CHIME Mezzanine;  matches MGADC08, ADC08
+#         { 'regex': r'29821-0000-(\d{4})',   'cur_state': None,  'next_state': None,  'entry': ('MGADC08', 0),           'store_in': 'mezzanines'},  # Stores a MGADC08 mezzanine item based on serial number extracted from the Digico barcodes (29821-000-ssss, where ssss=serial number)
+#         { 'regex': r'35896-0000-(\d{4})',   'cur_state': None,  'next_state': None,  'entry': ('MGADC08', 0),           'store_in': 'mezzanines'},  # Stores a MGADC08 mezzanine item based on serial number extracted from the Digico barcodes
+#         { 'regex': r'(?:|SN)?(\d+)',        'cur_state': 'adc', 'next_state': 'adc', 'entry': (None, 0),                'store_in': 'mezzanines'},  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
 
-        { 'regex': r'(MG)?ADC08',           'cur_state': None,  'next_state': 'adc', 'entry': ('MGADC08', None),        'store_in': None        },  # Sets the curent model and type to the CHIME Mezzanine;  matches MGADC08, ADC08
-        { 'regex': r'29821-0000-(\d{4})',   'cur_state': None,  'next_state': None,  'entry': ('MGADC08', 0),           'store_in': 'mezzanines'},  # Stores a MGADC08 mezzanine item based on serial number extracted from the Digico barcodes (29821-000-ssss, where ssss=serial number)
-        { 'regex': r'35896-0000-(\d{4})',   'cur_state': None,  'next_state': None,  'entry': ('MGADC08', 0),           'store_in': 'mezzanines'},  # Stores a MGADC08 mezzanine item based on serial number extracted from the Digico barcodes
-        { 'regex': r'(?:|SN)?(\d+)',        'cur_state': 'adc', 'next_state': 'adc', 'entry': (None, 0),                'store_in': 'mezzanines'},  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
+#         { 'regex': r'crate',                'cur_state': None,  'next_state': 'cr', 'entry': (None,),                    'store_in': None        },  #
+#         { 'regex': r'(\d+)',                'cur_state': 'cr',  'next_state': 'cr', 'entry': (0,),                        'store_in': 'crates' },
+#         ]
 
-        { 'regex': r'crate',                'cur_state': None,  'next_state': 'cr', 'entry': (None,),                    'store_in': None        },  #
-        { 'regex': r'(\d+)',                'cur_state': 'cr',  'next_state': 'cr', 'entry': (0,),                        'store_in': 'crates' },
-        ]
+# def parse_hw_string(hw_string, remap_table={}, dut_id_patterns=ICE_PATTERNS):
+#     """ Parses a string describing ICE hardware elements (motherboards, crates and mezzanines)
 
-def parse_hw_string(hw_string, remap_table={}, dut_id_patterns=ICE_PATTERNS):
-    """ Parses a string describing ICE hardware elements (motherboards, crates and mezzanines)
+#     Arguments:
 
-    Arguments:
+#         hw_string (str): string describing the model, serial number/hostname
+#            and optionally the sequence number of the desired hardware elements
 
-        hw_string (str): string describing the model, serial number/hostname
-           and optionally the sequence number of the desired hardware elements
+#         remap_table (dict): used to remap entries into other entries. Used to implement aliases, and
+#             map crate numbers into actual model/serial/crate number entries, in the format::
 
-        remap_table (dict): used to remap entries into other entries. Used to implement aliases, and
-            map crate numbers into actual model/serial/crate number entries, in the format::
+#                 { type : { entry:(target_type, target_entry), ...} ...}
 
-                { type : { entry:(target_type, target_entry), ...} ...}
+#         dut_id_patterns (list of dict): Describe patterns to match, the type
+#             of hardware they match, and the data they provide.
 
-        dut_id_patterns (list of dict): Describe patterns to match, the type
-            of hardware they match, and the data they provide.
+#             regex: the regular expression to match, with optional capture groups.
 
-            regex: the regular expression to match, with optional capture groups.
+#             cur_state (str): The state to which the match apply. ``None`` means it applies to any state.
 
-            cur_state (str): The state to which the match apply. ``None`` means it applies to any state.
+#             next_state (str): The state to move into if there is a match
 
-            next_state (str): The state to move into if there is a match
+#             entry (tuple): Entry to make or update, as a (model, serial) or (model, serial, number) tuple.  For each
+#                 of the values in the tuple:
 
-            entry (tuple): Entry to make or update, as a (model, serial) or (model, serial, number) tuple.  For each
-                of the values in the tuple:
+#                 - None: means the value is unchanged
+#                 - *int*: get the regex capture group specified by the *int*
+#                 - *str*: Set the field to *str*
 
-                - None: means the value is unchanged
-                - *int*: get the regex capture group specified by the *int*
-                - *str*: Set the field to *str*
-
-            store_in: the type of hardware in which to store the entry if there is a match
+#             store_in: the type of hardware in which to store the entry if there is a match
 
 
-    Returns:
+#     Returns:
 
-        A NameSpace object describing a the specified hardware elements for
-        each hardware type listed in `dut_id_patterns`::
+#         A NameSpace object describing a the specified hardware elements for
+#         each hardware type listed in `dut_id_patterns`::
 
-        .icecrates =  [ (model, serial, crate_number) ...],
-        .iceboards =  [ (model, serial) | (None, ip_address) | (None, hostname)]
-        .mezzanines: [ (model, serial) ...]
+#         .icecrates =  [ (model, serial, crate_number) ...],
+#         .iceboards =  [ (model, serial) | (None, ip_address) | (None, hostname)]
+#         .mezzanines: [ (model, serial) ...]
 
-        Serial numbers are converted to integers if possible; otherwise, they are stored as a string.
+#         Serial numbers are converted to integers if possible; otherwise, they are stored as a string.
 
-    Underscore characters are converted to blanks before parsing.
+#     Underscore characters are converted to blanks before parsing.
 
-    Examples:
-        'MGK7BP16_SN018:3' => ('MGK7BP16', 18, 3)
-        'MGK7BP16_018:3' => ('MGK7BP16', 18, 3)
-        '18:3' => (None, 18, 3)
-        '18' => (None, 18, None)
-    """
-    logger = logging.getLogger(__name__)
-    # If hw_string is a list of string, combine them in one single string
-    if isinstance(hw_string, (list, tuple)):
-        hw_string = ' '.join(str(s) for s in hw_string)
+#     Examples:
+#         'MGK7BP16_SN018:3' => ('MGK7BP16', 18, 3)
+#         'MGK7BP16_018:3' => ('MGK7BP16', 18, 3)
+#         '18:3' => (None, 18, 3)
+#         '18' => (None, 18, None)
+#     """
+#     logger = logging.getLogger(__name__)
+#     # If hw_string is a list of string, combine them in one single string
+#     if isinstance(hw_string, (list, tuple)):
+#         hw_string = ' '.join(str(s) for s in hw_string)
 
-    # Create a new hw table with all possible hardware categories
-    hw_table = NameSpace()
-    for t in {d['store_in'] for d in dut_id_patterns if d['store_in'] is not None}:
-        hw_table[t] = []  # crate type with empty list if the type does not exist
+#     # Create a new hw table with all possible hardware categories
+#     hw_table = NameSpace()
+#     for t in {d['store_in'] for d in dut_id_patterns if d['store_in'] is not None}:
+#         hw_table[t] = []  # crate type with empty list if the type does not exist
 
-    # Split the string in ' '- or '_'-separated elements
-    elements = str(hw_string).replace('_', ' ').strip().split(' ')
+#     # Split the string in ' '- or '_'-separated elements
+#     elements = str(hw_string).replace('_', ' ').strip().split(' ')
 
-    # Special case: if the hw_string is just '*', we register all units of every known model with
-    # '*' as the serial number (second) field
-    if len(elements) == 1 and elements[0] == '*':
-        for p in dut_id_patterns:
-            type_, entry = p['store_in'], p['entry']
-            wild_entry = entry[0:1] + ('*',) + entry[2:]
-            if wild_entry not in hw_table[type_]:
-                hw_table[type_].append(wild_entry)
-        return hw_table
+#     # Special case: if the hw_string is just '*', we register all units of every known model with
+#     # '*' as the serial number (second) field
+#     if len(elements) == 1 and elements[0] == '*':
+#         for p in dut_id_patterns:
+#             type_, entry = p['store_in'], p['entry']
+#             wild_entry = entry[0:1] + ('*',) + entry[2:]
+#             if wild_entry not in hw_table[type_]:
+#                 hw_table[type_].append(wild_entry)
+#         return hw_table
 
-    def to_int(s):
-        return (int(s) if isinstance(s, str) and s.isdigit() else s)
+#     def to_int(s):
+#         return (int(s) if isinstance(s, str) and s.isdigit() else s)
 
-    pos = 0
-    err = None
-    current_entry = {}  # stores the value for each state
-    state = None
-    for el in elements:
-        pos += len(el) + 1
-        if not el:  # if whitespace
-            continue
-        # print 'checking', el
-        matches = 0
-        for p in dut_id_patterns:
-            regex, cur_state, next_state, entry, store_in = (
-                p['regex'], p['cur_state'], p['next_state'], p['entry'], p['store_in'])
-            if not (cur_state is None or state == cur_state):
-                continue
-            m = re.match('^' + regex + '$', el, re.I)
-            if not m:   # if there is no match
-                continue
-            matches += 1
-            # print 'match %i: ' % matches, regex, el
-            groups = m.groups()  # capture groups, in a list
+#     pos = 0
+#     err = None
+#     current_entry = {}  # stores the value for each state
+#     state = None
+#     for el in elements:
+#         pos += len(el) + 1
+#         if not el:  # if whitespace
+#             continue
+#         # print 'checking', el
+#         matches = 0
+#         for p in dut_id_patterns:
+#             regex, cur_state, next_state, entry, store_in = (
+#                 p['regex'], p['cur_state'], p['next_state'], p['entry'], p['store_in'])
+#             if not (cur_state is None or state == cur_state):
+#                 continue
+#             m = re.match('^' + regex + '$', el, re.I)
+#             if not m:   # if there is no match
+#                 continue
+#             matches += 1
+#             # print 'match %i: ' % matches, regex, el
+#             groups = m.groups()  # capture groups, in a list
 
-            # Update the current entry with the entries that are not None
-            # Always convert to integer if possible
-            new_entry = [(to_int(groups[e] if isinstance(e, int) else e))
-                         if cur_state is None or e is not None or i >= len(current_entry[state])
-                         else current_entry[state][i] for i, e in enumerate(entry)]
+#             # Update the current entry with the entries that are not None
+#             # Always convert to integer if possible
+#             new_entry = [(to_int(groups[e] if isinstance(e, int) else e))
+#                          if cur_state is None or e is not None or i >= len(current_entry[state])
+#                          else current_entry[state][i] for i, e in enumerate(entry)]
 
-            # Store if instructed
-            if store_in:
-                hw_table[store_in].append(tuple(new_entry))
-            elif next_state:
-                current_entry[next_state] = new_entry
-            state = next_state
+#             # Store if instructed
+#             if store_in:
+#                 hw_table[store_in].append(tuple(new_entry))
+#             elif next_state:
+#                 current_entry[next_state] = new_entry
+#             state = next_state
 
-        if err:
-            break
-        if not matches:
-            err = "Could not find a match for element '%s' of the hardware description string" % el
-            break
-        if matches > 1:
-            err = 'element found multiple matches'
-            break
-    if err:
-        print('Error:', err)
-        print(hw_string)
-        print(' '*(pos-2)+'^')
-        raise ValueError(err)
-    # Remap
-    # print 'remapping with ', remap_table
-    for type, entries in list(hw_table.items()):
-        #print type, entries
-        if type in remap_table:
-            for entry in list(entries):
-                #print entry
-                if entry in remap_table[type]:
-                    target_type, target_entry = remap_table[type][entry]
-                    hw_table[target_type].append(target_entry)
-                    hw_table[type].remove(entry)
+#         if err:
+#             break
+#         if not matches:
+#             err = "Could not find a match for element '%s' of the hardware description string" % el
+#             break
+#         if matches > 1:
+#             err = 'element found multiple matches'
+#             break
+#     if err:
+#         print('Error:', err)
+#         print(hw_string)
+#         print(' '*(pos-2)+'^')
+#         raise ValueError(err)
+#     # Remap
+#     # print 'remapping with ', remap_table
+#     for type, entries in list(hw_table.items()):
+#         #print type, entries
+#         if type in remap_table:
+#             for entry in list(entries):
+#                 #print entry
+#                 if entry in remap_table[type]:
+#                     target_type, target_entry = remap_table[type][entry]
+#                     hw_table[target_type].append(target_entry)
+#                     hw_table[type].remove(entry)
 
-    return hw_table
+#     return hw_table
 
 
 log_levels = {'info': logging.INFO, 'debug': logging.DEBUG,
@@ -5019,6 +4978,7 @@ def setup_logging(log_target='syslog', log_level='debug', sql_log_level='warning
     sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
     sql_logger.setLevel(log_levels[sql_log_level])
     logging.getLogger('parso.python.diff').disabled = True # disable ipython logging in interactive sessions
+    logging.getLogger('parso.cache').disabled = True # disable ipython logging in interactive sessions
 
     # Set-up main loggers
     if log_target == 'stream':
@@ -5211,9 +5171,9 @@ def create_fpga_array(args=None):
 
         exclude_iceboards: Remove the specified IceBoards (serial numbers) from the hardware map.
 
-        mdns_timeout: Time to wait for IceBoard to responds to mDNS queries
+        mdns_timeout: Time to wait for motherboards to responds to mDNS queries
 
-        no_mezz: Do not discover nor initialize the mezzanine on the IceBoard
+        no_mezz: Do not discover nor initialize the mezzanine on the motherboards
 
         subarrays: Keep only iceboards that are in the specified subarrays
             (applicable only to objects created explicitely in the
