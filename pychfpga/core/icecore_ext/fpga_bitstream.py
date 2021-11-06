@@ -13,45 +13,30 @@ import datetime
 import os
 import base64
 
-class FpgaBitstream(object):
+class FPGABitstream(object):
     """ Object used to fetch and store FPGA bit files.
 
     The firmware is represented by a URL ( a file or a remote location), and
     is loaded in memory when needed.
     """
 
-    crc32 = None
-    md5_string = None
-    timestamp = None
-    timestamp_string = None
-    url = None  # URL where the binary can be found
-    bitstream_cache = None
+    DEFAULT_BITSTREAM_FOLDER = '../../fpga_bitstreams'
+    bitstream_cache = {} # {url:file_data}
 
-    def __init__(self, url, load=True):
+    def __init__(self, url, bitstream_folder=None):
         """ Creates a bitstream object from the specified 'url', which can be
         a filename or a remote resource.
 
-        If 'load' is true, the bitsream will be loaded in memory immediately,
-        otherwise it will be loaded only when needed.
         """
         self.logger = logging.getLogger(__name__)
-
         self.url = url
-        self.filename = os.path.split(self.url)[1]
-        if load:
-            self.load_bitstream()
+        self.bitstream_folder = bitstream_folder or self.DEFAULT_BITSTREAM_FOLDER
+        self.load_time = None  # time at which the file was loaded
+        self.file_mtime = None # Modification date of the file. Used to quickly determine if it should be reloaded.
+        self.load_bitstream()
 
     def __repr__(self):
-        return '%s(%s)' % (self.__class__.__name__, self.filename)
-
-    def __str__(self):
-        """ Fetch and return the bitstream as a string.
-        """
-        if self.bitstream_cache:
-            return self.bitstream_cache  # return from the cache
-        self.logger.info('%r: Reloading during get_bitstream' % self)
-        self.load_bitstream()
-        return self.bitstream_cache
+        return '%s(%s)' % (self.__class__.__name__, self.url)
 
     def reload(self):
         """ Force the bitstream to be reloaded into the cache.
@@ -65,107 +50,166 @@ class FpgaBitstream(object):
         Loads the bitstream contained by the URL into the cache memory and
         fill the corresponding info fields.
 
-        Notes: BIT file format described in
+
+
+        The raw data starts with a variable amount of pre-synchronization data
+        (many FFFFFFFF with some other data in it). The length of the
+        pre-synchroniation data block is a multiple of 32 bytes. We then find
+        the AA995566 synchronization sequence.
+
+        .BIN files contain only raw data.
+
+        BIT files has a tag-length-data format that wraps a number for fields and the raw data.
+
+        BIT file format described in
              http://www.fpga-faq.com/FAQ_Pages/0026_Tell_me_about_bit_files.htm
+
+        - Field 1/2:  0x0009 0ff0 0ff0 0ff0 0ff0 0000 01 (cookie)
+        - Field 3:  tag "a", 2-byte length, null-terminated string: filename optionally followed by semicolon-separated fields: UserID=0xFFFFFFFF, Version=2021.1
+        - Field 4:  tag "b", 2-byte length, null-terminated string: part number
+        - Field 5:  tag "c", 2-byte length, null-terminated string: date
+        - Field 6:  tag "d", 2-byte length, null-terminated string: time
+        - Field 7:  tag "e", 4-byte length, raw bitstream data
+
+        Length are stored as big-endian.
+
         """
-        BIN_PREFIX = 0xffffffffaa995566
+        HEADER_COOKIE = bytes.fromhex('0009 0ff0 0ff0 0ff0 0ff0 00 0001') # we include everything before tag 'a' in the cookie
+        BIN_PREFIX = 0xffffffffaa995566  # not used. Amount of FFFF's is variable.
 
         timestamp = None
         md5_string = None
 
-        self.logger.info('%r: Reading file from URL %s ...' %
-                         (self, self.url))
+        self.logger.info(f'{self!r}: Reading file from URL {self.url} ...')
         if '://' in self.url:
             with urllib.request.urlopen(self.url) as res:
                 data = res.read()
         else:
             # Open as a file with relative path. mode='rb': b is important ->
             # binary
-            with open(self.url, 'rb') as file:
-                data = file.read()
-        self.logger.info('%r: Read %0.3f MBytes' % (self, len(data) / 1e6))
+            filename = os.path.join(
+                os.path.dirname(__file__),
+                self.bitstream_folder,
+                self.url)
+            mtime = os.path.getmtime(filename)
+            print(f'mtime={mtime}')
+            print(f'and = {self.url} in {self.bitstream_cache.keys()}')
+            if (mtime == self.file_mtime) and (self.url in self.bitstream_cache):
+                data = self.bitstream_cache[self.url]
+            else:
+                with open(filename, 'rb') as file:
+                    data = file.read()
+                self.file_mtime = mtime
+                self.bitstream_cache[self.url] = data  # store data in cache
 
-        is_bin = struct.unpack('>Q', data[0:8])[0] == BIN_PREFIX
+        self.logger.info(f'{self!r}: Bitstream size is {len(data)/1e6:0.3f} MBytes')
 
-        if not is_bin:
-            pos = 0
-            # Field 1 - ignore
-            length = struct.unpack('>H', data[pos:pos+2])[0]
-            self.logger.debug(
-                '%r: Field 1: 0x%s' % (self, ''.join(
-                    ['%0X' % c for c in data[pos+2: pos+2+length]]))
-                )
-            pos += length + 2
-            # Field 2 - always 'a'
-            length = struct.unpack('>H', data[pos:pos+2])[0]
-            field = data[pos + 2: pos + 2 + length]
-            self.logger.debug(
-                '%r: Field 2 (%i bytes): %s' % (self, length, field))
-            if field != b'a':
-                self.logger.error('This is not a valid bit file')
-                return
-            pos += length + 2
-            # Field 3
-            length = struct.unpack('>H', data[pos:pos+2])[0]
-            self.logger.debug(
-                '%r: Field 3: %s' % (self, data[pos+2:pos+2+length]))
-            pos += length + 2
-            # Field 4
-            tag = data[pos]
-            length = struct.unpack('>H', data[pos+1: pos+2+1])[0]
-            fpga_model = data[pos+2+1: pos+2+1+length]
-            self.logger.debug(
-                '%r: Field 4 (tag=%s, length = %i bytes): %s' %
-                (self, tag, length, fpga_model))
-            pos += length + 2 + 1
-            # Field 5
-            tag = data[pos]
-            length = struct.unpack('>H', data[pos+1: pos+2+1])[0]
-            firmware_date = data[pos+2+1: pos+2+1+length]
-            self.logger.debug(
-                '%r: Field 5 (tag=%s, length = %i bytes): %s' %
-                (self, tag, length, firmware_date))
-            pos += length + 2 + 1
-            # Field 6
-            tag = data[pos]
-            length = struct.unpack('>H', data[pos+1: pos+2+1])[0]
-            firmware_time = data[pos+2+1: pos+2+1+length]
-            self.logger.debug(
-                '%r: Field 6 (tag=%s, length = %i bytes): %s' %
-                (self, tag, length, data[pos+2+1: pos+2+1+length]))
-            pos += length + 2 + 1
-            # Field 7
-            tag = data[pos]
-            length = struct.unpack('>L', data[pos+1: pos+4+1])[0]
-            self.logger.debug(
-                '%r: Field 7 (tag=%s, length= %i bytes): [data]' %
-                (self, tag, length))
-            pos += 4 + 1  # skip the header. Now points to cofiguration data
-            bitstream = data[pos:]
+        if len(data) < 1e6:
+            raise(f'Bitstream at {self.url} is too small. Is it a git LFS pointer? If so, make sure LFS is installed and then pull the binaries.')
 
-            timestamp_string = firmware_date + b' ' + firmware_time
+        # Process if the headers if we see the header prefix pattern
+        if data.startswith(HEADER_COOKIE):
+            pos = len(HEADER_COOKIE)  # skip the header cookie
+
+            # decoding helper functions
+            def read_tag(tag):
+                nonlocal pos
+                assert data[pos] == ord(tag), f"The header field does of file {self.url} not have the expected tag '{tag}' (got '{chr(data[pos])}' instead. This is not a valid bit file"
+                pos += 1
+
+            def read_word(length):
+                nonlocal pos
+                word = int.from_bytes(data[pos:pos + length], 'big')
+                pos += length
+                return word
+
+            def read_field(tag):
+                nonlocal pos
+                read_tag(tag)
+                length = read_word(length=2)
+                field = data[pos: pos + length]
+                pos += length
+                return field
+
+            def read_string_field(tag):
+                field = read_field(tag)
+                assert field[-1] == 0, f"String of field '{tag}' in file {self.url} does not end with a null character. This is not a valid bit file"
+                return field[:-1].decode('ascii')
+
+            # Field 3 - tag 'a': filename and other info
+            field = read_field('a')
+            assert field[-1] == 0, "This is not a valid bit file"
+            filename = field[:-1].decode('ascii')
+            self.logger.debug(f'{self!r}: Tag a: File info = {filename}')
+
+            # Field 4 - tag 'b': part number
+            part_number = read_string_field('b')
+            self.logger.debug(f'{self!r}: Tag b: part number = {part_number}')
+
+            # Field 5 - tag 'c': date
+            firmware_date = read_string_field('c')
+            self.logger.debug(f'{self!r}: Tag c: firmware_date = {firmware_date}')
+
+            # Field 6 - tag 'd': time
+            firmware_time = read_string_field('d')
+            self.logger.debug(f'{self!r}: Tag d: firmware_time = {firmware_time}')
+
+            # Field 7 - tag 'e': bitstream
+            read_tag('e')
+            length = read_word(length=4)
+            self.logger.debug(f'{self!r}: Tag e: Bitstream, length={length}')
+
+            bitfile = data[pos:]
+
+            timestamp_string = firmware_date + ' ' + firmware_time
             timestamp = datetime.datetime.strptime(
-                (firmware_date[:-1] + b' ' + firmware_time[:-1]).decode(),
+                firmware_date + ' ' + firmware_time,
                 '%Y/%m/%d %H:%M:%S')
-
-            # I thought the the remaining bitstream should start with the
-            # proper cookie but there seems to be additional bytes before it.
-            # So we disable the test.
-            # prefix = struct.unpack('>Q', bitstream[0:8])[0]
-            # if prefix != BIN_PREFIX:
-            #     self.logger.error(
-            #    '%r: This is not a valid bit file. Header is 0x%016X' %
-            #     (self, prefix))
-
         else:
-            bitstream = data
+            bitfile = data
 
-        self.bitstream_cache = bitstream
-        self.bytes = bitstream
-        self.base64 = base64.b64encode(bitstream)
-        self.crc32 = zlib.crc32(bitstream)  # compute CRC32 of the data
-        # Compute MD5 sum as a hex string
-        self.md5_string = hashlib.md5(bitstream).hexdigest()
-        self.timestamp_string = timestamp_string
-        self.timestamp = timestamp
+        self.timestamp_string = timestamp_string  # string
+        self.timestamp = timestamp  # datetime object
+        self.file_info = filename  # string with semicolon-separated fields
+        self.part_number = part_number  # string
+
+        self.file_bytes = data  # All the data in the file in bytes,  with header (if any)
+        self.bytes = bitfile  # raw bitfile bytes
+        self.raw_bitstream = bitfile  # raw bitfile bytes
+        self.base64 = base64.b64encode(bitfile)
+        self.crc32 = zlib.crc32(bitfile)  # compute CRC32 of the data
+        self.md5_string = hashlib.md5(bitfile).hexdigest() # MD5 sum as a hex string
+
         return
+
+
+# Alternate simplified version
+# class FPGABitstream(object):
+#     """ Helper object used to load and store a FPGA bitstream. You don't have
+#     to use it, but it makes the code look nicer"""
+#     bitstream = None
+
+#     def __init__(self, filename, auto_reload=True):
+#         self.filename = filename
+#         self.auto_reload = auto_reload
+#         if not self.auto_reload:
+#             self._load()
+
+#     def __str__(self):
+#         """ Return the bitstream as a string. """
+#         if self.auto_reload:
+#             try:
+#                 self._load()
+#             except IOError:
+#                 if not self.bitstream:
+#                     raise
+#         return self.bitstream
+
+#     def _load(self):
+#         with open(self.filename, 'rb') as file_:
+#             self.bitstream = file_.read()
+#         self.crc32 = zlib.crc32(self.bitstream) & 0xFFFFFFFF  # compute CRC32 of the data
+#         self.base64 = base64.b64encode(self.bitstream)
+
+
+
