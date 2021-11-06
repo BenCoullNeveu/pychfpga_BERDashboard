@@ -25,11 +25,14 @@ This package provide IceBoard and IceCrate classes that extends the features off
       - Defines functionnalities specific to the MGK7BP16 backplane
 """
 # from .iceboard_ext import HardwareMap
+from .motherboard import Motherboard
 from .icecrate_ext import IceCrate
-from .iceboard_ext import IceBoard, IceBoardPlus, IceBoardExt
+from .iceboard_ext import IceBoard  #, IceBoardPlus, IceBoardExt
+from .zcu111 import ZCU111
 from .iceboard_ext import FMCMezzanine
-from .iceboard_ext import run_async, async_to_sync
-from .fpga_bitstream import FpgaBitstream
+from .async_utils import run_async, async_to_sync
+from .fpga_firmware import FPGAFirmware
+from .fpga_bitstream import FPGABitstream
 from .mdns_discovery import mdns_discover, mdns_resolve
 from .ccoll import Ccoll
 # from .myasync import myasync, async_sleep, async_return, async_moment
