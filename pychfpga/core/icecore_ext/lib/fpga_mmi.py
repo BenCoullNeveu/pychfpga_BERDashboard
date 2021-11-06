@@ -23,7 +23,7 @@ class TimeoutException(IOError):
 
 class FpgaMmi(BSB_MMI):
     """
-    Provides access to the FPGA's Byte-serial-bus memory mapped registers of the FPGA over UDP Ethernet packets.
+    Provides access to the FPGA's Byte-serial-bus BSB memory mapped registers of the FPGA over UDP Ethernet packets.
 
 
     Notes:
@@ -40,6 +40,12 @@ class FpgaMmi(BSB_MMI):
     _FPGA_IP_SETUP_BASE_ADDR = IceBoardExt._FPGA_IP_SETUP_BASE_ADDR
     _FPGA_SERIAL_NUMBER_ADDR = IceBoardExt._FPGA_SERIAL_NUMBER_ADDR
     _FPGA_TIMESTAMP_ADDR = IceBoardExt._FPGA_TIMESTAMP_ADDR
+
+    # Maximum BSB packet lengths, limited by the size of the FIFOs
+    # These are approximale. Have to lookup the UDP buffer sizes.
+    # We assume the networking allows Jumbo frames.
+    MAX_BSB_COMMAND_PACKET_LENGTH = 2048
+    MAX_BSB_REPLY_PACKET_LENGTH = 2048
 
     def __init__(
             self,

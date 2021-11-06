@@ -3,7 +3,6 @@ Generate read/write command to access the FPGA's memory-mapped registers through
 
 """
 
-import logging
 import numpy as np
 from . import udp as udp
 
@@ -44,9 +43,13 @@ class BSB_MMI:
     OPCODE_WRITE_NOP          = 0b110
     OPCODE_WRITE_RAM          = 0b111
 
+    # Maximum packet lengths, limited by the size of the FIFOs
+    # This has to be defined by the subclasses
+    MAX_BSB_COMMAND_PACKET_LENGTH = 0
+    MAX_BSB_REPLY_PACKET_LENGTH = 0
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
 
     def _send_command(self, cmd, expected_reply_length, **kwargs):
         """ Send a read or write command to the FPGA and check the reply for the correct
@@ -119,6 +122,9 @@ class BSB_MMI:
                     (addr >> 8) & 0xFF,  # byte 1: address
                     addr & 0xFF])  # Byte 2: LSB of address
 
+            # Check command length against platform capability
+            if len(command_bytes) > self.MAX_BSB_COMMAND_PACKET_LENGTH:
+                raise RuntimeError('BSB read command packet is too large for this platform')
             data = self._send_command(command_bytes, read_length, retry, resync)
             if retry is not None and retry < 0:
                 self.logger.warning('%r: FPGA_MMI retry = %i' % (self, retry))
@@ -195,7 +201,17 @@ class BSB_MMI:
             mask_bytes = self._to_bytes(mask)
             data_bytes = b''.join(
                 [bytes((d, m)) for (d, m) in zip(data_bytes, mask_bytes)])
+
+        # Check command length against platform capability
+        if len(command_bytes) + len(data_bytes) > self.MAX_BSB_COMMAND_PACKET_LENGTH:
+            raise RuntimeError('BSB write Command packet is too large for this platform')
+
         self._send_command(command_bytes + data_bytes, 0, retry, resync)
         return length
 
+    def flush(self, timeout=0.05):
+        """ Flushes the reply channel of any remaining data.
+        This is typically  used to ensure future replies will be synchronized with their commands
+        """
+        pass
 
