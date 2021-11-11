@@ -177,7 +177,7 @@ class ChanBinSel(Module_base):
                 words_per_bin=len(channels) // 4 if self.FOUR_BITS else len(channels) // 2,
                 ancillary=None,
                 timestamp=0,
-                )
+            )
         else:
             header = None
 
@@ -188,7 +188,7 @@ class ChanBinSel(Module_base):
             data_flags=None,
             frame_flags=None,
             packet_flags=None
-            )
+        )
         return output_dict
 
     def get_sim_output(self, input_lanes):
