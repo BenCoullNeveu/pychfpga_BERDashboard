@@ -13,7 +13,6 @@ MGADC08.py module
 import logging
 import numpy as np
 import time
-import struct
 import zlib
 import ast
 from datetime import datetime
@@ -127,7 +126,7 @@ class FMCMezzanine_MGADC08(FMCMezzanine):
 
             # Read checksum
             crc_string = eeprom_data[last_char + 1: last_char + 1 + 4]
-            crc = struct.unpack('i', crc_string)[0]
+            crc = int.from_bytes(crc_string, 'little')
             computed_crc = zlib.crc32(data_string)
             if computed_crc != crc:
                 raise RuntimeError(
