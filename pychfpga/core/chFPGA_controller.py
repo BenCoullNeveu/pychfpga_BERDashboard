@@ -2193,6 +2193,9 @@ class chFPGA_controller(IceBoardExt):
             channels (list of int): List of channels to which the command is applied
 
         """
+
+        if not offset:
+            self.logger.warning(f'Offset binary Encoding is disabled: this mode is incompatible with the firmware correlator and may confuse gain calibrations. This should not be done.')
         if channels is None:
             channels = self.default_channels
 
@@ -4702,7 +4705,7 @@ class chFPGA_controller(IceBoardExt):
         if not self.CORR:
             raise RuntimeError('The FPGA firmware does not contain a correlator core')
 
-        self.set_offset_binary_encoding(False)
+        # self.set_offset_binary_encoding(False)
         self.CORR.start_correlator(integration_period=integration_period,
                                    autocorr_only=autocorr_only,
                                    correlators=correlators,
