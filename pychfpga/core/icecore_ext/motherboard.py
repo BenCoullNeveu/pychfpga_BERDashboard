@@ -5,6 +5,7 @@ import asyncio
 
 # local Packages
 from .hardware_map import HardwareMap
+from .icecrate_ext import IceCrate
 
 class Motherboard(HardwareMap):
     """
@@ -27,11 +28,10 @@ class Motherboard(HardwareMap):
 
     NUMBER_OF_FMC_SLOTS = 0  # Number of supported mezzanines
 
-
     def __init__(self, hostname=None, serial=None, slot=None, subarray=None, **kwargs):
         """ Create or update an Motherboard object.
 
-        Do not instantiate hardware map objects directly. 
+        Do not instantiate hardware map objects directly.
         Instead use  the get_unique_instance(...) class method to ensure that objects with matching hostname or serial numbers will be reused if available. 
 
 
@@ -125,9 +125,8 @@ class Motherboard(HardwareMap):
 
     def __dir__(self):
         """ Returns bothe the Motherboard's and FPGA Firmware's attributes"""
-        return list(set(super().__dir__() +
-                       (self.fpga.__dir__() if self.fpga else [])))
-
+        return list(set(super().__dir__()
+                    + (self.fpga.__dir__() if self.fpga else [])))
 
     # *************************
     # Motherboard-specific hardware map management methods
@@ -163,11 +162,15 @@ class Motherboard(HardwareMap):
 
         Parameters:
 
-            new_class (Motherboard or subclass): class desired for the returned instance. If None, the class of an existing object is not changed, and a new object is created with the class `cls`
+            new_class (Motherboard or subclass): class desired for the
+                returned instance. If None, the class of an existing object is
+                not changed, and a new object is created with the class `cls`
 
-            serial (str): serial number of the Motherboard to look for, and to assign to a new instance or existing matching instance.
+            serial (str): serial number of the Motherboard to look for, and to
+                assign to a new instance or existing matching instance.
 
-            hostname (str): hostname of the Motherboard to look for, and to assign to a new instance or existing matching instance.
+            hostname (str): hostname of the Motherboard to look for, and to
+                assign to a new instance or existing matching instance.
 
             slot (int): slot number in which the board is located in a crate
                 or backplane, or virtual slot number if the board is not in a
@@ -175,21 +178,27 @@ class Motherboard(HardwareMap):
 
                 If the slot number is changed, the associated IceCrate slot mapping is updated.
 
-            subarray: Arbitrary value used to group Motherboards in logical arrays. Is assigned to new instance or existing matching instance.
+            subarray: Arbitrary value used to group Motherboards in logical
+                arrays. Is assigned to new instance or existing matching instance.
 
             crate_number: For convenience, if `crate_number` is specified, the
                 new or existing board is associated with the IceCrate instance
                 that matches the specified crate number, or one is created
                 with that crate number to hold the desired crate number value.
 
-            **kwargs: Any other argument is stored in the other_args dictionary, and will be transferred if this instance is converted into a new class.
+            **kwargs: Any other argument is stored in the other_args
+                dictionary, and will be transferred if this instance is
+                converted into a new class.
         """
         # print(f"In et_unique_instance")
 
         matching_crates = [
-            c for c in cls._instance_registry
-            if (hostname is not None and c.hostname == hostname)
-            or ((new_class or cls).part_number and serial and c.part_number == (new_class or cls).part_number and c.serial == serial)]
+            c for c in cls._instance_registry if (
+                (hostname is not None and c.hostname == hostname)
+                or ((new_class or cls).part_number
+                    and serial
+                    and c.part_number == (new_class or cls).part_number
+                    and c.serial == serial))]
 
         # print(f"Matches: {matching_crates}")
         if not len(matching_crates):  # no matching crate, create one
@@ -197,8 +206,15 @@ class Motherboard(HardwareMap):
             ib = (new_class or cls)(serial=serial, hostname=hostname, slot=slot, subarray=subarray, **kwargs)
             # print(f"{cls!r}: Updating Motherboard with crate_number={crate_number}")
             return ib.update_instance(crate_number=crate_number)
-        elif len(matching_crates) == 1: # one match, update existing one
-            return matching_crates[0].update_instance(new_class=new_class, serial=serial, hostname=hostname, slot=slot, subarray=subarray, crate_number=crate_number, **kwargs)
+        elif len(matching_crates) == 1:  # one match, update existing one
+            return matching_crates[0].update_instance(
+                new_class=new_class,
+                serial=serial,
+                hostname=hostname,
+                slot=slot,
+                subarray=subarray,
+                crate_number=crate_number,
+                **kwargs)
         else:
             raise RuntimeError('Multiple Motherboards with same keys (should never happen)')
 
@@ -223,12 +239,13 @@ class Motherboard(HardwareMap):
         hostname = hostname or self.hostname
         slot = slot if slot is not None else self.slot
         subarray = subarray if subarray is not None else self.subarray
-        crate_number = crate_number if crate_number is not None else self.crate.crate_number if self.crate else None
+        crate_number = (crate_number if crate_number is not None
+                        else self.crate.crate_number if self.crate else None)
         other_args = {**self.other_args, **kwargs}
         if new_class and self.__class__ is not new_class:
             other = new_class(serial=serial, hostname=hostname, slot=slot, subarray=subarray, **other_args)
             self.logger.debug(f"{self!r}: Updating newly created instance...")
-            other.update_instance(crate_number=crate_number, crate=self.crate) # update crate and backrefs
+            other.update_instance(crate_number=crate_number, crate=self.crate)  # update crate and backrefs
             # Update Mezzanine references to the new instance
             for fmc, mezz in self.mezzanine.items():
                 other.mezzanine[fmc] = mezz
@@ -237,7 +254,9 @@ class Motherboard(HardwareMap):
             return other
         else:  # otherwise update serial and hostname
             if kwargs:
-                raise NotImplementedError(f'Cannot update existing {self.__class__.__name__} instance with additional keyword arguments {kwargs}')
+                raise NotImplementedError(
+                    f'Cannot update existing {self.__class__.__name__} instance '
+                    f'with additional keyword arguments {kwargs}')
             self.hostname = hostname
             self.serial = serial
             self.subarray = subarray
@@ -260,11 +279,9 @@ class Motherboard(HardwareMap):
             self._cached_repr = None  # Clear on updates to account for the new parameters.
             return self
 
-
     # *************************
     # Board identification
     # *************************
-
 
     def get_id(self, lane=None, default_crate=None, default_slot=None, numeric_only=False):
         """ Returns a (crate, slot) tuple representing a unique IceBoard ID,
