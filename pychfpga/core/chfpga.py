@@ -71,7 +71,7 @@ class chFPGA_config(object):
         return '\n'.join(['%s = %s' % (key, repr(value)) for (key, value) in sorted(vars(self).items())])
 
 
-class chFPGA:
+class chFPGA(FPGAFirmware):
     """
     Creates an object that connects to an IceBoard motherboard and its chFPGA firmware and provides
     the methods to configure it and control its operations.
@@ -113,6 +113,12 @@ class chFPGA:
 
     """
 
+    PLATFORM_SUPPORT = { # (platform_model, firmware_config): {firmware_filename: <fw_fn>, <other platform parameters>}
+        ("MGK7MB", "chFPGA"): dict(firmware_url='chFPGA_MGK7MB_Rev2.bit', processing_frequency = 200e6),
+        ("MGK7MB", "siFPGA"): dict(firmware_url='SIFPGA_MGK7MB.bit', processing_frequency = 200e6),
+        ("MGK7MB", "chordFPGA"): dict(firmware_url='chordFPGA_MGK7MB_Rev2.bit', processing_frequency = 300e6),
+        ("ZCU111", "siFPGA"): dict(firmware_url='sifpga_zcu111_wrapper.bit', processing_frequency = 200e6)
+    }
 
 
     ################################################################################################
@@ -241,7 +247,7 @@ class chFPGA:
     _XILINX_OUI = 0x000A35
 
 
-    def __init__(self, motherboard):
+    def __init__(self, motherboard, processing_frequency=None):
         """
         Creates an empty IceBoard/chFPGA handler object, but do not interact with the board yet.
 
@@ -271,7 +277,7 @@ class chFPGA:
             arrays of boards are loaded from an unfiltered hardware map.
         """
 
-        # Initialize basic instance attributes, but don;t do anything that involve talking to the IceBoard.
+        # Initialize basic instance attributes, but don't do anything yet that involves communicating with the firmware.
 
         self.mb = motherboard  # instance of the motherboard object. Needs to be define before we use repr()
         self.mezzanine = self.mb.mezzanine # shortcut to the Motherbord mezzanine object
@@ -280,6 +286,10 @@ class chFPGA:
         self.logger.debug(f"{self!r}: Creating chFPGA FPGAFirmware object")
 
 
+        # Firmware attributes provided by PLATFORM_SUPPORT
+        self.processing_frequency = processing_frequency
+
+        # Firmware attributes that will be derived from the FPGA itself
         self._sampling_frequency = None  # Set in init()
         self._reference_frequency = None  # set in init()
         self.FRAME_PERIOD = None
