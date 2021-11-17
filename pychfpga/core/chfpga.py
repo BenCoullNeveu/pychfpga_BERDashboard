@@ -6093,10 +6093,11 @@ class chFPGA(FPGAFirmware):
         if not self.CORR:
             raise RuntimeError('The FPGA firmware does not contain a correlator core')
 
-        self.set_offset_binary_encoding(False)
+        bins_per_frame = len(self.CROSSBAR.BIN_SEL[0].get_selected_bins())
         self.CORR.start_correlator(integration_period=integration_period,
                                    autocorr_only=autocorr_only,
                                    correlators=correlators,
+                                   bins_per_frame=bins_per_frame,
                                    bandwidth_limit=bandwidth_limit,
                                    verbose=verbose)
 
