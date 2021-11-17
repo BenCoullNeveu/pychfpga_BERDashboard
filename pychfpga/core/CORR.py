@@ -51,7 +51,7 @@ class CORR_core(Module_base):
     AUTOCORR_ONLY      = BitField(CONTROL, 0x00, 6, doc="Force the correlator input to be 0x10101010")
     NO_ACCUM           = BitField(CONTROL, 0x00, 5, doc="Disables accumulation - only the last result is saved")
     USER_ID            = BitField(CONTROL, 0x00, 0, width=4, doc="USER ID used in the correlator packet header")
-    INTEGRATION_PERIOD = BitField(CONTROL, 0x04, 0, width=32, doc="Duration of te integration period -1")
+    INTEGRATION_PERIOD = BitField(CONTROL, 0x04, 0, width=32, doc="Duration of te integration period minus one")
     BINS_PER_FRAME     = BitField(CONTROL, 0x05, 0, width=8, doc="Number of frequency bins per frame")
 
     # Status registers
@@ -108,6 +108,7 @@ class CORR(object):
             integration_period=16384,
             autocorr_only=False,
             correlators=None,
+            bins_per_frame=128,
             bandwidth_limit=0.5e9,
             verbose=1):
         """ Start the correlator with specified parameters.
@@ -147,6 +148,7 @@ class CORR(object):
             corr.SOFT_RESET = 1  # make sure we stop sending readouts in progres
             corr.INTEGRATION_PERIOD = integration_period - 1
             corr.AUTOCORR_ONLY = autocorr_only
+            corr.BINS_PER_FRAME = bins_per_frame - 1
             corr.SOFT_RESET = i not in correlators
         self.fpga.set_corr_reset(0)
 
@@ -161,12 +163,19 @@ class CORR(object):
 ###################################################
 
 
-def get_raw_corr_map():
+def get_raw_corr_map(N=16):
     """
     Creates a map that maps a correlator frame array indexed by (correlator_number,
     cmac_number, product_number) into a n array index (bin_number, i, j).
 
     This map can be used to remap the raw correlator packets contents into a more usefully indexed array.
+
+    Parameters:
+
+        N (int): number of input channels that are being correlated. This must
+            match the number of correlators for which the firmware correlator was
+            implemented.
+
 
     Returns:
 
@@ -248,9 +257,23 @@ def get_raw_corr_map():
 
 
     """
+    if N <4 or N % 4:
+        raise ValueError('The number of channels must be a multiple of 4 with this correlator architecture')
 
-    N = NCHAN
-    Ncorr = NCORR
+    # N = NCHAN
+
+    # Derived parameters
+    NCHAN = N
+    NCLOCKS_PER_BIN = NCHAN // 2 // 2  # 1/2 because we process only half of the matrix, 1/2 because we interleave
+    NI_CLOCKS_PER_BIN = NCHAN // 2  # Clocks per bin of a straight Non-interleaved correlator architecture using the minimal amount of CMACs
+    NI_CMAC_PER_CORR = (NCHAN + 1)  # number of CMACs per correlator if computations are done in NI_CLOCKS_PER_BIN clocks
+    NPROD_TOTAL = NCHAN * (NCHAN + 1) // 2  # Total number of products per correlator frame
+    CMAC_INTERLEAVE_FACTOR = NI_CLOCKS_PER_BIN // NCLOCKS_PER_BIN
+    NCMAC_PER_CORR = CMAC_INTERLEAVE_FACTOR * NI_CMAC_PER_CORR  # Number of interleaved CMACs per core needed to make the computations in the target number of clocks
+    NBINS_PER_CMAC = 128  #NPROD_PER_CMAC // NCLOCKS_PER_BIN  # Number of bins per CMAC. =512/4=128
+    NPROD_PER_CMAC = NBINS_PER_CMAC * NCLOCKS_PER_BIN  # Number of products per CMAC, limited by BRAM size (512 x (18+18) bits for the accumulator & capture RAM)
+    NBINS_PER_CORR = NBINS_PER_CMAC  # = 128
+    Ncorr = NBINS_TOTAL // NBINS_PER_CORR  # = 8
 
     # Create the arrays that will be used to index the raw data into the target array
     # The first dimension is for the 3 indexes of the array (CORR, CMAC, PROD)
@@ -279,8 +302,8 @@ def get_raw_corr_map():
     #      [1,1,1,1 ...],
     #      ...
     #      [15, 15, 15, 15]]
-    X = (np.arange(N)[:, None] - np.arange(NI_CLOCKS_PER_BIN)) % N
-    Y = np.tile(np.arange(N)[:, None], (1, NI_CLOCKS_PER_BIN))
+    X = (np.arange(N)[:, None] - np.arange(NI_CLOCKS_PER_BIN)) % N  # [i,clk]
+    Y = np.tile(np.arange(N)[:, None], (1, NI_CLOCKS_PER_BIN))  # [i,clk]
 
     # ni_i and ni_j are i,j index of the product that are outputted by each CMAC on each clock.
     # Those have a dimension of (CMAC, clock). This covers only one bin,
@@ -297,8 +320,8 @@ def get_raw_corr_map():
     ni_j = np.zeros((NI_CMAC_PER_CORR, NI_CLOCKS_PER_BIN), dtype=int)
 
     # First handle non-rotated elements
-    ni_i[0] = ni_j[0] = X[N // 2 - 1]
-    ni_i[1] = ni_j[1] = X[N - 1]
+    ni_i[0] = ni_j[0] = X[N // 2 - 1]  # autocorrelation
+    ni_i[1] = ni_j[1] = X[N - 1]  # autocorrelation
     ni_i[2:] = X[:N - 1]
     ni_j[2:] = Y[1:]
 
@@ -332,7 +355,8 @@ def get_raw_corr_map():
     ii_i = np.tile(i_i, (1, NBINS_PER_CMAC))
     ii_j = np.tile(i_j, (1, NBINS_PER_CMAC))
 
-    # Reverse readout order
+    # Reverse readout order of the products.
+    # Products are read back the opposite order they are written.
     cmac_bin_index = np.fliplr(cmac_bin_index)
     ii_i = np.fliplr(ii_i)
     ii_j = np.fliplr(ii_j)
@@ -472,7 +496,7 @@ class CorrFrameReceiver(object):
         watch -cd -n .5 "grep :A6  /proc/net/udp"
     """
 
-    def __init__(self, socket, packets_per_chunk=1*34*8):
+    def __init__(self, socket, packets_per_chunk=1*34*8, ignore_packet_size=False):
 
         self.NCHAN = NCHAN
         self.socket = socket
@@ -481,7 +505,7 @@ class CorrFrameReceiver(object):
         self.NCMAC = NCMAC_PER_CORR
         self.NPROD = NPROD_PER_CMAC
         self.PACKET_SIZE = NBYTES_PER_HEADER + NPROD_PER_CMAC * NBYTES_PER_PROD
-
+        self.ignore_packet_size = ignore_packet_size
         # Define numpy data types that will be used to efficiently parse the data
         self.product_dtype = np.dtype(dict(
             names=['sat', 'h', 'l'],
@@ -499,7 +523,7 @@ class CorrFrameReceiver(object):
 
         # Pre-allocate buffers
         # Buffer in which recv_into() will put the data directly
-        self.buf = np.empty((self.NPACKETS, self.PACKET_SIZE), dtype=np.uint8)
+        self.buf = np.zeros((self.NPACKETS, self.PACKET_SIZE), dtype=np.uint8)  # can use empty(), but the uninitialized data can be confusing for debugging
         self.n = 0  # number of packets currently stored in the buffer
         self.last_ts = None  # timestamp of the last packet written in the buffer
 
@@ -540,6 +564,8 @@ class CorrFrameReceiver(object):
         while True:
             try:
                 s = self.socket.recv_into(self.buf[0])
+                if self.buf_struct['cookie'][0] != 0xbf:
+                    continue
                 ts = self.buf_ts[0]
                 if ts != self.last_ts:
                     if self.last_ts is not None and ts-self.last_ts >= jump:
@@ -585,6 +611,8 @@ class CorrFrameReceiver(object):
         while True:
             try:
                 self.socket.recv_into(self.buf[0])
+                if self.buf_struct['cookie'][0] != 0xbf:
+                    continue
                 ts = self.buf_ts[0]
                 if ts != self.last_ts:  # we have a new timestamp
                     self.last_ts = ts
@@ -708,6 +736,8 @@ class CorrFrameReceiver(object):
             while True:
                 try:
                     s = self.socket.recv_into(self.buf[0])
+                    if self.buf_struct['cookie'][0] != 0xbf:
+                        continue
                     self.n = 1
                     break
                 except socket.timeout:
@@ -715,26 +745,31 @@ class CorrFrameReceiver(object):
         # get the timestamp
         self.last_ts = self.buf_ts[self.n-1]
 
+        self.first_ts = 0
         # Wait for a new timestamp that is the first of an integ period
         if align:
             self.align()
+        else:
+            self.first_ts = self.last_ts
 
-        current_integ = self.last_ts // self.soft_integ_period
+        current_integ = (self.last_ts - self.first_ts) // self.soft_integ_period
         integ_number = 0
         packets = 0
         timeouts = 0
         bad_packets = 0
-        print('Accumulating software frame #%i, starting with correlator frame number %i (%i/%i)' % (
-            current_integ, self.last_ts, self.last_ts % self.soft_integ_period, self.soft_integ_period))
+        print(f'Accumulating software frame #{current_integ}, '
+              f'starting with correlator frame number {self.last_ts} ')
         while True:
             try:
                 s = self.socket.recv_into(self.buf[self.n])
             except socket.timeout:
                 timeouts += 1
                 continue
+            if self.buf_struct['cookie'][self.n] != 0xbf:
+                continue
 
             # Ignore packets that don't have the right length
-            if s != self.PACKET_SIZE:
+            if s != self.PACKET_SIZE and not self.ignore_packet_size:
                 bad_packets += 1
                 continue
             # size += s
@@ -752,7 +787,7 @@ class CorrFrameReceiver(object):
                 # If the timestamp change imply and integration period change,
                 # increase the counter, and exit if we have all the
                 # integration periods we wanted.
-                integ = ts // self.soft_integ_period
+                integ = (ts - self.first_ts) // self.soft_integ_period
                 # if the packet belongs to another integration period, update the integration ts and count
                 if integ != current_integ:
                     integ_number += 1
@@ -760,7 +795,7 @@ class CorrFrameReceiver(object):
                     if integ_number == number_of_results:
                         break
             # If this is the last entry in the buffer, process the data
-            elif self.n == self.NPACKETS-1:
+            elif self.n == self.NPACKETS - 1:
                 self.accumulate_data(self.n + 1, integ_number, self.last_ts)
                 self.n = 0
             else:
@@ -850,14 +885,30 @@ class CorrFrameReceiver(object):
             dt1 = t2 - t1
             dt2 = t3 - t2
             dt = t3 - t1
-            print('Processing & accumulating %i packets for software frame %i from correlator frame %i (%i/%i);  '
-                  'took %.3f ms (%.3f ms/corr frame) (%.3f + %.3f ms)' % (
-                        number_of_packets,
-                        integ_number,
-                        ts,
-                        ts % self.soft_integ_period,
-                        self.soft_integ_period,
-                        dt * 1000,
-                        (float(dt) / (self.NCORR * self.NCMAC) * 1000),
-                        dt1 * 1000,
-                        dt2 * 1000))
+            print(f'Processing & accumulating {number_of_packets} packets '
+                  f'for software frame {integ_number} '
+                  f'from correlator frame {ts} '
+                  f'({(ts - self.first_ts)% self.soft_integ_period}/{self.soft_integ_period};  '
+                  f'took {dt * 1000:.3f} ms ({(float(dt) / (self.NCORR * self.NCMAC) * 1000):.3f} ms/corr frame) '
+                  f'({dt1 * 1000:.3f} + {dt2 * 1000:.3f} ms)')
+
+
+    def plot_corr_frames(
+            self,
+            soft_integ_period=1,
+            flush=True,
+            align=False,
+            data_timeout=0.001,
+            flush_timeout=0.001
+            ):
+
+        # fig =  plt.figure()
+        fig = plt.gcf()
+        d, c, sat = self.read_corr_frames(soft_integ_period=soft_integ_period, flush=flush, align=align)
+        p = plt.plot(arange(1024)/1024*400, d[0,:4,1,:256].real[...,::-1].flatten(order='F'))[0]
+
+        while True:
+            d, c, sat = r.read_corr_frames(soft_integ_period=soft_integ_period, flush=False, align=False)
+            p.set_ydata( d[0,:4,1,:256].real[...,::-1].flatten(order='F'))
+            fig.canvas.draw()
+            fig.canvas.flush_events()
