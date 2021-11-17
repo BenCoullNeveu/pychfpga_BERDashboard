@@ -28,11 +28,14 @@ class Motherboard(HardwareMap):
 
     NUMBER_OF_FMC_SLOTS = 0  # Number of supported mezzanines
 
+    port = None  # port number on which to access the platform `hostname`. Must be defined by subclasses. Is used by fpga_master.
+
     def __init__(self, hostname=None, serial=None, slot=None, subarray=None, **kwargs):
         """ Create or update an Motherboard object.
 
-        Do not instantiate hardware map objects directly.
-        Instead use  the get_unique_instance(...) class method to ensure that objects with matching hostname or serial numbers will be reused if available. 
+        Do not instantiate hardware map objects directly. Instead use  the
+        get_unique_instance(...) class method to ensure that objects with
+        matching hostname or serial numbers will be reused if available.
 
 
         Parameters:

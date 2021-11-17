@@ -118,6 +118,9 @@ class IceBoard(IceBoardBase, Motherboard):
     _backplane_initialized = False  # Indicate if we have initialized the backplane access yet
     _cached_repr = None
 
+    port = 80  # port number on which to access the platform `hostname`. Tuber implicitly uses 80 due to the use of the http:// URL to access the board. But fpga_master needs that to prepare for TCP pings.
+
+
     def __init__(self, hostname=None, serial=None, slot=None, subarray=None, fpga_ip_addr=None,**kwargs):
         """ Create or update an IceBoard object.
 
@@ -197,14 +200,14 @@ class IceBoard(IceBoardBase, Motherboard):
 
     async def ping_async(self, timeout=0.1):
         """
-        Returns a boolean indicating whether a tuber object is available at
+        Returns a boolean indicating whether a Tuber object is available at
         the specified ARM hostname.
         """
         # print(f'{self!r} Ping_async()')
         self.logger.info('%r: Pinging %s' % (self, self.tuber_uri))
         try:
-            await self._tuber_get_meta_async()
-            await self._tuber_sleep_async(0)
+            await self._tuber_get_meta_async()  # make sure the tuber info is loaded
+            await self._tuber_sleep_async(0) # make a dummy call
             return True
         except TuberError as e:
             self.logger.debug(

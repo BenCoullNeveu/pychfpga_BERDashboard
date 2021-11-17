@@ -284,11 +284,11 @@ class FPGAMaster(object):
                     for ib in port_entry.iceboards:
                         (crate, slot) = ib.get_id(default_crate=0, default_slot=0)
                         port_id = 42400 + 100 * crate + slot
-                        recv_ports[server_name].append(dict(port=port_id, sources=[(ib.hostname, 80)]))
+                        recv_ports[server_name].append(dict(port=port_id, sources=[(ib.hostname, ib.port)]))
                 else:
                     # Port number is non-zero, so we ask the receiver to use this exact port
                     port_id = port_entry.port or 0
-                    src_addresses = [(ib.hostname, 80) for ib in port_entry.iceboards]
+                    src_addresses = [(ib.hostname, ib.port) for ib in port_entry.iceboards]
                     recv_ports[server_name].append(dict(port=port_id, sources=src_addresses))
 
 
@@ -317,7 +317,7 @@ class FPGAMaster(object):
             # We convert this to a dict {(src_ip, src_port):(if_ip, port, mac),...} for easy lookup
             targets = {tuple(src_addr): target_addr for src_addr, target_addr in start_result['target_addr']}
             for ib in self.raw_acq_ibs[server_name]:
-                    ip_addr, port, eth_addr = targets[(ib.hostname, 80)]
+                    ip_addr, port, eth_addr = targets[(ib.hostname, ib.port)]
                     self.log.info(f'{self!r} Setting data transmission address of board {ib.get_id()} to {ip_addr}:{port}({eth_addr})')
                     await ib.set_data_target_address_async(ip_addr, port, eth_addr)
         self.log.info(f'{self!r}: RawAcq server setup successfully')
@@ -1075,11 +1075,16 @@ class FPGAMaster(object):
 
         if corr_config and corr_config.enable:
             self.corr_firmware_integration_period = corr_config.firmware_integration_period
-            await self.fpgas.start_correlators_async(self.corr_firmware_integration_period)
+            self.corr_autocorr_only = corr_config.autocorr_only
+            await self.fpgas.start_correlators_async(
+                self.corr_firmware_integration_period,
+                autocorr_only=self.corr_autocorr_only)
             self.log.info(
-                f'{self!r}: Enabling corr with integ={self.corr_firmware_integration_period}')
+                f'{self!r}: Enabling corr with integ={self.corr_firmware_integration_period}'
+                f' and autocorr_only={self.corr_autocorr_only}')
         else:
             self.corr_firmware_integration_period = None
+            self.corr_autocorr_only = None
             self.log.info(
                 f"{self!r}: Firmware corr is not enabled. "
                 f"Corr_config={corr_config!r}, "
