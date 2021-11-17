@@ -3750,8 +3750,8 @@ class chFPGA(FPGAFirmware):
     def get_formatted_id(
             self,
             crate_slot_format='FCC{crate:02d}{slot:02d}',
-            no_crate_format='{slot:s}',
-            no_slot_format='{crate:s})'):
+            no_crate_format='{slot!s}',
+            no_slot_format='{crate!s})'):
         """ Return a string that represent the board using the provided format list.
 
         Parameters:
@@ -6148,22 +6148,22 @@ class chFPGA(FPGAFirmware):
 
 
 
-class chFPGA_MGK7MB_Firmware(FPGAFirmware, chFPGA):
-    PLATFORM_MODEL = "MGK7MB"
-    FIRMWARE_URL = 'chFPGA_MGK7MB_Rev2.bit'
-    processing_frequency = 200e6
+# class chFPGA_MGK7MB_Firmware(FPGAFirmware, chFPGA):
+#     PLATFORM_MODEL = "MGK7MB"
+#     FIRMWARE_URL = 'chFPGA_MGK7MB_Rev2.bit'
 
-class siFPGA_MGK7MB_Firmware(FPGAFirmware, chFPGA):
-    PLATFORM_MODEL = "MGK7MB"
-    FIRMWARE_URL = 'SIFPGA_MGK7MB.bit'
-    processing_frequency = 200e6
 
-class siFPGA_ZCU111_Firmware(FPGAFirmware, chFPGA):
-    PLATFORM_MODEL = "ZCU111"
-    FIRMWARE_URL = 'sifpga_zcu111_wrapper.bit'
-    processing_frequency = 200e6
+# class siFPGA_MGK7MB_Firmware(FPGAFirmware, chFPGA):
+#     PLATFORM_MODEL = "MGK7MB"
+#     FIRMWARE_URL = 'SIFPGA_MGK7MB.bit'
+#     processing_frequency = 200e6
 
-class chordFPGA_MGK7MB_Firmware(FPGAFirmware, chFPGA):
-    PLATFORM_MODEL = "MGK7MB"
-    FIRMWARE_URL = 'chordFPGA_MGK7MB_Rev2.bit'
-    processing_frequency = 300e6
+# class siFPGA_ZCU111_Firmware(FPGAFirmware, chFPGA):
+#     PLATFORM_MODEL = "ZCU111"
+#     FIRMWARE_URL = 'sifpga_zcu111_wrapper.bit'
+#     processing_frequency = 200e6
+
+# class chordFPGA_MGK7MB_Firmware(FPGAFirmware, chFPGA):
+#     PLATFORM_MODEL = "MGK7MB"
+#     FIRMWARE_URL = 'chordFPGA_MGK7MB_Rev2.bit'
+#     processing_frequency = 300e6
