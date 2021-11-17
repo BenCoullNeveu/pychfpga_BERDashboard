@@ -154,6 +154,7 @@ class ZCU111(Motherboard):
         # create I2C interface
         self.iic = TCPipe_I2C(self.tcpipe)
 
+        # I2C0, Switch 0x20
         self.i2c0_switch = i2c0_switch = pca9544a(self.iic, address=0x75)
         self.i2c_gpio = tca6416a(self.iic, address=0x20, port=dict(port=0, switch=i2c0_switch, switch_params=None))
         self.i2c_ina226_0v85 = ina226(self.iic, address=0x41, port=dict(port=0, switch=i2c0_switch, switch_params=0))
@@ -174,8 +175,9 @@ class ZCU111(Motherboard):
         self.i2_irps5401b = irps5401(self.iic, address=0x44, port=dict(port=0, switch=i2c0_switch, switch_params=2))
         self.i2_fpga_sysmon = zynq_sysmon(self.iic, address="TBD", port=dict(port=0, switch=i2c0_switch, switch_params=3))
 
+
+        # I2C1, Switch 0x74: EEPROM, clocks
         self.i2c1_switch0 = i2c1_switch0 = tca9548a(self.iic, address=0x74)
-        self.i2c1_switch1 = i2c1_switch1 = tca9548a(self.iic, address=0x75)
         self.i2c_eeprom = eeprom(self.iic, address=0x54, bus_name=dict(port=1, switch=i2c1_switch0, switch_params=0), address_width=8, max_read_length=255)
         self.i2c_fixed_clocks = si5341b(self.iic, address=0x36, port=dict(port=1, switch=i2c1_switch0, switch_params=1))
         self.i2c_fixed_clocks = si570(self.iic, address=0x5d, port=dict(port=1, switch=i2c1_switch0, switch_params=2))
@@ -186,6 +188,12 @@ class ZCU111(Motherboard):
         self.i2c_adc0_pll = lmx2594spi(self.iic, address=0x2f, spi_port=3, port=dict(port=1, switch=i2c1_switch0, switch_params=5))
         self.i2c_adc1_pll = lmx2594spi(self.iic, address=0x2f, spi_port=2, port=dict(port=1, switch=i2c1_switch0, switch_params=5))
         self.i2c_dac_pll = lmx2594spi(self.iic, address=0x2f, spi_port=0, port=dict(port=1, switch=i2c1_switch0, switch_params=5))
+
+        # I2C1, Switch 0x75: FMC, SYSMON, DDR & SFP
+        self.i2c1_switch1 = i2c1_switch1 = tca9548a(self.iic, address=0x75)
+        self.i2c_fmc0 = eeprom(self.iic, address=0x50, bus_name=dict(port=1, switch=i2c1_switch1, switch_params=7), address_width=8, max_read_length=255)
+        self.i2c_fmc0a = eeprom(self.iic, address=0xAC//2, bus_name=dict(port=1, switch=i2c1_switch1, switch_params=7), address_width=8, max_read_length=255)
+
 
     def close_platform(self):
         if self.tcpipe:
