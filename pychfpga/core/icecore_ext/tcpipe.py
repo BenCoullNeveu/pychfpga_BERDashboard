@@ -14,19 +14,18 @@ class TCPipe:
         - Basic I2C read-write commands to access the board's hardware
     """
 
-    CMD_PORT = 7
-
     RPC_PREFIX = 0xCC
     RPC_BSB_WRITE_READ = 0x00
     RPC_IIC_WRITE = 0x01
     RPC_IIC_WRITE_READ = 0x02
     RPC_IIC_READ = 0x03
 
-    def __init__(self, hostname, timeout=2):
+    def __init__(self, hostname, port=7, timeout=2):
         self.hostname = hostname
+        self.port = port
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.settimeout(timeout)
-        self.sock.connect((hostname, self.CMD_PORT))
+        self.sock.connect((hostname, self.port))
         self.tx_buf = bytearray(1024)
         self.tx_view = memoryview(self.tx_buf)
         self.rx_buf = bytearray(1024)

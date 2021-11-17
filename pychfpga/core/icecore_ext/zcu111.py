@@ -117,6 +117,7 @@ class ZCU111(Motherboard):
     NUMBER_OF_FMC_SLOTS = 0
     NUMBER_OF_ANTENNAS = 4
 
+    port = 7  # port number on which to access the platform `hostname`
 
     # ---------------
 
@@ -148,7 +149,7 @@ class ZCU111(Motherboard):
 
         # Open tcp communication with the board
         self.logger.debug(f'{self!r}: Opening TCP connection to the board')
-        self.tcpipe = TCPipe(self.hostname)
+        self.tcpipe = TCPipe(self.hostname, self.port)
 
         # create I2C interface
         self.iic = TCPipe_I2C(self.tcpipe)
