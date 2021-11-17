@@ -96,6 +96,15 @@ ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 #ADC_DELAYS_REV2_SN0001 ## 
 
 class FPGAArray(object):
 
+    OPERATIONAL_MODES = { # { op_mode:firmware_name, ... }
+        'shuffle16': 'chFPGA',
+        'shuffle128': 'chFPGA',
+        'shuffle256': 'chFPGA',
+        'shuffle512': 'chFPGA',
+        'corr4': 'siFPGA',
+        'corr16': 'siFPGA'
+        }
+
     def __init__(
             self,
 
@@ -135,6 +144,7 @@ class FPGAArray(object):
             frames_per_packet=2,
             tx_power=None,
             integration_period=None,
+            autocorr_only=False,
             corner_turn_bad_links=None,
             corner_turn_bin_priority=None,
             corner_turn_remap_level=0,
@@ -416,6 +426,7 @@ class FPGAArray(object):
              sampling_frequency=sampling_frequency,
              tx_power=tx_power,
              integration_period=integration_period,
+             autocorr_only=autocorr_only,
              corner_turn_bad_links=corner_turn_bad_links,
              corner_turn_bin_priority=corner_turn_bin_priority,
              corner_turn_remap_level=corner_turn_remap_level,
@@ -499,6 +510,7 @@ class FPGAArray(object):
             sampling_frequency=800e6,
             tx_power=None,
             integration_period=None,
+            autocorr_only=None,
             corner_turn_bad_links=None,
             corner_turn_bin_priority=None,
             corner_turn_remap_level=0,
@@ -1009,6 +1021,7 @@ class FPGAArray(object):
                 ib=ib,
                 prog=prog,
                 open=open,
+                mode=mode,
                 bitfile=bitfile,
                 udp_retries=udp_retries,
                 fpga_ip_addr_fn=fpga_ip_addr_fn,
@@ -1054,6 +1067,7 @@ class FPGAArray(object):
                     frames_per_packet=frames_per_packet,
                     tx_power=tx_power,
                     integration_period=integration_period,
+                    autocorr_only=autocorr_only,
                     corner_turn_bad_links=corner_turn_bad_links,
                     corner_turn_bin_priority=corner_turn_bin_priority,
                     corner_turn_remap_level=corner_turn_remap_level)
@@ -1073,7 +1087,7 @@ class FPGAArray(object):
         #################################
 
 
-    async def prog_and_open_fpga(self, ib, prog, open, bitfile=None, max_trials=3, **kwargs):
+    async def prog_and_open_fpga(self, ib, prog, open, mode, bitfile=None, max_trials=3, **kwargs):
         """ Try to open communication with the FPGA and reprogram the FPGA and retry a number of
         times if this fails.
 
@@ -1089,25 +1103,21 @@ class FPGAArray(object):
                 an IOError after the maximum number of trials.
 
         """
-        for trial in range(1, max_trials+1):
+        # Configure the FPGA with the bitstream associated with the handler
+        self.logger.info(f'{self!r}: Configuring FPGAs...')
+        for trial in range(1, max_trials + 1):
             if not prog:
                 return
 
-            # Configure the FPGA with the bitstream associated with the handler
-            self.logger.info(f'{self!r}: Configuring FPGAs...')
-            # Determine the proper firmware name if not specified
+            # Determine the proper firmware name if not already specified
             if bitfile:  # if we force a specific firmware name
                 ib.firmware_name = bitfile
-            elif not ib.firmware_name:  # set default firmware names for legacy hardware maps where firmware_name is not specified
-                if isinstance(ib, IceBoard):
-                    if mode == 'corr16':
-                        ib.firmware_name = 'SIFPGA_MGK7MB.bit'
-                    else:
-                        ib.firmware_name = 'chFPGA_MGK7MB_Rev2.bit'
+            elif not ib.firmware_name and mode:  # set firmware names based on the operational mode
+                ib.firmware_name = self.OPERATIONAL_MODES[mode]
             if not ib.firmware_name:
                 raise ValueError('Firmware name has not been specified')
 
-            await ib.set_fpga_bitstream_async(force=(prog > 1) or trial > 1)
+            await ib.set_fpga_bitstream_async(ib.firmware_name, force=(prog > 1) or trial > 1)
             self.logger.info(f'{self!r}: Done configuring FPGAs')
 
             if not (open or 0) > 0:
@@ -1488,6 +1498,7 @@ class FPGAArray(object):
                              chan8_channel_map=list(range(8)),
                              tx_power=None,
                              integration_period=16384,
+                             autocorr_only=False,
                              corner_turn_bad_links=None,
                              corner_turn_bin_priority=None,
                              corner_turn_remap_level=0,
@@ -1536,9 +1547,12 @@ class FPGAArray(object):
 
             tx_power (dict): Power levels to be set on the GTXes.
 
-            integration_period (int): (for ``corr16`` mode only):
+            integration_period (int): (for ``corr`` modes only):
                 Sets the integration period (in frames) of the firmware
                 correlator.
+
+            autocorr_only (bool): (for ``corr`` mored only. If True, only the
+                autocorrelation products are sent.
 
             corner_turn_bad_links (list of tuples): List of corner turn engine
                 outputs links [(crate, slot, links), ...] that should
@@ -1621,7 +1635,7 @@ class FPGAArray(object):
             self.ib.CROSSBAR2.reset_stats()
             self.ib.CROSSBAR3.reset_stats()
 
-        elif mode == 'corr16':
+        elif mode in ('corr16', 'corr4'):
             if not all(self.ib.CORR):
                 raise RuntimeError('All IceBoards must have a firmware correlator engine')
             bin_map = self.get_corner_turn_bin_map(
@@ -1635,7 +1649,7 @@ class FPGAArray(object):
                 ib.init_crossbars(mode, frames_per_packet=1, bin_map=bin_map[ib.get_id()])
             self.ib.set_offset_binary_encoding(True)  # The firmware correlator engine expects offset encoding
             if integration_period:
-                self.ib.start_correlator(integration_period=integration_period)
+                self.ib.start_correlator(integration_period=integration_period, autocorr_only=autocorr_only)
         else:
             raise ValueError('Unknown operational mode')
 
@@ -2692,6 +2706,13 @@ class FPGAArray(object):
         align_to_seconds (bool): if True, the trigger time **before** the
             ``delay`` is applied is rounded to the closest integer second.
         """
+
+        # Don't try to check the SYNC status if we don't have a SYNC engine (REFCLK) in the firmware of all boards
+
+        if check and not all(ib.REFCLK for ib in self.ib):
+            check = False
+            self.logger. warning(f'{self!r}: SYNC will not be checked as not all firmware have SYNC logic')
+
         trial = 0
         while True:
             try:
@@ -2709,9 +2730,9 @@ class FPGAArray(object):
                     self.sync_master.set_irigb_trigger_time_sync(dt, delay=delay)
                     t0 = time.time()
                     while self.sync_master.is_irigb_before_trigger_time_sync():
-                        if time.time() - t0 > delay+1:
+                        if time.time() - t0 > delay + 1:
                             raise RuntimeError('Timout while waiting for the IRIG-B-based SYNC to complete')
-                elif self.sync_method == 'distributed_time':
+                elif self.sync_method in ('irig-b', 'irigb', 'distributed_time'):
                     # Estimate how much time it takes to set the trigger time
                     dt = self.ib[0].get_irigb_time_sync()
                     t0 = time.time()
@@ -2720,7 +2741,7 @@ class FPGAArray(object):
                     setting_time = (time.time() - t0)
                     self.logger.info('%r: It takes %f seconds to set the trigger time across the array'
                                      % (self, setting_time))
-                    setting_time = round(2*setting_time) + delay
+                    setting_time = round(2 * setting_time) + delay
                     # Now set the trigger time using that delay
                     dt = self.ib[0].get_irigb_time_sync()
                     if align_to_seconds:
@@ -2735,7 +2756,7 @@ class FPGAArray(object):
                     while any(self.ib.is_irigb_before_trigger_time_sync()):
                         if time.time() - t0 > setting_time + 1:
                             raise RuntimeError('Timout while waiting for the IRIG-B-based SYNC to complete')
-                elif self.sync_method == 'local_soft_trigger':
+                elif self.sync_method in ('local', 'local_soft_trigger'):
                     self.ib.sync()
                 elif self.sync_method == 'external':
                     # Wait until one of the board sees a trig. We assume all
@@ -2789,13 +2810,14 @@ class FPGAArray(object):
 
     async def set_channelizers_async(
             self,
-            adc_mode=None, adc_sampling_mode=None, adc_bandwidth=2,
+            adc_mode=None, adc_sampling_mode=None, adc_bandwidth=None,
             adcdaq_mode=None,
-            data_source=None, function=None, a=1, b=0, freq_test_bins=None,
+            data_source=None, function=None, freq_test_bins=None,
             fft_bypass=None, fft_shift=None,
             scaler_bypass=None, gain=None, postscaler=None, offset_binary_encoding=None,
             sync=True,
-            channels=None):
+            channels=None,
+            **function_kwargs):
         """
             Configures the operations of all channelizers for all boards in the array.
 
@@ -2805,10 +2827,11 @@ class FPGAArray(object):
             ib.set_channelizer(
                 adcdaq_mode=adcdaq_mode,
                 adc_mode=adc_mode, adc_sampling_mode=adc_sampling_mode, adc_bandwidth=adc_bandwidth,
-                data_source=data_source, function=function, a=a, b=b, freq_test_bins=freq_test_bins,
+                data_source=data_source, function=function, freq_test_bins=freq_test_bins,
                 fft_bypass=fft_bypass, fft_shift=fft_shift,
                 scaler_bypass=scaler_bypass, gain=gain, postscaler=postscaler,
-                offset_binary_encoding=offset_binary_encoding)
+                offset_binary_encoding=offset_binary_encoding,
+                **function_kwargs)
             await asyncio.sleep(0)
         if sync:
             self.sync()
@@ -2925,11 +2948,11 @@ class FPGAArray(object):
 
         return stream_id_map
 
-    async def start_correlators_async(self, integration_period):
+    async def start_correlators_async(self, integration_period, autocorr_only=False):
         """
         """
         for ib in self.ib:
-            ib.start_correlator(integration_period)
+            ib.start_correlator(integration_period, autocorr_only=autocorr_only)
             await asyncio.sleep(0)
 
     async def set_offset_binary_encoding_async(self, offset_encoding_enabled):
@@ -5041,6 +5064,8 @@ def add_fpga_array_arguments(parser):
     parser.add_argument('-m', '--mode',      type=str, help="Operational mode ('shuffle16', 'shuffle256', 'shuffle512'). If not specified, set_operational_mode() is not called.")
     parser.add_argument('-f', '--frames_per_packet', '--fpp',     type=int, help="Number of frames per packeet. Default=2.")
     parser.add_argument('-s', '--sampling_frequency', type=float, help="Sampling frequency of the ADC in Hz. Default=800e6.")
+    parser.add_argument('--integration_period', type=int, help="Integration period (in frames) of the firmware correlator (if present). Defaults to 65536. ")
+    parser.add_argument('--autocorr_only', type=int, nargs='?',const=1, default=0, help="If set, the firmware correlator will send only the autocorrelation products")
     parser.add_argument('-u', '--udp_retries', type=int, help="Number of times UDP packet transmission to the FPGA will be retried.")
     parser.add_argument('--fpga_ip_addr_fn', type=str, help="Method used to set the FPGA IP address relative to the ARM address")
     parser.add_argument('hwm',               type=str, nargs='*', default=argparse.SUPPRESS, help="target hardware")  # allows free-style hardware description string
