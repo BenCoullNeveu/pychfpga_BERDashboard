@@ -318,14 +318,19 @@ class ZCU111(Motherboard):
         return True
         # return self.tcpipe.is_fpga_programmed()
 
-    async def set_fpga_bitstream_async(self, buf=None, force=False):
+    async def set_fpga_bitstream_async(self, firmware=None, force=False):
         """
         Configures the FPGA with the specified bitstream.
 
 
         Parameters:
 
-            buf (None or FPGABitstream): The bitstream to program. If None, the  bitstream associated with the self.firmware_name will be used.
+            firmware (str or FPGABitstream): The firmware to program into the FPGA
+
+                FPGABitstream: Use the specified bitstream object directly.
+
+                str: if `firmware` has no special characters ('.', '/' etc) it is treated as a generic name that will used to be look up the firmware filename in the PLATFORM_SUPPORT table of all registered FPGAFirmware classes.
+                Otherwise, the string is treated as a pathname and is passed to FPGABitstream directly.
 
             force (bool or None):
 
@@ -343,8 +348,8 @@ class ZCU111(Motherboard):
         if hasattr(self, 'close'):
             self.close()
 
-        fw_cls = FPGAFirmware.get_fpga_firmware_class_by_name(self.firmware_name)
-        buf = fw_cls.get_bitstream_object()
+        fw_cls, buf, fw_info = FPGAFirmware.get_firmware(self.part_number, firmware)
+        # buf = fw_cls.get_bitstream_object(self.part_number, self.firmware_name)
         crc32 = buf.crc32 & 0xFFFFFFFF
 
         self.logger.debug(f'{self!r}: Getting is_programmed')
@@ -371,7 +376,7 @@ class ZCU111(Motherboard):
             self.logger.debug(
                 f'{self!r}: FPGA is already configured. Skipping configuration.')
 
-        self.fpga = fw_cls(self)
+        self.fpga = fw_cls(self, **fw_info)
 
     # Mezzanine management
 
