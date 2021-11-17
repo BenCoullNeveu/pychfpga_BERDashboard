@@ -165,6 +165,7 @@ class FUNCGEN_base(Module_base):
         (fn_number, buffer_gen) = self.FUNCTION_NAMES[function_name]
         function_args = ', '.join('%s=%.30r' % (arg, val) for (arg, val) in kwargs.items())
         buffer_info = f'{function_name}({function_args})'
+        print(f'*** Setting function to {buffer_info}')
         self.set_buffer(buffer_gen(self=self, **kwargs), function_number=fn_number, info=buffer_info)
 
     def get_function(self):
@@ -183,15 +184,18 @@ class FUNCGEN_base(Module_base):
         """
 
         data = np.array(data, np.uint8)
+        if self.buffer_cache is None:
+            self.buffer_cache = np.zeros(self.BUFFER_SIZE, np.uint8)
 
+        # Write the data, page by page
         for page in range(4):
-            pslc = slice(page * 512, page * 512 + 512)
+            page_slice = slice(page * 512, page * 512 + 512)
+            page_data = data[page_slice]
             self.RAM_PAGE = page
-            self.write_ram(0, data[pslc])
-            if self.buffer_cache is None:
-                self.buffer_cache = np.zeros(self.BUFFER_SIZE, np.uint8)
-            self.buffer_cache[pslc] = data[pslc]
+            self.write_ram(0, page_data)
+            self.buffer_cache[page_slice] = page_data
 
+        # Write info on the buffer contents in an unused page
         self.RAM_PAGE = 4
         self.write_ram(0, function_number)
         self.write_ram(1, info.encode() + b'\x00')
