@@ -832,6 +832,9 @@ class chFPGA(FPGAFirmware):
         await self.close_mmi_async()
         await super().close_async()  # Make sure we close superclasses
 
+    def is_open(self):
+        return bool(self.mmi)
+
     async def init_async(
             self,
             sampling_frequency=800e6,
@@ -1154,6 +1157,12 @@ class chFPGA(FPGAFirmware):
             ('link_status', 0, 1)]
 
     async def get_fpga_udp_metrics_async(self):
+        """
+        """
+        if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
+            self.logger.warning(f'{self!r} ZCU111 platform has no UDP metrics')
+            return
+
         metrics = Metrics(
             type='GAUGE',
             slot=(self.slot or 0) - 1,
@@ -1187,6 +1196,9 @@ class chFPGA(FPGAFirmware):
                 not.
 
         """
+        if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
+            return
+
         trial = 1
         while True:
             if force or self.mmi.error_counter > 40:
@@ -1416,7 +1428,10 @@ class chFPGA(FPGAFirmware):
     async def get_local_data_port_number_async(self):
         """ Return the port number to which the FPGA is sending its captured data stream on the control network.
         """
-        return((await self.fpga_core_reg_read_async(self._REMOTE_IP_PORT_ADDR)) >> 16)
+        if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
+            return 41000
+        else:
+            return((await self.fpga_core_reg_read_async(self._REMOTE_IP_PORT_ADDR)) >> 16)
 
     async def set_data_target_address_async(self, ip_addr=None, port=None, mac_addr=None):
         """
@@ -1467,6 +1482,13 @@ class chFPGA(FPGAFirmware):
         Channel 1 destination addresses are set differently in other addressing modes.
 
         """
+        if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
+            self.logger.warning(
+                f'{self!r}: Setting the target address for the data channel is not currently '
+                f'supported by this platform. The request will be ignored. Make sure the receiver '
+                f'uses the correct address and port for this platform.')
+            return
+
         if not ip_addr:
             ip_addr_int = 0
         else:
@@ -2122,8 +2144,8 @@ class chFPGA(FPGAFirmware):
             string
 
         """
-        if self.serial and self.part_number:
-            return '%s_SN%s' % (self.part_number, self.serial)
+        if self.mb.serial and self.mb.part_number:
+            return '%s_SN%s' % (self.mb.part_number, self.mb.serial)
         else:
             return self.hostname
 
@@ -2209,11 +2231,12 @@ class chFPGA(FPGAFirmware):
         config.system_firmware_version = self.get_version()
         config.system_platform_id = self.PLATFORM_ID
         config.system_interface_ip_address = self.interface_ip_addr
+
         config.system_fpga_ip_address = self.fpga_ip_addr
         config.system_fpga_port_number = self.fpga_control_port_number
         config.system_local_command_port_number = self.local_control_port_number
         config.system_local_data_port_number = await self.get_local_data_port_number_async()
-        config.system_local_corr_port_number = self.local_control_port_number + self.GPIO.CORR_IP_PORT_OFFSET
+        config.system_local_corr_port_number = self.local_control_port_number + self.GPIO.CORR_IP_PORT_OFFSET if self.local_control_port_number is not None else None
 
         config.number_of_antennas = self.NUMBER_OF_ANTENNAS
         config.system_list_of_antennas_with_channelizers = self.LIST_OF_ANTENNAS_WITH_FFT
@@ -2335,8 +2358,6 @@ class chFPGA(FPGAFirmware):
             adcdaq_mode=None,
             data_source=None,
             function=None,
-            a=1,
-            b=0,
             freq_test_bins=None,
             fft_bypass=None,
             fft_shift=None,
@@ -2345,7 +2366,8 @@ class chFPGA(FPGAFirmware):
             postscaler=None,
             offset_binary_encoding=None,
             local_sync=True,
-            channels=None):
+            channels=None,
+            **function_kwargs):
         """
         Single command used to set all channelizer settings.
 
@@ -2418,7 +2440,7 @@ class chFPGA(FPGAFirmware):
                 # bins in freq_test_bins. The rest are zeros.
                 self.set_funcgen_function('arb', channels=channels, data=v)
             else:
-                self.set_funcgen_function(function=function, channels=channels)
+                self.set_funcgen_function(function=function, channels=channels, **function_kwargs)
 
         # Set FFT bypass and shift schedule
         if fft_bypass is not None:
@@ -2432,7 +2454,7 @@ class chFPGA(FPGAFirmware):
             self.set_scaler_bypass(bypass_mode=scaler_bypass, channels=channels)
 
         if gain is not None:
-            self.set_gain(gain=gain, postscaler=postscaler, channels=channels)
+            self.set_gains(gain=gain, postscaler=postscaler, channels=channels)
 
         if offset_binary_encoding is not None:
             self.set_offset_binary_encoding(offset=offset_binary_encoding, channels=channels, sync=False)
@@ -3587,7 +3609,7 @@ class chFPGA(FPGAFirmware):
             tunedloc = dict()
             tunedloc['delaytable'] = d1
             tunedloc['syncdelay'] = opt_sync_delay
-            tunedloc['boards'] = {'Mezz': [mezz1_serial, mezz2_serial], "MB": self.serial}
+            tunedloc['boards'] = {'Mezz': [mezz1_serial, mezz2_serial], "MB": self.mb.serial}
 
             return tunedloc
         else:  # We have chosen to load the delay table from a dictionary
@@ -3601,7 +3623,7 @@ class chFPGA(FPGAFirmware):
             except KeyError:
                 raise ValueError('Missing objects in adc delay dictionary')
 
-            if (self.serial != dict_mb_serial) \
+            if (self.mb.serial != dict_mb_serial) \
                or (mezz1_serial is not None and mezz1_serial != dict_mezz1_serial) \
                or (mezz2_serial is not None and mezz2_serial != dict_mezz2_serial):
                 raise ValueError('Cannot use this adc table - hardware is not the same')
@@ -3612,7 +3634,7 @@ class chFPGA(FPGAFirmware):
             measuredloc = dict()
             measuredloc['delaytable'] = self.get_adc_delays()
             measuredloc['syncdelay'] = self.REFCLK.get_refclk_delay()
-            measuredloc['boards'] = {'Mezz': [mezz1_serial, mezz2_serial], "MB": self.serial}
+            measuredloc['boards'] = {'Mezz': [mezz1_serial, mezz2_serial], "MB": self.mb.serial}
             return measuredloc
 
     def status(self):
@@ -4188,6 +4210,10 @@ class chFPGA(FPGAFirmware):
             source (str): name of the source. See `REFCLK.set_sync_source()` for valid names.
 
         """
+        if not self.REFCLK:
+            self.logger.warning('The platform does not support SYNC sources')
+            return
+
         if source not in self.REFCLK.SYNC_SOURCE_TABLE:
             raise ValueError('Invalid SYNC source name. Valid names are %s' %
                              ', '.join(self.REFCLK.SYNC_SOURCE_TABLE))
@@ -4202,7 +4228,12 @@ class chFPGA(FPGAFirmware):
         Returns:
             str describing the SYNC trigger source.
         """
-        return self.REFCLK.get_sync_source()
+        if not self.REFCLK:
+            self.logger.warning('The platform does not support SYNC sources')
+            return None
+        else:
+            return self.REFCLK.get_sync_source()
+
 
     async def set_irigb_source_async(self, source):
         """
@@ -5677,6 +5708,9 @@ class chFPGA(FPGAFirmware):
             id=self.get_string_id(),
             crate_id=self.crate.get_string_id() if self.crate else None,
             crate_number=self.crate.crate_number if self.crate else None)
+
+        if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
+            return (info, metrics)
 
         ####################################
         # Motherboard temperatures
