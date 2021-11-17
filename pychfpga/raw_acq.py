@@ -1765,7 +1765,14 @@ class HDF5RawWriter(object):
 
 
 class CorrPacketProcessor(object):
-    """ Reads the raw data in a socket-like interface"""
+    """ Reads the raw data in a socket-like interface
+
+
+    The processor is fast enough to perform software integration of the
+    firmware correlator packets  for unlimited time at a firmware integration
+    period of 5000 frames (12.8 ms between each set of correlator packets).
+
+    """
 
     # Correlator geometry, based on constants found in the CORR firmware module
 
@@ -1781,6 +1788,30 @@ class CorrPacketProcessor(object):
                  software_integration_period=100,  # Can be changed by hdf start
                  frame0_irigb_time=0,
                  ):
+
+        """ Initializes the correlator packet procesor
+
+        Parameters:
+
+            raw_acq_receiver (RawAcqReceiver): RawAcqReceiver instance. Used to
+                access the receive buffer and some utility functions.
+
+            firmware_integration_period (int): Integration period used by the
+                firmware, in frames. Used only to determine the fpga frame number
+                and time of the integrated products.
+
+            software_integration_period (int): Number of correlator frames that
+                are integrated in software. This is used as an initial value for
+                the packet aligner/integrator, even if the data is not saved. This
+                parameter is changed when the HDF5 data saving is started by
+                calling `start_corr_hdf5()`
+
+            frame0_irigb_time (float): Time of frame 0 in ctime format (seconds
+                since epoch). Used to compute and save absolute time with the
+                integrated products.
+
+        """
+
         self.log = log.get_logger(self)
         self.recv = raw_acq_receiver
         self.software_integration_period = software_integration_period
@@ -1788,12 +1819,40 @@ class CorrPacketProcessor(object):
         self.frame0_irigb_time = frame0_irigb_time
 
 
-        # Define numpy data types that will be used to efficiently parse the data
+        # Obtain a pointer to the main buffer and its geometry from the receiver.
+        self.BUF_SIZE = self.recv.buf.shape[0]
+        self.buf = self.recv.buf
+        self.buf_packet_length = self.recv.buf_packet_length
+
+        # Define numpy data types that will be used to reinterpret the buffer
+        # contents and efficiently parse the data
+
+        # Correlator product format (5 bytes):
+        #  bit 39: 0:
+        #  bit 38: Re or Im saturation flag
+        #  bit 37: Re saturation flag
+        #  bit 36: Im saturation flag
+        #  bits 35-18: Real value
+        #  bits 17-0: Imaginary value
+        #
+        # A numpy struct cannot do bit-aligned fields, so we define elements
+        # that allow access while minimizing the operations needed to extract
+        # the info:
+        #   sat: bits 39-32 (byte 4): Covers all saturation bits. Extracted with a mask operation
+        #   h: bits 39 - 8 (bytes 4-1): Covers the Real value. Extracted with a mask & bitshift operation
+        #   l: bits 31-0 (bytes 3-0): Covers the Imaginary value. Extracted with a mask & bitshift operation
         self.product_dtype = np.dtype(dict(
             names=['sat', 'h', 'l'],
             offsets=[4, 1, 0],
             formats=['u1', '<i4', '<i4']))
-
+        # Correlator packet format:
+        #   12-bytes header:
+        #       1-byte cookie
+        #       1 byte: ptotocol
+        #       1 byte correlator number
+        #       1 byte CMAC number
+        #       4 byte timestamp
+        #   Up to NPROD 5-byte products
         self.packet_dtype = np.dtype([
             ('cookie', np.uint8, 1),
             ('proto', np.uint8, 1),
@@ -1803,26 +1862,15 @@ class CorrPacketProcessor(object):
             ('ts', '<u4', 1),
             ('data', self.product_dtype, self.NPROD)])
 
-        self.corr_processed_packets = 0
-        self.corr_max_processing_time = 0
-        self.corr_current_processed_packets = 0
-        self.corr_current_processing_time = 0
-        self.metrics_corr_packet_length_error = 0
-
-        # Header fields
-
-        # Pre-allocate buffers
-        # Buffer in which the correlator packets will be assembled
-        self.BUF_SIZE = self.recv.buf.shape[0]
-        self.buf = self.recv.buf
-        self.buf_packet_length = self.recv.buf_packet_length
-
         # Storage for testing packet length
         self.buf_packet_length_ok = np.empty(self.BUF_SIZE, dtype=bool)
 
-        # Various views of the buffer to allow quick and easy access to the packet contents
+        # Define various views of the buffer to allow quick and easy access to
+        # the main buffer without moving the data around in memory
+
+        # See the main buffer as a struct
         self.buf_struct = self.buf.view(self.packet_dtype)
-        # Header fields
+        # Header fields.
         self.buf_cookie = self.buf_struct['cookie'][:, 0]
         self.buf_corr = self.buf_struct['corr'][:, 0]
         self.buf_cmac = self.buf_struct['cmac'][:, 0]
@@ -1841,25 +1889,37 @@ class CorrPacketProcessor(object):
         # Number of saturations for the real and imaginary part of each product
         self.sat = np.zeros((self.NCORR, self.NCMAC, self.NPROD, 2), dtype=np.int32)
         self.sat_cplx = np.zeros((self.NCORR, self.NCMAC, self.NPROD), dtype=np.complex64)
-        # Number of packets received for each NCMAC (and therefore each
+        # Number of packets received for each NCORR and each NCMAC (and therefore each
         # product). Can be used to know how many packets were lost and to
         # normalize the data
         self.count = np.zeros((self.NCORR, self.NCMAC), dtype=np.uint32)
-        # self.ts = np.zeros((number_of_results, self.NCORR, self.NCMAC), dtype=np.uint64)
 
-        # Complex value data results
+        # Define the array to store the complex data value for the current software integration.
         #
         # Each correlator frame has a (18+18) bit resolution, which is then
-        # integrated for some time. Assuming the worst case of a saturatet 1
-        # Gb/s link sending the maximum value if 2**17, we would get 175.8
-        # correlator frames/s,  with soft integrator values of increase by 2**24.46/s. If we integrate for
-        # we
+        # integrated for some time here in software.
         #
-        # A float32 can represent integers values exactly up to 2**24, which
-        # leaves room for less than one second of integration in the worst
-        # case. We cannot thereofre use a complex64 value (float32+float32),
-        # and thereofre use a complex128 format, which can represent integers exactly up to 2**53.
+        # Assuming the worst case scenario of a saturated 1
+        # Gb/s link sending the maximum real or imaginary value if 2**17, we would get 175.8
+        # correlator frames/s for a N=16 correlator. The soft integrator values would increase each second
+        # by (2**17 * 175.8) = 2.3E7 (24.46 bits).
+        #
+        # A float32 can represent integers values exactly (without losing any
+        # data) up to 2**24, so we can't use that for holding our integrated results. We cannot
+        # thereofre use a complex64 value (float32+float32) either.
+        #
+        # We thereofre store the integrated results as in complex128 format,
+        # which can represent integers exactly up to 2**53. That gives us
+        # plenty of integration time.
         self.data = np.zeros((self.NCORR, self.NCMAC, self.NPROD), dtype=np.complex128)
+
+        self.corr_processed_packets = 0
+        self.corr_max_processing_time = 0
+        # self.corr_current_processed_packets = 0
+        self.corr_current_processing_time = 0
+        self.metrics_corr_packet_length_error = 0
+
+        # Header fields
 
         self.hdf5_file = None
         self.hdf5_start_time = None
@@ -1868,19 +1928,22 @@ class CorrPacketProcessor(object):
         self.state = 'align'
         self.last_ts = None
         self.current_integ = None
-        self.n = 0  # number of packets currently stored in the buffer
-        self.packets = 0
+        # self.n = 0  # number of packets currently stored in the buffer
+        self.packets = 0 # number of packets currently received for the current correlator set
 
         print('Initialized correlator packet processor')
 
     def stop(self):
+        """Stop correlator data capture (but data is still processed for metrics)"""
         if self.hdf5_file:
             self.hdf5_file.close()
 
     def process_packets(self):
+        """ Called by the receiver to process the correlator packet currently present in the main receiver buffer
+        """
 
         t0 = time.time()
-        self.process_corr_packets()
+        self.process_corr_packets()  # do the processing
         t1 = time.time()
 
         # self.buffer_preprocessing_time = max(t1 - t0, self.buffer_preprocessing_time)
@@ -1888,10 +1951,11 @@ class CorrPacketProcessor(object):
         self.corr_current_processing_time += t1 - t0
 
     def process_corr_packets(self):
-        """ Process the firmware correlator data
+        """ Process the firmware correlator data: discard, align, integrate
+        and save the correlation products
 
-        - Compute an average per-bin RMS over self.fft_rms_average samples
-
+        It is assumed by the receiver that when this function exists, all relevant packets have
+        been processed and that the main buffer data can be discarded.
         """
 
         if not self.software_integration_period:
@@ -1911,41 +1975,56 @@ class CorrPacketProcessor(object):
         if not buf_ix.size:
             return
 
+        # Keep track of the number of packets that have been processed for the metrics
+        self.corr_processed_packets += buf_ix.size
+        # self.corr_current_processed_packets += buf_ix.size
         # self.processed_packets += buf_ix.size
         # self.current_processed_packets += buf_ix.size
-        self.corr_processed_packets += buf_ix.size
-        self.corr_current_processed_packets += buf_ix.size
 
+        # Process the data we have untul we have none left. Processing is done by
+        # a state machine with the states 'flush1', 'flush2', 'align' and 'integ'
         while buf_ix.size:
 
             if self.last_ts is None:
                 self.last_ts = self.buf_ts[buf_ix[0]]
                 buf_ix = buf_ix[1:]
 
-            # Discard packets until we have a timestamp jump of at least 2 frames to flush the OS buffer
+            # Discard stale packets until we have a timestamp jump of at least 2 frames to flush the OS buffer.
+            # We might have one or more full set of old correlation data in the OS UDP packet buffer.
+            # New packets are just rejected while the buffer overflows.
+            # The old data could be mistaken for good data since their timestamps are contiguous etc.
+            # The bes way to know we have flushed the buffer is to detect a large jump in timestamp.
+            # Here we look for a minimum timestamp jump: 2
             elif self.state == 'flush1':
                 # initialize last_ts. This will cause the side effect of the first packet to be always flushed.
+                print(f'Flushing old correlator packets that were left in the overflowing UDP buffer')
                 buf_ix = self.flush(buf_ix, 2)
                 if buf_ix.size:
+                    print(f'Flushed {self.flushed_packets} old UDP packets in total')
                     # the top ts has a jump of 2. We must force skipping it
                     self.last_ts = self.buf_ts[buf_ix[0]]
                     self.state = 'flush2'
 
-            # Discard packets until we have a timestamp jump of at least 1
-            # frames to flush the probably partial first frame
+            # Now that we know we have live data, we probably don't have a full set sunce we were wer ein the middle
+            # of receiving a correlator set when the UDP receiver stopped overflowing. We wait for the next jump of 1 in the
+            # incoming paackets to detect when we are at the beginning of a new set of data.
             elif self.state == 'flush2':
+                print(f'Flushing live correlator packets until the start of a new set of data (i.e flush the initial partial set)')
                 buf_ix = self.flush(buf_ix, 1)
                 if buf_ix.size:
-                    print(f'Flushed {self.flushed_packets} UDP packets in total')
+                    print(f'Flushed {self.flushed_packets} correlator packets in total.')
                     self.state = 'align'
 
-            # Wait until the frame is aligned to our integration period
+            # Wait until we get packets whose timestamps are multiple of our target integration period so we don't have a partial integration.
             elif self.state == 'align':
+                print(f'Waiting correlator packets with timestamps that are multiple of our integration period.')
                 buf_ix = self.align(buf_ix)
-                if buf_ix.size:
+                if buf_ix.size:  # we found aligned packets. Clear the accumulator and start the integration.
                     self.clear_data()
                     self.current_integ = None
                     self.state = 'integ'
+
+            # Integrate the data
             elif self.state == 'integ':
                 self.integ(buf_ix)
                 buf_ix = buf_ix[[]]
@@ -1953,17 +2032,19 @@ class CorrPacketProcessor(object):
                 raise RuntimeError(f'Unknown correlator state {self.state}')
 
     def flush(self, bix, jump=2):
-        """ Flush the UDP buffer until the timout occurs or the packet timestamp jumps by more `threshold` or more.
+        """ Return the indices if the packets occuring after a timestamp jump
+        of `jump` or more has been detected.
 
-        This function clears the local software buffer.
+        Parameters:
 
-        If a timestamp jump is detected, we assume that we are now reading the
-        part of a frame that could fit in the UDP buffer because we started
-        flushing it. The frame is likely partial. For this reason, onece we
-        detect a large jump, we continue flushing until the next timestamp
-        arrives. This assumes that the packets will arrive grouped by timestamps number.
+            bix (ndarray): 1D integer index array that indicates where there are correlator packets in the main buffer
 
-        The first packet with a new timestamp following a timestamp jump is left on top of the buffer.
+            jump (int): minimum timestamp jump to detect.
+
+        Returns:
+
+            ndarray of indices that point to the correltor data after the
+            jump. Is an zero length array if the jump could not be found.
         """
 
         for i, bi in enumerate(bix):
@@ -1973,14 +2054,19 @@ class CorrPacketProcessor(object):
                 return bix[i:]
             self.last_ts = ts
             self.flushed_packets += 1
-            print(f'FLushing packet until jump of {jump}. ts={ts}')
         return bix[[]]
 
     def align(self, bix):
-        """ Flush packets until we receive the packet that is part of the
-        first frame of the specified integration period.
+        """ Find the first packet that have a timestamp that is an integer
+        multiple of the integration period and return the indices of it and
+        all packets that follow.
 
-        This first packet is left in the buffer.
+        Parameters:
+
+            bix (ndarray): 1D integer index array that indicates where there
+                are correlator packets in the main buffer
+
+
         """
         print('align: Waiting for first frame of the specified integration period')
         for i, bi in enumerate(bix):
@@ -1996,27 +2082,12 @@ class CorrPacketProcessor(object):
         return bix[[]]
 
     def integ(self, bix):
-        """
+        """ Decode and integrate the correlator packets in the buffer, and
+        save the data when a new integration period is encountered.
 
-        Parameters:
-
-            number_of_results (int): Number of software-integrated frames to
-                acquire and return. If a `filename` is specified, only the
-                last frame is returned. Also only if `filename` is specified,
-                a `number_of_results`=Non ewill result in indefinite data
-                capture until the capture is stopped.
-
-            software_integration_period (int): Number of correlator frames to
-                accumulate in software. A software frame will always be
-                aligned to a multiple of software_integration_period.
-
-
-
-
-        The receiver can do software integration for unlimited time at a
-        firmware integration period of 5000 frames (12.8 ms).
-
-
+        self.software_integration_period (int) indicates the number of
+        correlator frames to accumulate in software. A software frame will
+        always be aligned to a multiple of software_integration_period.
         """
         while bix.size:
             is_current = (self.buf_ts[bix] // self.software_integration_period) == self.current_integ
@@ -2038,12 +2109,14 @@ class CorrPacketProcessor(object):
         # self.software_integration_period))
 
     def save_data(self):
+        """ Saves the integrated products to HDF5 file
+        """
         packets = self.packets
 
         # Write data to HDF5 file
         if self.hdf5_file:
 
-            print(f'Received {packets} packets')
+            print(f'Will save {packets} correlator packets')
             pct_pkts = packets / (self.NCORR * self.NCMAC * self.software_integration_period) * 100
             pct_frames_min = np.min(self.count) / self.software_integration_period * 100
             pct_frames_max = np.max(self.count) / self.software_integration_period * 100
@@ -2054,11 +2127,14 @@ class CorrPacketProcessor(object):
             self.sat_cplx.imag = self.sat[..., 1] / 16.0  # imag sat flag is masked with 0x10
             self.data.real = self.acc_re
             self.data.imag = self.acc_im
-            print(self.current_integ, self.software_integration_period, self.firmware_integration_period)
+            print(f'Current_integration={self.current_integ}, '
+                  f'SW integ={self.software_integration_period} fw corr frames, '
+                  f'FW integ={self.firmware_integration_period} frames')
             fpga_frame_number = self.current_integ * self.software_integration_period * self.firmware_integration_period
             irigb_time = (fpga_frame_number * 2560 + self.frame0_irigb_time)
 
-            print('AutoCorr data for (0,0) is:', self.acc_re[:, 0, 0])
+            # print('AutoCorr data for CMAC=1 & PROD=0 is:', self.acc_re[:, 1, 0])  # NCORR, NCMAC, NPROD
+            print('AutoCorr data for CORR=0 & CMAC=1 is:', self.acc_re[0, 1, :128],'...')  # NCORR, NCMAC, NPROD
             self.hdf5_file.write(
                 self.current_integ,
                 fpga_frame_number,
@@ -2067,7 +2143,7 @@ class CorrPacketProcessor(object):
                 self.count,
                 self.sat_cplx)
         else:
-            print('fGot an unused integrated correlator frame with {packets} packets')
+            print(f'Correlator HDF5 data capture is inactive. {packets} integrated correlator were not saved')
 
         # Convert the products in the matrix format
         # m = self.raw_to_vector_map
@@ -2080,6 +2156,8 @@ class CorrPacketProcessor(object):
         # sat_cplx = self.sat_cplx[m[0], m[1], m[2]]
 
     def clear_data(self):
+        """Clears the accumulation buffers.
+        """
         self.acc_re[:] = 0
         self.acc_im[:] = 0
         self.count[:] = 0
@@ -2087,9 +2165,15 @@ class CorrPacketProcessor(object):
         print('Cleared accumulated data!')
 
     def accumulate_data(self, bix, verbose=0):
-        """ Add the data from the packets 0 to `number_of_packets` in to the
-        software accumulator array for software integration number
-        `integ_number`.
+        """ Accumulates the specified correlation products.
+
+        Parameters:
+
+            bix (ndarray): 1-D array of integer indices identifying the data
+                to use in the main receive buffer. Will index buf_corr, buff_cmac,
+                buf_data_sat and buf_data/h_l
+
+            verbose (bool): If True, will prine more messages
         """
         t1 = time.time()
 
@@ -2103,8 +2187,8 @@ class CorrPacketProcessor(object):
         corr = self.buf_corr[bix]
         cmac = self.buf_cmac[bix]
         temp32 = self.temp32[:n]
-        # print 'corr=', corr
-        # print 'cmac=', cmac
+        # print('corr=', corr)
+        # print('cmac=', cmac)
 
         # ts = self.buf_ts[:n]
 
@@ -2149,6 +2233,13 @@ class CorrPacketProcessor(object):
                   f' ({dt1 * 1000:.3f} + {dt2 * 1000:.3f} ms)')
 
     async def get_metrics_async(self, metrics):
+        """ Add the correlator metrics to the specified `Metrics` object
+
+        Parameters:
+
+            metrics (Metrics): Metrics object to which the metrics will be added.
+
+        """
 
         metrics.add('raw_acq_processed_corr_packets', value=self.corr_processed_packets)
         if self.hdf5_file:
@@ -2168,6 +2259,9 @@ class CorrPacketProcessor(object):
                         firmware_integration_period=100,
                         frame0_irigb_time=0
                         ):
+        """ Start the capture of data in a HDF5 file.
+        """
+
         if self.hdf5_file:
             self.stop_corr_adc_hdf5()
             # raise RuntimeError('HDF5 dataWriter is already running')
