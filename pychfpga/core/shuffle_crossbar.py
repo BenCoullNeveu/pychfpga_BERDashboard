@@ -313,8 +313,8 @@ class ShuffleCrossbar(Module_base):
         'ALIGN_FRAME_CTR': 'ALIGN_FRAME_CTR',
         'DELAY_CAPTURE': 'DELAY_CAPTURE',
         'FIFO_COUNT': 'FIFO_COUNT',
-
-        }
+        'IGNORE_LANE': lambda cb, lane: bool(cb.IGNORE_LANE & (1 << lane))
+    }
 
     async def get_lane_monitor(self, names):
         """
@@ -332,22 +332,26 @@ class ShuffleCrossbar(Module_base):
             if name not in self.LANE_MONITOR_TABLE:
                 raise ValueError('Invalid lane monitor name. valid names are %s' %
                                  ','.join(self.LANE_MONITOR_TABLE.keys()))
-            bitfields.append(self.get_bitfield(self.LANE_MONITOR_TABLE[name]))
+            bf = self.LANE_MONITOR_TABLE[name]
+            if isinstance(bf, str):
+                bitfields.append(lambda cb, lane, name_=bf: cb.read_bitfield(name_))
+            else:
+                bitfields.append(bf)
 
         mon = [[] for _ in bitfields]
         for lane in range(self.NUMBER_OF_CROSSBAR_INPUTS):
             await asyncio.sleep(0)
             self.LANE_MONITOR_SEL = lane
             for i, bf in enumerate(bitfields):
-                mon[i].append(self.read_bitfield(bf))
+                mon[i].append(bf(self, lane))
 
         return mon if is_list else mon[0]
 
     async def get_align_status(self):
         status = []
-        err_names = ['TLAST', 'TVALID', 'DISCARD', 'MISSING', 'FIFO', 'TIMEOUT']
+        err_names = ['IGNORE', 'TLAST', 'TVALID', 'DISCARD', 'MISSING', 'FIFO', 'TIMEOUT']
         errors = await self.get_lane_monitor(
-            ['BAD_TLAST', 'BAD_TVALID', 'BAD_FRAME_LENGTH',
+            ['IGNORE_LANE', 'BAD_TLAST', 'BAD_TVALID', 'BAD_FRAME_LENGTH',
              'MISSING_FRAME', 'ALIGN_FIFO_OVERFLOW', 'DATA_TIMEOUT'])
         for lane in range(len(errors[0])):
             status.append({err_names[errno]: err[lane] for (errno, err) in enumerate(errors) if err[lane]})
