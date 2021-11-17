@@ -14,11 +14,8 @@ import time
 import os
 import pickle
 from datetime import datetime
-from collections import OrderedDict
 from functools import wraps
 import subprocess
-import shlex
-import bz2
 import socket
 import __main__
 import asyncio
@@ -1701,15 +1698,15 @@ class chFPGA(FPGAFirmware):
         def astype(self, format):
             return self._IRIGB_TIME_FORMAT[format](self)
 
-    _IRIGB_SOURCE_TABLE = OrderedDict([
-        ('bp_trig', 0),
-        ('bp_time',  1),
-        ('irigb_gen',  2),
-        ('bp_gpio_int',  3),
-        ('sma_a', 4),
-        ('sma_b', 5),
-        ('bp_sma', 6)
-        ])
+    _IRIGB_SOURCE_TABLE = {
+        'bp_trig': 0,
+        'bp_time': 1,
+        'irigb_gen': 2,
+        'bp_gpio_int': 3,
+        'sma_a': 4,
+        'sma_b': 5,
+        'bp_sma': 6
+        }
 
     async def set_irigb_source_async(self, source):
         """ Set the source of the IRIG-B signal."""
@@ -5755,11 +5752,11 @@ class chFPGA(FPGAFirmware):
 
         Returns:
 
-            dict: An OrderedDict containing the status information in the format ``{metric:value,
+            dict: An dict containing the status information in the format ``{metric:value,
             ...}`` where both ``metric`` and ``value`` are strings.
         """
 
-        info = OrderedDict()
+        info = dict()
         metrics = Metrics(
             type='GAUGE',
             slot=(self.slot or 0) - 1,
@@ -5918,7 +5915,7 @@ class chFPGA(FPGAFirmware):
 
         """
 
-        info = OrderedDict()
+        info = dict()
         crate_number = self.crate.crate_number if self.crate else None
         crate_id = self.crate.get_string_id() if self.crate else None
         metrics = Metrics(crate_number=crate_number, crate_id=crate_id, type='GAUGE')
