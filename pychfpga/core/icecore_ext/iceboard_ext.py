@@ -41,8 +41,9 @@ from .lib import gpio
 
 
 class IceBoard(IceBoardBase, Motherboard):
-    """ Provide the basic code needed to operate the Iceboard (i.e. Tuber-
-    provided code and a few Python wrappers)
+    """ Provide the methods needed to operate the Iceboard hardware and its FPGA firmware.
+
+    The class gives access to the methods provided by the on-board ARM processor via the Tuber protocol.
 
     Adds:
         - Lightweight list-based Hardware map management
@@ -116,9 +117,6 @@ class IceBoard(IceBoardBase, Motherboard):
 
     _backplane_initialized = False  # Indicate if we have initialized the backplane access yet
     _cached_repr = None
-
-
-
 
     def __init__(self, hostname=None, serial=None, slot=None, subarray=None, fpga_ip_addr=None,**kwargs):
         """ Create or update an IceBoard object.
