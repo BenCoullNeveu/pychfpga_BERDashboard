@@ -23,14 +23,19 @@ class FPGABitstream(object):
     DEFAULT_BITSTREAM_FOLDER = '../../fpga_bitstreams'
     bitstream_cache = {} # {url:file_data}
 
-    def __init__(self, url, bitstream_folder=None):
+    def __init__(self, url, folder=None):
         """ Creates a bitstream object from the specified 'url', which can be
         a filename or a remote resource.
 
+        Parameters:
+
+            url (str): name of the bitstream file to use. Can be a url, a filename, or a pathname.
+
+            folder (str): if not None, search for the bitstream will be done relative to the specified folder location.
         """
         self.logger = logging.getLogger(__name__)
         self.url = url
-        self.bitstream_folder = bitstream_folder or self.DEFAULT_BITSTREAM_FOLDER
+        self.bitstream_folder = folder or self.DEFAULT_BITSTREAM_FOLDER
         self.load_time = None  # time at which the file was loaded
         self.file_mtime = None # Modification date of the file. Used to quickly determine if it should be reloaded.
         self.load_bitstream()
@@ -182,6 +187,17 @@ class FPGABitstream(object):
 
         return
 
+    # def get_raw_bitstream(self):
+    #     self.load_bitstream()
+    #     return self.raw_bitstream
+
+    # def get_crc32(self):
+    #     self.load_bitstream()
+    #     return self.crc32
+
+    # def get_base64_raw_bitstream(self):
+    #     self.load_bitstream()
+    #     return self.base64
 
 # Alternate simplified version
 # class FPGABitstream(object):
