@@ -2948,6 +2948,11 @@ class FPGAArray(object):
 
         return stream_id_map
 
+    def get_correlator_params(self):
+        """ Returns the correlator geometry and configuration """
+        ib = self.ib[0]  # we assume all boards have correlators and they are all the same
+        return ib.get_correlator_params()
+
     async def start_correlators_async(self, integration_period, autocorr_only=False):
         """
         """
@@ -2958,6 +2963,7 @@ class FPGAArray(object):
     async def set_offset_binary_encoding_async(self, offset_encoding_enabled):
         """
         """
+        self.logger.warning(f'{self!r}: set_offset_binary_encoding() is called. This should be removed')  # ***JFC
         for ib in self.ib:
             ib.set_offset_binary_encoding(offset_encoding_enabled)
             await asyncio.sleep(0)

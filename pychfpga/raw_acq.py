@@ -1787,6 +1787,7 @@ class CorrPacketProcessor(object):
                  firmware_integration_period=1,
                  software_integration_period=100,  # Can be changed by hdf start
                  frame0_irigb_time=0,
+                 # Add correlator geometry to compute RAW_PACKET_LENGTH and use it to filter packets by length
                  ):
 
         """ Initializes the correlator packet procesor
@@ -1817,7 +1818,6 @@ class CorrPacketProcessor(object):
         self.software_integration_period = software_integration_period
         self.firmware_integration_period = firmware_integration_period
         self.frame0_irigb_time = frame0_irigb_time
-
 
         # Obtain a pointer to the main buffer and its geometry from the receiver.
         self.BUF_SIZE = self.recv.buf.shape[0]
@@ -1968,10 +1968,13 @@ class CorrPacketProcessor(object):
             return
 
         # Eliminate packets with the wrong length
-        self.buf_packet_length_ok[buf_ix] = self.buf_packet_length[buf_ix] == self.RAW_PACKET_LENGTH
-        self.metrics_corr_packet_length_error += np.sum(self.buf_packet_length_ok[buf_ix] == False)
-        buf_ix = buf_ix[self.buf_packet_length_ok[buf_ix]]
+        # JFC:
+        if False:
+            self.buf_packet_length_ok[buf_ix] = self.buf_packet_length[buf_ix] == self.RAW_PACKET_LENGTH
+            self.metrics_corr_packet_length_error += np.sum(self.buf_packet_length_ok[buf_ix] == False)
+            buf_ix = buf_ix[self.buf_packet_length_ok[buf_ix]]
 
+        # Bail out if there are no packets left to process
         if not buf_ix.size:
             return
 
@@ -2257,7 +2260,11 @@ class CorrPacketProcessor(object):
                         elements_per_file=256,
                         software_integration_period=100,
                         firmware_integration_period=100,
-                        frame0_irigb_time=0
+                        frame0_irigb_time=0,
+                        number_of_correlators = None, # has to be provided
+                        number_of_correlated_inputs= None, # has to be provided
+                        number_of_bins_per_frame = None, # has to be provided
+
                         ):
         """ Start the capture of data in a HDF5 file.
         """
@@ -2312,7 +2319,12 @@ class CorrPacketProcessor(object):
             self.hdf5_file = HDF5CorrWriter(base_dir=self.hdf5_base_dir,
                                             filename=base_filename,
                                             elements_per_file=self.elements_per_file,
-                                            n_inputs=self.n_inputs)
+                                            n_inputs=self.n_inputs,
+                                            # correlator geometry
+                                            number_of_correlators = number_of_correlators,
+                                            number_of_correlated_inputs = number_of_correlated_inputs,
+                                            number_of_bins_per_frame = number_of_bins_per_frame,
+                                            )
             self.log.info(f'{self!r}: Correlator HDF5 data writer is started')
         except Exception as e:
             self.log.error(
@@ -2347,6 +2359,11 @@ class HDF5CorrWriter(object):
                  n_inputs=16,
                  elements_per_file=256,
                  n_freq_bins=1024,
+
+                 number_of_correlators = None, # has to be provided
+                 number_of_correlated_inputs= None, # has to be provided
+                 number_of_bins_per_frame = None, # has to be provided
+
                  sample_freq=800.,
                  include_counts=True,
                  include_sat=True):
@@ -2370,9 +2387,16 @@ class HDF5CorrWriter(object):
         # raw correlator data for the desired inputs
         (i, j) = np.triu_indices(self.n_inputs)
         self.prod_axis = np.array(list(zip(i, j)), dtype=self.prod_dtype)
+
+
         # Pre-compute the matrix that will be used to re-index the raw data
         # vectors from the correlator into an easy-to-index matrix format.
-        self.raw_to_vector_map = CORR.get_raw_to_matrix_map()[..., i, j]
+
+        # self.raw_to_vector_map = CORR.get_raw_to_matrix_map()[..., i, j]
+        # print('*** Warning: using N=4 , works only for 4 channel correlator***')
+        self.raw_to_vector_map =  CORR.get_raw_corr_map(N=number_of_correlated_inputs, Nbins=number_of_bins_per_frame, Ncorr=number_of_correlators)
+        self.raw_to_vector_map = self.raw_to_vector_map[..., i, j]  # keep only a subset of the inputs to save to disk
+
         self.n_prod = len(i)
 
         self.start_time = time.time()

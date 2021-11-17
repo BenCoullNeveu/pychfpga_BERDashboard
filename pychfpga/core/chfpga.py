@@ -679,7 +679,7 @@ class chFPGA(FPGAFirmware):
             self.NUMBER_OF_CORRELATORS_MAX = self.GPIO.NUMBER_OF_CORRELATORS
             self.NUMBER_OF_CORRELATORS = self.GPIO.NUMBER_OF_CORRELATORS
             self.LIST_OF_IMPLEMENTED_CORRELATORS = list(range(self.NUMBER_OF_CORRELATORS))
-            self.NUMBER_OF_ANTENNAS_TO_CORRELATE = self.GPIO.NUMBER_OF_CHANNELIZERS_TO_CORRELATE
+            self.NUMBER_OF_INPUTS_TO_CORRELATE = self.GPIO.NUMBER_OF_CHANNELIZERS_TO_CORRELATE
 
             self.default_channels = list(range(self.NUMBER_OF_ANTENNAS))
 
@@ -700,7 +700,7 @@ class chFPGA(FPGAFirmware):
                 str(self.LIST_OF_IMPLEMENTED_CORRELATORS)))
             self.logger.debug('%r: Number of channelizers supported by the correlators: %i ' % (
                 self,
-                self.NUMBER_OF_ANTENNAS_TO_CORRELATE))
+                self.NUMBER_OF_INPUTS_TO_CORRELATE))
 
             await asyncio.sleep(0)
 
@@ -2240,7 +2240,7 @@ class chFPGA(FPGAFirmware):
 
         config.number_of_correlators_max = self.NUMBER_OF_CORRELATORS_MAX
         config.number_of_correlators = self.NUMBER_OF_CORRELATORS
-        config.number_of_antennas_to_correlate = self.NUMBER_OF_ANTENNAS_TO_CORRELATE
+        config.number_of_antennas_to_correlate = self.NUMBER_OF_INPUTS_TO_CORRELATE
         config.system_list_of_implemented_correlators = self.LIST_OF_IMPLEMENTED_CORRELATORS
 
         config.system_frame_length = self.FRAME_LENGTH
@@ -6040,6 +6040,14 @@ class chFPGA(FPGAFirmware):
     #     self.set_ant_reset(0)
     #     #self.sync()
 
+    def get_correlator_params(self):
+        """ Returns the correlator geometry and configuration """
+        return dict(
+            number_of_correlators=self.NUMBER_OF_CORRELATORS,  # hard coded in firmware
+            number_of_correlated_inputs=self.NUMBER_OF_INPUTS_TO_CORRELATE,  # hard coded in firmware
+            number_of_bins_per_frame=self.CROSSBAR.BIN_SEL[0].NUMBER_OF_SELECTED_WORDS  # depends on crossbar configuration
+            )
+
     def start_correlator(
             self,
             integration_period=16384,
@@ -6093,11 +6101,11 @@ class chFPGA(FPGAFirmware):
         if not self.CORR:
             raise RuntimeError('The FPGA firmware does not contain a correlator core')
 
-        bins_per_frame = len(self.CROSSBAR.BIN_SEL[0].get_selected_bins())
+        corr_params = self.get_correlator_params()
         self.CORR.start_correlator(integration_period=integration_period,
                                    autocorr_only=autocorr_only,
                                    correlators=correlators,
-                                   bins_per_frame=bins_per_frame,
+                                   bins_per_frame=corr_params['number_of_bins_per_frame'],
                                    bandwidth_limit=bandwidth_limit,
                                    verbose=verbose)
 

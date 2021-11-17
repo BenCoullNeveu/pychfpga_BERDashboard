@@ -801,24 +801,30 @@ class FPGAMaster(object):
         capture_n_inputs = capture_n_inputs or conf.hdf5_capture_n_inputs
         software_integration_period = conf.software_integration_period
 
-        if conf.enable and capture_duration is not None:
-            self.log.info(
-                f'{self!r}: Starting HDF5 data capture for {capture_duration} '
-                f'seconds (0 = infinite)')
+        if not (conf.enable and capture_duration is not None):
+            return
 
-            self.log.debug(
-                f'{self!r}: firmware integ={self.corr_firmware_integration_period}')
-            await asyncio.gather(*[server.start_corr_hdf5(
-                base_dir=capture_folder,
-                base_filename=capture_filename,
-                capture_duration=capture_duration,
-                capture_n_inputs=capture_n_inputs,
-                elements_per_file=capture_elements_per_file,
-                software_integration_period=software_integration_period,
-                firmware_integration_period=self.corr_firmware_integration_period, # also for time computation only
-                frame0_irigb_time=self.frame0_irigb_time.nano if self.frame0_irigb_time else 0,  # update frame 0 time from last sync
+        # Get the correlator geometry and configuration parameters
+        corr_params = self.fpgas.get_correlator_params()
 
-                )         for server_name, server in self.raw_acq.items()])
+
+        self.log.info(
+            f'{self!r}: Starting HDF5 data capture for {capture_duration} '
+            f'seconds (0 = infinite)')
+
+        self.log.debug(
+            f'{self!r}: firmware integ={self.corr_firmware_integration_period}')
+        await asyncio.gather(*[server.start_corr_hdf5(
+            base_dir=capture_folder,
+            base_filename=capture_filename,
+            capture_duration=capture_duration,
+            capture_n_inputs=capture_n_inputs,
+            elements_per_file=capture_elements_per_file,
+            software_integration_period=software_integration_period,
+            firmware_integration_period=self.corr_firmware_integration_period, # also for time computation only
+            frame0_irigb_time=self.frame0_irigb_time.nano if self.frame0_irigb_time else 0,  # update frame 0 time from last sync
+            **corr_params,
+            )         for server_name, server in self.raw_acq.items()])
 
 
     def set_state(self, new_state):
@@ -1621,7 +1627,7 @@ class FPGAMasterAsyncRESTServer(AsyncRESTServer):
 
             curl http://localhost:54321/status
         """
-        t0=time.time()
+        t0 = time.time()
         self.log.debug(f'{self!r}: requesting fpga_master status')
         r = self.fpga_master.status() # {state:x and config: y}. chome_master always exists.
         result = dict(state=r['state'])

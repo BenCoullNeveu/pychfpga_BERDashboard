@@ -92,7 +92,11 @@ class CORR(object):
 
     def init(self):
         """ Initializes all correlators"""
-        self.NUMBER_OF_CORRELATED_CHANNELS = 16
+        # Correlator geometry parameters
+        self.NUMBER_OF_CORRELATORS = self.fpga.NUMBER_OF_CORRELATORS
+        self.NUMBER_OF_CORRELATED_CHANNELS = self.fpga.NUMBER_OF_INPUTS_TO_CORRELATE
+
+        # derived parameters
         self.NUMBER_OF_CMACS_PER_CORRELATOR = 2 * (self.NUMBER_OF_CORRELATED_CHANNELS + 1)  # per correlator
         self.PRODUCTS_PER_BIN = self.NUMBER_OF_CORRELATED_CHANNELS // 4  # per CMAC
 
@@ -168,7 +172,7 @@ class CORR(object):
 ###################################################
 
 
-def get_raw_corr_map(N=16):
+def get_raw_corr_map(N=16, Nbins=128, Ncorr=8):
     """
     Creates a map that maps a correlator frame array indexed by (correlator_number,
     cmac_number, product_number) into a n array index (bin_number, i, j).
@@ -180,6 +184,10 @@ def get_raw_corr_map(N=16):
         N (int): number of input channels that are being correlated. This must
             match the number of correlators for which the firmware correlator was
             implemented.
+
+        Nbins (int): Number of frequency bins provided to each correlator per frame.
+
+        Ncorr: Number of correlator cores, each of which processing a different set of `Nbins` frequency bins.
 
 
     Returns:
@@ -275,10 +283,8 @@ def get_raw_corr_map(N=16):
     NPROD_TOTAL = NCHAN * (NCHAN + 1) // 2  # Total number of products per correlator frame
     CMAC_INTERLEAVE_FACTOR = NI_CLOCKS_PER_BIN // NCLOCKS_PER_BIN
     NCMAC_PER_CORR = CMAC_INTERLEAVE_FACTOR * NI_CMAC_PER_CORR  # Number of interleaved CMACs per core needed to make the computations in the target number of clocks
-    NBINS_PER_CMAC = 128  #NPROD_PER_CMAC // NCLOCKS_PER_BIN  # Number of bins per CMAC. =512/4=128
-    NPROD_PER_CMAC = NBINS_PER_CMAC * NCLOCKS_PER_BIN  # Number of products per CMAC, limited by BRAM size (512 x (18+18) bits for the accumulator & capture RAM)
-    NBINS_PER_CORR = NBINS_PER_CMAC  # = 128
-    Ncorr = NBINS_TOTAL // NBINS_PER_CORR  # = 8
+    NBINS_PER_CMAC = NBINS_PER_CORR =Nbins   # Number of bins per CMAC. =512/4=128
+    NPROD_PER_CMAC = Nbins * NCLOCKS_PER_BIN  # Number of products per CMAC, limited by BRAM size (512 x (18+18) bits for the accumulator & capture RAM)
 
     # Create the arrays that will be used to index the raw data into the target array
     # The first dimension is for the 3 indexes of the array (CORR, CMAC, PROD)
@@ -379,13 +385,13 @@ def get_raw_corr_map(N=16):
     prod_matrix = np.broadcast_to(prod_vector[None, None, :], shape)
 
     # Compute the bin number that correspond to each bin index.
-    # By default, each correlator gets 1/8th of the bins, so the bin_number
-    # is bin_index * 8, offset by the correlator number.
+    # By default, each correlator gets 1/Ncorr of the bins, so the bin_number
+    # is bin_index * Ncorr, offset by the correlator number.
     # [1016,1016,1016,1016, 1008,1008,1008,1008, ... 0,0,0,0]
     # [1016,1016,1016,1016, 1008,1008,1008,1008, ... 0,0,0,0]
     # ...
     # freq_bin shape is (NCORR, NCMAC_PER_CORR, NPROD_PER_CMAC)
-    freq_bin = corr_matrix + 8 * cmac_bin_index[None, :, :]
+    freq_bin = corr_matrix + Ncorr * cmac_bin_index[None, :, :]
 
     # Assign the (corr,cmac,prod) numbers to each (bin,i,j). We had to convert
     # the right hand size to matrices because numpy was confused on how to
