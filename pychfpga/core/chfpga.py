@@ -3706,6 +3706,9 @@ class chFPGA(FPGAFirmware):
             channels (list of int): List of channels to which the command is applied
 
         """
+        if not offset:
+            self.logger.warning(f'Offset binary Encoding is disabled: this mode is incompatible with the firmware correlator and may confuse gain calibrations. This should not be done.')
+
         if channels is None:
             channels = self.default_channels
 

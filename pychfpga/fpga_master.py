@@ -396,11 +396,9 @@ class FPGAMaster(object):
 
 
 
-    async def set_gains(self, gains=None):
+    async def set_gains_async(self, gains=None):
         """
-        Sets the data source and capture rate for the specified channels. This
-        can be called at any time after array initializationand does not
-        require sync.
+        Sets the scaler gains for the target channels and gains values specified in `gains`.
 
 
         Parameters:
@@ -416,6 +414,10 @@ class FPGAMaster(object):
 
 
         """
+        if not gains:
+            return
+
+        # Convert to a list of tuples if a dict
         if isinstance(gains, dict):
             gains = gains.items() # Py3: This is a dictview
 
@@ -436,7 +438,7 @@ class FPGAMaster(object):
                      weight=0.2,
                      initial_gains=[ ('*', [1.0, 22])]):
         """
-        Starts the background iteratove process of computing the optimal digital gains on the FPGA to acheive the target RMS.
+        Perform the iterative process of computing the optimal digital gains on the FPGA to acheive the target RMS on specified target channels.
 
         Parameters:
 
@@ -551,6 +553,9 @@ class FPGAMaster(object):
                 initial_gains=initial_gains)
             # Set all the initial gains on bank 0
             bank = 0
+
+
+            # print(f'compute_gains: setting the initial gain of {gc.get_gains()}')
             await self.fpgas.set_gains_async(gains=gc.get_gains(),
                                              bank=bank,
                                              when='now')
@@ -1126,7 +1131,7 @@ class FPGAMaster(object):
         if 'initial_gains' in conf.fpga:
             # Get a {iceboard:[list_of_channels]} dict of selected channels
             self.log.info(f"{self!r}: Overriding the following gains: {conf.fpga.initial_gains!r}")
-            await self.set_gains(gains=conf.fpga.initial_gains)
+            await self.set_gains_async(gains=conf.fpga.initial_gains)
 
 
         # Initialize the digital gain hdf5 writer
@@ -1154,12 +1159,8 @@ class FPGAMaster(object):
         self.log.info("Starting Raw data HDF5 data capture")
         await self.start_hdf5_capture()
 
-        # Disable offset encoding if correlating
+        # Start correlator data capture
         if corr_config and corr_config.enable:
-            self.log.info("*** Disabling offset encoding")
-            # self.fpgas.ib.set_gains((0,0), bank=0, when='now')
-            await self.fpgas.set_offset_binary_encoding_async(True)
-
             self.log.info("Starting Correlator HDF5 data capture")
             await self.start_corr_hdf5_capture()
 
@@ -1367,18 +1368,22 @@ class FPGAMaster(object):
         # Get the unique identifier for the requested gains
         uid = self.gain_hdf5.read(update_id, 'update_id')
 
+        # create a key-to-channel_id map to associate stored gains with existing boards in the array
+        key_to_chan_id_map = {self._chan_id_to_serial_number(cid): cid for cid in self.fpgas.get_channel_ids()}
+
         # Read the gains
         self.log.info(f"{self!r}: Reading digital gains from archive (update_id = {uid})")
         gains, gain_timestamps = self.gain_hdf5.read_gain(update_id=uid)
 
         # Convert the keys from serial numbers to (crate, slot, chan) tuples
-        gains = {self._serial_number_to_chan_id(key): val
-                 for key, val in gains.items()}
-        gain_timestamps = {self._serial_number_to_chan_id(key): val
-                           for key, val in gain_timestamps.items()}
+        gains = {key_to_chan_id_map[key]: val
+                 for key, val in gains.items() if key in key_to_chan_id_map}
+        gain_timestamps = {key_to_chan_id_map[key]: val
+                           for key, val in gain_timestamps.items() if key in key_to_chan_id_map}
 
         # Load to requested bank
         self.log.info(f"{self!r}: Loading digital gains in bank #{bank}")
+        # print(f'gains={gains}')
         await self.fpgas.set_gains_async(
             gains,
             bank=bank,
@@ -1448,6 +1453,7 @@ class FPGAMaster(object):
               valid slot number.
             - slot_zero_based (int): slot number, indexed from 0. Is 0 of
               there is no valid slot number.
+            - slot_zero_based_str (str): If slot is defined, 2-digit slot number as a string, indexed from 0. Otherwise the string representation of slot (e.g. the model/serial) is returned. 
             - chan (int):hardware  channel number, as used by fpga_array
             - input (int): application specific channel number, which
               represent how the channels are labeled in the field. The
@@ -1482,19 +1488,21 @@ class FPGAMaster(object):
                    'crate': crate if isinstance(crate, int) else 0,
                    'slot': slot + 1 if isinstance(slot, int) else 1,
                    'slot_zero_based': slot if isinstance(slot, int) else 0,
+                   'slot_zero_based_str': f'{slot:02d}' if isinstance(slot, int) else str(slot),
                    'chan': chan,
                    'input': self.config.input_number_map[chan]}
-        return (self.config.input_sn % args_sn)
+        return (self.config.input_sn.format(**args_sn) % args_sn)
 
-    def _serial_number_to_chan_id(self, sn):
+    # def _serial_number_to_chan_id(self, sn):
+    # We don't use this anymore: we create a reverse table from _chan_id_to_serial_number
 
-        mo = re.match(r'%s(\d{2})(\d{2})(\d{2})' % self.config.corr_sn, sn)
-        crate = int(mo.group(1))
-        slot = int(mo.group(2))
-        inp = int(mo.group(3))
-        chan = self.config.input_number_map.index(inp)
+    #     mo = re.match(r'%s(\d{2})(\d{2})(\d{2})' % self.config.corr_sn, sn)
+    #     crate = int(mo.group(1))
+    #     slot = int(mo.group(2))
+    #     inp = int(mo.group(3))
+    #     chan = self.config.input_number_map.index(inp)
 
-        return (crate, slot, chan)
+    #     return (crate, slot, chan)
 
 
 class DummyFPGAMaster(FPGAMaster):
