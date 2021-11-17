@@ -290,8 +290,8 @@ class TCPipe_BSB_MMI(BSB_MMI):
 
     """
     # Maximum packet lengths, limited by the size of the FIFOs
-    MAX_BSB_COMMAND_PACKET_LENGTH === 4096
-    MAX_BSB_REPLY_PACKET_LENGTH === 16384
+    MAX_BSB_COMMAND_PACKET_LENGTH = 4096
+    MAX_BSB_REPLY_PACKET_LENGTH = 16384
     def __init__(self, tcpipe):
 
         super().__init__()
