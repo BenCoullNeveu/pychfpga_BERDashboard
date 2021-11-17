@@ -5448,6 +5448,64 @@ class chFPGA(FPGAFirmware):
             stream_type = 0  # not used, as the shuffled packets are correlated never get out of the FPGA
             crate_number = 0  # idem
 
+        elif mode == 'corr4':
+            """
+            Implement the corner-turn operation for the 16-channel firmware correlator embedded in
+            the same FPGA. in this mode, we simply enable the 1st crossbar. The 2nd and 3rd
+            crossbars are not present in the firmware.
+            """
+            #############################
+            # 1st Crossbar
+            #############################
+            # Reorders the data from the 16 local channelizers
+
+            number_of_cb1_bin_sel = 8
+            cb1_bypass = False
+            cb1_four_bit = True
+            send_flags = False
+            # BS0 grabs data from FIFO 0-1 (lanes 0-7), BS1 from FIFO 2-3
+            # (lanes 8-15), repeat... We capture 2 words per bin in 2 clocks,
+            # bins are separated by 2 clocks, so we have time to empty the
+            # FIFO
+            cb1_lanes = [(0, 0)] * number_of_cb1_bin_sel
+            cb1_combine_data_flags = 1
+            # Select the bins to be assigned to each bin selector output.
+            if cb1_bin_indices:
+                cb1_bin_select_map = cb1_bin_indices
+                cb1_bins = len(cb1_bin_indices[0])
+            else:
+                cb1_bins = 256
+                cb1_bin_spacing = 1024 // cb1_bins  # = 8 = 4 clocks
+                cb1_bin_select_map = [
+                    np.arange(cb1_bins) * cb1_bin_spacing + (i % cb1_bin_spacing)
+                    for i in range(number_of_cb1_bin_sel)]
+            cb1_output_words_per_bin = 1
+            cb1_output_bins = cb1_bins
+
+            #################################
+            # Backplane PCB (intra-crate) shuffle
+            #################################
+            # Not implemented in the firmware correlator
+
+            #################################
+            # Backplane QSFP (crate) shuffle
+            #################################
+            # Not implemented in the firmware correlator
+
+            #############################
+            # 2nd and 3rd Crossbar
+            #############################
+            # Not implemented in the firmware correlator
+            # We define default values to prevent the packet size computation to fail.
+            cb2_bypass = True
+            cb3_bypass = True
+            cb3_output_bins = cb1_bins
+            cb3_output_words_per_bin = 0  # To be updated
+            cb3_output_data_flags_words_per_bin = 0  # To be updated
+            cb3_output_frame_flags_words_per_frame = 0  # To be updated
+            stream_type = 0  # not used, as the shuffled packets are correlated never get out of the FPGA
+            crate_number = 0  # idem
+
         elif mode is None:  # Manual config
             cb1_four_bit = True
 
