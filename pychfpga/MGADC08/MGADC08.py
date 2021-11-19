@@ -126,7 +126,7 @@ class FMCMezzanine_MGADC08(FMCMezzanine):
 
             # Read checksum
             crc_string = eeprom_data[last_char + 1: last_char + 1 + 4]
-            crc = int.from_bytes(crc_string, 'little')
+            crc = int.from_bytes(crc_string, 'little', signed=False)
             computed_crc = zlib.crc32(data_string)
             if computed_crc != crc:
                 raise RuntimeError(
