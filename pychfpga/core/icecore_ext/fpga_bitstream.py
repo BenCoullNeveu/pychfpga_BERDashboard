@@ -182,7 +182,7 @@ class FPGABitstream(object):
         self.bytes = bitfile  # raw bitfile bytes
         self.raw_bitstream = bitfile  # raw bitfile bytes
         self.base64 = base64.b64encode(bitfile)
-        self.crc32 = zlib.crc32(bitfile)  # compute CRC32 of the data
+        self.crc32 = zlib.crc32(bitfile) & 0xFFFFFFFF  # compute CRC32 of the data
         self.md5_string = hashlib.md5(bitfile).hexdigest() # MD5 sum as a hex string
 
         return
