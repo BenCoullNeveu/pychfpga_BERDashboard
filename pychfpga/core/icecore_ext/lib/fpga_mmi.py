@@ -10,7 +10,7 @@ commands sent directly to the FPGA Ethernet port.
 import logging
 import numpy as np
 from . import udp as udp
-from ..iceboard_ext import IceBoardExt
+from ...chfpga import chFPGA
 from .bsb_mmi import BSB_MMI
 
 class FpgaMmiException(IOError):
@@ -36,10 +36,10 @@ class FpgaMmi(BSB_MMI):
     PROTO_TCP = 'TCP'
     TimeoutException = TimeoutException
 
-    _BROADCAST_BASE_PORT = IceBoardExt._BROADCAST_BASE_PORT
-    _FPGA_IP_SETUP_BASE_ADDR = IceBoardExt._FPGA_IP_SETUP_BASE_ADDR
-    _FPGA_SERIAL_NUMBER_ADDR = IceBoardExt._FPGA_SERIAL_NUMBER_ADDR
-    _FPGA_TIMESTAMP_ADDR = IceBoardExt._FPGA_TIMESTAMP_ADDR
+    _BROADCAST_BASE_PORT = chFPGA._BROADCAST_BASE_PORT
+    _FPGA_IP_SETUP_BASE_ADDR = chFPGA._FPGA_IP_SETUP_BASE_ADDR
+    _FPGA_SERIAL_NUMBER_ADDR = chFPGA._FPGA_SERIAL_NUMBER_ADDR
+    _FPGA_TIMESTAMP_ADDR = chFPGA._FPGA_TIMESTAMP_ADDR
 
     # Maximum BSB packet lengths, limited by the size of the FIFOs
     # These are approximale. Have to lookup the UDP buffer sizes.
