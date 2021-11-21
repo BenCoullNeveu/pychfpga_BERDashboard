@@ -463,25 +463,22 @@ class chFPGA(FPGAFirmware):
             fpga_ip_addr=self.fpga_ip_addr,
             fpga_port_number=self.fpga_control_port_number)
 
-        # -------------------------------------------------------------------------
-        # Open FPGA's GPIO module interface
-        # -------------------------------------------------------------------------
-        self.core_gpio = fpga_gpio.GPIO_base(self, self._SYSTEM_GPIO_BASE_ADDR)
+        self.logger.debug(f"{self!r}: Clearing FPGAs UDP communication stack")
+        await self.reset_fpga_udp_stack()
+        # self.mmi.flush()
 
         # -------------------------------------------------------------------------
         # Check if we can communicate with the FPGA over the direct Ethernet
         # link by reading the UDP MMI cookie (not the SPI one) and check if
         # the cookie correspond to the chFPGA firmware.
         # -------------------------------------------------------------------------
-        self.logger.debug(f"{self!r}: Clearing FPGAs UDP communication stack")
-        await self.reset_fpga_udp_stack()
-        self.mmi.flush()
 
         self.logger.info(
             f"{self!r}: UDP communication link with the FPGA established "
             f"at {self.fpga_ip_addr}:{self.fpga_control_port_number}")
 
-        return mmi
+
+        return self.mmi
 
 
 
@@ -550,7 +547,7 @@ class chFPGA(FPGAFirmware):
         self.fpga_ip_addr = fpga_ip_addr
         self.fpga_ip_addr_fn = fpga_ip_addr_fn
         if fpga_ip_addr_fn is not None:
-            raise DeprecationWarning('fpga_ip_addr_fn will be deprecated. Instead specify fpga_ip_addr in the hardware map')
+            self.logger.warning('fpga_ip_addr_fn will be deprecated. Instead specify fpga_ip_addr in the hardware map')
         self.udp_retries = udp_retries
         self.fpga_control_port_number = fpga_control_port_number
         self.local_control_port_number = local_control_port_number
