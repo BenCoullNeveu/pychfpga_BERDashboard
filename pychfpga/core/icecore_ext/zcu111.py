@@ -350,7 +350,8 @@ class ZCU111(Motherboard):
 
         fw_cls, buf, fw_info = FPGAFirmware.get_firmware(self.part_number, firmware)
         # buf = fw_cls.get_bitstream_object(self.part_number, self.firmware_name)
-        crc32 = buf.crc32 & 0xFFFFFFFF
+        crc32 = buf.crc32
+        bitstream = buf.raw_bitstream
 
         self.logger.debug(f'{self!r}: Getting is_programmed')
         is_fpga_programmed = await self.is_fpga_programmed_async()
@@ -365,12 +366,6 @@ class ZCU111(Motherboard):
 
         if not is_fpga_programmed or force or (force is not None and not is_crc_valid):
             self.logger.debug(f'{self!r}: Configuring FPGA')
-            if hasattr(buf, 'bytes'):
-                bitstream = buf.bytes
-            elif isinstance(buf, bytes):
-                bitstrem = buf
-            else:
-                raise TypeError('buf is not a bytes object')
             self.tcpipe.set_fpga_bitstream(bitstream, crc=crc32)
         else:
             self.logger.debug(
