@@ -2,14 +2,13 @@
 """
 # Standard Python packages
 import logging
-from datetime import datetime, timedelta
-from calendar import timegm
 import time
 import zlib
 import base64
 from collections import OrderedDict
 import socket
 import asyncio
+
 
 import nest_asyncio
 # External private packages
@@ -69,12 +68,19 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
     parent parameter.
 
     Parameters:
+
         hostname (str): hostname or IP address of the ICEBoard ARM processor (mandatory)
+
         serial (str): Serial number of the board. Can be provided by the ARM.
+
         part_number (str): Part number of the IceBoard. Can be obtained from the ARM.
+
         crate (IceCrateHandler): = object that handle the backplane on which the board is connected. `None` if the board is not connected to a backplane.
+
         slot (int): Slot number in which the board is installed ona backplane. None if there is no backplane.
+
         mezzanine (dict): Map {mezzanine_number: Mezzanine Handler, ...} describing the installed mezzanines. Can be obtained from the ARM.
+
         tuber_objname (str): name of the set of software functions that will be provided by the ARM processor through the Tuber interface.
 
 
@@ -112,7 +118,13 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
     port = 80  # port number on which to access the platform `hostname`. Tuber implicitly uses 80 due to the use of the http:// URL to access the board. But fpga_master needs that to prepare for TCP pings.
 
 
-    def __init__(self, hostname=None, serial=None, slot=None, subarray=None, fpga_ip_addr=None,**kwargs):
+    def __init__(self,
+                 hostname=None,
+                 serial=None,
+                 slot=None,
+                 subarray=None,
+                 fpga_ip_addr=None,
+                 **kwargs):
         """ Create or update an IceBoard object.
 
         If the hardware map features of the object are to be used, use
@@ -155,20 +167,79 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
 
         """
 
+        """
+
+        IceBoardPlus
+
+        Extends the basic IceBoard class by providing additional SPI MMI -based firmware features, direct UDP MMI
+        with the FPGA,  and methods to access to IceBoard hardware directly via the FPGA.
+
+        This class provides:
+
+        - UDP/IP/Ethernet-based direct Memory Map Interface (MMI) to the FPGA using its Ethernet port. Note
+          that this accesses an address space that is separate from the one accessed throughthe ARM SPI interface.
+          Methods to initialize the Ethernt networking parameters through the ARM SPI interface are provided.
+
+        - Alternate access to the IceBoard and Backplane hardware through the FPGA I2C interface through
+          the `hw` object. Access to the hardware is normally done through the high-level ARM-provided
+          methods, but these methods are useful for development and debugging. The exception is the the
+          IceCrate handler which uses the FPGA to access backplane resources.
+
+        - Overriden mezzanine identification methods that support non-IPMI McGill ADC mezzanine boards.
+
+        - IRIG-B subsystem operation (through the ARM SPI interface)
+
+        `IceBoardExtHandler` can be created as a standard Python object
+        initialized with a number of parameters which set corresponding attributes
+        (see below). If a `parent_getter` function is provided, the value of some
+        of these attributes will instead be fetched dynamically from the parent
+        object unless explicit values (i.e. not None) are provided here. An
+        explicittly provided parameter will always use the provided value and will
+        no longer be fetched from the parent, nor will it be set on the parent.
+
+
+        Parameters:
+
+            parent_getter (func): Function that dynamically return the parent object from which the
+                following parameters will be fetched. Is `None` if there is no parent.
+
+            hostname (str): hostname or IP address of the ICEBoard ARM processor (mandatory)
+
+            serial (str): Serial number of the board. Can be provided by the ARM.
+
+            part_number (str): Part number of the IceBoard. Can be obtained from the ARM.
+
+            crate (IceCrateHandler): = object that handle the backplane on which the board is connected.
+                `None` if the board is not connected to a backplane.
+
+            slot (int): Slot number in which the board is installed ona backplane. None if there is no
+                backplane.
+
+            mezzanine (dict): Map {mezzanine_number: Mezzanine Handler, ...} describing the installed
+                mezzanines. Can be obtained from the ARM.
+
+            tuber_objname (str): name of the set of software functions that will be provided by the ARM
+                processor through the Tuber interface.
 
 
 
+        Python-based application-specific FPGA firmware and hardware handler are meant to be derived
+        from this class.
+        """
 
-        super().__init__(hostname=hostname, serial=serial, **kwargs)  # pass on the remaining kwargs. crate and mezzanine are cleared.
+        #
+        # The solution to this is to manually control the order of the init calls.
+        print(f"Creating {self.__class__.__name__}(serial={serial}, hostname={hostname}, slot={slot}, subarray={subarray}, kwargs={kwargs})")
 
+        # Initialize the subclasses. The MRO is such that Motherboard.__init__() is called first,
+        # which sets the hostname, serial etc.
+        # It in turn then calls TuberIceboardBase.__init__ without arguments which is ok: it does not expect any.
+        super().__init__(hostname=hostname, serial=serial, slot=slot, subarray=subarray, **kwargs)
 
-        # Store object-specific local paramaters
+        # Store Iceboard-specific instance attributes
         self.mmi = None
         self.i2c = None
-        self.core_gpio = None
-        self.core_i2c = None
         self.hw = None
-
 
         # Initialize local variables
 
@@ -178,27 +249,45 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         # self._is_bp_open = None
         # self._is_open = None
 
-
-    # def update_instance(self, new_class=None, fpga_ip_addr=None, **kwargs):
-    #     fpga_ip_addr = fpga_ip_addr or self.fpga_ip_addr
-    #     if new_class and new_class is not self.__class__:
-    #         return super().update_instance(new_class=new_class, fpga_ip_addr=fpga_ip_addr, **kwargs)
-    #     else:
-    #         super().update_instance(**kwargs)
-    #         self.fpga_ip_addr = fpga_ip_addr
-    #         return self
-
+        # def update_instance(self, new_class=None, fpga_ip_addr=None, **kwargs):
+        #     fpga_ip_addr = fpga_ip_addr or self.fpga_ip_addr
+        #     if new_class and new_class is not self.__class__:
+        #         return super().update_instance(new_class=new_class, fpga_ip_addr=fpga_ip_addr, **kwargs)
+        #     else:
+        #         super().update_instance(**kwargs)
+        #         self.fpga_ip_addr = fpga_ip_addr
+        #         return self
 
     async def ping_async(self, timeout=0.1):
-        """
-        Returns a boolean indicating whether a Tuber object is available at
+        """ Checks if the platform responds to the target hostname address.
+
+        For the Iceboard, we do this by checking if the Tuber object is available at
         the specified ARM hostname.
+
+        This can be called before `open_platform_async()`, as we catch the errors thrown if the board does not respond.
+
+
+
+        Parameters:
+
+            timeout (float): [NOT IMPLEMENTED] How much time (in seconds) we wait for a response
+
+        Returns:
+
+            bool, which is True if the board has responded within the specified delay.
+
+        Notes:
+
+            - This could be implemented without Tuber, like is done in raw_acq
+              (just a TCP connection), as this is a first low-level check for
+              the board presence. It would then be easier to implement the
+              timeout.
         """
         # print(f'{self!r} Ping_async()')
         self.logger.info('%r: Pinging %s' % (self, self.tuber_uri))
         try:
             await self._tuber_get_meta_async()  # make sure the tuber info is loaded
-            await self._tuber_sleep_async(0) # make a dummy call
+            await self._tuber_sleep_async(0)  # make a dummy call
             return True
         except TuberError as e:
             self.logger.debug(
@@ -206,50 +295,72 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
                 f'Board is considered to be absent. Error is \n{e!r}')
             return False
 
+    async def open_platform_async(self, **kwargs):
+        """ Initialize and establish communication with the platform.
 
+        For the Iceboard, this means that we initialize the Tuber communication with the Iceboard.
+        """
+        self.logger.debug(f'{self!r}: Opening Tuber connection to the IceBoard')
+        # Ask Tuber to fetch the methods & properties profided by the on-board
+        # ARM software.
+        await self._tuber_get_meta_async()
+        # Check if the board is running a compatible ARM firmware.
+        self.logger.debug(f'{self!r}: Checking ARM firmware version...')
+        await self.check_tuber_version_async()
 
-
+    async def close_platform(self):
+        pass
 
     ###################################
     # Auto discovery methods
+    # (discover the serial, slot, crate and mezzanines through the platform)
     ###################################
-
-
 
     async def discover_serial_async(self, update=True):
         """
-        Discover the serial number of this IceBoard from its IPMI data, and update the hardware map accordingly if `update=True`
+        Discover the serial number of this IceBoard and
+        update the hardware map accordingly if `update=True`
+
+        We do this using the Tuber method get_motherboard_serial() which
+        decodes the board's IPMI EEPROM.
         """
         self.logger.debug(f'{self!r}: discovering the serial number of board at {self.tuber_uri}')
         try:
             actual_serial = str((await self.tuber_get_motherboard_serial_async()))
-        except Exception as e:  #  Deal with uninitialized boards
-            self.logger.warning('%r: Error while attempring to read the board serial number. The exception is %r' % (self, e))
+        except Exception as e:  # Deal with uninitialized boards
+            self.logger.warning(f'{self!r}: Error while attempring to read the board serial number. '
+                                f'The exception is {e}')
             actual_serial = None
         self.logger.debug(f'{self!r}: got the serial number of board at {self.tuber_uri} to be {actual_serial}')
         await asyncio.sleep(0)
         if update:
             if not actual_serial:
-                self.logger.warning('%r: Could not read the board serial number from IPMI storage or serial number is null. Serial number is not updated.' % (self))
+                self.logger.warning(f'{self!r}: Could not read the board serial number from IPMI storage, '
+                                    f'or serial number is null. Serial number is not updated.')
             elif self.serial and actual_serial != self.serial:
-                self.logger.warning('%r: The discovered serial number differs from the current (hardware map) one. Updating to the discovered value.' % (self))
+                self.logger.warning(f'{self!r}: The discovered serial number differs from the current '
+                                    f'(hardware map) one. Updating to the discovered value.')
             self.update_instance(serial=actual_serial)
         self.logger.debug(f'{self!r}: finished discovering the serial number of board at {self.tuber_uri}')
         return(self.serial)
 
     async def discover_slot_async(self, update=True):
-        """ Discover the slot number of this IceBoard, and update the hardware map accordingly if `update=True`"""
+        """ Discover the slot number of this IceBoard, and update the hardware map accordingly if `update=True`
+
+        This is done using Tuber.
+        """
         actual_slot = await self.tuber_get_backplane_slot_async()
         if update:
             if not actual_slot:
-                self.logger.warning('%r: The board is not connected to a backplane. Slot number is not updated.' % (self))
+                self.logger.warning(f'{self!r}: The board is not connected to a backplane. Slot number is not updated.')
             elif self.slot and actual_slot != self.slot:
-                self.logger.warning('%r: The discovered slot (%s) number differs from the current (hardware map) one (%s). Updating to the discovered slot.' % (self, actual_slot, self.slot))
+                self.logger.warning(f'{self!r}: The discovered slot ({actual_slot}) number differs from the current '
+                                    f'(hardware map) one ({self.slot}). Updating to the discovered slot.')
             self.update_instance(slot=actual_slot)
         return(self.slot)
 
     async def discover_mezzanines_async(self, update=True):
-        '''Detect mezzanines attached to the Iceboard and update the hardware map accordingly if
+        """Detect mezzanines attached to the Iceboard and update the hardware map accordingly if
         update=True.
 
         This method uses IPMI data on the mezzanine's EEPROMs to guide itself.
@@ -258,7 +369,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
 
         You do NOT need to use this method if the mezzanines present in the
         system are already explicitely specified in the YAML hardware maps.
-        '''
+        """
         mezz_class = {}
         for m in range(1, self.NUMBER_OF_FMC_SLOTS + 1):
 
@@ -270,15 +381,19 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
             if not (await self.tuber_is_mezzanine_present_async(m)):
                 continue
 
-            # If a mezzanine is present, get its EEPROM data and search for the first mezzanine class that can decode it.
+            # If a mezzanine is present, get its EEPROM data and search for
+            # the first mezzanine class that can decode it.
             try:
-                eeprom_data = await self._mezzanine_eeprom_read_async(m)  # this does not read all eeprom for some mezzanines...
+                # Try to read the EEPROM. This does not read all the EEPROM for some mezzanines...
+                eeprom_data = await self._mezzanine_eeprom_read_async(m)
+                # We used to read the EEPROM via the FPGA when the platform did not provide a raw read method.
+                # That is no longer necessary, but here's the line:
                 # eeprom_data = self.hw.read_mezzanine_eeprom(m,0,512)
             except (TuberRemoteError, AttributeError):  # If the method does not exist
                 eeprom_data = None
 
             # Find a registered Mezzanine class that can decode the EEPROM data
-            # This is useful to recognize legacy EEPROM data format
+            # This is done to recognize the legacy non-IPMI EEPROM data format that the ARM cannot decode
             ipmi = None
             if eeprom_data is not None:
                 for cls in Mezzanine.get_all_classes():  # for each registered Mezzanine class
@@ -286,6 +401,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
                         ipmi = cls.decode_eeprom(eeprom_data)   # try to decode
                         if ipmi:  # if not None, we're done
                             break
+            # If we still don't have IPMI data, try to get it directly from the ARM software
             if not ipmi:
                 try:
                     ipmi = await self._tuber_get_mezzanine_ipmi_async(m)  # Read IPMI from the ARM's cache
@@ -294,7 +410,9 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
                         f'read Mezzanine {m} EEPROM using the ARM')
                 except TuberRemoteError:
                     pass
-            if not ipmi:  # If we still did not get an IPMI block, give up and proceed to the next mezzanine
+
+            # If we still did not get an IPMI block, give up and proceed to the next mezzanine
+            if not ipmi:
                 self.logger.debug(
                     f'{self!r}: detect_mezzanines(): Could not decode '
                     f'the EEPROM in Mezzanine {m}')
@@ -340,7 +458,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
                     serial=serial,
                     mezzanine=m,  # mezzanine number (FMC slot)
                     iceboard=self)  # back reference to the carrier iceboard
-                new_mezz.iceboard=self
+                new_mezz.iceboard = self
                 self.mezzanine[m] = new_mezz
                 self.logger.debug(f'{self!r} mezzanines on FMC {m} are {self.mezzanine[m]}')
         return(mezz_class)
@@ -350,7 +468,8 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         attached by reading the backplane IPMI data, and update the hardware
         map accordingly if `update=True`.
 
-        The crate object is then set with the (part_number, serial_number) tuple, which is replaced later by the actual crate object.
+        The crate object is then set with the (part_number, serial_number)
+        tuple, which is replaced later by the actual crate object.
 
         This method does *not* use mDNS. It relies of the IPMI data stored in
         the backplane's EEPROM, which is obtaines through the Iceboard's ARM
@@ -388,15 +507,12 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         if icecrate_class and update:
             crate_number = self.crate.crate_number if self.crate else None
             crate = IceCrate.get_unique_instance(new_class=icecrate_class, serial=serial, crate_number=crate_number)
-            self.update_instance(crate=crate) # update crate info and repr
+            self.update_instance(crate=crate)  # update crate info and repr
             self.logger.debug(f"{self} now has crate {self.crate}")
             # if slot_number:
             #     self.crate.slot[slot_number] = self
 
         return icecrate_class
-
-
-
 
     # ----------------------------
     # Bitstream management
@@ -436,7 +552,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         # provide it. The str() of the returned object must yield the valid
         # bitstream buffer in a string.
         fw_cls, buf, fw_info = FPGAFirmware.get_firmware(self.part_number, firmware)
-            crc32 = buf.crc32
+        crc32 = buf.crc32
         base64_bytes = buf.base64
         self.logger.debug(f'{self!r}: Getting is_programmed')
         is_fpga_programmed = await self.tuber_is_fpga_programmed_async()
@@ -523,7 +639,6 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
 
         self.logger.debug(f'{self!r}: open() is called')
 
-
         await self.fpga.open_async(**kwargs)
         self.i2c = I2CInterface(
             write_read_fn=self.fpga_i2c_write_read,  # write-read function
@@ -550,15 +665,13 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         await self.fpga.init_async(**kwargs)
         await self.hw.set_led('GP_LED1', 1)  # Full FPGA firmware is initialized
 
-
-
-
-    #**********************************
+    # **********************************
     # Local methods
-    #**********************************
+    # **********************************
 
     # Backplane/crate-related methods
     # -------------------------------
+
     async def is_backplane_present_async(self):
         return await self.tuber_is_backplane_present_async()
 
@@ -587,17 +700,14 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
     # *** JFC: We now have the equivalent ARM method. Will delete this when we
     #     confirm it behaves the same.
 
-
     # Mezzanine-related methods
     # -------------------------
 
     async def _mezzanine_eeprom_read_async(self, mezzanine):
         """ Returns the contents of the specified mezzanine's EEPROM.
         """
-        data = await self._tuber_mezzanine_eeprom_read_base64_async(mezzanine) # returns a str
+        data = await self._tuber_mezzanine_eeprom_read_base64_async(mezzanine)  # returns a str
         return base64.decodebytes(data.encode())  # encode the str into bytes before calling base64.decodebytes()
-
-
 
     async def get_iceboard_clock_source_async(self):
         return await self.tuber_get_clock_source_async()
@@ -609,23 +719,28 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         """
         return run_async(self.tuber_get_motherboard_temperature_async(sensor))
 
-
+    # ---------------------
     # Tuber-related methods
-    # -------------------------
+    # ---------------------
 
     async def check_tuber_version_async(self):
         """ Check if the ARM processor provides the methods required to run this code. """
 
-        required_tuber_methods = [ # Use the unmangled name as published by the ARM
-            'is_fpga_programmed']#, '_mezzanine_eeprom_read_base64']
+        required_tuber_methods = [  # Use the unmangled name as published by the ARM
+            'is_fpga_programmed',
+            # '_mezzanine_eeprom_read_base64',
+        ]
 
         (meta, props, tuber_methods) = await self._tuber_get_meta_async()  # get the meta info
         if not tuber_methods:
-            raise RuntimeError("%r: The ARM does not publish any methods under the object name '%s'. Was the right Tuber object name used for this ARM firmware?" % (self, self.tuber_objname))
+            raise RuntimeError(f"{self!r}: The ARM does not publish any methods "
+                               f"under the object name '{self.tuber_objname}'. "
+                               f"Was the right Tuber object name used for this ARM firmware?")
 
         for method in required_tuber_methods:
             if method not in tuber_methods:
-                raise RuntimeError("%r: The current version of the ARM firmware does not provide the method '%s' that is needed for this application" % (self, method))
+                raise RuntimeError(f"{self!r}: The current version of the ARM firmware "
+                                   f"does not provide the method '{method}' that is needed for this application")
 
         return True
 
@@ -648,11 +763,9 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
                 values = '= %s' % prop_properties
             print('%-30s: %s' % (prop_name, values))
 
-   # ARM shell commands
-   # ------------------
-
-
-
+    # ------------------
+    # ARM shell commands
+    # ------------------
 
     async def _call_subprocess(self, cmd):
         """
@@ -666,12 +779,10 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         while p.poll() is None:
             await asyncio.sleep(0)
         if p.returncode:
+            msg = ''.join(p.stderr.readlines())
             raise RuntimeError(
-                "The command '%s' returned with the error code %i. "
-                "stderr is displayed below:\n %s" % (
-                     cmd,
-                     p.returncode,
-                     ''.join(p.stderr.readlines())))
+                f"The command '{cmd}' returned with the error code {p.returncode}. "
+                f"stderr is displayed below:\n {msg}")
         return p.stdout.readlines()
 
     async def arm_exec(self, cmd):
@@ -777,72 +888,6 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         print('%r: Remounting the SD card file system as readonly' % self)
         await self.arm_exec('mount / -o remount,ro')
         return True
-
-
-
-
-
-# class IceBoardExt(IceBoardPlus):
-    """ Extends the basic IceBoard class by providing additional SPI MMI -based firmware features, direct UDP MMI
-    with the FPGA,  and methods to access to IceBoard hardware directly via the FPGA.
-
-    This class provides:
-
-    - UDP/IP/Ethernet-based direct Memory Map Interface (MMI) to the FPGA using its Ethernet port. Note
-      that this accesses an address space that is separate from the one accessed throughthe ARM SPI interface.
-      Methods to initialize the Ethernt networking parameters through the ARM SPI interface are provided.
-
-    - Alternate access to the IceBoard and Backplane hardware through the FPGA I2C interface through
-      the `hw` object. Access to the hardware is normally done through the high-level ARM-provided
-      methods, but these methods are useful for development and debugging. The exception is the the
-      IceCrate handler which uses the FPGA to access backplane resources.
-
-    - Overriden mezzanine identification methods that support non-IPMI McGill ADC mezzanine boards.
-
-    - IRIG-B subsystem operation (through the ARM SPI interface)
-
-    `IceBoardExtHandler` can be created as a standard Python object
-    initialized with a number of parameters which set corresponding attributes
-    (see below). If a `parent_getter` function is provided, the value of some
-    of these attributes will instead be fetched dynamically from the parent
-    object unless explicit values (i.e. not None) are provided here. An
-    explicittly provided parameter will always use the provided value and will
-    no longer be fetched from the parent, nor will it be set on the parent.
-
-
-    Parameters:
-
-        parent_getter (func): Function that dynamically return the parent object from which the
-            following parameters will be fetched. Is `None` if there is no parent.
-
-        hostname (str): hostname or IP address of the ICEBoard ARM processor (mandatory)
-
-        serial (str): Serial number of the board. Can be provided by the ARM.
-
-        part_number (str): Part number of the IceBoard. Can be obtained from the ARM.
-
-        crate (IceCrateHandler): = object that handle the backplane on which the board is connected.
-            `None` if the board is not connected to a backplane.
-
-        slot (int): Slot number in which the board is installed ona backplane. None if there is no
-            backplane.
-
-        mezzanine (dict): Map {mezzanine_number: Mezzanine Handler, ...} describing the installed
-            mezzanines. Can be obtained from the ARM.
-
-        tuber_objname (str): name of the set of software functions that will be provided by the ARM
-            processor through the Tuber interface.
-
-
-
-    Python-based application-specific FPGA firmware and hardware handler are meant to be derived
-    from this class.
-    """
-
-
-    # ---------------------------------------
-    # Instance attributes
-    # ---------------------------------------
 
 ########################################################################################################
 ########################################################################################################
