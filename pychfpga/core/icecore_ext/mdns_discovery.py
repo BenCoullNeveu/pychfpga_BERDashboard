@@ -7,13 +7,14 @@ import functools  # Used in iceboard discovery
 import time  # Used in iceboard discovery
 import socket  # used in iceboard discovery (itoa())
 import asyncio
-import threading
+import threading # Used for Rlock
 
 # PyPI packages
 from zeroconf import IPVersion, ServiceBrowser, ServiceStateChange, Zeroconf
 
 # Local packages
-from . import Motherboard, IceCrate
+from . import Motherboard, Crate
+
 
 def _to_int(v):
     try:
@@ -21,34 +22,41 @@ def _to_int(v):
     except (TypeError, ValueError):
         return None
 
+
 def _get_txt_field(tr, key):
     value = tr.get(key.encode('ascii'), None)
     if isinstance(value, bytes):
         value = value.decode('utf-8')
     return value
 
+
 def match(target, value):
     return target == '*' or target == value
 
+
 def tuple_match(target, value):
-    return match(target[0], value[0]) and match (target[1], value[1])
+    return match(target[0], value[0]) and match(target[1], value[1])
+
 
 class ThreadData:
-    def __init__(self,**kwargs):
+    def __init__(self, **kwargs):
         self._lock = threading.RLock()
         self.__dict__.update(kwargs)
+
     def __enter__(self):
         self._lock.acquire()
         return self
+
     def __exit__(self, type, value, traceback):
         self._lock.release()
 
+
 async def mdns_discover(
-    icecrates=None,
-    iceboards=None,
-    timeout=None,
-    inter_reply_timeout=None,
-    clear_hwm=False):
+        icecrates=None,
+        iceboards=None,
+        timeout=None,
+        inter_reply_timeout=None,
+        clear_hwm=False):
     """ Automatically detect IceBoards and IceCrates on the network using mDNS
     and add them to the hardware map.
 
@@ -105,8 +113,8 @@ async def mdns_discover(
     if icecrates == '*':
         icecrates = [('*', '*')]
     # List of explicitely-specified (non-wildcard) boards and crates
-    expected_ibs = {(model, serial):None for model, serial in iceboards if model != "*" and serial != "*"}
-    expected_ics = {(model, serial):None for model, serial in icecrates if model != "*" and serial != "*"}
+    expected_ibs = {(model, serial): None for model, serial in iceboards if model != "*" and serial != "*"}
+    expected_ics = {(model, serial): None for model, serial in icecrates if model != "*" and serial != "*"}
     # Check if we expect an open-ended number of boards or crates
     wild_ibs = [(model, serial) for model, serial in iceboards if model == "*" or serial == "*"]
     wild_ics = [(model, serial) for model, serial in icecrates if model == "*" or serial == "*"]
@@ -144,8 +152,8 @@ async def mdns_discover(
         int_ib_serial = _to_int(ib_serial)
         slot = _to_int(bp_slot)
 
-        logger.debug(f"DNS-SD: Discovered motherboard {ib_part_number} SN{ib_serial} ({addr}) in "
-                     f"IceCrate {bp_part_number} SN{bp_serial}  slot {bp_slot}.")
+        logger.debug(f"DNS-SD: Discovered motherboard {ib_part_number} SN{ib_serial} @{addr}:{port}"
+                     + (f" in crate {bp_part_number} SN{bp_serial} slot {bp_slot}." if bp_part_number else " (no crate info)"))
 
         # Check if the motherboard matches the search criteria
         iceboard_match = ib_part_number and ib_serial and any(
@@ -169,9 +177,9 @@ async def mdns_discover(
                         expected_ibs[tib] = True
             # Add the backplane if it does not already exist
             if bp_part_number and bp_serial:
-                bp_cls = IceCrate.get_class_by_ipmi_part_number(bp_part_number)
+                bp_cls = Crate.get_class_by_ipmi_part_number(bp_part_number)
                 crate_number = ib_obj.crate.crate_number if ib_obj.crate else None
-                bp_obj = bp_cls.get_unique_instance(new_class=bp_cls, serial=bp_serial, crate_number =crate_number)
+                bp_obj = bp_cls.get_unique_instance(new_class=bp_cls, serial=bp_serial, crate_number=crate_number)
                 ib_obj.update_instance(crate=bp_obj, slot=slot)
                 for tib in expected_ics:
                     if tuple_match(tib, (bp_part_number, bp_serial)):
@@ -222,7 +230,7 @@ async def mdns_discover(
     finally:
         logger.debug(f'mdns_discover: closing zeroconf')
         zeroconf.close()
-    return Motherboard.get_all_instances(), IceCrate.get_all_instances()
+    return Motherboard.get_all_instances(), Crate.get_all_instances()
 
 
 def mdns_resolve(name, timeout=1):
