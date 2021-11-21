@@ -7,7 +7,8 @@ operations one the whole array of CHIME ICE hardware.
 
 # Python Standard Library packages
 import argparse
-import logging, logging.handlers
+import logging
+import logging.handlers
 import time
 import __main__
 import os
@@ -56,7 +57,7 @@ from pychfpga.core.icecore_ext import mdns_discover
 # from pychfpga.core.icecore import IceBoardPlus
 from pychfpga.core.icecore_ext import Motherboard, Crate, IceBoard, IceCrate, ZCU111
 # from pychfpga.core.chFPGA_controller import chFPGA_controller
-from pychfpga.MGADC08.MGADC08 import FMCMezzanine_MGADC08  # Import to make sure this Mezzanine is registered  so it can be discovered
+from pychfpga.MGADC08.MGADC08 import FMCMezzanine_MGADC08  # Import to make sure this Mezzanine is registered
 from pychfpga.Agilent_N5764A import AgilentN5764A
 # from pychfpga.gpu_node import GpuNodeHandler
 from pychfpga import Metrics
@@ -67,43 +68,48 @@ from pychfpga import load_yaml_config
 #####################################
 
 
-
 # Default ADC delays
 ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = {
     'valid': True,
     'sync_delays': (4, 5),
-    0:  {'tap_delays': [16]*8,                           'sample_delay': 3, 'clock_delay': 0},  # CH0
-    1:  {'tap_delays': [7]*8,                            'sample_delay': 3, 'clock_delay': 0},  # CH1
-    2:  {'tap_delays': [22]*8,                           'sample_delay': 3, 'clock_delay': 0},  # CH2
-    3:  {'tap_delays': [19]*8,                           'sample_delay': 3, 'clock_delay': 0},  # CH3
-    4:  {'tap_delays': [15]*8,                           'sample_delay': 3, 'clock_delay': 0},  # CH4
+    0:  {'tap_delays': [16] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH0
+    1:  {'tap_delays': [7] * 8,                            'sample_delay': 3, 'clock_delay': 0},  # CH1
+    2:  {'tap_delays': [22] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH2
+    3:  {'tap_delays': [19] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH3
+    4:  {'tap_delays': [15] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH4
     5:  {'tap_delays': [14, 13, 14, 14, 13, 14, 15, 14], 'sample_delay': 3, 'clock_delay': 0},  # CH5
-    6:  {'tap_delays': [18]*8,                           'sample_delay': 3, 'clock_delay': 0},  # CH6
-    7:  {'tap_delays': [17]*8,                           'sample_delay': 4, 'clock_delay': 0},  # CH7
+    6:  {'tap_delays': [18] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH6
+    7:  {'tap_delays': [17] * 8,                           'sample_delay': 4, 'clock_delay': 0},  # CH7
     8:  {'tap_delays': [15, 17, 15, 18, 17, 14, 17, 15], 'sample_delay': 3, 'clock_delay': 0},  # CH8
-    9:  {'tap_delays': [16]*8,                           'sample_delay': 4, 'clock_delay': 0},  # CH9
-    10: {'tap_delays': [20]*8,                           'sample_delay': 3, 'clock_delay': 0},  # CH10
-    11: {'tap_delays': [18]*8,                           'sample_delay': 3, 'clock_delay': 0},  # CH11
-    12: {'tap_delays': [15]*8,                           'sample_delay': 3, 'clock_delay': 0},  # CH12
-    13: {'tap_delays': [18]*8,                           'sample_delay': 3, 'clock_delay': 0},  # CH13
-    14: {'tap_delays': [18]*8,                           'sample_delay': 3, 'clock_delay': 0},  # CH14
-    15: {'tap_delays': [16]*8,                           'sample_delay': 3, 'clock_delay': 0}   # CH15
-    }
+    9:  {'tap_delays': [16] * 8,                           'sample_delay': 4, 'clock_delay': 0},  # CH9
+    10: {'tap_delays': [20] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH10
+    11: {'tap_delays': [18] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH11
+    12: {'tap_delays': [15] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH12
+    13: {'tap_delays': [18] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH13
+    14: {'tap_delays': [18] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH14
+    15: {'tap_delays': [16] * 8,                           'sample_delay': 3, 'clock_delay': 0}   # CH15
+}
 
-
-ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 #ADC_DELAYS_REV2_SN0001 ## select the table corresponding to the FMC serial number
+# Select the table corresponding to the FMC serial number
+ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2  # or ADC_DELAYS_REV2_SN0001
 
 
 class FPGAArray(object):
 
-    OPERATIONAL_MODES = { # { op_mode:firmware_name, ... }
+    OPERATIONAL_MODES = {  # { op_mode:firmware_name, ... }
         'shuffle16': 'chFPGA',
         'shuffle128': 'chFPGA',
         'shuffle256': 'chFPGA',
         'shuffle512': 'chFPGA',
         'corr4': 'siFPGA',
         'corr16': 'siFPGA'
-        }
+    }
+
+    # Map the string to the function that computes the FPGA IP address from the ARM IP address
+    FPGA_IP_ADDR_FN_TABLE = {
+        '(a,b,3,d)': lambda a, b, c, d: (a, b, 3, d),
+        '(a,b,c+1,d)': lambda a, b, c, d: (a, b, c + 1, d),
+    }
 
     def __init__(
             self,
@@ -154,8 +160,7 @@ class FPGAArray(object):
 
             ioloop=None,
 
-            **kwargs
-                ):
+            **kwargs):
         """ Create a hardware map describing CHIME hardware and optionally
         initialize the hardware.
 
@@ -272,34 +277,36 @@ class FPGAArray(object):
 
             sync_master_time_source=None,
 
-            max_sync_time_difference (int): Maximum time difference, in nanoseconds, between the time of frame 0 of each board in an array.
+            max_sync_time_difference (int): Maximum time difference, in
+                nanoseconds, between the time of frame 0 of each board in an
+                array.
 
 
             ----------Category: **Corner-turn engine parameters**----------
 
             mode (str): Operational mode of the Corner-turn engine. The following modes are supported:
 
-                    - 'chan8': Corner-turn engine is mostly bypassed and raw 8-bit data from 8
-                      channelizers is sent directly to the 8 CT-Engine outputs.
+                - 'chan8': Corner-turn engine is mostly bypassed and raw 8-bit data from 8
+                  channelizers is sent directly to the 8 CT-Engine outputs.
 
-                    - 'chan4': Corner-turn engine is mostly bypassed and raw 8-bit data from 16
-                      channelizers is sent directly to the 8 CT-Engine outputs.
+                - 'chan4': Corner-turn engine is mostly bypassed and raw 8-bit data from 16
+                  channelizers is sent directly to the 8 CT-Engine outputs.
 
-                    - 'shuffle16': A corner-turn operation is applied only within the 16 channelizer
-                      outputs of this board.
+                - 'shuffle16': A corner-turn operation is applied only within the 16 channelizer
+                  outputs of this board.
 
-                    - 'shuffle128': A corner-turn operation is applied between the first 8 boards in a crate.
+                - 'shuffle128': A corner-turn operation is applied between the first 8 boards in a crate.
 
-                    - 'shuffle256': The corner-turn operation is applies between 16 channelizers within
-                      a board and between the 16 boards within a crate using the backplane PCB links.
+                - 'shuffle256': The corner-turn operation is applies between 16 channelizers within
+                  a board and between the 16 boards within a crate using the backplane PCB links.
 
-                    - 'shuffle512': The corner-turn operation is applies between 16 channelizers within
-                      a board, between the 16 boards within a crate using the backplane PCB links,
-                      and between 2 crates using the backplane QSFP links.
+                - 'shuffle512': The corner-turn operation is applies between 16 channelizers within
+                  a board, between the 16 boards within a crate using the backplane PCB links,
+                  and between 2 crates using the backplane QSFP links.
 
-                    - 'corr16': The corner-turn engine is configured to feed the
-                      internal firmware correlator (only if the firmware was
-                      compiled with it).
+                - 'corr16': The corner-turn engine is configured to feed the
+                  internal firmware correlator (only if the firmware was
+                  compiled with it).
 
 
             frames_per_packet (int): Number of frames that are grouped in each
@@ -391,7 +398,7 @@ class FPGAArray(object):
 
             Note:
 
-                Selecting boards by IceCrate serial number *always*
+                Selecting boards by Crate serial number *always*
                 require the ``pybonjour`` package and the system mDNS
                 client to automatically probe the network and discover the
                 specified Iceboards that advertised themseles along with
@@ -399,41 +406,41 @@ class FPGAArray(object):
 
         """
         async_init = functools.partial(
-             self.init,
-             hwm=hwm,
-             iceboards=iceboards,
-             icecrates=icecrates,
-             mezzanines=mezzanines,
-             exclude_iceboards=exclude_iceboards,
-             ignore_missing_boards=ignore_missing_boards,
-             subarrays=subarrays, ping=ping,
-             mdns_timeout=mdns_timeout,
-             no_mezz=no_mezz,
-             bitfile=bitfile,
-             prog=prog,
-             open=open,
-             if_ip=if_ip,
-             fpga_ip_addr_fn=fpga_ip_addr_fn,
-             sync_method=sync_method,
-             sync_source=sync_source,
-             sync_master=sync_master,
-             sync_master_time_source=sync_master_time_source,
-             max_sync_time_difference=max_sync_time_difference,
-             adc_mode=adc_mode,
-             adc_bandwidth=adc_bandwidth,
-             mode=mode,
-             frames_per_packet=frames_per_packet,
-             sampling_frequency=sampling_frequency,
-             tx_power=tx_power,
-             integration_period=integration_period,
-             autocorr_only=autocorr_only,
-             corner_turn_bad_links=corner_turn_bad_links,
-             corner_turn_bin_priority=corner_turn_bin_priority,
-             corner_turn_remap_level=corner_turn_remap_level,
-             stderr_log_level=stderr_log_level,
-             syslog_log_level=syslog_log_level,
-             udp_retries=udp_retries,
-             **kwargs)
+            self.init,
+            hwm=hwm,
+            iceboards=iceboards,
+            icecrates=icecrates,
+            mezzanines=mezzanines,
+            exclude_iceboards=exclude_iceboards,
+            ignore_missing_boards=ignore_missing_boards,
+            subarrays=subarrays, ping=ping,
+            mdns_timeout=mdns_timeout,
+            no_mezz=no_mezz,
+            bitfile=bitfile,
+            prog=prog,
+            open=open,
+            if_ip=if_ip,
+            fpga_ip_addr_fn=fpga_ip_addr_fn,
+            sync_method=sync_method,
+            sync_source=sync_source,
+            sync_master=sync_master,
+            sync_master_time_source=sync_master_time_source,
+            max_sync_time_difference=max_sync_time_difference,
+            adc_mode=adc_mode,
+            adc_bandwidth=adc_bandwidth,
+            mode=mode,
+            frames_per_packet=frames_per_packet,
+            sampling_frequency=sampling_frequency,
+            tx_power=tx_power,
+            integration_period=integration_period,
+            autocorr_only=autocorr_only,
+            corner_turn_bad_links=corner_turn_bad_links,
+            corner_turn_bin_priority=corner_turn_bin_priority,
+            corner_turn_remap_level=corner_turn_remap_level,
+            stderr_log_level=stderr_log_level,
+            syslog_log_level=syslog_log_level,
+            udp_retries=udp_retries,
+            **kwargs)
 
         if not ioloop:
             # Create our own IOLoop so we don't interfere with ipython's own ioloop.
@@ -466,13 +473,6 @@ class FPGAArray(object):
 
     async def run(self):
         await self._async_init()
-
-    # Map the string to the function that computes the FPGA IP address from the ARM IP address
-    FPGA_IP_ADDR_FN_TABLE = {
-        '(a,b,3,d)': lambda a,b,c,d:(a, b, 3, d),
-        '(a,b,c+1,d)': lambda a,b,c,d:(a, b, c + 1, d),
-        }
-
 
     async def init(
             self,
@@ -520,8 +520,7 @@ class FPGAArray(object):
 
             # ioloop=None,
 
-            **kwargs
-            ):
+            **kwargs):
 
         """
         Co-routine implementation of fpga_array initialization
@@ -570,30 +569,27 @@ class FPGAArray(object):
                             # make sure all messages from this handler are passed to the parent handler
                             parent_logger.setLevel(min(parent_logger.level, h.level))
 
-
-
-        self.logger.info('%r: ------------------------' % self)
-        self.logger.info('%r: F P G A   A R R A Y' % self)
-        self.logger.info('%r: ------------------------' % self)
-        self.logger.info('%r: Called with for following parameters' % self)
-        self.logger.info('%r:     if_ip = %s' % (self, if_ip))
-        self.logger.info('%r:     iceboards = %s' % (self, iceboards))
-        self.logger.info('%r:     icecrates = %s' % (self, icecrates))
-        self.logger.info('%r:     subarrays = %s' % (self, subarrays))
-        self.logger.info('%r:     ping = %s' % (self, ping))
-        self.logger.info('%r:     mdns_timeout = %s' % (self, mdns_timeout))
-        self.logger.info('%r:     exclude_iceboards = %s' % (self, exclude_iceboards))
-        self.logger.info('%r:     bitfile = %s' % (self, bitfile))
-        self.logger.info('%r:     prog = %s' % (self, prog))
-        self.logger.info('%r:     open = %s' % (self, open))
-        self.logger.info('%r:     no_mezz = %s' % (self, no_mezz))
-        self.logger.info('%r:     sampling_frequency = %s' % (self, sampling_frequency))
-        # self.logger.info('%r:     reference_frequency = %s' % (self, reference_frequency))
-        self.logger.info('%r:     sync_method = %s' % (self, sync_method))
-        self.logger.info('%r:     sync_source = %s' % (self, sync_source))
-        self.logger.info('%r:     fpga_ip_addr_fn = %s' % (self, fpga_ip_addr_fn))
-        self.logger.info('%r: ------------------------' % self)
-
+        self.logger.info(f'{self!r}: ------------------------')
+        self.logger.info(f'{self!r}: F P G A   A R R A Y')
+        self.logger.info(f'{self!r}: ------------------------')
+        self.logger.info(f'{self!r}: Called with for following parameters')
+        self.logger.info(f'{self!r}:     if_ip = {if_ip}')
+        self.logger.info(f'{self!r}:     iceboards = {iceboards}')
+        self.logger.info(f'{self!r}:     icecrates = {icecrates}')
+        self.logger.info(f'{self!r}:     subarrays = {subarrays}')
+        self.logger.info(f'{self!r}:     ping = {ping}')
+        self.logger.info(f'{self!r}:     mdns_timeout = {mdns_timeout}')
+        self.logger.info(f'{self!r}:     exclude_iceboards = {exclude_iceboards}')
+        self.logger.info(f'{self!r}:     bitfile = {bitfile}')
+        self.logger.info(f'{self!r}:     prog = {prog}')
+        self.logger.info(f'{self!r}:     open = {open}')
+        self.logger.info(f'{self!r}:     no_mezz = {no_mezz}')
+        self.logger.info(f'{self!r}:     sampling_frequency = {sampling_frequency}')
+        # self.logger.info(f'{self!r}:     reference_frequency = {reference_frequency}')
+        self.logger.info(f'{self!r}:     sync_method = {sync_method}')
+        self.logger.info(f'{self!r}:     sync_source = {sync_source}')
+        self.logger.info(f'{self!r}:     fpga_ip_addr_fn = {fpga_ip_addr_fn}')
+        self.logger.info(f'{self!r}: ------------------------')
 
         __main__._host_interface_ip_addr = if_ip
 
@@ -601,10 +597,10 @@ class FPGAArray(object):
         if fpga_ip_addr_fn in self.FPGA_IP_ADDR_FN_TABLE:
             fpga_ip_addr_fn = self.FPGA_IP_ADDR_FN_TABLE[fpga_ip_addr_fn]
         else:
+            valid_fn = ', '.join(f"'{fn}'" for fn in self.FPGA_IP_ADDR_FN_TABLE)
             raise AttributeError(
-                "Invalid 'fpga_ip_addr_fn' string '%s'. "
-                "Valid strings are  %s" %
-                (fpga_ip_addr_fn, ', '.join("'%s'" % fn for fn in self.FPGA_IP_ADDR_FN_TABLE)))
+                f"Invalid 'fpga_ip_addr_fn' string '{fpga_ip_addr_fn}'. "
+                f"Valid strings are  {valid_fn}")
 
         Motherboard.clear_hardware_map()
         # Fix up a few parameters for convenience
@@ -641,8 +637,6 @@ class FPGAArray(object):
         else:
             raise TypeError('hwm must be either a str or a list of dict')
 
-
-
         ######################################
         # Hardware map processing
         ######################################
@@ -669,13 +663,12 @@ class FPGAArray(object):
 
         # If subarrays are specified, remove boards that are not in those subarrays
         if subarrays is not None:
-            print('Subarrays are: %r' % subarrays)
+            # print('Subarrays are: %r' % subarrays)
             for ib in list(self.hwm):  # make a copy to be sure the list does not change during the loop
                 if ib.subarray is not None and ib.subarray not in subarrays:
                     ib.delete_instance()
-                    self.logger.debug("%r (subarray '%s') is not in the target subarray list %s. "
-                                      "It is removed from the YAML hardware map."  # That comment should be if verbose=1
-                                      % (ib, ib.subarray, subarrays))
+                    self.logger.debug(f"{self!r}: {ib} (subarray '{ib.subarray}') is not in the target subarray list {subarrays}. "
+                                      f"It is removed from the YAML hardware map.")
 
         # If ping=1, remove boards that do not respond to tuber pings
         ping_timeout = 3
@@ -687,21 +680,19 @@ class FPGAArray(object):
             # TCP-ping boards. Make is an asynchronous parallel call to all boards
             ping_results = await asyncio.gather(*[ib.ping_async(timeout=ping_timeout) for ib in boards_to_ping])
             # self.logger.debug('%r: Ping results are %s' % (self, ping_results))
-            for ib, ping_successful in zip(boards_to_ping, ping_results): # make a copy of hwm because we delete on the fly
+            for ib, ping_successful in zip(boards_to_ping, ping_results):
                 if ping_successful:
                     ib.hostname = socket.gethostbyname(ib.hostname)
                 else:
-                    missing_boards.append('%s (SN%s, (%s,%s))' % (
-                        ib.hostname,
-                        ib.serial or '????',
-                        ib.crate.crate_number if ib.crate else '?',
-                        ib.slot-1 if ib.slot else '?'))
-                    self.logger.debug('%r: Deleting %r from the YAML hardware map' % (self, ib))
+                    missing_boards.append(
+                        f"{ib.hostname} (SN{ib.serial or '????'}, "
+                        f"({ib.crate.crate_number if ib.crate else '?'},{ib.slot - 1 if ib.slot else '?'})")
+                    self.logger.debug(f'{self!r}: Deleting {ib} from the YAML hardware map')
                     ib.delete_instance()
         else:
             self.logger.info(f'{self!r}: Ping not performed on IceBoards with explicit hostnames. ')
         if missing_boards:
-            message = "%r: Could not ping the following boards: %s" % (self, ', '.join(missing_boards))
+            message = f"{self!r}: Could not ping the following boards: {', '.join(missing_boards)}"
             if ignore_missing_boards:
                 self.logger.warning(message)
             else:
@@ -752,31 +743,36 @@ class FPGAArray(object):
         #                 ib.hostname = socket.gethostbyname(ib.hostname)
         #         self.logger.info('%r: Finished resolving IP addresses. It took %s seconds' % (self, time.time() - t0))
 
-
-
-
         ###########################################################################
         # mDNS discovery of boards and crates specified by model/serial number only
         ###########################################################################
-        # We add the boards/crates that are specified by serial number
         # The serial and slot numbers will be set based on the data returned by the MDNS TXT fields
-        ib_to_discover = [(ib.part_number, ib.serial) for ib in Motherboard.get_all_instances() if ib.serial and not ib.hostname]
-        ic_to_discover = [(ic.part_number, ic.serial) for ic in IceCrate.get_all_instances() if ic.serial and not ic.slot]
+
+        # We search for motherboards that are specified by serial number but have no hostname
+        # A generic Motherboard (empty part_number) indicates we look for any part number ('*').
+        ib_to_discover = [(ib.part_number or '*', ib.serial)
+                          for ib in Motherboard.get_all_instances()
+                          if ib.serial and not ib.hostname]
+        # Search for boards on crates that have a serial number but no assigned boards (ic.slot is empty).
+        # If the crate has boards already assigned, we assume they are all assigned and we don't need to search
+        # for more boards on this crate.
+        ic_to_discover = [(ic.part_number, ic.serial)
+                          for ic in Crate.get_all_instances()
+                          if ic.serial and not ic.slot]
         # Remove iceboards with wildcard serial numbers
         for ib in Motherboard.get_all_instances():
             if ib.serial == '*':
                 ib.delete_instance()
         if ib_to_discover or ic_to_discover:
-            self.logger.info('%r: Discovering IceBoards and Icecrates specified by serial number using mDNS' % self)
-            self.logger.info('%r:     IceBoards to find: %s' % (self, ib_to_discover))
-            self.logger.info('%r:     IceCrates to find: %s' % (self, ic_to_discover))
+            self.logger.info(f'{self!r}: Discovering Motherboards and Crates specified by serial number using mDNS')
+            self.logger.info(f'{self!r}:     Motherboards to find: {ib_to_discover}')
+            self.logger.info(f'{self!r}:     Crates to find: {ic_to_discover}')
             self.print_flush()
             # Perform mDNS discovery. This is done on a separate ioloop, which locks up the current loop for a while
             await mdns_discover(
-                          iceboards=ib_to_discover,
-                          icecrates=ic_to_discover,
-                          timeout=mdns_timeout)
-
+                iceboards=ib_to_discover,
+                icecrates=ic_to_discover,
+                timeout=mdns_timeout)
 
         ########################################################
         # Establish communication with the motherboards
@@ -788,17 +784,15 @@ class FPGAArray(object):
         for ib in self.hwm:
             print(f'{ib}(hostname={ib.hostname}, serial={ib.serial}, slot={ib.slot})')
         if self.hwm:
-            self.logger.info(f'{self!r}: Establishing communication with the Motherboards')
+            self.logger.info(f'{self!r}: Establishing communication with the motherboards')
             t0 = time.time()
             result = await asyncio.gather(*[ib.open_platform_async() for ib in self.hwm if ib.hostname])
-            self.logger.info('%r: Connection with %i ARM processors established. It took %s seconds'
-                             % (self, len(self.hwm), time.time() - t0))
+            self.logger.info(f'{self!r}: Connection with {len(result)} Motherboard established. '
+                             f'It took {time.time() - t0:.3f} seconds')
 
-
-
-        ########################################################
+        ########################################################################################
         # Resolve missing serial/crate/slot info through the motherboard's on-board processor
-        ########################################################
+        ########################################################################################
         # Complete serial, crate and slot information on Motherboard that miss
         # that information by talking directly to the ARM
         # (i.e without using mDNS).
@@ -811,32 +805,33 @@ class FPGAArray(object):
             # concurrently resolve serials
             await asyncio.gather(*[ib.discover_serial_async() for ib in ib_without_serial])
             # self.logger.info('%r: Got all discover_serial futures after %f seconds' % (self, time.time() - t0))
-              # [ib.discover_serial.async() for ib in ib_without_serial]
-            self.logger.info('%r: Finished Auto-Discovering serial number for IceBoards. Took %f seconds.'
-                             % (self, time.time() - t0))
+            # [ib.discover_serial.async() for ib in ib_without_serial]
+            self.logger.info(f'{self!r}: Finished Auto-Discovering serial number for IceBoards. '
+                             f'Took {time.time() - t0:.3f} seconds.')
 
         if discover_slot:
             # Find all boards with hostname for slot number check. We re-check
             # the slot number of all boards, wether or not they already have
-            # one, so we can issue a warning if they differ. 
-            ib_without_slot = [ib for ib in self.hwm if ib.hostname]  
+            # one, so we can issue a warning if they differ.
+            ib_without_slot = [ib for ib in self.hwm if ib.hostname]
             if ib_without_slot:
-                self.logger.info('%r: Auto-Discovering & validating the slot numbers for %i IceBoards '
-                                 'with known hostnames...' % (self, len(ib_without_slot)))
+                self.logger.info(f'{self!r}: Auto-Discovering & validating the slot numbers '
+                                 f'for {len(ib_without_slot)} IceBoards with known hostnames...')
                 t0 = time.time()
                 await asyncio.gather(*[ib.discover_slot_async() for ib in ib_without_slot])
-                self.logger.info('%r: Finished Auto-Discovering slot numbers for IceBoards. Took %f seconds.'
-                                 % (self, time.time() - t0))
+                self.logger.info(f'{self!r}: Finished Auto-Discovering slot numbers for IceBoards. '
+                                 f'Took {time.time() - t0} seconds.')
         if discover_crate:
             # select boards that do not have a crate, or ones that have a generic crate (no part number)
             ib_without_crate = [ib for ib in self.hwm if ib.hostname and (not ib.crate or not ib.crate.part_number)]
             if ib_without_crate:
                 t0 = time.time()
-                self.logger.info('%r: Auto-Discovering crate information for IceBoards with known hostnames: %s'
-                                 % (self, ', '.join(ib.hostname for ib in ib_without_crate)))
+                hostnames = ', '.join(ib.hostname for ib in ib_without_crate)
+                self.logger.info(f'{self!r}: Auto-Discovering crate information '
+                                 f'for IceBoards with known hostnames: {hostnames}')
                 await asyncio.gather(*[ib.discover_crate_async() for ib in ib_without_crate])
-                self.logger.info('%r: Finished Auto-Discovering crate serial numbers. Took %f seconds.'
-                                 % (self, time.time() - t0))
+                self.logger.info(f'{self!r}: Finished Auto-Discovering crate serial numbers. '
+                                 f'Took {time.time() - t0} seconds.')
 
         ###########################################################################
         # Exclude boards
@@ -856,20 +851,20 @@ class FPGAArray(object):
         used_icecrates = {ib.crate for ib in Motherboard.get_all_instances()}
         unused_icecrates = set(Crate.get_all_instances()) - used_icecrates
         for ic in unused_icecrates:
-            self.logger.warning(f'{self!r}: Removing unused IceCrate {ic}(part_number={ic.part_number}, serial={ic.serial}, crate_number={ic.crate_number})')
+            self.logger.warning(f'{self!r}: Removing unused Crate {ic}'
+                                f'(part_number={ic.part_number}, serial={ic.serial}, crate_number={ic.crate_number})')
             ic.delete_instance()
 
         unresolved_iceboards = [ib for ib in Motherboard.get_all_instances() if not ib.hostname]
         if unresolved_iceboards:
             for ib in unresolved_iceboards:
-                self.logger.info(f'{self!r}: Unresolved {ib}(part_number={ib.part_number}, serial={ib.serial}, hostname={ib.hostname})')
+                self.logger.info(f'{self!r}: Unresolved {ib}'
+                                 f'(part_number={ib.part_number}, serial={ib.serial}, hostname={ib.hostname})')
             raise RuntimeError(f'Unresolved IceBoards {unresolved_iceboards}')
-
 
         self.logger.info(f'{self!r}: Hardware map is complete')
 
         self.logger.debug(f'HWM={self.hwm}')
-
 
         #################################
         # Resolve crate slot mapping
@@ -888,7 +883,7 @@ class FPGAArray(object):
 
         # self.set_crate_numbers(crate_number_map, strict=False)
         # print('Crates:')
-        # for ic in IceCrate.get_all_instances():
+        # for ic in Crate.get_all_instances():
         #     print(f'{ic}(serial={ic.serial}, crate_number={ic.crate_number}')
 
         #################################
@@ -896,10 +891,10 @@ class FPGAArray(object):
         #################################
         # # List all the crates we know about along with their model/serial tuple
         # # Format: {icecrate_object : (model, integer_serial),...}
-        # current_crates = {c: (c.part_number, self._to_integer(c.serial)) for c in IceCrate.get_all_instances()}
+        # current_crates = {c: (c.part_number, self._to_integer(c.serial)) for c in Crate.get_all_instances()}
 
         # # Find if explicitely requested crates were not found
-        # missing_crates = [(ic.part_number, ic.serial) for ic in IceCrate.get_all_instances()
+        # missing_crates = [(ic.part_number, ic.serial) for ic in Crate.get_all_instances()
         #                   if not ic.slot or not all(ib.hostname for ib in ic.slot.values())]
         # if missing_crates:
         #     raise RuntimeError(
@@ -912,25 +907,18 @@ class FPGAArray(object):
             (ic.part_number, ic.serial, ic.crate_number): set(range(1, ic.NUMBER_OF_SLOTS + 1)) - set(ic.slot)
             for ic in Crate.get_all_instances()}
         if any(missing_slots.values()):
-            message = '%s: The following slots are missing:\n%s' % (
-                self,
-                '\n'.join('    Crate #%s (%s SN%s): slots %s'
-                          % (number, model, serial, ', '.join(str(s) for s in slots))
-                          for ((model, serial, number), slots) in missing_slots.items() if slots))
+            missing_slots_str = '\n'.join(
+                '    Crate #{number} ({model} SN{serial}): slots {slots}'.format(
+                    number=number,
+                    model=model,
+                    serial=serial,
+                    slots=', '.join(str(s) for s in slots))
+                for ((model, serial, number), slots) in missing_slots.items() if slots)
+            message = f'{self!r}: The following slots are missing:\n{missing_slots_str}'
             if not ignore_missing_boards:
                 raise RuntimeError(message)
             else:
                 self.logger.warning(message)
-
-        #################################
-        # Check tuber version
-        #################################
-        # Check if the board is running a compatible ARM firmware. This will
-        # trigger the first communication to the ARM, causinng Tuber to fetch
-        # the method & property directory from each board.
-        # self.logger.info('Checking ARM firmware version...')
-        # if self.ib:
-        #     await asyncio.gather(*[ib.check_tuber_version_async() for ib in self.ib])
 
         #################################
         # Discover Mezzanines
@@ -942,7 +930,8 @@ class FPGAArray(object):
             self.print_flush()
             await asyncio.gather(*[ib.discover_mezzanines_async() for ib in self.hwm])
         for ib in self.hwm:
-            self.logger.debug(f"Mezzanines after discovery {ib}, {','.join('{}:{}'.format(i, m.iceboard) for i, m in ib.mezzanine.items())}")
+            mezz_info = ','.join(f'{i}:{m.iceboard}' for i, m in ib.mezzanine.items())
+            self.logger.debug(f"Mezzanines after discovery {ib}, {mezz_info}")
 
         def get_mezz_name(ib, mezz_number):
             m = ib.mezzanine.get(mezz_number, None)
@@ -959,17 +948,18 @@ class FPGAArray(object):
             self.logger.debug(f'{ic}(serial={ic.serial}, crate_number={ic.crate_number}')
         # for i, ib in enumerate(list(self.hwm)):  # use list() so we can modify self.ib in the loop.
         #     # print('Board %r has mezzanines %s. Is instance of chFPGA_controller: %s'
-        #     #       % (ib, ','.join('%i:%s' % (k, m.part_number) for k,m in ib.mezzanine.items()), isinstance(ib, chFPGA_controller)))
-        #     if all(m.part_number == FMCMezzanine_MGADC08.part_number for m in ib.mezzanine.values() if m) and not isinstance(ib, chFPGA_controller):
+        #     #       % (ib, ','.join('%i:%s' % (k, m.part_number)
+        #                for k,m in ib.mezzanine.items()), isinstance(ib, chFPGA_controller)))
+        #     if all(m.part_number == FMCMezzanine_MGADC08.part_number for m in ib.mezzanine.values()
+        #            if m) and not isinstance(ib, chFPGA_controller):
         #         new_ib = ib.update_instance(new_class=chFPGA_controller)
         #         self.logger.debug(f'Replaced {ib!r} with {new_ib!r}')
         #         self.logger.debug(f'Mezzanines after {new_ib}, {new_ib.mezzanine}')
 
-
         #################################
         # Check the hardware map for generic objects
         #################################
-        # print(f'Icecrates are: {any(c.part_number for c in IceCrate.get_all_instances())}')
+        # print(f'Icecrates are: {any(c.part_number for c in Crate.get_all_instances())}')
 
         # Check if there are any crate without part number. We use a list
         # comprehension in case any has been overriden with np.any in a pylab
@@ -980,7 +970,6 @@ class FPGAArray(object):
         if any([not i.part_number for i in Motherboard.get_all_instances()]):
             raise RuntimeError('There are generic IceBoards left in the hardware map')
 
-
         #################################
         # Create self.ib and self.ic
         #################################
@@ -988,19 +977,21 @@ class FPGAArray(object):
         # Query the hardware map for all iceboards and icecrates
         # use outerjoin in case there is no crate
         self.ib = sorted(self.hwm, key=lambda i: (i.crate.crate_number or 0 if i.crate else 0, i.slot or 0))
-        self.ic = sorted({i.crate for i in self.hwm if i.crate and i.crate.part_number}, key=lambda c: c.crate_number or 0)
+        self.ic = sorted({i.crate for i in self.hwm if i.crate and i.crate.part_number},
+                         key=lambda c: c.crate_number or 0)
 
         # Courtesy warning
         if not self.ic:
             self.logger.warning('There are no IceCrates in the hardware map!')
-
 
         #################################
         # Print the Motherboard table
         #################################
         self.logger.debug(f'New HWM={self.hwm}')
         for ib in self.hwm:
-            crate_info = f"{ib.crate}(serial={ib.crate.serial}, crate_number={ib.crate.crate_number})" if ib.crate else None
+            crate_info = (f"{ib.crate}(serial={ib.crate.serial}, "
+                          f"crate_number={ib.crate.crate_number})"
+                          if ib.crate else None)
             self.logger.debug(f"{ib}, crate={crate_info}")
         self.print_iceboard_table(
             lambda ib: '%s\n%s' % (get_mezz_name(ib, 1), get_mezz_name(ib, 2)),
@@ -1010,7 +1001,6 @@ class FPGAArray(object):
 
         # Store as Ccoll collections to allow easy parallel operations
         self.ib = Ccoll(self.ib)
-        # self.ic = Ccoll.unique((c for c in ib.crate if c) if self.ib else [])
         self.ic = Ccoll(self.ic)
 
         # We have our final hardware map. Update the `repr` caches
@@ -1023,81 +1013,80 @@ class FPGAArray(object):
 
         if self.ib:
             if prog:
-        ####################################
-        # Program the FPGAs and open link to firmware
-        ####################################
+                ####################################
+                # Program the FPGAs and open link to firmware
+                ####################################
                 self.logger.info(f'{self!r}: Configuring FPGAs...')
                 await asyncio.gather(*[
                     self.prog_and_open_fpga(
-                ib=ib,
-                prog=prog,
-                open=open,
-                mode=mode,
-                bitfile=bitfile,
-                udp_retries=udp_retries,
-                fpga_ip_addr_fn=fpga_ip_addr_fn,
-                interface_ip_addr=if_ip)
-            for ib in self.ib])
+                        ib=ib,
+                        prog=prog,
+                        open=open,
+                        mode=mode,
+                        bitfile=bitfile,
+                        udp_retries=udp_retries,
+                        fpga_ip_addr_fn=fpga_ip_addr_fn,
+                        interface_ip_addr=if_ip)
+                    for ib in self.ib])
 
 
 
             if (open or 0) > 0:
-        ################################################
-        # Initialize the FPGA firmware
-        ################################################
-        self.logger.info(f'{self!r}: Initializing FPGA firmware')
+                ################################################
+                # Initialize the FPGA firmware
+                ################################################
+                self.logger.info(f'{self!r}: Initializing FPGA firmware')
                 await asyncio.gather(*[
                     ib.init_fpga_async(
-                    adc_delay_table=ADC_DELAY_TABLE,
-                    init=open,
-                    adc_mode=adc_mode,
-                    adc_bandwidth=adc_bandwidth,
-                    sampling_frequency=sampling_frequency,
-                    **kwargs
-                ) for ib in self.ib])
+                        adc_delay_table=ADC_DELAY_TABLE,
+                        init=open,
+                        adc_mode=adc_mode,
+                        adc_bandwidth=adc_bandwidth,
+                        sampling_frequency=sampling_frequency,
+                        **kwargs
+                    ) for ib in self.ib])
 
-            ########################
-            # Initializing SYNC method
-            ########################
-            # As a convenience, set default sync method to irig-b if all boards have a crate
-            if sync_method is None and all(self.ib.crate):
-                sync_method = 'irig-b'
-            if sync_method or sync_source:
-                self.logger.info(f'{self!r}: Setting SYNC method')
-                self.set_sync_method(
-                    method=sync_method,
-                    source=sync_source,
-                    master=sync_master,
-                    master_time_source=sync_master_time_source)
+                ########################
+                # Initializing SYNC method
+                ########################
+                # As a convenience, set default sync method to irig-b if all boards have a crate
+                if sync_method is None and all(self.ib.crate):
+                    sync_method = 'irig-b'
+                if sync_method or sync_source:
+                    self.logger.info(f'{self!r}: Setting SYNC method')
+                    self.set_sync_method(
+                        method=sync_method,
+                        source=sync_source,
+                        master=sync_master,
+                        master_time_source=sync_master_time_source)
 
-            ########################
-            # Initializing operational mode
-            ########################
-            if mode:
-                self.set_operational_mode(
-                    mode=mode,
-                    frames_per_packet=frames_per_packet,
-                    tx_power=tx_power,
-                    integration_period=integration_period,
-                    autocorr_only=autocorr_only,
-                    corner_turn_bad_links=corner_turn_bad_links,
-                    corner_turn_bin_priority=corner_turn_bin_priority,
-                    corner_turn_remap_level=corner_turn_remap_level)
+                ########################
+                # Initializing operational mode
+                ########################
+                if mode:
+                    self.set_operational_mode(
+                        mode=mode,
+                        frames_per_packet=frames_per_packet,
+                        tx_power=tx_power,
+                        integration_period=integration_period,
+                        autocorr_only=autocorr_only,
+                        corner_turn_bad_links=corner_turn_bad_links,
+                        corner_turn_bin_priority=corner_turn_bin_priority,
+                        corner_turn_remap_level=corner_turn_remap_level)
 
-            ########################
-            # Initializing backplane hardware communication firmware
-            ########################
+                ########################
+                # Initializing backplane hardware communication firmware
+                ########################
 
-            self.logger.info(f'{self!r}: Initializing Backplane firmware')
-            if self.ic:
-                self.ic.init()
+                self.logger.info(f'{self!r}: Initializing Backplane firmware')
+                if self.ic:
+                    self.ic.init()
 
         self.print_flush()
 
         #################################
         # Completed
         #################################
-
 
     async def prog_and_open_fpga(self, ib, prog, open, mode, bitfile=None, max_trials=3, **kwargs):
         """ Try to open communication with the FPGA and reprogram the FPGA and retry a number of
@@ -1144,14 +1133,12 @@ class FPGAArray(object):
                 await ib.open_fpga_async(**kwargs)
                 return
             except IOError as e:
-                self.logger.warning('%r: Error while initializing core firmware on trial %i/%i. Error is: \n%r'
-                                  % (self, trial, max_trials, e))
+                self.logger.warning(f'{self!r}: Error while initializing core firmware on trial {trial}/{max_trials}. '
+                                    f'Error is: \n{e!r}')
                 if trial == max_trials:
-                    raise IOError('%r: Unable to initializing FPGA core firmware after %i trials. Giving up.'
-                                  % (self, trial))
+                    raise IOError(f'{self!r}: Unable to initializing FPGA core firmware after {trial} trials. Giving up.')
                 else:
-                    self.logger.warning('%r: Reprogramming FPGA and trying again.' % (self))
-
+                    self.logger.warning(f'{self!r}: Reprogramming FPGA and trying again.')
 
     @staticmethod
     def _to_integer(x):
@@ -1258,24 +1245,26 @@ class FPGAArray(object):
                 model=ic.part_number,
                 serial=str(ic.serial),
                 crate_number=ic.crate_number,
-                iceboards=[dict(
-                    slot=ib.slot,
-                    model=ib.part_number,
-                    serial=str(ib.serial)) for ib in ic.slot.values()]
-                    )
-                )
+                iceboards=[
+                    dict(
+                        slot=ib.slot,
+                        model=ib.part_number,
+                        serial=str(ib.serial)) for ib in ic.slot.values()
+                ]
+            ))
         for ib in self.ib:
             hwm.append(dict(
                 type='iceboard',
                 model=ib.part_number,
                 serial=str(ib.serial),
-                mezzanines=[dict(
-                    slot=i,
-                    model=m.part_number if m else None,
-                    serial=str(m.serial) if m else None)
-                        for i, m in enumerate((ib.mezzanine.get(1, None), ib.mezzanine.get(2, None)))]
-                    )
-                )
+                mezzanines=[
+                    dict(
+                        slot=i,
+                        model=m.part_number if m else None,
+                        serial=str(m.serial) if m else None)
+                    for i, m in enumerate((ib.mezzanine.get(1, None), ib.mezzanine.get(2, None)))
+                ]
+            ))
         return hwm
 
     def process_list_hwm(self, hwm):
@@ -1290,7 +1279,7 @@ class FPGAArray(object):
 
                    {"class": class_name, "arg1":arg1, ...}
 
-                ``class_name`` is a string describing the name of of a Motherboard or IceCrate class (or subclass).
+                ``class_name`` is a string describing the name of of a Motherboard or Crate subclass.
 
                 ``"arg1":arg1`` are the arguments passed to the class constructor.
 
@@ -1299,8 +1288,8 @@ class FPGAArray(object):
 
         Notes:
 
-        Hardware map objects can be generic base objects ('IceBoard',
-        'IceCrate' etc.).  In this case, their class will be updated based on
+        Hardware map objects can be generic base objects ('Motherboard',
+        'Crate' etc.).  In this case, their class will be updated based on
         self-discovery.
 
         'IceBoard'-type of objects can take the additional ``crate_number``
@@ -1318,9 +1307,11 @@ class FPGAArray(object):
             params = dict(hwm_entry)  # make a copy, we'll modify it below
             class_name = params.pop('class')
             # check if the class name is valid
+
             if class_name not in icecrate_classes and class_name not in iceboard_classes:
-                raise ValueError("Unknown class name '%s' in a list-based hardware map. Valid class names are %s"
-                                 % (class_name, ','.join(list(icecrate_classes)+list(iceboard_classes))))
+                valid_class_names = ','.join(list(icecrate_classes) + list(iceboard_classes))
+                raise ValueError(f"Unknown class name '{class_name}' in a list-based hardware map. "
+                                 f"Valid class names are: {valid_class_names}")
             # It it is a crate, create an instance
             if class_name in icecrate_classes:
                 # Create the class: it will be registered in the class registry for future use
@@ -1337,10 +1328,13 @@ class FPGAArray(object):
                 ib = Motherboard.get_unique_instance(new_class=iceboard_classes[class_name], **params)
                 # self.logger.debug('%r: Crate %r is in %r' % (self, crate_number, params))
 
-
     def process_str_hwm(self, hwm):
         """
         Create the hardware map objects that are specified in a string-based hardware map `hwm`
+
+        The Motherboard and Crate objects created from the string description
+        are added directly in the global hardware map.
+
         """
         # Build the hardware description string from various sources
         hw_string = hwm
@@ -1353,11 +1347,14 @@ class FPGAArray(object):
         #     'crates': {(crate_number,): ('icecrates', (model, serial, crate_number))
         #                for crate_number, (model, serial) in crate_map.items()}}
 
-        logger = log.get_logger(self)
+        logger = self.logger
         # If hw_string is a list of string, combine them in one single string
         if isinstance(hw_string, (list, tuple)):
             hw_string = ' '.join(str(s) for s in hw_string)
 
+        # if the hw_string is just '*', we want to find all boards.
+        # We therefore create a generic Motherboard with serial '*'.
+        # This will be a signal that says we want to match any board.
         if hw_string == '*':
             Motherboard.get_unique_instance(serial='*')
             return
@@ -1384,12 +1381,12 @@ class FPGAArray(object):
 
         current_class = None
         for el in elements:
-            if '.' in el:  # if hostname
+            if '.' in el:  # if hostname (has a '.' somewhere)
                 hostname, slot, crate_number = split_fields(el, 3)
                 # print(f'Adding Motherboard {hostname}, {slot}, {crate_number}')
                 ib = Motherboard.get_unique_instance(hostname=hostname, slot=slot, crate_number=crate_number)
                 current_class = None
-            elif el[0].isdigit(): # if a serial
+            elif el[0].isdigit():  # if a serial (is only digits)
                 if not current_class:
                     raise RuntimeError('A part number must be specified before a target serial number')
                 if issubclass(current_class, Motherboard):
@@ -1406,7 +1403,7 @@ class FPGAArray(object):
                 else:
                     raise TypeError(f'Trying to create object {current_class} that '
                                     f'is other than Motherboard or Crate')
-            else: # otherwise, assume it is a part number
+            else:  # otherwise, assume it is a part number
                 matching_classes = [c
                                     for c in Motherboard.get_all_classes() + Crate.get_all_classes()
                                     if c.part_number and c.part_number.upper().endswith(el.upper())]
@@ -1458,8 +1455,6 @@ class FPGAArray(object):
         # # serial) to the mdns discovery function.
         # hw_table.icecrates = [(model, serial) for (model, serial, crate_number) in hw_table.icecrates]
 
-
-
     # def set_crate_numbers(self, crate_number_map, strict=True):
     #     """ Set the crate number of each crate based on the provided crate
     #     number map.
@@ -1470,7 +1465,6 @@ class FPGAArray(object):
 
     #         crate_number_map (dict): A { (model, serial): number} dict that
     #             maps a crate ID tuple to a crate number.
-
 
     #         strict (bool): if True, will raise an exception if not all crates
     #             can be assigned a crate number
@@ -1502,16 +1496,18 @@ class FPGAArray(object):
 
     #         if new_crate_number is not None:
     #             ic.update_instance(crate_number = int(new_crate_number))
-    #             self.logger.info('%r: Assigning crate number %r to crate %s' % (self, new_crate_number, ic.get_string_id()))
+    #             self.logger.info('%r: Assigning crate number %r to crate %s'
+    #                 % (self, new_crate_number, ic.get_string_id()))
     #         elif strict:
     #             raise RuntimeError('Cannot find a crate number for crate %s' % ic.get_string_id())
     #         else:
-    #             self.logger.warning('%r: set_crate_number: Cannot find a crate number for crate %s' % (self, ic.get_string_id()))
+    #             self.logger.warning('%r: set_crate_number: Cannot find a crate number for crate %s'
+    #                 % (self, ic.get_string_id()))
 
     def set_operational_mode(self,
                              mode,
                              frames_per_packet=1,
-                             send_flags = True,
+                             send_flags=True,
                              chan8_channel_map=list(range(8)),
                              tx_power=None,
                              integration_period=16384,
@@ -1631,7 +1627,6 @@ class FPGAArray(object):
                     self.corner_turn_stream_ids[ib.get_id(lane)] = stream_id
             self.sync()
 
-
         elif mode in ['shuffle256', 'shuffle512', 'shuffle16', 'shuffle128']:
             if not all(self.ib.CROSSBAR2) or not all(self.ib.CROSSBAR3):
                 raise RuntimeError('All IceBoards must have their CROSSBAR2 and CROSSBAR 3 implemented')
@@ -1734,10 +1729,10 @@ class FPGAArray(object):
         if mode == 'shuffle512':
             # start with the default bin map
             bin_map = {(crate, slot): dict(
-                    cb1=np.arange(1024).reshape((16, 64), order='F'),
-                    cb2=np.arange(64).reshape((2, 32), order='F'),
-                    cb3=np.arange(32).reshape((8, 4), order='F'))
-                    for crate in range(2) for slot in range(16)}
+                cb1=np.arange(1024).reshape((16, 64), order='F'),
+                cb2=np.arange(64).reshape((2, 32), order='F'),
+                cb3=np.arange(32).reshape((8, 4), order='F'))
+                for crate in range(2) for slot in range(16)}
             if remap_level >= 3:
                 self.compute_cb1_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
             if remap_level >= 2:
@@ -1764,10 +1759,10 @@ class FPGAArray(object):
         elif mode == 'shuffle256':
             # start with the default bin map
             bin_map = {(crate, slot): dict(
-                    cb1=np.arange(1024).reshape((16, 64), order='F'),
-                    cb2=np.arange(64).repeat(2).reshape(2, 64, order='F'),
-                    cb3=np.arange(64).reshape((8, 8), order='F'))
-                    for crate in range(2) for slot in range(16)}
+                cb1=np.arange(1024).reshape((16, 64), order='F'),
+                cb2=np.arange(64).repeat(2).reshape(2, 64, order='F'),
+                cb3=np.arange(64).reshape((8, 8), order='F'))
+                for crate in range(2) for slot in range(16)}
             if remap_level >= 3:
                 self.compute_cb1_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
             if remap_level >= 1:
@@ -1831,7 +1826,8 @@ class FPGAArray(object):
             will be used by exactly two slots (each slot using 64 bins)
           - We process each slot one by one, starting with the slots that has
             the worst number of unprocessable bins
-          - For each slot, we find the pattern that offers the worst N bins, where N is the number of unprocessable bins for that slot
+          - For each slot, we find the pattern that offers the worst N bins,
+            where N is the number of unprocessable bins for that slot
           - We select assign the worst N bins from that pattern to the slot
           - we select the remaining 64-N best bins from that pattern to the slot
           - The resulting 64 selected bins are masked so they cannot be used anymore in that pattern
@@ -1901,7 +1897,7 @@ class FPGAArray(object):
             # (lower priority) bins in that pattern. Since we are selecting
             # bins that well end up on bad GPUs, we want these `nbad` bins to
             # contain as little good bins as possible.
-            worst_pri = [(pri[s, x[np.clip(Nbins[s]-nbad, a_min=0, a_max=Nbins[s]-1)]] if Nbins[s] else 0)
+            worst_pri = [(pri[s, x[np.clip(Nbins[s] - nbad, a_min=0, a_max=Nbins[s] - 1)]] if Nbins[s] else 0)
                          for s, x in enumerate(ix)]
             if verbose:
                 print('Worst bin priority for all patterns are', worst_pri)
@@ -2103,7 +2099,7 @@ class FPGAArray(object):
             # Standard CB3 bin assignment (each row is a link)
             cb3_bins = np.arange(Nfreq_cs).reshape((Nlink, Nfreq_link), order='F')
             # Standard absolute frequency assignment (each row is a link)
-            freq_bins_cs = np.arange(crate*Nslot+slot, Nfreq, Nfreq_cs).reshape(
+            freq_bins_cs = np.arange(crate * Nslot + slot, Nfreq, Nfreq_cs).reshape(
                 (Nlink, Nfreq_link), order='F')
             # Importance of each CB3 bin
             cb3_bin_order = bin_priority[freq_bins_cs.ravel()].reshape((Nlink, Nfreq_link))
@@ -2119,7 +2115,7 @@ class FPGAArray(object):
                 # with the permutations that cluster RFI bins on the links
                 # according to link_rfi_assign_order
                 for lp in itertools.permutations(link_priority):
-                    if np.all(abs(np.array(lp)-link_rfi_assign_order) <= 4):
+                    if np.all(abs(np.array(lp) - link_rfi_assign_order) <= 4):
                         # The permutation is allowed. done
                         break
                 cb3_bins[link_rfi_assign_order, gpu] = cb3_bins[lp, gpu]
@@ -2132,7 +2128,7 @@ class FPGAArray(object):
                     bmap['cb3'][link] = cb3_bins[link_rfi_assign_order[i_top]]
                     i_top += 1
                 else:  # Good link: assign important freq. bins
-                    bmap['cb3'][link] = cb3_bins[link_rfi_assign_order[i_bottom-1]]
+                    bmap['cb3'][link] = cb3_bins[link_rfi_assign_order[i_bottom - 1]]
                     i_bottom -= 1
 
     @staticmethod
@@ -2170,7 +2166,7 @@ class FPGAArray(object):
         cb3_bins = np.arange(Nfreq_cs).reshape((Nlink, Nfreq_link), order='F')
         for (crate, slot), bmap in bin_map.items():
             # Standard absolute frequency assignment (each row is a link)
-            freq_bins_cs = np.arange(crate*Nslot+slot, Nfreq, Nfreq_cs).reshape(
+            freq_bins_cs = np.arange(crate * Nslot + slot, Nfreq, Nfreq_cs).reshape(
                 (Nlink, Nfreq_link), order='F')
             # Importance of each CB3 bin
             cb3_bin_order = bin_priority[freq_bins_cs.ravel()].reshape((Nlink, Nfreq_link))
@@ -2186,7 +2182,7 @@ class FPGAArray(object):
             for link in range(Nlink):
                 stream_id = (crate, slot, link)
                 if stream_id in bad_links:  # Bad link: assign less important freq. bins
-                    bmap['cb3'][link] = cb3_bins[link_priority[i_bottom-1]]
+                    bmap['cb3'][link] = cb3_bins[link_priority[i_bottom - 1]]
                     i_bottom -= 1
                 else:  # Good link: assign important freq. bins
                     bmap['cb3'][link] = cb3_bins[link_priority[i_top]]
@@ -2319,8 +2315,7 @@ class FPGAArray(object):
             bad_links=None,
             bin_priority=None,
             remap_level=0,
-            sync=True
-            ):
+            sync=True):
         """ Setup the crossbars and data shuffling in every board of the array.
 
         Parameters:
@@ -2376,13 +2371,13 @@ class FPGAArray(object):
 
         self.corner_turn_stream_ids = {}
         for i, ib in enumerate(self.ib):
-            self.logger.debug('%r: **** Initializing transmitters for IceBoard %r (SN%s) ****' % (self, ib, ib.serial))
+            self.logger.debug(f'{self!r}: **** Initializing transmitters for IceBoard {ib} (SN{ib.serial}) ****')
             ib.set_corr_reset(0)  # Put the corner_turn engine in reset
 
             tx_list.append((ib.slot, 0))  # Register Bypass lane (lane 0) as a transmitter in this slot
             for j, gtx in enumerate(ib.BP_SHUFFLE.gtx):
                 gtx.TXINHIBIT = 0
-                tx_list.append((ib.slot, j+1))
+                tx_list.append((ib.slot, j + 1))
 
             # Initialize the crossbars to select and send data in a specific format
             # ib.init_crossbars(dsmap, frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins,
@@ -2401,7 +2396,7 @@ class FPGAArray(object):
 
         # Check if stream IDs are unique
         if len(self.corner_turn_stream_ids) != len(set(self.corner_turn_stream_ids.values())):
-            raise self.logger.warning('%r: Stream IDs are not unique across the array')
+            raise self.logger.warning(f'{self!r}: Stream IDs are not unique across the array')
 
         if ib.crate:
 
@@ -2413,7 +2408,7 @@ class FPGAArray(object):
                 for j, gtx in enumerate(ib.BP_SHUFFLE.gtx[0:ib.BP_SHUFFLE.NUMBER_OF_PCB_LINKS]):
                     if ib.slot is None:
                         continue
-                    rx = (ib.slot, j+1)
+                    rx = (ib.slot, j + 1)
                     tx = ib.crate.get_matching_tx(rx)
 
                     # disable receivers that have no corresponding transmitters
@@ -2450,7 +2445,7 @@ class FPGAArray(object):
                     if tx not in tx_list:
                         self.logger.debug(f'{self!r}: In {ib.crate!r}, {rx} has no corresponding transmitter')
 
-        if mode != 'shuffle128': # ***JFC: temporary hack
+        if mode != 'shuffle128':  # ***JFC: temporary hack
             # Get the exhaustive frequency map that is implemented by the current corner
             freq_map = self.get_frequency_map(format='l:bb')
             # Retain only one bin number  for each bin
@@ -2464,8 +2459,8 @@ class FPGAArray(object):
                 bs = bin_map[(crate % 2, slot)]
                 expected_bins = bs['cb1'][slot][bs['cb2'][crate % 2]][bs['cb3'][lane]]
                 if not all(np.equal(expected_bins, actual_bins)):
-                    print('Link %r do not match: Expected bins: %r, got bins %r'
-                          % ((crate, slot, link), expected_bins, actual_bins))
+                    print(f'Link {(crate, slot, link)} do not match: '
+                          f'Expected bins: {expected_bins!r}, got bins {actual_bins!r}')
                     errors += 1
 
             if errors:
@@ -2509,15 +2504,15 @@ class FPGAArray(object):
             default_power = (default_power, )
 
         exceptions = {tuple(node_id): power_tuple for node_id, power_tuple in exceptions}
-        self.logger.info('%r: Setting GTX power for lane group %s to power index %i' % (self, lane_group, index))
-        self.logger.debug('%r:    Default power is %s' % (self, default_power))
-        self.logger.debug('%r:    Power exceptions are %s' % (self, exceptions))
+        self.logger.info(f'{self!r}: Setting GTX power for lane group {lane_group} to power index {index}')
+        self.logger.debug(f'{self!r}:    Default power is {default_power}')
+        self.logger.debug(f'{self!r}:    Power exceptions are {exceptions}')
 
         for ib in self.ib:
             bp = ib.BP_SHUFFLE
             power_tuples = [(lane, exceptions.get(ib.get_id(lane), default_power)[index])
                             for lane, gtx in enumerate(bp.get_gtx(lane_group=lane_group)) if gtx]
-            self.logger.debug('%r: setting Tx power for %r %s links' % (self, ib, lane_group))
+            self.logger.debug(f'{self!r}: setting Tx power for {ib} {lane_group} links')
             bp.set_tx_power(power_tuples, lane_group)
 
     # def set_tx_power(self, pmin=6, pmax=13, pre=3):
@@ -2542,7 +2537,7 @@ class FPGAArray(object):
         for ic in self.ic:
             for (slot, ib) in ic.slot.items():
                 for ch in range(16):
-                    ib.set_funcgen_function('ab', a=(slot-1) << 4, b=ch << 4, channels=[ch])
+                    ib.set_funcgen_function('ab', a=(slot - 1) << 4, b=ch << 4, channels=[ch])
                 ib.set_data_source('funcgen')
 
     def set_sync_method(self, method='distributed_time', source=None, master=None, master_time_source=None):
@@ -2699,7 +2694,7 @@ class FPGAArray(object):
         else:
             raise ValueError("Unknown syncing method '%s'" % method)
 
-    def sync(self, delay=2-0.006556800, check=True, align_to_seconds=True, max_trials=3):
+    def sync(self, delay=2 - 0.006556800, check=True, align_to_seconds=True, max_trials=3):
         """ Generate a SYNC event across the whole array based on the syncing method set by ``set_sync_method()``.
 
         Parameters:
@@ -2752,19 +2747,18 @@ class FPGAArray(object):
                     # set the trigger far enough in time it should not happen before we reprogram another delay
                     self.ib.set_irigb_trigger_time_sync(dt, delay=300)
                     setting_time = (time.time() - t0)
-                    self.logger.info('%r: It takes %f seconds to set the trigger time across the array'
-                                     % (self, setting_time))
+                    self.logger.info(f'{self!r}: It takes {setting_time} seconds to set the trigger time across the array')
                     setting_time = round(2 * setting_time) + delay
                     # Now set the trigger time using that delay
                     dt = self.ib[0].get_irigb_time_sync()
                     if align_to_seconds:
-                        self.logger.info('%r: Rounding trigger time to the second' % self)
+                        self.logger.info(f'{self!r}: Rounding trigger time to the second')
                         dt = dt.replace(microsecond=0)
-                    self.logger.info('%r: Triggering SYNC %f seconds after %s' % (self, setting_time,  dt.isoformat()))
+                    self.logger.info(f'{self!r}: Triggering SYNC {setting_time} seconds after {dt.isoformat()}')
                     self.print_flush()
                     t0 = time.time()
                     self.sync_start_time = sync_time = self.ib.set_irigb_trigger_time_sync(dt, delay=setting_time)
-                    self.logger.info('%r: It took %f seconds to set the final trigger time' % (self, time.time() - t0))
+                    self.logger.info(f'{self!r}: It took {time.time() - t0} seconds to set the final trigger time')
                     t0 = time.time()
                     while any(self.ib.is_irigb_before_trigger_time_sync()):
                         if time.time() - t0 > setting_time + 1:
@@ -2795,18 +2789,16 @@ class FPGAArray(object):
                     self.sync_timestamp = ts[0]
 
                     delta_ts = max(ts.nano) - min(ts.nano)
-                    self.logger.info('%r: The IRIG-B time for Frame 0 on all boards is:\n%s' % (
-                        self,
-                        '\n'.join('         %r: %s (%i ns since epoch, %i ns after sync)' % (
-                                ib,
-                                ts[i].isoformat(),
-                                ts[i].nano,
-                                ts[i].nano - sync_time[i].nano)
-                            for i, ib in enumerate(self.ib))))
-                    self.logger.info('%r: The maximum Frame 0 time difference is %i ns' % (self, delta_ts))
+                    irigb_times = '\n'.join(
+                        f'         {ib!r}: {ts[i].isoformat()} '
+                        f'({ts[i].nano} ns since epoch, '
+                        f'{ts[i].nano - sync_time[i].nano} ns after sync)'
+                        for i, ib in enumerate(self.ib))
+                    self.logger.info(f'{self!r}: The IRIG-B time for Frame 0 on all boards is:\n{irigb_times}')
+                    self.logger.info(f'{self!r}: The maximum Frame 0 time difference is {delta_ts} ns')
                     if delta_ts > self.max_sync_time_difference:
-                        raise RuntimeError('The Frame 0 time difference of %i exceeds the maximum limit of %i'
-                                           % (delta_ts, self.max_sync_time_difference))
+                        raise RuntimeError(f'The Frame 0 time difference of {delta_ts} '
+                                           f'exceeds the maximum limit of {self.max_sync_time_difference}')
 
                 for ib in self.ib:
                     for ant in ib.ANT:
@@ -2816,10 +2808,9 @@ class FPGAArray(object):
             except Exception as e:
                 trial += 1
                 if trial >= max_trials:
-                    raise RuntimeError('SYNC failed after %i trials. The last exception was:\n%r'
-                                       % (trial, e))
-                self.logger.warning('%r: SYNC failed on trial %i/%i due to the following error. Will retry.\n%r'
-                                 % (self, trial, max_trials, e))
+                    raise RuntimeError(f'SYNC failed after {trial} trials. The last exception was:\n{e!r}')
+                self.logger.warning(f'{self!r}: SYNC failed on trial {trial}/{max_trials} '
+                                    f'due to the following error. Will retry.\n{e!r}')
 
     async def set_channelizers_async(
             self,
@@ -2863,8 +2854,8 @@ class FPGAArray(object):
         Parameters:
 
             board:  is either the serial number (as a string) of the target
-                board, or is the target IceBoard object. If board evaluates to False (empty string), the noise injection setup is skipped.
-
+                board, or is the target IceBoard object. If board evaluates to
+                False (empty string), the noise injection setup is skipped.
 
         Notes:
 
@@ -2957,7 +2948,7 @@ class FPGAArray(object):
             stream_id_map.update(ib.get_stream_id_map())
 
         if len(stream_id_map) != len(set(stream_id_map.values())):
-            self.logger.warning('%r: Stream IDs are not unique!')
+            self.logger.warning(f'{self!r}: Stream IDs are not unique!')
 
         return stream_id_map
 
@@ -2984,7 +2975,6 @@ class FPGAArray(object):
     def get_channel_ids(self):
         """ Returns the channel IDs of every board and channel in the array """
         return [cid for ib in self.ib for cid in ib.get_channel_ids()]
-
 
     def get_iceboard(self, board):
         """ Return the ICEBoard specified by tuple or serial number.
@@ -3013,20 +3003,21 @@ class FPGAArray(object):
             elif board in self.ib.hostname:
                 return self.ib.get(hostname=board)
             else:
-                raise RuntimeError('%r: Invalid Board serial number %s. Valid serial numbers are %s'
-                                   % (self, board, ','.join("'%s'" % ib.serial for ib in self.ib)))
+                valid_serials = ','.join("'%s'" % ib.serial for ib in self.ib)
+                raise RuntimeError(f'{self!r}: Invalid Board serial number {board}. '
+                                   f'Valid serial numbers are {valid_serials}')
         elif isinstance(board, (tuple, list)) and len(board) == 2:
             matches = [ib for ib in self.ib if tuple(board) == ib.get_id()]
             if not matches:
-                raise RuntimeError('board ID %r did not match any board in the array: %s'
-                                   % (board, [ib.get_id() for ib in self.ib]))
+                raise RuntimeError(f"board ID {board} did not match any board "
+                                   f"in the array: {[ib.get_id() for ib in self.ib]}")
             elif len(matches) > 1:
-                raise RuntimeError('board ID %r Matched multiple boards: %s'
-                                   % ','.join(ib.get_string_id() for ib in matches))
+                raise RuntimeError(f"board ID {board} Matched multiple "
+                                   f"boards: {','.join(ib.get_string_id() for ib in matches)}")
             else:
                 return matches[0]
         else:
-            raise AttributeError('%r: Invalid Iceboard specification %s' % (self, board))
+            raise AttributeError(f'{self!r}: Invalid Iceboard specification {board}')
 
     def get_iceboard_from_id(self, id):
         """ return the iceboard corresponding to the specified (crate,slot) tuple. ``slot`` is zero-based.
@@ -3177,14 +3168,13 @@ class FPGAArray(object):
         array_gains = {}
         for ib in self.ib:
             board_id = ib.get_id()
-            self.logger.debug('%r: Reading digital gains for (crate,slot)=%r' %
-                             (self, board_id))
+            self.logger.debug(f'{self!r}: Reading digital gains for (crate,slot)={board_id}')
             board_gains = ib.load_gains(folder=gain_folder) or default_gains
             await asyncio.sleep(0)
 
             if not board_gains:
-                self.logger.warning('%r: Neither board-specific gain file not default '
-                                 'gain file was found for (crate,slot)=%r' % (self, board_id))
+                self.logger.warning(f'{self!r}: Neither board-specific gain file not default '
+                                    f'gain file was found for (crate,slot)={board_id}')
                 array_gains[board_id] = None
             else:
                 array_gains[board_id] = board_gains
@@ -3280,7 +3270,7 @@ class FPGAArray(object):
             await asyncio.sleep(0)
         return (timestamps)
 
-    async def set_gains_async(self, gains, bank=-1,  when='now', gain_timestamps=None):
+    async def set_gains_async(self, gains, bank=-1, when='now', gain_timestamps=None):
         """ Set the gains on the boards in the array.
 
         Parameters:
@@ -3324,8 +3314,7 @@ class FPGAArray(object):
         for board_id, g in gains.items():
             gain_timestamp = gain_timestamps[board_id] if isinstance(gain_timestamps, dict) else gain_timestamps
             ib = self.get_iceboard_from_id(board_id)
-            self.logger.debug('%r: Setting digital gains for (crate,slot)=%r (%s)'
-                             % (self, board_id, ib.get_formatted_id()))
+            self.logger.debug(f'{self!r}: Setting digital gains for (crate,slot)={board_id} ({ib.get_formatted_id()})')
             ib.set_gains(gain=g, bank=bank, when=None, gain_timestamp=gain_timestamp)
             await asyncio.sleep(0)
 
@@ -3357,7 +3346,12 @@ class FPGAArray(object):
                 board_based_gains[id_] = gains
         return board_based_gains
 
-    async def compute_gains(self, enable=True, slots=None, noise_injection=None, gain_folder='/home/chime/ch_acq/gains'):
+    async def compute_gains(
+            self,
+            enable=True,
+            slots=None,
+            noise_injection=None,
+            gain_folder='/home/chime/ch_acq/gains'):
         """
         *** NOT FUNCTIONAL ***
         Should be updated to use the new GainCalc object
@@ -3386,8 +3380,8 @@ class FPGAArray(object):
         if noise_injection is not None:
             for source_name, source_params in noise_injection.items():
                 if source_params.board:
-                    self.logger.debug("Setting gain computation noise injection for source '%s' with parameters %s"
-                                     % (source_name, source_params))
+                    self.logger.debug(f"Setting gain computation noise injection for "
+                                      f"source '{source_name}' with parameters {source_params}")
                     self.set_noise_injection(local_sync=True, **source_params)
 
         # Loop over boards and compute gains
@@ -3509,9 +3503,9 @@ class FPGAArray(object):
                 if format == 'l:cscb':  # Unique (crate, slot, local_channel)
                     ch_out[(crate, slot, lane)] = [(crate, slot, lane, bin) for bin in range(1024)]
                 elif format == 'l:cc':  # Non-unique global channel numbers (repeated for each bin)
-                    ch_out[(crate, slot, lane)] = [crate*256 + slot*16 + lane for bin in range(1024)]
+                    ch_out[(crate, slot, lane)] = [crate * 256 + slot * 16 + lane for bin in range(1024)]
                 elif format == 'l:cb':  # Unique (global channel, lane) tuple
-                    ch_out[(crate, slot, lane)] = [(crate*256 + slot*16 + lane, bin) for bin in range(1024)]
+                    ch_out[(crate, slot, lane)] = [(crate * 256 + slot * 16 + lane, bin) for bin in range(1024)]
                 elif format == 'l:bb':  # Non unique bin_number (repeated for each channel)
                     ch_out[(crate, slot, lane)] = [bin for bin in range(1024)]
         return ch_out
@@ -3553,9 +3547,9 @@ class FPGAArray(object):
             pcb_link_map = ic.get_pcb_link_map()
             for (rx_slot, rx_lane), (tx_slot, tx_lane) in pcb_link_map.items():
                 (crate, ) = ic.get_id()
-                pcb_shuffle_out[(crate, rx_slot-1, rx_lane)] = (
-                    cb1_out[(crate, tx_slot-1, tx_lane)] if (crate, tx_slot-1, tx_lane) in cb1_out
-                    else dict(data=[None]*1024))
+                pcb_shuffle_out[(crate, rx_slot - 1, rx_lane)] = (
+                    cb1_out[(crate, tx_slot - 1, tx_lane)] if (crate, tx_slot - 1, tx_lane) in cb1_out
+                    else dict(data=[None] * 1024))
 
         # Apply CROSSBAR2
         cb2_out = OrderedDict()
@@ -3611,7 +3605,7 @@ class FPGAArray(object):
         fail = 0
         for test_number in range(10):
             print('Trial # %i: Sending SYNC pulse from Slot %02i (Iceboard SN%s)'
-                  % (test_number+1, sync_board.slot, sync_board.serial))
+                  % (test_number + 1, sync_board.slot, sync_board.serial))
             sync_board.REFCLK.local_sync()
             for i, bb in enumerate(c):
                 new_sync_ctr = bb.REFCLK.SYNC_CTR
@@ -3758,12 +3752,12 @@ class FPGAArray(object):
 
         print('Checking received data')
         link_list = []
-        link_matrix = [[None]*17 for x in range(17)]
+        link_matrix = [[None] * 17 for x in range(17)]
         serial_number = ['N/A'] * 17
         for ib in array:
             # print 'Slot %i' % (ib.slot)
             dest_slot = ib.slot
-            serial_number[dest_slot-1] = ib.serial
+            serial_number[dest_slot - 1] = ib.serial
             # JM: Fixed this below bc was getting an error. JF please check
             for gtx_number, g in enumerate(ib.BP_SHUFFLE.gtx[0:ib.BP_SHUFFLE.NUMBER_OF_PCB_LINKS]):
                 dest_lane = gtx_number + 1
@@ -3803,7 +3797,7 @@ class FPGAArray(object):
                 link_list.append((source, dest))
         if print_:
             # Print a slot map
-            print('Slot-> ' + ' '.join(['%-15i' % (slot+1) for slot in range(16)]))
+            print('Slot-> ' + ' '.join(['%-15i' % (slot + 1) for slot in range(16)]))
             print('S/N -> ' + ' '.join(['%-15s' % (sn) for sn in serial_number]))
             print('Lane   ' + ' '.join(['%-15s' % '----------' for x in range(16)]))
 
@@ -3833,7 +3827,7 @@ class FPGAArray(object):
         Returns:
             A dict, in the format:
 
-                {('pcb', (tx_crate, tx_slot, tx_lane), (rx_crate, rx_slot, rx_lane)) : (tx_gtx_instance, rx_gtx_instance)}
+            {('pcb', (tx_crate, tx_slot, tx_lane), (rx_crate, rx_slot, rx_lane)): (tx_gtx_instance, rx_gtx_instance)}
         """
         link_map = {}
         for ib in self.ib:
@@ -3909,7 +3903,7 @@ class FPGAArray(object):
         Returns:
            A dict, in the format:
 
-                {('qsfp', (tx_crate, tx_slot, tx_lane), (rx_crate, rx_slot, rx_lane)) : (tx_gtx_instance, rx_gtx_instance)}
+            {('qsfp', (tx_crate, tx_slot, tx_lane), (rx_crate, rx_slot, rx_lane)): (tx_gtx_instance, rx_gtx_instance)}
 
         """
         qsfp_link_map = {}
@@ -3973,7 +3967,7 @@ class FPGAArray(object):
         Returns:
            A dict, in the format:
 
-                {('GPU', (tx_crate, tx_slot, tx_lane), (rx_crate, rx_slot, rx_lane)) : (tx_gtx_instance, rx_gtx_instance)}
+            {('GPU', (tx_crate, tx_slot, tx_lane), (rx_crate, rx_slot, rx_lane)): (tx_gtx_instance, rx_gtx_instance)}
         """
         link_map = {}
         for ib in self.ib:
@@ -4001,11 +3995,12 @@ class FPGAArray(object):
                 a string or the link types specified in a list of strings.
 
         Returns:
-           A dict, in the format:
 
-                {(link_type, (tx_crate, tx_slot, tx_lane), (rx_crate, rx_slot, rx_lane)) : (tx_gtx_instance, rx_gtx_instance)}
+            A dict, in the format::
 
-                `link_type` is either "BP", "BP_QSFP" or "GPU"
+                {(link_type, (tx_crate, tx_slot, tx_lane), (rx_crate, rx_slot, rx_lane)): (tx_gtx_instance, rx_gtx_instance)}
+
+            `link_type` is either "BP", "BP_QSFP" or "GPU"
         """
         link_map = {}
         link_map.update(self.get_backplane_pcb_link_map())
@@ -4052,23 +4047,23 @@ class FPGAArray(object):
 
             dest_gtx.RXPRBSSEL = 4
             source_gtx.TXPRBSSEL = 4
-            source_gtx.TXDIFFCTRL = tx_init_power #Setting initial power level
+            source_gtx.TXDIFFCTRL = tx_init_power  # Setting initial power level
 
-            dest_gtx.RXDFELPMRESET=1  #Retting the Reciever DFE
+            dest_gtx.RXDFELPMRESET = 1  # Retting the Reciever DFE
             await asyncio.sleep(0.5)
-            dest_gtx.RXDFELPMRESET=0
+            dest_gtx.RXDFELPMRESET = 0
 
             if (link_type == 'pcb'):
-                source_gtx.TXDIFFCTRL=tx_power
+                source_gtx.TXDIFFCTRL = tx_power
             else:
-                source_gtx.TXDIFFCTRL=tx_qsfp_power
+                source_gtx.TXDIFFCTRL = tx_qsfp_power
 
-            #if print_:
+            # if print_:
             #    print 'Measuring BER for link %s' % (link[0],),
             #    print source_gtx.TXDIFFCTRL
-            dest_gtx.RXPRBSCNTRESET=1 #Resetting errors
+            dest_gtx.RXPRBSCNTRESET = 1  # Resetting errors
             await asyncio.sleep(0.5)
-            dest_gtx.RXPRBSCNTRESET=0
+            dest_gtx.RXPRBSCNTRESET = 0
 
             await asyncio.sleep(period)
 
@@ -4076,10 +4071,10 @@ class FPGAArray(object):
             err = (float(cnt) * 16) / (period * 10e9)
             err_max = (float(cnt) * 16 + 1) / (period * 10e9)
 
-            #source_gtx.TXPRBSSEL = 0  #Setting PRBS to 0 (data path)
-            #dest_gtx.TXPRBSSEL = 0  #Setting PRBS to 0 (data path)
+            # source_gtx.TXPRBSSEL = 0  #Setting PRBS to 0 (data path)
+            # dest_gtx.TXPRBSSEL = 0  #Setting PRBS to 0 (data path)
             if print_ and (cnt > minerrors_toprint):
-                print('%r BER = %1.1e (%i errors, BER<%1.1e)' % (link[0], err, cnt, err_max))
+                print(f'{link[0]!r} BER = {err:1.1e} ({cnt} errors, BER<{err_max:1.1e})')
             self.print_flush()
             return err
 
@@ -4087,13 +4082,12 @@ class FPGAArray(object):
         ber_table = await asyncio.gather(*[one_link_ber_async((link, gtxes)) for link, gtxes in links.items()])
         return dict(zip(links.keys(), ber_table))
 
-
     def get_ber_vs_power(self, links, max_power, period=0.1):
 
         # links = self.get_link_map(links, gtx_only=True)
         # links = self.scan_links(array, tx_power = max_power)
 
-        power = list(range(0, max_power+1))
+        power = list(range(0, max_power + 1))
         data = {}
         for tx_power in power:
             e = self.get_ber(links, period=period, tx_power=tx_power)
@@ -4116,7 +4110,7 @@ class FPGAArray(object):
         plt.clf()
 
         for link, (tx_power, ber) in sorted(data.items(), key=str):
-            plt.semilogy(tx_power, (np.array(ber)+1e-12), label='Link %s' % (link,))
+            plt.semilogy(tx_power, (np.array(ber) + 1e-12), label='Link %s' % (link,))
         plt.title('BER of links as a function of TX power (period=%0.1f s)' % period)
         plt.xlabel('TX power (0-15)')
         plt.ylabel('BER')
@@ -4132,7 +4126,7 @@ class FPGAArray(object):
             ((from_slot, from_lane), (to_slot, to_lane)) = link
             print("###### running from slot %i lane %i to slot %i lane %i #######"
                   % (from_slot, from_lane, to_slot, to_lane))
-            gtx = self.ib.get(slot=to_slot).BP_SHUFFLE.gtx[to_lane-1]
+            gtx = self.ib.get(slot=to_slot).BP_SHUFFLE.gtx[to_lane - 1]
             e = gtx.get_eye_diagram(list(range(-32, 32, h_step)), list(range(-127, 128, v_step)))
             eye_matrix[link] = e
         return eye_matrix
@@ -4147,7 +4141,7 @@ class FPGAArray(object):
         slots = sorted(set(source_slots + dest_slots))
 
         # slot_map = {slot: ix for (ix, slot) in enumerate(slots)}
-        slot_map = {x+1: x for x in range(16)}
+        slot_map = {x + 1: x for x in range(16)}
 
         (fig, ax) = plt.subplots(
             len(slot_map), len(slot_map),
@@ -4161,7 +4155,7 @@ class FPGAArray(object):
             a.tick_params(labelsize=6)
             a.set_ylabel("TX S%02i" % (slot), fontsize=10)
             # Left images
-            a = ax[len(slot_map)-1, ix]
+            a = ax[len(slot_map) - 1, ix]
             a.tick_params(labelsize=6)
             a.set_xlabel("RX S%02i" % (slot))
             plt.setp(a.xaxis.get_majorticklabels(), rotation=70)
@@ -4172,7 +4166,7 @@ class FPGAArray(object):
         for (((ss, sl), (ds, dl)), eye) in eye_matrix.items():
             a = ax[slot_map[ss], slot_map[ds]]
             a.imshow(
-                np.log10(eye.ber_map+1e-12),
+                np.log10(eye.ber_map + 1e-12),
                 origin='lower', extent=(-32, 32, -128, 128), aspect='auto', vmin=-12, vmax=1)
         plt.draw()
 
@@ -4327,12 +4321,13 @@ class FPGAArray(object):
                 for lane_group in ib.BP_SHUFFLE.lane_group_names:
                     if reset_stats:
                         ib.BP_SHUFFLE.reset_stats()
-                    ee = await ib.BP_SHUFFLE.get_bp_rx_status(lane_group)  # list of N error status dicts  [lane0_errors, lane1 errors, ...]
+                    # ee: list of N error status dicts  [lane0_errors, lane1 errors, ...]
+                    ee = await ib.BP_SHUFFLE.get_bp_rx_status(lane_group)
                     if verbose > 1:  # if verbise, add the matching TX (slot,lane) for each rx lane on that slot
                         eh = []
                         for lane, e in enumerate(ee):
                             if lane_group == 'pcb':
-                                h = {'Tx':f'{ib.crate.get_matching_tx((slot, lane))}', 'Rx': f'{(slot,lane)}'}
+                                h = {'Tx': f'{ib.crate.get_matching_tx((slot, lane))}', 'Rx': f'{(slot, lane)}'}
                             else:
                                 h = {}
                             eh.append({**h, **e})
@@ -4359,7 +4354,7 @@ class FPGAArray(object):
                             ('\n'.join(['%s=%s' % (k, v) for (k, v) in e.items()]) or '-')
                             for e in err)
                 info[slot] = col_data
-            info = dict(sorted(info.items())) # sort the info dict by key
+            info = dict(sorted(info.items()))  # sort the info dict by key
             print('Crate %s Crossbar and Shuffle status' % crate.get_string_id())
 
             # Fill in columns for any missing board in the crate
@@ -4460,7 +4455,7 @@ class FPGAArray(object):
                            + ' | '
                            + ' | '.join('%%-%is' % width for width in block_col_width)
                            + ' |')
-            line_sep_str = '+' + '+'.join(['-' * (width+2) for width in [row_labels_width] + block_col_width]) + '+'
+            line_sep_str = '+' + '+'.join(['-' * (width + 2) for width in [row_labels_width] + block_col_width]) + '+'
 
             print(line_sep_str)
 
@@ -4587,16 +4582,16 @@ class FPGAArray(object):
         """
 
         # IceCrate metrics
-        self.logger.debug('%r: Getting IceBoard backplane hardware metrics (over ARM link)' % self)
+        self.logger.debug(f'{self!r}: Getting IceBoard backplane hardware metrics (over ARM link)')
         for ic in self.ic:
             slot, ib = list(ic.slot.items())[0]
             metrics += await ib.get_backplane_metrics_async()
 
         # IceBoard metrics
-        self.logger.debug('%r: Getting IceBoard temperature & power supply metrics (over ARM link)' % self)
+        self.logger.debug(f'{self!r}: Getting IceBoard temperature & power supply metrics (over ARM link)')
         m = await asyncio.gather(*[ib.get_metrics_async() for ib in self.ib])
         metrics += m
-        self.logger.debug('%r: Got %i IceBoard temperature & power supply metrics' % (self, len(m)))
+        self.logger.debug(f'{self!r}: Got {len(m)} IceBoard temperature & power supply metrics')
         metrics += await asyncio.gather(*[ib.get_fpga_udp_metrics_async() for ib in self.ib])
 
     async def get_fpga_metrics_async(self, metrics, reset=True):
@@ -4610,13 +4605,13 @@ class FPGAArray(object):
         """
 
         # Shuffle status
-        self.logger.debug('%r: Getting corner-turn links metrics (over FPGA UDP link)' % self)
+        self.logger.debug(f'{self!r}: Getting corner-turn links metrics (over FPGA UDP link)')
         metrics += await asyncio.gather(*[ib.get_bp_shuffle_metrics_async(reset=reset) for ib in self.ib])
-        self.logger.debug('%r: Getting corner-turn crossbars metrics (over FPGA UDP link)' % self)
+        self.logger.debug(f'{self!r}: Getting corner-turn crossbars metrics (over FPGA UDP link)')
         metrics += await asyncio.gather(*[ib.get_crossbar_metrics_async(reset=False) for ib in self.ib])
-        self.logger.debug('%r: Getting channelizer metrics (over FPGA UDP link)' % self)
+        self.logger.debug(f'{self!r}: Getting channelizer metrics (over FPGA UDP link)')
         metrics += await asyncio.gather(*[ib.get_channelizer_metrics_async(reset=reset) for ib in self.ib])
-        self.logger.debug('%r: Finished gathering FPGA/backplane metrics' % self)
+        self.logger.debug(f'{self!r}: Finished gathering FPGA/backplane metrics')
 
         # Backplane GTX
         # Errors, signal level
@@ -4634,7 +4629,7 @@ class FPGAArray(object):
                     metrics.add('fpga_time_delta', ts.nano - ts0.nano, crate=crate, slot=slot)
                     metrics.add('fpga_frame_number_delta', fn - fn0, crate=crate, slot=slot)
                     metrics.add('fpga_time_error',
-                                ts.nano - (self.sync_timestamps[i].nano + fn*2560),
+                                ts.nano - (self.sync_timestamps[i].nano + fn * 2560),
                                 crate=crate, slot=slot)
                     metrics.add('fpga_sync_time_delta',
                                 self.sync_timestamps[i].nano - self.sync_timestamps[0].nano,
@@ -4643,7 +4638,7 @@ class FPGAArray(object):
                                 (self.sync_timestamps[i].nano % 1000000000) - 1000000000,
                                 crate=crate, slot=slot)
                 except RuntimeError:
-                    self.logger.error('%r: Timeout while capturing frame time' % ib)
+                    self.logger.error(f'{ib!r}: Timeout while capturing frame time')
 
         return metrics
 
@@ -4665,7 +4660,7 @@ class FPGAArray(object):
             tx_power=None,
             tx_precursor=None,
             tx_postcursor=None,
-            lpm = None,
+            lpm=None,
             dfe_reset=False,
             stop_on_errors=2,
             verbose=1):
@@ -4782,7 +4777,7 @@ class FPGAArray(object):
                 for lane in range(16):
                     rx_lane = (slot, lane)
                     tx_lane = ic.get_matching_tx(rx_lane)
-                    err_map[rx_lane[0]-1][tx_lane[0]-1] = '%0.1f' % (ic.get_rx_net_length(rx_lane)/1000)
+                    err_map[rx_lane[0] - 1][tx_lane[0] - 1] = '%0.1f' % (ic.get_rx_net_length(rx_lane) / 1000)
             row_labels = ['Tx S%02i SN%s' % (ib.slot, ib.serial) for ib in list(ic.slot.values())]
             col_labels = ['Rx S%02i\nSN%s' % (ib.slot, ib.serial) for ib in list(ic.slot.values())]
             corner_label = '%s\nCrate #%s' % (ic.get_string_id(), ic.crate_number)
@@ -4812,7 +4807,7 @@ class FPGAArray(object):
             ts.append(self.HEADER_CAPTURE_DATA)
 
         for i in range(len(ts)):
-            print('Lane %02i: Stream ID=0x%02x, Frame = 0x%02x (delta = %i)' % (i, sid[i], ts[i], ts[i]-ts[0]))
+            print('Lane %02i: Stream ID=0x%02x, Frame = 0x%02x (delta = %i)' % (i, sid[i], ts[i], ts[i] - ts[0]))
 
     def plot_crate_temperatures(self, figure_number=1):
 
@@ -4827,7 +4822,7 @@ class FPGAArray(object):
             s = ib.slot
             avg_temp = np.average(t)
             h = plt.plot(s, t, label=ic.get_string_id())
-            plt.plot([min(s), max(s)], [avg_temp]*2, ':', color=h[0].get_color(), lw=2)
+            plt.plot([min(s), max(s)], [avg_temp] * 2, ':', color=h[0].get_color(), lw=2)
             print('%s: %fdegC' % (ic.get_string_id(), avg_temp))
         plt.legend(loc='best')
         plt.xlabel('Slot number')
@@ -4853,180 +4848,17 @@ class FPGAArray(object):
 
         for ib in self.ib:
             if ib.is_open():
-                self.logger.debug("%r: Setting ADC delays" % (self))
+                self.logger.debug(f"{self!r}: Setting ADC delays")
                 ib.set_adc_delays(**kwargs)
                 await asyncio.sleep(0)
             else:
-                self.logger.warning("%r: Communication with FPGA is not initialized. Cannot set ADC delays" % (self))
-
-#####
-# parser below staged for deletion
-#####
-# ICE_PATTERNS = [
-#         { 'regex': r'(MGK7)?BP1',           'cur_state': None,  'next_state': 'ic',  'entry': ('MGK7BP1', None, None),  'store_in': None        },  # Sets the curent model and type to the One-slot backplane; matches MGK7BP1, BP1
-#         { 'regex': r'(MGK7)?BP16',          'cur_state': None,  'next_state': 'ic',  'entry': ('MGK7BP16', None, None), 'store_in': None        },  # Sets the curent model and type to the 16-slot backplane; matches MGK7BP16, BP16
-#         { 'regex': r'(?:|SN)?(\d+)',        'cur_state': 'ic',  'next_state': 'ic',  'entry': (None, 0, None),          'store_in': 'icecrates' },  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
-#         { 'regex': r'(?:|SN)?(\d+):(\d*)',  'cur_state': 'ic',  'next_state': 'ic',  'entry': (None, 0, 1),             'store_in': 'icecrates' },  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
-#         { 'regex': r'\*',                   'cur_state': 'ic',  'next_state': None,  'entry': (None, '*', None),        'store_in': 'icecrates' },  # Stores a an item that selects all units of the current model
-
-#         { 'regex': r'(\d+\.\d+\.\d+\.\d+)', 'cur_state': None,  'next_state': None,  'entry': (None, 0),                'store_in': 'iceboards' },  # Stores a motherboard item based on its IP address only
-#         { 'regex': r'(\w+\.local)',         'cur_state': None,  'next_state': None,  'entry': (None, 0),                'store_in': 'iceboards' },  # Stores a motherboard item based on its local hostname only
-#         { 'regex': r'(MGK7)?MB',            'cur_state': None,  'next_state': 'ib',  'entry': ('MGK7MB', None),         'store_in': None        },  # Sets the curent model and type to the ICEBoard (motherboard); matches MGK7MB, MB
-#         { 'regex': r'ZCU111',               'cur_state': None,  'next_state': 'ib',  'entry': ('ZCU111', None),         'store_in': None        },  # Sets the curent model and type to the ICEBoard (motherboard); matches MGK7MB, MB
-#         { 'regex': r'(?:|SN)?(\d+)',        'cur_state': 'ib',  'next_state': 'ib',  'entry': (None, 0),                'store_in': 'iceboards' },  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
-#         { 'regex': r'\*',                   'cur_state': 'ib',  'next_state': None,  'entry': (None, '*'),              'store_in': 'iceboards' },  # Stores a an item that selects all units of the current model
-
-#         { 'regex': r'(MG)?ADC08',           'cur_state': None,  'next_state': 'adc', 'entry': ('MGADC08', None),        'store_in': None        },  # Sets the curent model and type to the CHIME Mezzanine;  matches MGADC08, ADC08
-#         { 'regex': r'29821-0000-(\d{4})',   'cur_state': None,  'next_state': None,  'entry': ('MGADC08', 0),           'store_in': 'mezzanines'},  # Stores a MGADC08 mezzanine item based on serial number extracted from the Digico barcodes (29821-000-ssss, where ssss=serial number)
-#         { 'regex': r'35896-0000-(\d{4})',   'cur_state': None,  'next_state': None,  'entry': ('MGADC08', 0),           'store_in': 'mezzanines'},  # Stores a MGADC08 mezzanine item based on serial number extracted from the Digico barcodes
-#         { 'regex': r'(?:|SN)?(\d+)',        'cur_state': 'adc', 'next_state': 'adc', 'entry': (None, 0),                'store_in': 'mezzanines'},  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
-
-#         { 'regex': r'crate',                'cur_state': None,  'next_state': 'cr', 'entry': (None,),                    'store_in': None        },  #
-#         { 'regex': r'(\d+)',                'cur_state': 'cr',  'next_state': 'cr', 'entry': (0,),                        'store_in': 'crates' },
-#         ]
-
-# def parse_hw_string(hw_string, remap_table={}, dut_id_patterns=ICE_PATTERNS):
-#     """ Parses a string describing ICE hardware elements (motherboards, crates and mezzanines)
-
-#     Arguments:
-
-#         hw_string (str): string describing the model, serial number/hostname
-#            and optionally the sequence number of the desired hardware elements
-
-#         remap_table (dict): used to remap entries into other entries. Used to implement aliases, and
-#             map crate numbers into actual model/serial/crate number entries, in the format::
-
-#                 { type : { entry:(target_type, target_entry), ...} ...}
-
-#         dut_id_patterns (list of dict): Describe patterns to match, the type
-#             of hardware they match, and the data they provide.
-
-#             regex: the regular expression to match, with optional capture groups.
-
-#             cur_state (str): The state to which the match apply. ``None`` means it applies to any state.
-
-#             next_state (str): The state to move into if there is a match
-
-#             entry (tuple): Entry to make or update, as a (model, serial) or (model, serial, number) tuple.  For each
-#                 of the values in the tuple:
-
-#                 - None: means the value is unchanged
-#                 - *int*: get the regex capture group specified by the *int*
-#                 - *str*: Set the field to *str*
-
-#             store_in: the type of hardware in which to store the entry if there is a match
+                self.logger.warning(f"{self!r}: Communication with FPGA is not initialized. Cannot set ADC delays")
 
 
-#     Returns:
-
-#         A NameSpace object describing a the specified hardware elements for
-#         each hardware type listed in `dut_id_patterns`::
-
-#         .icecrates =  [ (model, serial, crate_number) ...],
-#         .iceboards =  [ (model, serial) | (None, ip_address) | (None, hostname)]
-#         .mezzanines: [ (model, serial) ...]
-
-#         Serial numbers are converted to integers if possible; otherwise, they are stored as a string.
-
-#     Underscore characters are converted to blanks before parsing.
-
-#     Examples:
-#         'MGK7BP16_SN018:3' => ('MGK7BP16', 18, 3)
-#         'MGK7BP16_018:3' => ('MGK7BP16', 18, 3)
-#         '18:3' => (None, 18, 3)
-#         '18' => (None, 18, None)
-#     """
-#     logger = logging.getLogger(__name__)
-#     # If hw_string is a list of string, combine them in one single string
-#     if isinstance(hw_string, (list, tuple)):
-#         hw_string = ' '.join(str(s) for s in hw_string)
-
-#     # Create a new hw table with all possible hardware categories
-#     hw_table = NameSpace()
-#     for t in {d['store_in'] for d in dut_id_patterns if d['store_in'] is not None}:
-#         hw_table[t] = []  # crate type with empty list if the type does not exist
-
-#     # Split the string in ' '- or '_'-separated elements
-#     elements = str(hw_string).replace('_', ' ').strip().split(' ')
-
-#     # Special case: if the hw_string is just '*', we register all units of every known model with
-#     # '*' as the serial number (second) field
-#     if len(elements) == 1 and elements[0] == '*':
-#         for p in dut_id_patterns:
-#             type_, entry = p['store_in'], p['entry']
-#             wild_entry = entry[0:1] + ('*',) + entry[2:]
-#             if wild_entry not in hw_table[type_]:
-#                 hw_table[type_].append(wild_entry)
-#         return hw_table
-
-#     def to_int(s):
-#         return (int(s) if isinstance(s, str) and s.isdigit() else s)
-
-#     pos = 0
-#     err = None
-#     current_entry = {}  # stores the value for each state
-#     state = None
-#     for el in elements:
-#         pos += len(el) + 1
-#         if not el:  # if whitespace
-#             continue
-#         # print 'checking', el
-#         matches = 0
-#         for p in dut_id_patterns:
-#             regex, cur_state, next_state, entry, store_in = (
-#                 p['regex'], p['cur_state'], p['next_state'], p['entry'], p['store_in'])
-#             if not (cur_state is None or state == cur_state):
-#                 continue
-#             m = re.match('^' + regex + '$', el, re.I)
-#             if not m:   # if there is no match
-#                 continue
-#             matches += 1
-#             # print 'match %i: ' % matches, regex, el
-#             groups = m.groups()  # capture groups, in a list
-
-#             # Update the current entry with the entries that are not None
-#             # Always convert to integer if possible
-#             new_entry = [(to_int(groups[e] if isinstance(e, int) else e))
-#                          if cur_state is None or e is not None or i >= len(current_entry[state])
-#                          else current_entry[state][i] for i, e in enumerate(entry)]
-
-#             # Store if instructed
-#             if store_in:
-#                 hw_table[store_in].append(tuple(new_entry))
-#             elif next_state:
-#                 current_entry[next_state] = new_entry
-#             state = next_state
-
-#         if err:
-#             break
-#         if not matches:
-#             err = "Could not find a match for element '%s' of the hardware description string" % el
-#             break
-#         if matches > 1:
-#             err = 'element found multiple matches'
-#             break
-#     if err:
-#         print('Error:', err)
-#         print(hw_string)
-#         print(' '*(pos-2)+'^')
-#         raise ValueError(err)
-#     # Remap
-#     # print 'remapping with ', remap_table
-#     for type, entries in list(hw_table.items()):
-#         #print type, entries
-#         if type in remap_table:
-#             for entry in list(entries):
-#                 #print entry
-#                 if entry in remap_table[type]:
-#                     target_type, target_entry = remap_table[type][entry]
-#                     hw_table[target_type].append(target_entry)
-#                     hw_table[type].remove(entry)
-
-#     return hw_table
-
-
-log_levels = {'info': logging.INFO, 'debug': logging.DEBUG,
-              'warn': logging.WARNING, 'warning': logging.WARNING,
+log_levels = {'info': logging.INFO,
+              'debug': logging.DEBUG,
+              'warn': logging.WARNING,
+              'warning': logging.WARNING,
               'error': logging.ERROR}
 
 
@@ -5034,8 +4866,8 @@ def setup_logging(log_target='syslog', log_level='debug', sql_log_level='warning
     # Make sure SQLAlchemy does not log too much
     sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
     sql_logger.setLevel(log_levels[sql_log_level])
-    logging.getLogger('parso.python.diff').disabled = True # disable ipython logging in interactive sessions
-    logging.getLogger('parso.cache').disabled = True # disable ipython logging in interactive sessions
+    logging.getLogger('parso.python.diff').disabled = True  # disable ipython logging in interactive sessions
+    logging.getLogger('parso.cache').disabled = True  # disable ipython logging in interactive sessions
 
     # Set-up main loggers
     if log_target == 'stream':
@@ -5318,7 +5150,7 @@ def create_fpga_array(args=None):
     ps_group.add_argument('--power', type=str, help='Set the state of the power supplies: ON, OFF or CYCLE')
 
     # Add generic command-line parameters
-    parser.add_argument('-y', '--yaml',  type=str, nargs='+',
+    parser.add_argument('-y', '--yaml', type=str, nargs='+',
                         help='YAML configuration file name, optionally followed by object names in that file.')
 
     # Parse command-line arguments as a dict, with arguments groups stored in separate sub dictionaries
@@ -5359,7 +5191,6 @@ def create_fpga_array(args=None):
     config_fpga_array_params = (config.get('fpga', {}).get('fpga_array_params', {})
                                 or config.get('fpga_array_params', {}))
     cli_fpga_array_params = {k: v for k, v in args['cli_fpga_array'].items() if v is not None}
-    # Sprint('merging \n\n%r\n\n with \n\n%r' % (config_fpga_array_params, cli_fpga_array_params))
     fpga_array_params = merge_dict(config_fpga_array_params, cli_fpga_array_params)
     fpga_array = FPGAArray(**fpga_array_params)  # Create FPGA array
 
