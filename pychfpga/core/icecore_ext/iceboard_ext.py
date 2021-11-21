@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from calendar import timegm
 import time
-import struct
+import zlib
 import base64
 from collections import OrderedDict
 import socket
@@ -18,8 +18,11 @@ from wtl.metrics import Metrics
 
 # Local packages
 from .motherboard import Motherboard
+from .mezzanine import Mezzanine
+from .fpga_firmware import FPGAFirmware
+from .i2c_interface import I2CInterface
 from .async_utils import run_async, async_to_sync
-from ..icecore.hardware_assets import IceBoardBase
+from ..icecore.hardware_assets import TuberIceBoardBase
 from ..icecore.tuber import TuberError, TuberNetworkError, TuberRemoteError
 from .hardware_map import HardwareMap
 from .lib.bsb_mmi import BSB_MMI  # Byte-serial interface protocol definition
@@ -39,8 +42,7 @@ from .lib import qsfp
 from .lib import gpio
 
 
-
-class IceBoard(IceBoardBase, Motherboard):
+class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first otherwise undefined attributes try to access Tuber
     """ Provide the methods needed to operate the Iceboard hardware and its FPGA firmware.
 
     The class gives access to the methods provided by the on-board ARM processor via the Tuber protocol.
@@ -99,24 +101,13 @@ class IceBoard(IceBoardBase, Motherboard):
           subclass of this class if the firmware supports it.
     """
 
+    # Hardware map parameters
+    part_number = 'MGK7MB'  # Required to identify the part number associated with this class
+    _ipmi_part_numbers = ['MGK7MB']  # Possible equivalent names found in IPMI records that correspond to this platform
 
+    NUMBER_OF_FMC_SLOTS = 2  # Number of FMC Mezzanines supported by this platform
 
-    part_number = 'MGK7MB'
-    _ipmi_part_numbers = ['MGK7MB']
-
-    # Define the set of functions provided by the IceBoard's ARM processor. This is used by Tuber, which comes with IceBoardBase.
-    tuber_objname = 'IceBoard'
-
-    NUMBER_OF_FMC_SLOTS = 2
-
-    # subarray = None  # Arbitrary string used to group and select subsets of Iceboard"
-
-    # _bitstream_register contains a list of bitstreams that are associated
-    # with this object. Format: tag: bitstream_object
-    _bitstream_register = {}
-
-    _backplane_initialized = False  # Indicate if we have initialized the backplane access yet
-    _cached_repr = None
+    _cached_repr = None  # Stored a pre-processed string representation of the board repr() for efficiency
 
     port = 80  # port number on which to access the platform `hostname`. Tuber implicitly uses 80 due to the use of the http:// URL to access the board. But fpga_master needs that to prepare for TCP pings.
 
@@ -290,10 +281,10 @@ class IceBoard(IceBoardBase, Motherboard):
             # This is useful to recognize legacy EEPROM data format
             ipmi = None
             if eeprom_data is not None:
-                for cls in FMCMezzanine.get_all_classes():
-                    if hasattr(cls, 'decode_eeprom'):
-                        ipmi = cls.decode_eeprom(eeprom_data)
-                        if ipmi:
+                for cls in Mezzanine.get_all_classes():  # for each registered Mezzanine class
+                    if hasattr(cls, 'decode_eeprom'):  # If there si a decode method
+                        ipmi = cls.decode_eeprom(eeprom_data)   # try to decode
+                        if ipmi:  # if not None, we're done
                             break
             if not ipmi:
                 try:
@@ -322,7 +313,7 @@ class IceBoard(IceBoardBase, Motherboard):
             #         if mapper.class_._ipmi_part_numbers == part_number:
             #             mezz_class[m] = mapper.class_
             #             break
-            mezz_class[m] = FMCMezzanine.get_class_by_ipmi_part_number(part_number)
+            mezz_class[m] = Mezzanine.get_class_by_ipmi_part_number(part_number)
 
             if update:
                 # if not self.hwm:
@@ -414,8 +405,7 @@ class IceBoard(IceBoardBase, Motherboard):
     async def is_fpga_programmed_async(self):
         return await self.tuber_is_fpga_programmed_async()
 
-
-    async def set_fpga_bitstream_async(self, buf=None, tag=None, force=False):
+    async def set_fpga_bitstream_async(self, firmware=None, force=False):
         '''
         Configures the FPGA with the specified bitstream.
 
@@ -445,16 +435,9 @@ class IceBoard(IceBoardBase, Motherboard):
         # If the bitstream is not explicitely provided, ask the handler to
         # provide it. The str() of the returned object must yield the valid
         # bitstream buffer in a string.
-        if buf is None:
-            buf = self.get_fpga_bitstream(tag)
-
-        if hasattr(buf, 'crc32'):
+        fw_cls, buf, fw_info = FPGAFirmware.get_firmware(self.part_number, firmware)
             crc32 = buf.crc32
-        else:
-            crc32 = zlib.crc32(str(buf))  # compute CRC32 of the data if it not already precomputed in the 'buf' object
-        crc32 &= 0xFFFFFFFF
-        # buf = buf.bytes()
-
+        base64_bytes = buf.base64
         self.logger.debug(f'{self!r}: Getting is_programmed')
         is_fpga_programmed = await self.tuber_is_fpga_programmed_async()
         t1 = time.time()
@@ -464,9 +447,72 @@ class IceBoard(IceBoardBase, Motherboard):
             f'{self!r}: fpga_programmed={is_fpga_programmed}, force={force}, '
             f'fpga_crc={fpga_bitstream_crc or 0:08X}, bitstream_crc={crc32 or 0:08X}')
         t2 = time.time()
-        if not is_fpga_programmed or force \
-           or (force is not None and (fpga_bitstream_crc != crc32)):
+        if not is_fpga_programmed or force or (force is not None and (fpga_bitstream_crc != crc32)):
             self.logger.debug(f'{self!r}: Configuring FPGA')
+            with self.tuber_use_json_cache():
+                await self._tuber_set_fpga_bitstream_base64_async(base64_bytes)
+            await self.set_fpga_bitstream_crc_async(crc32)
+            self.logger.debug(f'{self!r}: Done configuring FPGA. ')
+        else:
+            self.logger.debug(
+                f'{self!r}: FPGA is already configured. Skipping configuration.')
+        self.fpga = fw_cls(self, **fw_info)
+
+
+    FPGA_FIRMWARE_CRC32_ADDR = 4 * 3
+
+    async def get_fpga_bitstream_crc_async(self):
+        """ Return the signature of the firmware currently configured in the
+        FPGA.
+
+        Returns None if the FPGA is not configured.
+        """
+        is_fpga_programmed = await self.is_fpga_programmed_async()
+        if not is_fpga_programmed:
+            return None
+        crc = await self.fpga_spi_mmi_read_async(self.FPGA_FIRMWARE_CRC32_ADDR)
+        return crc
+        # return self._bitstream_crc
+
+    async def set_fpga_bitstream_crc_async(self, crc32):
+        """ Return the signature of the firmware currently configured in the
+        FPGA.
+
+        Returns None if the FPGA is not configured.
+        """
+        if (await self.is_fpga_programmed_async()):
+            # self._bitstream_crc = crc32
+            await self.fpga_spi_mmi_write_async(self.FPGA_FIRMWARE_CRC32_ADDR, crc32)
+        else:
+            # self._bitstream_crc = None
+            await self.fpga_spi_mmi_write_async(self.FPGA_FIRMWARE_CRC32_ADDR, 0)
+
+
+    # ------------------------------------
+    # FPGA SPI Memory-mapped interface
+    # ------------------------------------
+
+    # *** JFC: Those methods can be updated one day to use the direct (non-
+    #     Tuber) links to the FPGA (on separate socket, forwarded to the FPGA
+    #     through SPI or PCIe). Otherwise we fallback to the slower tuber MMI
+    #     interface.
+    async def fpga_spi_mmi_read_async(self, addr):
+        """ Read a single 32-bit word from the FPGA at the specified byte
+        address. This uses the fastest interface available (currently the ARM-
+        FPGA SPI link)
+
+        Value is returned as an unsigned integer.
+        """
+        word = await self._tuber_fpga_spi_peek_async(addr)
+        return(word & 0xFFFFFFFF)
+
+    async def fpga_spi_mmi_write_async(self, addr, value):
+        """ Write a single 32-bit word to the FPGA at specified byte address.
+        This uses the fastest interface available (currently the ARM-FPGA SPI
+        link)
+        """
+        await self._tuber_fpga_spi_poke_async(addr, value)
+
 
     # ----------------------------
     # open & close methods
@@ -479,19 +525,24 @@ class IceBoard(IceBoardBase, Motherboard):
 
 
         await self.fpga.open_async(**kwargs)
+        self.i2c = I2CInterface(
+            write_read_fn=self.fpga_i2c_write_read,  # write-read function
+            port_select_fn=self.fpga_i2c_set_port,
+            bus_table=IceBoardHardware.FPGA_I2C_BUS_LIST,
+            switch_addr=IceBoardHardware._FPGA_I2C_SWITCH_ADDR,
+            parent=self)  # parent object, whose repr() is used to tag messages
         self.hw = IceBoardHardware(self)
         await self.hw.open_async()
 
         await self.hw.set_led('GP_LED2', 1)  # Hardware link is on
         await self.hw.set_led('GP_LED1', 0)  # Full FPGA firmware not initialized yet
 
-
-    def close_fpga(self):
+    async def close_fpga_async(self):
         if self.hw:
             self.hw.close()
 
         if self.fpga:
-            self.fpga.close()
+            await self.fpga.close_async()
 
     async def init_fpga_async(self, **kwargs):
         """ Initializes the FPGA firmware
@@ -924,8 +975,9 @@ class IceBoardHardware(object):
     async def open_async(self):
         """ Initializing objects to access the Iceboard hardware
         """
-        self._logger.debug('%r: Initializing Iceboard hardware' % iceboard)
+        self._logger.debug('%r: Initializing Iceboard hardware' % self._iceboard)
         self._i2c = self._iceboard.i2c
+        assert self._i2c, "I2C interface is not initialized"
         self._logger.debug('%r: Instantiating Motherboard EEPROM managers' % self._iceboard)
         self._motherboard_eeprom_data = eeprom.eeprom(
             self._i2c, self._MOTHERBOARD_EEPROM_DATA_ADDR, 'GPIO',
