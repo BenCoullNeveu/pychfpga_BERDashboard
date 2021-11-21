@@ -409,7 +409,7 @@ class chFPGA(FPGAFirmware):
         # replace a.b.c.d by a.b.3.d. We need to find a more generic mechanism
         # for this (like obtaining another IP from the DHCP server)
         if not self.fpga_ip_addr:
-            ip_packed = socket.inet_aton(await self._tuber_get_arm_ip_async())
+            ip_packed = socket.inet_aton(await self.mb._tuber_get_arm_ip_async())
             ip_tuple = tuple(c for c in ip_packed)
             ip_packed = bytes(self.fpga_ip_addr_fn(*ip_tuple))
             # ip_packed = ip_packed[:2] + chr(3) + ip_packed[3]
@@ -952,11 +952,11 @@ class chFPGA(FPGAFirmware):
             if mezz_number in self.mezzanine:
                 mezz = self.mezzanine[mezz_number]
                 self.logger.debug('%r:   Powering down FMC%i' % (self, mezz_number - 1))
-                await self.hw.set_mezzanine_power_async(mezz_number - 1, False)
+                await self.mb.hw.set_mezzanine_power_async(mezz_number - 1, False)   #todo: add set_mezzanine_power() directly into mb
                 # mezz.set_power(False)  # For some reason, prevents the board from rebooting (!)
                 await asyncio.sleep(0.2)  # *** make async
                 self.logger.debug('%r:   Powering up FMC%i' % (self, mezz_number - 1))
-                await self.hw.set_mezzanine_power_async(mezz_number - 1, True)
+                await self.mb.hw.set_mezzanine_power_async(mezz_number - 1, True)
                 # mezz.set_power(True)
                 await asyncio.sleep(0.2)  # Give it some time for the power to stabilize
                 # We need to initialize the ADC board before we initialize ANT
@@ -1087,7 +1087,7 @@ class chFPGA(FPGAFirmware):
 
         Value is returned as an unsigned integer.
         """
-        word = await self._tuber_fpga_spi_peek_async(addr)
+        word = await self.mb._tuber_fpga_spi_peek_async(addr)
         return(word & 0xFFFFFFFF)
 
     async def fpga_core_reg_write_async(self, addr, value):
@@ -1095,7 +1095,7 @@ class chFPGA(FPGAFirmware):
         This uses the fastest interface available (currently the ARM-FPGA SPI
         link)
         """
-        await self._tuber_fpga_spi_poke_async(addr, value)
+        await self.mb._tuber_fpga_spi_poke_async(addr, value)
 
 
     # Bitstream management
@@ -1105,22 +1105,22 @@ class chFPGA(FPGAFirmware):
         """
         if not (await self.is_fpga_programmed_async()):
             return(None)
-        cookie = await self.fpga_spi_mmi_read_async(self.FPGA_CORE_FIRMWARE_COOKIE_ADDR)
+        cookie = await self.fpga_core_reg_read_async(self.FPGA_CORE_FIRMWARE_COOKIE_ADDR)
         return(cookie)
 
     async def get_fpga_application_cookie(self):
         """ Return the application-specific FPGA firmware cookie. """
         if not (await self.is_fpga_programmed_async()):
             return(None)
-        cookie = await self.fpga_spi_mmi_read_async(self.FPGA_APPLICATION_FIRMWARE_COOKIE_ADDR)
+        cookie = await self.fpga_core_reg_read_async(self.FPGA_APPLICATION_FIRMWARE_COOKIE_ADDR)
         return(cookie)
 
     async def get_fpga_serial_number(self):
         """ Return the FPGA serial number, as read from the FPGA's core
         firmware throught the MMI interface. """
         fpga_serial_number = (
-            (await self.fpga_spi_mmi_read_async(self.FPGA_SERIAL_NUMBER_LSW_ADDR)) |
-            (await (self.fpga_spi_mmi_read_async(self.FPGA_SERIAL_NUMBER_MSW_ADDR) << 32))
+            (await self.fpga_core_reg_read_async(self.FPGA_SERIAL_NUMBER_LSW_ADDR)) |
+            (await (self.fpga_core_reg_read_async(self.FPGA_SERIAL_NUMBER_MSW_ADDR) << 32))
             )
 
         return(fpga_serial_number)
@@ -1129,7 +1129,7 @@ class chFPGA(FPGAFirmware):
         """ Returns a string containing the date-time of the currrent firmware
         bitstream.
         """
-        timestamp = await self.fpga_spi_mmi_read_async(self.FPGA_FIRMWARE_TIMESTAMP_ADDR)
+        timestamp = await self.fpga_core_reg_read_async(self.FPGA_FIRMWARE_TIMESTAMP_ADDR)
         seconds = (timestamp >> 0) & 0x3F
         minutes = (timestamp >> 6) & 0x3F
         hour = (timestamp >> 12) & 0x1F
@@ -1223,7 +1223,7 @@ class chFPGA(FPGAFirmware):
                     self.mmi.read(0, length=1, retry=-1, resync=1)
                     self.mmi.read(0, length=1, resync=1)
                     self.mmi.flush()
-                    (cmd, rply) = self.core_gpio.get_command_count()
+                    (cmd, rply) = self.GPIO.get_command_count()
                     self.mmi.send_counter = cmd
                     self.mmi.recv_counter = rply
                     break
@@ -1274,7 +1274,7 @@ class chFPGA(FPGAFirmware):
             try:
                 await asyncio.sleep(0)
                 self.logger.debug(f'{self!r}: Checking command counters')
-                (cmd, rply) = self.core_gpio.get_command_count()
+                (cmd, rply) = self.GPIO.get_command_count()
                 await asyncio.sleep(0)
                 valid = (cmd == self.mmi.send_counter & 0xFF) and (rply == self.mmi.recv_counter & 0xFF)
                 if not valid:
@@ -1512,8 +1512,8 @@ class chFPGA(FPGAFirmware):
             f'ip={ip_addr}({ip_addr_int}), port={port}({port}), '
             f'mac={mac_addr}({mac_addr_int})')
         # Set the UDP transmit channel 1 IP and MAC addresses
-        self.core_gpio.TARGET_MAC_ADDR = mac_addr_int
-        self.core_gpio.TARGET_IP_ADDR = ip_addr_int
+        self.GPIO.TARGET_MAC_ADDR = mac_addr_int
+        self.GPIO.TARGET_IP_ADDR = ip_addr_int
 
         # Set the UDP  Channel 1 outgoing packet destination port number, on the ARM-FPGA SPI registers
         word = await self.fpga_core_reg_read_async(self._REMOTE_IP_PORT_ADDR)
@@ -1539,7 +1539,7 @@ class chFPGA(FPGAFirmware):
         Returns the firmware revion currenting running on the FPGA (which si
         the date and time of bitstream generation)
         """
-        return self.core_gpio.get_bitstream_date()
+        return self.GPIO.get_bitstream_date()
 
     def fpga_i2c_write_read(self, *args, **kwargs):
         """
@@ -1608,7 +1608,7 @@ class chFPGA(FPGAFirmware):
             return(None)
 
         # Get the first byte to determine if this is a McGill format.
-        eeprom_data = self.hw.read_mezzanine_eeprom(mezzanine, 0, 1)
+        eeprom_data = self.mb.hw.read_mezzanine_eeprom(mezzanine, 0, 1)
         if eeprom_data[0] == 0x0d:  # if this is McGill format
             self.logger.debug(
                 f"{self!r}: EEPROM in Mezzanine {mezzanine} is McGill format. The FPGA will "
@@ -1618,7 +1618,7 @@ class chFPGA(FPGAFirmware):
             block_size = 32
             string = bytearray()
             for i in range(512 / block_size):  # read 32 blocks of 16 bytes
-                data_block = self.hw.read_mezzanine_eeprom(
+                data_block = self.mb.hw.read_mezzanine_eeprom(
                     mezzanine, addr=i*block_size, length=block_size, retry=3)
                 string += data_block
                 if (b'}' in data_block) or (255 in data_block):
