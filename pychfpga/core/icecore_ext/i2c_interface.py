@@ -1,5 +1,6 @@
 """ Generic I2C interface """
 import logging
+from .lib import tca9548a  # I2C switch
 
 
 class I2CInterface(object):
