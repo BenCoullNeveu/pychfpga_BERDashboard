@@ -13,7 +13,9 @@ import logging
 import time
 import os
 import pickle
-from datetime import datetime
+from datetime import datetime, timedelta
+import struct
+from calendar import timegm
 from functools import wraps
 import subprocess
 import socket
@@ -395,9 +397,9 @@ class chFPGA(FPGAFirmware):
         # interface that was used. This assumes that both the ARM and FPGAs
         # are accessed through the same interface.
         if not self.interface_ip_addr:  # set the interface only of we haven't manually defined one
-            if self.hostname:
+            if self.mb.hostname:
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.connect((self.hostname, 80))
+                s.connect((self.mb.hostname, self.mb.port))
                 (self.interface_ip_addr, _) = s.getsockname()
                 s.close()
             else:
@@ -430,7 +432,7 @@ class chFPGA(FPGAFirmware):
         # -------------------------------------------------------------------------
         # Open the UDP MMI interface
         # -------------------------------------------------------------------------
-        from .lib import fpga_mmi
+        from .icecore_ext.lib import fpga_mmi
         self.logger.info(
             '%r: Opening FPGA MMI with FPGA=(%s:%s),  local=(%s:%s)' % (
                 self,
@@ -716,6 +718,13 @@ class chFPGA(FPGAFirmware):
                 self.SPI = SPI.SPI_base(self, self._SYSTEM_SPI_BASE_ADDR)
             else:
                 self.SPI = None
+
+            if self.HAS_I2C:
+                self.logger.debug('%r: === Instantiating I2C' % self)
+                self.I2C = I2C.I2C_base(self, self._SYSTEM_I2C_BASE_ADDR)
+            else:
+                self.I2C = None
+
 
             self.logger.debug('%r: === Instantiating FreqCtr' % self)
             self.FreqCtr = FreqCtr.FreqCtr_base(self, self._SYSTEM_FREQ_CTR_BASE_ADDR)
@@ -1544,7 +1553,7 @@ class chFPGA(FPGAFirmware):
 
         See the FPGA I2C module for detailed method description.
         """
-        return self.core_i2c.write_read(*args, **kwargs)
+        return self.I2C.write_read(*args, **kwargs)
 
     def fpga_i2c_set_port(self, *args, **kwargs):
         """
@@ -1554,7 +1563,7 @@ class chFPGA(FPGAFirmware):
         This selects the FPGA pins over which the communications is done,
         *not* the bus selection done by an I2C switch.
         """
-        return self.core_i2c.set_port(*args, **kwargs)
+        return self.I2C.set_port(*args, **kwargs)
 
     async def _mezzanine_eeprom_read_async(self, mezzanine):
         """
