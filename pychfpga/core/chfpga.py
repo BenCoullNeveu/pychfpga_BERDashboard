@@ -4956,6 +4956,10 @@ class chFPGA(FPGAFirmware):
             cb2_timeout_period = 0
             cb2_sof_window_stop = 55
             # CB2 REMAP
+            # get a list that indicates which input lanes to get data from so we get it in increasing order of origin slot number
+            # eg, if we are in slot 2 (zero-based)
+            # (tx_slot => rx_lane) = (0=>1), (1->3), 2->0, 3->2, we have a map of [1, 3, 0, 2]
+            # If slot 3 is not sending data,  we should discard  data from lanes lane_map[3] = 2
             cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
             print(f'slot {self.slot-1}/15: CB2 lane map: {cb2_lane_map}') #[ 0  8  6 14  5  4 15  7  3  2 11  1 13 12  9 10]
             cb2_ignore_lane = sum((1<<lane) for lane in cb2_lane_map[8:16])
