@@ -26,6 +26,7 @@ This package provide IceBoard and IceCrate classes that extends the features off
 """
 # from .iceboard_ext import HardwareMap
 from .motherboard import Motherboard
+from .crate import Crate
 from .icecrate_ext import IceCrate
 from .iceboard_ext import IceBoard  #, IceBoardPlus, IceBoardExt
 from .zcu111 import ZCU111
