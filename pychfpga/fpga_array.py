@@ -54,7 +54,7 @@ from pychfpga.core.icecore_ext import Ccoll
 from pychfpga.core.icecore_ext import mdns_discover
 
 # from pychfpga.core.icecore import IceBoardPlus
-from pychfpga.core.icecore_ext import Motherboard, IceBoard, IceCrate, ZCU111
+from pychfpga.core.icecore_ext import Motherboard, Crate, IceBoard, IceCrate, ZCU111
 # from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.MGADC08.MGADC08 import FMCMezzanine_MGADC08  # Import to make sure this Mezzanine is registered  so it can be discovered
 from pychfpga.Agilent_N5764A import AgilentN5764A
@@ -785,6 +785,8 @@ class FPGAArray(object):
         # to establish communication with them to self-discover the missing
         # serial/slot/crate information.
 
+        for ib in self.hwm:
+            print(f'{ib}(hostname={ib.hostname}, serial={ib.serial}, slot={ib.slot})')
         if self.hwm:
             self.logger.info(f'{self!r}: Establishing communication with the Motherboards')
             t0 = time.time()
@@ -852,7 +854,7 @@ class FPGAArray(object):
         # Cleanup hardware map
         ###########################################################################
         used_icecrates = {ib.crate for ib in Motherboard.get_all_instances()}
-        unused_icecrates = set(IceCrate.get_all_instances()) - used_icecrates
+        unused_icecrates = set(Crate.get_all_instances()) - used_icecrates
         for ic in unused_icecrates:
             self.logger.warning(f'{self!r}: Removing unused IceCrate {ic}(part_number={ic.part_number}, serial={ic.serial}, crate_number={ic.crate_number})')
             ic.delete_instance()
@@ -908,7 +910,7 @@ class FPGAArray(object):
         # Check for missing boards in explicitely-specified crates
         missing_slots = {
             (ic.part_number, ic.serial, ic.crate_number): set(range(1, ic.NUMBER_OF_SLOTS + 1)) - set(ic.slot)
-            for ic in IceCrate.get_all_instances()}
+            for ic in Crate.get_all_instances()}
         if any(missing_slots.values()):
             message = '%s: The following slots are missing:\n%s' % (
                 self,
@@ -953,7 +955,7 @@ class FPGAArray(object):
         # For now, we assume that all the boards boards with two MGADC08
         # boards are running the chFPGA firmware variant.
         self.logger.debug(f'Before reassignment, HWM={list(self.hwm)}')
-        for ic in IceCrate.get_all_instances():
+        for ic in Crate.get_all_instances():
             self.logger.debug(f'{ic}(serial={ic.serial}, crate_number={ic.crate_number}')
         # for i, ib in enumerate(list(self.hwm)):  # use list() so we can modify self.ib in the loop.
         #     # print('Board %r has mezzanines %s. Is instance of chFPGA_controller: %s'
@@ -972,10 +974,10 @@ class FPGAArray(object):
         # Check if there are any crate without part number. We use a list
         # comprehension in case any has been overriden with np.any in a pylab
         # session, which does not work with generators.
-        if any([not c.part_number for c in IceCrate.get_all_instances()]):
+        if any([not c.part_number for c in Crate.get_all_instances()]):
             raise RuntimeError('There are generic IceCrates left in the hardware map')
         # Same for Motherboards
-        if any([not i.part_number for i in IceBoard.get_all_instances()]):
+        if any([not i.part_number for i in Motherboard.get_all_instances()]):
             raise RuntimeError('There are generic IceBoards left in the hardware map')
 
 
@@ -1019,11 +1021,14 @@ class FPGAArray(object):
 
         self.logger.info(f'{self!r}: Done creating {self!r}')
 
+        if self.ib:
+            if prog:
         ####################################
         # Program the FPGAs and open link to firmware
         ####################################
-
-        await asyncio.gather(*[self.prog_and_open_fpga(
+                self.logger.info(f'{self!r}: Configuring FPGAs...')
+                await asyncio.gather(*[
+                    self.prog_and_open_fpga(
                 ib=ib,
                 prog=prog,
                 open=open,
@@ -1034,14 +1039,15 @@ class FPGAArray(object):
                 interface_ip_addr=if_ip)
             for ib in self.ib])
 
+
+
+            if (open or 0) > 0:
         ################################################
         # Initialize the FPGA firmware
         ################################################
-
         self.logger.info(f'{self!r}: Initializing FPGA firmware')
-
-        if self.ib and (open or 0) > 0:
-            await asyncio.gather(*[ib.init_fpga_async(
+                await asyncio.gather(*[
+                    ib.init_fpga_async(
                     adc_delay_table=ADC_DELAY_TABLE,
                     init=open,
                     adc_mode=adc_mode,
@@ -1109,8 +1115,6 @@ class FPGAArray(object):
                 an IOError after the maximum number of trials.
 
         """
-        # Configure the FPGA with the bitstream associated with the handler
-        self.logger.info(f'{self!r}: Configuring FPGAs...')
         for trial in range(1, max_trials + 1):
             if not prog:
                 return
@@ -1306,7 +1310,7 @@ class FPGAArray(object):
         """
         self.logger.debug(f'{self!r}: Creating Hardware Map from list {hwm}')
         # self.hwm = []  # Create empty hardware map
-        icecrate_classes = {c.__name__: c for c in IceCrate.get_all_classes()}
+        icecrate_classes = {c.__name__: c for c in Crate.get_all_classes()}
         iceboard_classes = {c.__name__: c for c in Motherboard.get_all_classes()}
 
         # First pass: check 1) if the class names are valid and 2) create the crate instances
@@ -1321,7 +1325,7 @@ class FPGAArray(object):
             if class_name in icecrate_classes:
                 # Create the class: it will be registered in the class registry for future use
                 # The crate can have a serial number, crate number, or both
-                IceCrate.get_unique_instance(new_class=icecrate_classes[class_name], **params)
+                Crate.get_unique_instance(new_class=icecrate_classes[class_name], **params)
         # Second pass: Create the IceBoards, and link them to the crates
         for hwm_entry in hwm:
             self.logger.debug(f'Processing hwm entry {hwm_entry}')
@@ -1391,14 +1395,21 @@ class FPGAArray(object):
                 if issubclass(current_class, Motherboard):
                     serial, slot, crate_number = split_fields(el, 3)
                     # print(f'Adding Motherboard {serial}, {slot}, {crate_number}')
-                    ib = Motherboard.get_unique_instance(new_class=current_class, serial=serial, slot=slot, crate_number=crate_number)
-                elif issubclass(current_class, IceCrate):
+                    ib = Motherboard.get_unique_instance(
+                        new_class=current_class,
+                        serial=serial,
+                        slot=slot,
+                        crate_number=crate_number)
+                elif issubclass(current_class, Crate):
                     serial, crate_number = split_fields(el, 2)
-                    IceCrate.get_unique_instance(new_class=current_class, serial=serial, crate_number=crate_number)
+                    Crate.get_unique_instance(new_class=current_class, serial=serial, crate_number=crate_number)
                 else:
-                    raise TypeError(f'Trying to create object {current_class} that is other than Motherboard or IceCrate')
+                    raise TypeError(f'Trying to create object {current_class} that '
+                                    f'is other than Motherboard or Crate')
             else: # otherwise, assume it is a part number
-                matching_classes = [c for c in Motherboard.get_all_classes() + IceCrate.get_all_classes() if c.part_number and c.part_number.upper().endswith(el.upper())]
+                matching_classes = [c
+                                    for c in Motherboard.get_all_classes() + Crate.get_all_classes()
+                                    if c.part_number and c.part_number.upper().endswith(el.upper())]
                 if not matching_classes:
                     raise RuntimeError(f'Cannot find a part number that ends in {el}')
                 elif len(matching_classes) == 1:
@@ -2436,12 +2447,8 @@ class FPGAArray(object):
                         continue
                     rx = (ib.slot, i)
                     tx = ib.crate.get_matching_tx(rx)
-                    if tx in tx_list:
-                        pass
-                        # self.logger.debug('%r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
-                    else:
-                        self.logger.debug('%r: In %r, %s has no corresponding transmitter'
-                                          % (self, ib.crate, rx))
+                    if tx not in tx_list:
+                        self.logger.debug(f'{self!r}: In {ib.crate!r}, {rx} has no corresponding transmitter')
 
         if mode != 'shuffle128': # ***JFC: temporary hack
             # Get the exhaustive frequency map that is implemented by the current corner

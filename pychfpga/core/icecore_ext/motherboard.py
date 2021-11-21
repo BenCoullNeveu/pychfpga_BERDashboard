@@ -5,7 +5,8 @@ import asyncio
 
 # local Packages
 from .hardware_map import HardwareMap
-from .icecrate_ext import IceCrate
+from .crate import Crate
+
 
 class Motherboard(HardwareMap):
     """
@@ -16,15 +17,15 @@ class Motherboard(HardwareMap):
     A motherboard can optinally be connected to one crate and have multiple mezzanines.
     """
 
-    # Define the class and instance registry that will be used by HardwareMap to track all Motherboard subclass instances.
-    # This should *not* be defined in further subclasses.
+    # Define the class and instance registry that will be used by HardwareMap
+    # to track all Motherboard subclass instances. This should *not* be
+    # defined in further subclasses.
     _class_registry = {}  # {part_number:class}
     _instance_registry = {}  # {(model,serial):instance}
 
-
     # Define the part number associated with this class. This *must* be defined in subclasses.
     part_number = None  # shall be a string in real classes
-    _ipmi_part_numbers = None #  list of strings listing all models by which the board can be self-identified (via EEPROM, IPMI, mDNS etc)
+    _ipmi_part_numbers = None  # list of strings listing all models by which the board can be self-identified (via EEPROM, IPMI, mDNS etc)
 
     NUMBER_OF_FMC_SLOTS = 0  # Number of supported mezzanines
 
@@ -70,37 +71,52 @@ class Motherboard(HardwareMap):
 
         Board initialization is done in 4 steps:
 
-            open_platform_async() establish communication with the motherboard's on-board processor. This enables access to the methods provided by the motherboard.
+            - open_platform_async() establish communication with the
+              motherboard's on-board processor. This enables access to the
+              methods provided by the motherboard.
 
-            set_fpga_bitstream_async(): programs the FPGA with the target firmware. The Firmware instance is created, but is not yet usable.
+            - set_fpga_bitstream_async(): programs the FPGA with the target
+              firmware. The Firmware instance is created, but is not yet
+              usable.
 
-            open_fpga_async() establishes the communication link with the FPGA.
+            - open_fpga_async() establishes the communication link with the
+              FPGA.
 
-            init_fpga_async() initializes the firmware in the desired operational state.
+            - init_fpga_async() initializes the firmware in the desired
+              operational state.
 
 
         """
-        if not serial and not hostname:
+        # Define repr cache early. Important to avoid infinite recursions if
+        # repr() is called directly or indirectly. Clear on updates to account
+        # for the new parameters.
+        self._cached_repr = None
+
+        self.logger = logging.getLogger(__name__)
+
+        if not (serial or hostname):
             raise ValueError(f'Must specify either a serial number or hostname for {self.__class__.__name__}')
 
-
-        self.fpga = None  # No firmware loaded by default
-        self.other_args = kwargs
+        # Normalize the serial number
         if isinstance(serial, int):  # make sure serial is a string
             serial = f'{serial:04d}'  # Motherboard serials have 4 digits
 
-        super().__init__()
+
+        print(f"Motherboard: Creating {self.__class__.__name__}(serial={serial}, hostname={hostname}, slot={slot}, subarray={subarray}, kwargs={kwargs})")
 
         self.hostname = hostname
         self.serial = serial
         self.slot = slot
         self.subarray = subarray
-        self.firmware_name = None
+        self.other_args = kwargs
 
         self.crate = None  # Crate (or backplane) object on which the motherboard is mounted
         self.mezzanine = {}  # Mezzanines attached to this motherboard ({slot:mezz_object, ...})
-        self._cached_repr = None  # important to avoid infinite recursions through repr(). Clear on updates to account for the new parameters.
-        self.logger = logging.getLogger(__name__)
+
+        super().__init__()
+
+        self.fpga = None   # No firmware loaded by default
+        self.firmware_name = None
 
         self.logger.debug(
             f"{self!r}: Created {self.__class__.__name__}(hostname={hostname}, "
@@ -179,13 +195,13 @@ class Motherboard(HardwareMap):
                 or backplane, or virtual slot number if the board is not in a
                 crate. Is assigned to the new or existing matching Motherboard.
 
-                If the slot number is changed, the associated IceCrate slot mapping is updated.
+                If the slot number is changed, the associated Crate slot mapping is updated.
 
             subarray: Arbitrary value used to group Motherboards in logical
                 arrays. Is assigned to new instance or existing matching instance.
 
             crate_number: For convenience, if `crate_number` is specified, the
-                new or existing board is associated with the IceCrate instance
+                new or existing board is associated with the Crate instance
                 that matches the specified crate number, or one is created
                 with that crate number to hold the desired crate number value.
 
@@ -195,7 +211,7 @@ class Motherboard(HardwareMap):
         """
         # print(f"In et_unique_instance")
 
-        matching_crates = [
+        matching_boards = [
             c for c in cls._instance_registry if (
                 (hostname is not None and c.hostname == hostname)
                 or ((new_class or cls).part_number
@@ -203,14 +219,14 @@ class Motherboard(HardwareMap):
                     and c.part_number == (new_class or cls).part_number
                     and c.serial == serial))]
 
-        # print(f"Matches: {matching_crates}")
-        if not len(matching_crates):  # no matching crate, create one
-            # print(f"{cls!r}: Creating Motherboard")
+        # print(f"Matches: {matching_boards}")
+        if not len(matching_boards):  # no matching crate, create one
+            print(f"{cls!r}: Creating {new_class or cls}(serial={serial}, hostname={hostname}, slot={slot}, subarray={subarray}, kwargs={kwargs})")
             ib = (new_class or cls)(serial=serial, hostname=hostname, slot=slot, subarray=subarray, **kwargs)
-            # print(f"{cls!r}: Updating Motherboard with crate_number={crate_number}")
+            print(f"{cls!r}: Updating Motherboard with crate_number={crate_number}")
             return ib.update_instance(crate_number=crate_number)
-        elif len(matching_crates) == 1:  # one match, update existing one
-            return matching_crates[0].update_instance(
+        elif len(matching_boards) == 1:  # one match, update existing one
+            return matching_boards[0].update_instance(
                 new_class=new_class,
                 serial=serial,
                 hostname=hostname,
@@ -272,7 +288,7 @@ class Motherboard(HardwareMap):
             # eattach crate by crate number if specified
             self.logger.debug(f"{self!r}: Updating with with crate_number={crate_number}...")
             if crate_number is not None:
-                self.crate = IceCrate.get_unique_instance(crate_number=crate_number)
+                self.crate = Crate.get_unique_instance(crate_number=crate_number)
             elif crate:
                 self.crate = crate
             # Create new crate backref
@@ -360,7 +376,7 @@ class Motherboard(HardwareMap):
               default_slot
 
         """
-        if self.crate: # if there is a crate/backplane, do not allow empty crate field but allow empty slot.
+        if self.crate:  # if there is a crate/backplane, do not allow empty crate field but allow empty slot.
             crate_number = self.crate.crate_number
             if crate_number is None:  # if there is no valid crate number
                 if numeric_only:
@@ -426,12 +442,13 @@ class Motherboard(HardwareMap):
         else:
             return f"id={id(self)}"
 
-
     def set_cache(self):
         """ Caches key values to accelerate the code.
+
+        The cache is actually cleared, and the next invocatio nof repr() will
+        set it to the new value.
         """
         self._cached_repr = None
-
 
     # *************************
     # FPGA Programming methods
@@ -444,7 +461,6 @@ class Motherboard(HardwareMap):
 
     async def is_fpga_programmed_async(self):
         raise NotImplementedError('This method must be implemented by a subclass')
-
 
     # *************************
     # Board pinging methods
@@ -467,16 +483,15 @@ class Motherboard(HardwareMap):
         """
         raise NotImplementedError('This method must be implemented by a subclass')
 
-
     async def open_platform_async(self):
-        """ Establish a communication link with the platform, which enables access to functions provided by the local processor"""
+        """ Establish a communication link with the platform, which enables
+        access to functions provided by the local processor
+        """
         raise NotImplementedError('This method must be implemented by a subclass')
-
 
     async def open_fpga_async(self):
-        """ Establish a communication link with the FPGA."""
+        """Establish a communication link with the FPGA."""
         raise NotImplementedError('This method must be implemented by a subclass')
-
 
     async def init_fpga_async(self):
         """ Initializes  the FPGA firmware."""
