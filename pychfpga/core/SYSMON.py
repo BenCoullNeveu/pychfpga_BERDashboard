@@ -57,7 +57,8 @@ class SYSMON_base(Module_base):
         self.supported_by_platform = fpga.PLATFORM_ID in (
             fpga._PLATFORM_ID_ML605,
             fpga._PLATFORM_ID_KC705,
-            fpga._PLATFORM_ID_MGK7MB,
+            fpga._PLATFORM_ID_MGK7MB_REV0,
+            fpga._PLATFORM_ID_MGK7MB_REV2,
             fpga._PLATFORM_ID_ZCU111,
             )
 

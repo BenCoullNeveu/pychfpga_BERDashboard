@@ -204,7 +204,8 @@ class chFPGA(FPGAFirmware):
 
     _PLATFORM_ID_ML605 = 0  #: ID number for the Virtex-6-based Xilinx ML606 Evaluation board
     _PLATFORM_ID_KC705 = 1  #: ID number for the Kintex-7-based Xilinx KC705 Evaluation board
-    _PLATFORM_ID_MGK7MB = 3  #: ID number for the McGill MGK7MB Rev 2 motherboard (a.k.a Iceboard Rev 2). Works for All subsequent revs.
+    _PLATFORM_ID_MGK7MB_REV0 = 2  #: ID number for the McGill MGK7MB Rev 2 motherboard (a.k.a Iceboard Rev 2). Works for All subsequent revs.
+    _PLATFORM_ID_MGK7MB_REV2 = 3  #: ID number for the McGill MGK7MB Rev 2 motherboard (a.k.a Iceboard Rev 2). Works for All subsequent revs.
     _PLATFORM_ID_ZCU111 = 4  #: ID number for Xilinx ZCU111 evaluation board.
 
     #: Map of all supported platform indexed by the `PLATFORM_ID` returned by the FPGA
@@ -212,7 +213,8 @@ class chFPGA(FPGAFirmware):
         # ID: ( Board name, class to instantiate)
         _PLATFORM_ID_ML605: ('Virtex 6 (XC6V240T-1 FFG1156) on Xilinx ML605 Evaluation board', None),
         _PLATFORM_ID_KC705: ('Kintex 7 (XC7K325T-2 FFG900C) on Xilinx KC705 Evaluation board', None),
-        _PLATFORM_ID_MGK7MB: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev2', None),
+        _PLATFORM_ID_MGK7MB_REV0: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev0', None),
+        _PLATFORM_ID_MGK7MB_REV2: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev2', None),
         _PLATFORM_ID_ZCU111:  ('Zynq Ultrascale+ RfSoC (ZU28) Xilinx ZCU111 Evaluation Board', None),
     }
 
@@ -642,7 +644,7 @@ class chFPGA(FPGAFirmware):
                 self.HAS_ADCDAQ = False
                 self.MAX_BSB_COMMAND_LENGTH = 512
 
-            elif self.PLATFORM_ID == self._PLATFORM_ID_MGK7MB:
+            elif self.PLATFORM_ID in (self._PLATFORM_ID_MGK7MB_REV0, self._PLATFORM_ID_MGK7MB_REV2):
                 assert self.mb.part_number == "MGK7MB", 'This version of the firmware is meant to operate on the MGK7MB (IceBoard) only'
                 self.HAS_REFCLK = True
                 self.HAS_SPI = True
