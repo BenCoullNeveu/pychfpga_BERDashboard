@@ -1006,9 +1006,15 @@ class FPGAArray(object):
         #################################
         # Check the hardware map for generic objects
         #################################
-        if any(not c.part_number for c in IceCrate.get_all_instances()):
+        # print(f'Icecrates are: {any(c.part_number for c in IceCrate.get_all_instances())}')
+
+        # Check if there are any crate without part number. We use a list
+        # comprehension in case any has been overriden with np.any in a pylab
+        # session, which does not work with generators.
+        if any([not c.part_number for c in IceCrate.get_all_instances()]):
             raise RuntimeError('There are generic IceCrates left in the hardware map')
-        if any(not i.part_number for i in IceBoard.get_all_instances()):
+        # Same for Motherboards
+        if any([not i.part_number for i in IceBoard.get_all_instances()]):
             raise RuntimeError('There are generic IceBoards left in the hardware map')
 
 
@@ -2982,6 +2988,10 @@ class FPGAArray(object):
         for ib in self.ib:
             ib.set_offset_binary_encoding(offset_encoding_enabled)
             await asyncio.sleep(0)
+
+    def get_channel_ids(self):
+        """ Returns the channel IDs of every board and channel in the array """
+        return [cid for ib in self.ib for cid in ib.get_channel_ids()]
 
 
     def get_iceboard(self, board):

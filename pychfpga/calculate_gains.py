@@ -210,10 +210,11 @@ class GainCalc(object):
             # print 'CG: Gain Iteration', self.iteration_number[ix]
             # print 'CG: RMS is ', np.median(rms[ix, 1:], axis=-1)
             # N=np.array([0,13,313,513])
+            N = 6
             self.log.info(f'{self!r}: Received RMS data from {rms.shape[0]} channels. Processing {bix.size} of those.')
-            # print 'CG: Median Actual/target RMS ratio is ', np.median(rms[ix, 1:] / self.target_rms, axis=-1)
-            # print 'CG: Median RMS is ', np.median(rms[ix, 1:], axis=-1)
-            self.log.debug(f'{self!r}: Got Stream IDs: {stream_ids[ix]}')
+            self.log.debug(f'{self!r}: Got Stream IDs. First {N} are: {stream_ids[ix[:N]]}')
+            self.log.debug(f'CG: Median Actual/target RMS ratio are {np.median(rms[ix[:N], 1:] / self.target_rms, axis=-1)}')
+            self.log.debug(f'CG: Median RMS are {np.median(rms[ix[:N], 1:], axis=-1)}')
             # Compute new gain base don the ratio of the acrual rms vs target rms
             # We want to slowly ease into that gain to avoid being affected too much by transients,
             # so just take 20% of thhat target and 80% of the old gain
