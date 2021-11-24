@@ -4827,7 +4827,7 @@ class chFPGA_controller(IceBoardExt):
                 "stderr is displayed below:\n %s" % (
                      cmd,
                      p.returncode,
-                     ''.join(p.stderr.readlines())))
+                     b''.join(p.stderr.readlines())))
         return p.stdout.readlines()
 
     async def arm_exec(self, cmd):
@@ -4835,7 +4835,7 @@ class chFPGA_controller(IceBoardExt):
         Executes a command on the ARM over SSH.
         """
         self.logger.info("%r: Executing command '%s' on the ARM" % (self, cmd))
-        ssh_cmd = 'ssh -o "StrictHostKeyChecking no" root@%s "%s"' % (self.hostname, cmd)
+        ssh_cmd = 'ssh -o "StrictHostKeyChecking no" -oKexAlgorithms=+diffie-hellman-group1-sha1 root@%s "%s"' % (self.hostname, cmd)
         result = await self._call_subprocess(ssh_cmd)
         return result
 
@@ -4847,7 +4847,7 @@ class chFPGA_controller(IceBoardExt):
             self,
             source_filename,
             destination_filename))
-        scp_cmd = 'scp -o "StrictHostKeyChecking no" %s root@%s:%s' % (
+        scp_cmd = 'scp -o "StrictHostKeyChecking no" -oKexAlgorithms=+diffie-hellman-group1-sha1 %s root@%s:%s' % (
             source_filename,
             self.hostname,
             destination_filename)
@@ -4869,7 +4869,7 @@ class chFPGA_controller(IceBoardExt):
         method won't work because this corrupts the ARMs filesystem (did we
         say this was a bad hack?).
         """
-        image_header = '\xfa\xb8\x00\x10\x8e\xd0\xbc\x00'
+        image_header = b'\xfa\xb8\x00\x10\x8e\xd0\xbc\x00'
         with bz2.BZ2File(image_filename) as fh:
             data = fh.read(100)  # read a few bytes to make sure this is really a bz2 file
             if not data.startswith(image_header):
