@@ -76,7 +76,7 @@ class HardwareMap:
         Used in fpga_array, discover_crate, discover_mezzanine
 
         """
-        raise NotImplemented('Must define an equality operator for the hardware map object')
+        raise NotImplementedError('Must define an equality operator for the hardware map object')
 
 
     @classmethod
