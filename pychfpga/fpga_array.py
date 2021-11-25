@@ -4862,42 +4862,38 @@ log_levels = {'info': logging.INFO,
               'error': logging.ERROR}
 
 
-def setup_logging(log_target='syslog', log_level='debug', sql_log_level='warning', stderr_log_level='warning'):
-    # Make sure SQLAlchemy does not log too much
-    sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
-    sql_logger.setLevel(log_levels[sql_log_level])
-    logging.getLogger('parso.python.diff').disabled = True  # disable ipython logging in interactive sessions
-    logging.getLogger('parso.cache').disabled = True  # disable ipython logging in interactive sessions
+def setup_logging(stderr_log_level='debug', syslog_log_level=None):
+    # logging.getLogger('parso.python.diff').disabled = True  # disable ipython logging in interactive sessions
+    # logging.getLogger('parso.cache').disabled = True  # disable ipython logging in interactive sessions
+    logging.getLogger('parso').disabled = True  # disable ipython logging in interactive sessions
+    logging.getLogger('asyncio').setLevel(logging.WARNING)
 
-    # Set-up main loggers
-    if log_target == 'stream':
-        log_handler = logging.StreamHandler()
-    elif log_target == 'syslog':
-        log_handler = logging.handlers.SysLogHandler()
-    else:
-        log_handler = logging.FileHandler(log_target)
     formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s:  %(message)s')
 
+    # Set-up main logger
     logger = logging.getLogger('')
     logger.handlers = []  # Clear all existing handlers
     logger.setLevel(logging.DEBUG)  # pass all messages to the handlers which will filter what they want
 
-    log_handler.setLevel(log_levels[log_level])
-    log_handler.setFormatter(formatter)
-    logger.addHandler(log_handler)
+    if syslog_log_level:
+        syslog_handler = logging.handlers.SysLogHandler()
+        syslog_handler.setLevel(log_levels[syslog_log_level])
+        syslog_handler.setFormatter(formatter)
+        logger.addHandler(syslog_handler)
 
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(formatter)
-    stream_handler.setLevel(log_levels[stderr_log_level])
-    logger.addHandler(stream_handler)
+    if stderr_log_level:
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(formatter)
+        stream_handler.setLevel(log_levels[stderr_log_level])
+        logger.addHandler(stream_handler)
     return logger
 
 
 def add_logging_arguments(parser):
-    parser.add_argument('-t', '--log_target', action='store', type=str, default='syslog', help="Logging target ('stream', 'syslog' or a filename)")
-    parser.add_argument('-l', '--log_level', action='store', type=str, choices=log_levels, default='debug', help='Logging level')
-    parser.add_argument('--sql_log_level', action='store', type=str, choices=log_levels, default='warning', help='SQLAlchemy Logging level')
-    parser.add_argument('--stderr_log_level', action='store', type=str, choices=log_levels, default='warning', help='stderr (console) Logging level')
+    # parser.add_argument('-t', '--log_target', action='store', type=str, default='syslog', help="Logging target ('stream', 'syslog' or a filename)")
+    # parser.add_argument('-l', '--log_level', action='store', type=str, choices=log_levels, default='debug', help='Logging level')
+    parser.add_argument('--syslog_log_level', action='store', type=str, choices=log_levels, default=None, help='SYSLOG logging level')
+    parser.add_argument('-l', '--stderr_log_level', '--log_level', action='store', type=str, choices=log_levels, default='warning', help='stderr (console) Logging level')
 
 def add_fpga_array_arguments(parser):
     parser.add_argument('--if_ip',           type=str, help='IP address of adapter through which the connection to the FPGA will be established. This is used solely for direct UDP communications with the FPGA. If not specified, the system will use the same interface that communicates with the ARM processor.')
