@@ -17,7 +17,6 @@ from datetime import datetime, timedelta
 import struct
 from calendar import timegm
 from functools import wraps
-import subprocess
 import socket
 import __main__
 import asyncio
@@ -816,7 +815,6 @@ class chFPGA(FPGAFirmware):
                 if fmc_number + 1 in self.mezzanine.keys():
                     self.ANT_FMC_IS_PRESENT[ant_number] = True
 
-            # await self.hw.set_led('GP_LED1', 1) # Indicate that the Iceboard is ready
             self._data_socket = None
 
         except Exception as e:
@@ -949,11 +947,11 @@ class chFPGA(FPGAFirmware):
             if mezz_number in self.mezzanine:
                 mezz = self.mezzanine[mezz_number]
                 self.logger.debug('%r:   Powering down FMC%i' % (self, mezz_number - 1))
-                await self.mb.hw.set_mezzanine_power_async(mezz_number - 1, False)   #todo: add set_mezzanine_power() directly into mb
+                await self.mb.set_mezzanine_power_async(mezz_number - 1, False)   #todo: add set_mezzanine_power() directly into mb
                 # mezz.set_power(False)  # For some reason, prevents the board from rebooting (!)
                 await asyncio.sleep(0.2)  # *** make async
                 self.logger.debug('%r:   Powering up FMC%i' % (self, mezz_number - 1))
-                await self.mb.hw.set_mezzanine_power_async(mezz_number - 1, True)
+                await self.mb.set_mezzanine_power_async(mezz_number - 1, True)
                 # mezz.set_power(True)
                 await asyncio.sleep(0.2)  # Give it some time for the power to stabilize
                 # We need to initialize the ADC board before we initialize ANT
@@ -1605,7 +1603,7 @@ class chFPGA(FPGAFirmware):
             return(None)
 
         # Get the first byte to determine if this is a McGill format.
-        eeprom_data = self.mb.hw.read_mezzanine_eeprom(mezzanine, 0, 1)
+        eeprom_data = self.mb.read_mezzanine_eeprom(mezzanine, 0, 1)
         if eeprom_data[0] == 0x0d:  # if this is McGill format
             self.logger.debug(
                 f"{self!r}: EEPROM in Mezzanine {mezzanine} is McGill format. The FPGA will "
@@ -1615,7 +1613,7 @@ class chFPGA(FPGAFirmware):
             block_size = 32
             string = bytearray()
             for i in range(512 / block_size):  # read 32 blocks of 16 bytes
-                data_block = self.mb.hw.read_mezzanine_eeprom(
+                data_block = self.mb.read_mezzanine_eeprom(
                     mezzanine, addr=i*block_size, length=block_size, retry=3)
                 string += data_block
                 if (b'}' in data_block) or (255 in data_block):
