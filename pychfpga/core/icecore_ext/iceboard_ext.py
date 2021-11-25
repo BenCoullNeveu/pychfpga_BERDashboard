@@ -8,7 +8,9 @@ import base64
 from collections import OrderedDict
 import socket
 import asyncio
-
+import bz2
+import subprocess
+import shlex
 
 import nest_asyncio
 # External private packages
@@ -17,6 +19,7 @@ from wtl.metrics import Metrics
 
 # Local packages
 from .motherboard import Motherboard
+from .crate import Crate
 from .mezzanine import Mezzanine
 from .fpga_firmware import FPGAFirmware
 from .i2c_interface import I2CInterface
@@ -25,7 +28,7 @@ from ..icecore.hardware_assets import TuberIceBoardBase
 from ..icecore.tuber import TuberError, TuberNetworkError, TuberRemoteError
 from .hardware_map import HardwareMap
 from .lib.bsb_mmi import BSB_MMI  # Byte-serial interface protocol definition
-from .icecrate_ext import IceCrate
+# from .icecrate_ext import IceCrate
 from .icemezz_ext import FMCMezzanine
 from .ccoll import Ccoll
 
@@ -44,78 +47,119 @@ from .lib import gpio
 class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first otherwise undefined attributes try to access Tuber
     """ Provide the methods needed to operate the Iceboard hardware and its FPGA firmware.
 
-    The class gives access to the methods provided by the on-board ARM processor via the Tuber protocol.
+    The superclasses provides the following functionalities:
 
-    Adds:
-        - Lightweight list-based Hardware map management
-        - Model, serial, slot, crate and mezzanine self discovery through the Iceboard (no mDNS required)
-        - Access to the memory-mapped registers in the FPGA's firmware using the ARM-FPGA SPI link
-            through the `fpga_core_reg_read_async()` and `fpga_core_reg_write_async()` methods.
+    - Motherboard: List-based lightweight hardware map management
+    - TuberIceBoardBase: Methods provided by the on-board ARM processor via the Tuber protocol
 
-    Parameters:
+    This class adds:
+        - Model, serial, slot, crate and mezzanine self discovery using Tuber
+        - Tuber-specific method to configure the FPGA
+        - Access to the core memory-mapped registers in the FPGA's firmware using the ARM-FPGA SPI link. The core registers are used to check the firmware CRC,  setup FPGA networking, and provide access to the IRIG-B module.
+            (see `fpga_core_reg_read/write_async()` methods.
+        - Alternate access to the board peripheral through the FPGAs I2C interface (if present in the FPGA firmware), including:
+            - LED control
+            - GPIO input/output
+            - Temperature sensors
+            - Power monitoring for every rail (voltage,current)
+            - Motherboard EEPROM
+        - Any method provided by the FPGA firmware through the FPGAFirmware subclass that is set in self.fpga when the FPGA is configured through `set_fpga_bitstream_async()`.
 
     """
-    """ Extension to the basic Python Iceboard object .
 
-    Adds:
-
-
-
-    `IceBoardPlusHandler` can be created as a standard Python object initialized with a number of
-    parameters which set corresponding attributes (see below). If a `parent_getter` function is
-    provided, the value of these attributes will instead be fetched
-    dynamically from the parent object. Note that any explicitely specified parameter overrides a
-    parent parameter.
-
-    Parameters:
-
-        hostname (str): hostname or IP address of the ICEBoard ARM processor (mandatory)
-
-        serial (str): Serial number of the board. Can be provided by the ARM.
-
-        part_number (str): Part number of the IceBoard. Can be obtained from the ARM.
-
-        crate (IceCrateHandler): = object that handle the backplane on which the board is connected. `None` if the board is not connected to a backplane.
-
-        slot (int): Slot number in which the board is installed ona backplane. None if there is no backplane.
-
-        mezzanine (dict): Map {mezzanine_number: Mezzanine Handler, ...} describing the installed mezzanines. Can be obtained from the ARM.
-
-        tuber_objname (str): name of the set of software functions that will be provided by the ARM processor through the Tuber interface.
-
-
-
-    .. Any object provided by this this handler can be accessed at any
-    .. hierarchical level. However, objects that are probided by Tuber have these
-    .. restrictions:
-    ..
-    ..    - attributes and methods whise name begin with '_' are not accessible
-    ..    - modification to the object attributes must be done by a setter
-    ..      function provided by the object.
-    ..    - methods or attribute access can only return string or numeric values,
-    ..      or lists or dictionnary thereof
-
-
-    Notes:
-        - The SPI MMI interface is currently provided by peek/poke methods accessed through Tuber.
-          However, if one day the ARM supports it, a faster access could potentially be provided by
-          overriding the fpga_core_reg_read_async/write methods to send the commands to a dedicated ARM port
-          and thus bypass Tuber's HTTP/JSON overhead. Since the SPI link is relatively slow anyway, this might not be useful until a faster ARM-FPGA link is in place (such as the unused PCIe link).
-
-        - This handler does *not* define a MMI interface that uses the FPGA's
-          ethernet port directly through the SFP+ connector. Such functionnality is to be provided by a
-          subclass of this class if the firmware supports it.
-    """
-
+    # ------------------------------------
     # Hardware map parameters
+    # ------------------------------------
+
     part_number = 'MGK7MB'  # Required to identify the part number associated with this class
     _ipmi_part_numbers = ['MGK7MB']  # Possible equivalent names found in IPMI records that correspond to this platform
+
+    # ------------------------------------
+    # IceBoard-specific class attributes
+    # ------------------------------------
 
     NUMBER_OF_FMC_SLOTS = 2  # Number of FMC Mezzanines supported by this platform
 
     _cached_repr = None  # Stored a pre-processed string representation of the board repr() for efficiency
 
     port = 80  # port number on which to access the platform `hostname`. Tuber implicitly uses 80 due to the use of the http:// URL to access the board. But fpga_master needs that to prepare for TCP pings.
+
+
+    # ------------------------------------
+    # Hardware-specific constants
+    # ------------------------------------
+
+    # I2C switch addresses (visible on all buses on a specific port)
+    _FPGA_I2C_SWITCH_ADDR = 0b1110100  # 0x74
+    _ARM0_I2C_SWITCH_ADDR = 0b1110000  # 0x70
+    _ARM1_I2C_SWITCH_ADDR = 0b1110001  # 0x71
+    _ARM2_I2C_SWITCH_ADDR = 0b1110010  # 0x72
+    _ARM3_I2C_SWITCH_ADDR = 0b1110011  # 0x73
+
+    FPGA_I2C_BUS_LIST = {
+        # Bus name, (FPGA I2C port, I2C switch enable bit)
+        "FMC":   (0, 0),  # equivalent to FMCA. Included for backwards compatibility with single-FMC code
+        "FMCA":  (0, 0),
+        "FMCB":  (0, 1),
+        "QSFPA": (0, 2),
+        "QSFPB": (0, 3),
+        "SFP":   (0, 4),
+        "SMPS":  (0, 5),
+        "BP":    (0, 6),
+        "GPIO":  (0, 7)
+        }
+
+
+    # Motherboard EEPROM AT24CS01 128-byte EEPROM with 128-bit serial number (data @ 0x57, serial @ 0x)
+    _MOTHERBOARD_EEPROM_DATA_ADDR = 0x57  #
+    _MOTHERBOARD_EEPROM_SERIAL_ADDR = 0x5F  #
+    _MOTHERBOARD_EEPROM_ADDR_WIDTH = 7 # For the serial number, address must be 0b10xxxxxx
+    _MOTHERBOARD_EEPROM_PAGE_SIZE = 8  #
+
+
+    # FMC EEPROM, on FMCA or FMCB
+    _FMC_EEPROM_ADDR = 0x50  # 0x50 (0x51 is also used for the 2nd page of large eeprom with address width > 16 bits).
+
+    # Standard FMC EEPROM addressing scheme
+    _FMC_EEPROM_ADDR_WIDTH = 7  # FMC EEPROM internal addresses are 7 bits wide.
+    _FMC_EEPROM_PAGE_SIZE = 8  #
+
+    # McGill's FMC EEPROM FMC EEPROM addressing scheme
+    # McGill's FMC EEPROM internal addresses are is 17 bits wide. (2 bytes as data, 1 bit in lsb of I2C address)
+    _MCGILL_FMC_EEPROM_ADDR_WIDTH = 17
+    _MCGILL_FMC_EEPROM_PAGE_SIZE = 256  #
+
+
+    # IO Expanders, on GPIO bus
+    _GPIO_POWER_I2C_ADDR = 0b0100000  # 0x20
+    _GPIO_SFP_QSFP_I2C_ADDR = 0b0100001  # 0x21
+    _GPIO_SW_LEDS_ADDR = 0b0100010  # 0x22
+    _GPIO_ARM_PHY_LEDS_ADDR = 0b0100011  # 0x23
+
+    # # Temperature sensors, on GPIO bus
+    # _TMP_ARM_I2C_ADDR   = 0b1001010 #0x4A
+    # _TMP_PHY_I2C_ADDR   = 0b1001100 #0x4C
+    # _TMP_FPGA_I2C_ADDR  = 0b1001011 #0x4B
+    # _TMP_POWER_I2C_ADDR = 0b1001000 #0x48
+
+    # # Power monitors, on SMPS bus
+    # _POWER_ICEVADJ_I2C_ADDR   = 0b1000011 #0x43
+    _POWER_ICE12V0_I2C_ADDR = 0b1000111  # 0x47
+    # _POWER_ICE5V0_I2C_ADDR    = 0b1001000 #0x48
+    # _POWER_ICE3V3_I2C_ADDR    = 0b1001001 #0x49
+    # _POWER_ICE1V5_I2C_ADDR    = 0b1001100 #0x4C
+    # _POWER_ICE1V2_I2C_ADDR    = 0b1001101 #0x4D
+    _POWER_ICE1V0_I2C_ADDR = 0b1001110  # 0x4E
+    # _POWER_ICE1V8_I2C_ADDR    = 0b1001011 #0x4B
+    # _POWER_ICE1V0GTX_I2C_ADDR = 0b1001111 #0x4F
+
+    # _POWER_FMCA12V0_I2C_ADDR  = 0b1000000 #0x40
+    # _POWER_FMCA3V3_I2C_ADDR   = 0b1000001 #0x41
+    # _POWER_FMCAVADJ_I2C_ADDR  = 0b1000010 #0x42
+
+    # _POWER_FMCB12V0_I2C_ADDR  = 0b1000100 #0x44
+    # _POWER_FMCB3V3_I2C_ADDR   = 0b1000101 #0x45
+    # _POWER_FMCBVADJ_I2C_ADDR  = 0b1000110 #0x46
 
 
     def __init__(self,
@@ -234,6 +278,18 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         # Initialize the subclasses. The MRO is such that Motherboard.__init__() is called first,
         # which sets the hostname, serial etc.
         # It in turn then calls TuberIceboardBase.__init__ without arguments which is ok: it does not expect any.
+        # This defines:
+        #   logger
+        #   hostname
+        #   serial
+        #   slot
+        #   subarray
+        #   other_args
+        #   crate
+        #   mezzanine
+        #   fpga
+        #   firmware_name
+
         super().__init__(hostname=hostname, serial=serial, slot=slot, subarray=subarray, **kwargs)
 
         # Store Iceboard-specific instance attributes
@@ -241,22 +297,9 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         self.i2c = None
         self.hw = None
 
-        # Initialize local variables
-
         self._mezzanine_ipmi_cache = {1: None, 2: None}
         self._is_core_open = None
         self._is_hw_open = None
-        # self._is_bp_open = None
-        # self._is_open = None
-
-        # def update_instance(self, new_class=None, fpga_ip_addr=None, **kwargs):
-        #     fpga_ip_addr = fpga_ip_addr or self.fpga_ip_addr
-        #     if new_class and new_class is not self.__class__:
-        #         return super().update_instance(new_class=new_class, fpga_ip_addr=fpga_ip_addr, **kwargs)
-        #     else:
-        #         super().update_instance(**kwargs)
-        #         self.fpga_ip_addr = fpga_ip_addr
-        #         return self
 
     async def ping_async(self, timeout=0.1):
         """ Checks if the platform responds to the target hostname address.
@@ -308,7 +351,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         self.logger.debug(f'{self!r}: Checking ARM firmware version...')
         await self.check_tuber_version_async()
 
-    async def close_platform(self):
+    async def close_platform_async(self):
         pass
 
     ###################################
@@ -489,7 +532,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
 
                 part_number = ipmi.product.part_number
                 serial = ipmi.product.serial_number
-                icecrate_class = self.get_class_by_ipmi_part_number(base_class_name='IceCrate', part_number=part_number)
+                icecrate_class = self.get_class_by_ipmi_part_number(base_class_name='Crate', part_number=part_number)
                 slot_number = await self.tuber_get_backplane_slot_async()
                 self.logger.debug(
                     f'{self!r}: discover_crate(): Detected Backplane '
@@ -506,7 +549,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
 
         if icecrate_class and update:
             crate_number = self.crate.crate_number if self.crate else None
-            crate = IceCrate.get_unique_instance(new_class=icecrate_class, serial=serial, crate_number=crate_number)
+            crate = Crate.get_unique_instance(new_class=icecrate_class, serial=serial, crate_number=crate_number)
             self.update_instance(crate=crate)  # update crate info and repr
             self.logger.debug(f"{self} now has crate {self.crate}")
             # if slot_number:
@@ -635,35 +678,251 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
     # ----------------------------
 
     async def open_fpga_async(self, **kwargs):
-        """ Open communication with the FPGA """
+        """ Open communication with the FPGA and initilalize Iceboard hardware handlers.
 
+
+        We initialize the hardware handlers here because re rely on the FPGA I2C port.
+        """
+
+        assert self.fpga, f'{self}: FPGA is not programmed. Cannot execute open_fpga()'
         self.logger.debug(f'{self!r}: open() is called')
 
+        # Open communication witht he FPGA, and create the objects required to handle the FPGA's firmware modules.
+        # This does not initialize all of the firmware, but basic functions such as GPIO, and I2C are usable
         await self.fpga.open_async(**kwargs)
+
+        # Create a I2C interface to access the IceBoard hardware. We use the
+        # I2C interface from the FPGA, since Tuber does not provide raw I2C
+        # access methods.
         self.i2c = I2CInterface(
             write_read_fn=self.fpga_i2c_write_read,  # write-read function
             port_select_fn=self.fpga_i2c_set_port,
-            bus_table=IceBoardHardware.FPGA_I2C_BUS_LIST,
-            switch_addr=IceBoardHardware._FPGA_I2C_SWITCH_ADDR,
+            bus_table=self.FPGA_I2C_BUS_LIST,
+            switch_addr=self._FPGA_I2C_SWITCH_ADDR,
             parent=self)  # parent object, whose repr() is used to tag messages
-        self.hw = IceBoardHardware(self)
-        await self.hw.open_async()
 
-        await self.hw.set_led('GP_LED2', 1)  # Hardware link is on
-        await self.hw.set_led('GP_LED1', 0)  # Full FPGA firmware not initialized yet
+        # Initialize hardware handlers
+        await self.open_hw_async()
+
+        # Set LEDs to indicate initialization state
+        await self.set_led('GP_LED2', 1)  # Hardware link is on
+        await self.set_led('GP_LED1', 0)  # Full FPGA firmware not initialized yet
 
     async def close_fpga_async(self):
-        if self.hw:
-            self.hw.close()
-
+        await self.close_hw_async()
         if self.fpga:
             await self.fpga.close_async()
 
     async def init_fpga_async(self, **kwargs):
         """ Initializes the FPGA firmware
         """
+        # Fully initialize the FPGA firmware
         await self.fpga.init_async(**kwargs)
-        await self.hw.set_led('GP_LED1', 1)  # Full FPGA firmware is initialized
+
+        # Set LEDs to indicate initialization state
+        await self.set_led('GP_LED1', 1)  # Full FPGA firmware is initialized
+    async def open_hw_async(self):
+        """ Initializing objects to access the Iceboard hardware
+
+        Creates all the objects needed to interface the Iceboard I2C devices.
+
+        I2C access is done through the I2CInterface object, which must be defined and shall provide the following methods:
+
+            - i2c_set_port(...) # Port number 0 (connected to the FPGA I2C switch) is used for all accesses
+            - i2c_write_read(...) # FPGA I2C engine
+
+        Exceptions:
+
+            - An AssertionError will be raised if the self.i2c object is not defined
+        """
+        self.logger.debug('%r: Initializing Iceboard hardware' % self)
+        assert self.i2c, "I2C interface is not initialized"
+
+        # -------------------
+        # Motherboard EEPROM
+        # -------------------
+
+        self.logger.debug('%r: Instantiating Motherboard EEPROM managers' % self)
+        self._i2c_mb_eeprom_data = eeprom.eeprom(
+            self.i2c, self._MOTHERBOARD_EEPROM_DATA_ADDR, 'GPIO',
+            self._MOTHERBOARD_EEPROM_ADDR_WIDTH,
+            self._MOTHERBOARD_EEPROM_PAGE_SIZE)
+        self._i2c_mb_eeprom_serial = eeprom.eeprom(
+            self.i2c, self._MOTHERBOARD_EEPROM_SERIAL_ADDR, 'GPIO',
+            self._MOTHERBOARD_EEPROM_ADDR_WIDTH,
+            self._MOTHERBOARD_EEPROM_PAGE_SIZE)
+
+
+        # -------------------
+        # FMC EEPROMs
+        # -------------------
+
+        # We check if the EEPROM has multiple pages, and if so, we *assume* that
+        # the EEPROM is a large (non-FMC compliant) EEPROM with 2-byte addresses.
+        # Otherwise we assume the EEPROM has a single byte of addressing.
+        #
+        # If the EEPROM is multipage but has a single address byte (4Kbit,
+        # 8kbit or 16kbit EEPROMs), then the EEPROM contents will be
+        # corrupted, even by read operations, because the second address byte
+        # will be interpreted as data to be written. It would be equally bad
+        # if there has another I2C device at the address following the EEPROM
+        # address.
+        self.logger.debug('%r:  Instantiating FMC EEPROM managers' % self)
+        if self.i2c.is_present(self._FMC_EEPROM_ADDR + 1, bus_name='FMCA'):
+            self.logger.debug('%r: Detected multipage EEPROM on FMCA. Assuming >16-bit addressing.' % self)
+            self._fmca_eeprom = eeprom.eeprom(
+                self.i2c, self._FMC_EEPROM_ADDR, 'FMCA',
+                self._MCGILL_FMC_EEPROM_ADDR_WIDTH,
+                self._MCGILL_FMC_EEPROM_PAGE_SIZE)
+        else:
+            self._fmca_eeprom = eeprom.eeprom(
+                self.i2c, self._FMC_EEPROM_ADDR, 'FMCA',
+                self._FMC_EEPROM_ADDR_WIDTH,
+                self._FMC_EEPROM_PAGE_SIZE)
+
+        if self.i2c.is_present(self._FMC_EEPROM_ADDR + 1, bus_name='FMCB'):
+            self.logger.debug('%r: Detected multipage EEPROM on FMCB. Assuming >16-bit addressing.' % self)
+            self._fmcb_eeprom = eeprom.eeprom(
+                self.i2c, self._FMC_EEPROM_ADDR, 'FMCB',
+                self._MCGILL_FMC_EEPROM_ADDR_WIDTH, self._MCGILL_FMC_EEPROM_PAGE_SIZE)
+        else:
+            self._fmcb_eeprom = eeprom.eeprom(
+                self.i2c, self._FMC_EEPROM_ADDR, 'FMCB',
+                self._FMC_EEPROM_ADDR_WIDTH, self._FMC_EEPROM_PAGE_SIZE)
+
+        self._FMC_EEPROM_TABLE = {
+            1: self._fmca_eeprom,
+            2: self._fmcb_eeprom
+            }
+
+        # -------------------
+        # I2C IO Expanders
+        # -------------------
+
+        self.logger.debug('%r: Instantiating I2C GPIO manager' % self)
+        self._gpio_power = pca9575.pca9575(self.i2c, self._GPIO_POWER_I2C_ADDR, 'GPIO')
+        self._gpio_sw_leds = pca9575.pca9575(self.i2c, self._GPIO_SW_LEDS_ADDR, 'GPIO')
+        self._gpio_arm_phy_leds = pca9575.pca9575(self.i2c, self._GPIO_ARM_PHY_LEDS_ADDR, 'GPIO')
+        self._gpio_sfp_qsfp = pca9575.pca9575(self.i2c, self._GPIO_SFP_QSFP_I2C_ADDR, 'GPIO')
+
+        self._gpio = gpio.GPIO(gpio_table={
+            # name : (expander object, byte, lsb bit number,  width)
+            'GP_SW1': (self._gpio_sw_leds, 0, 0, 1),
+            'GP_SW2': (self._gpio_sw_leds, 0, 1, 1),
+            'GP_SW3': (self._gpio_sw_leds, 0, 2, 1),
+            'GP_SW4': (self._gpio_sw_leds, 0, 3, 1),
+            'GP_SW5': (self._gpio_sw_leds, 0, 4, 1),
+            'GP_SW6': (self._gpio_sw_leds, 0, 5, 1),
+            'GP_SW7': (self._gpio_sw_leds, 0, 6, 1),
+            'GP_SW8': (self._gpio_sw_leds, 0, 7, 1),
+            'GP_LED1': (self._gpio_sw_leds, 1, 7, 1),
+            'GP_LED2': (self._gpio_sw_leds, 1, 6, 1),
+            'GP_LED3': (self._gpio_sw_leds, 1, 5, 1),
+            'GP_LED4': (self._gpio_sw_leds, 1, 4, 1),
+            'GP_LED5': (self._gpio_sw_leds, 1, 3, 1),
+            'GP_LED6': (self._gpio_sw_leds, 1, 2, 1),
+            'GP_LED7': (self._gpio_sw_leds, 1, 1, 1),
+            'GP_LED8': (self._gpio_sw_leds, 1, 0, 1),
+            'GP_LED9': (self._gpio_arm_phy_leds, 0, 0, 1),
+            'GP_LED10': (self._gpio_arm_phy_leds, 0, 1, 1),
+            'GP_LED11': (self._gpio_arm_phy_leds, 0, 2, 1),
+            'GP_LED12': (self._gpio_arm_phy_leds, 0, 3, 1),
+            'GTX1V8PowerFault': (self._gpio_arm_phy_leds, 0, 4, 1),
+            'PHYAPowerFault': (self._gpio_arm_phy_leds, 0, 5, 1),
+            'PHYBPowerFault': (self._gpio_arm_phy_leds, 0, 6, 1),
+            'ArmPowerFault': (self._gpio_arm_phy_leds, 0, 7, 1),
+            'BP_GPIO0': (self._gpio_arm_phy_leds, 1, 0, 1),
+            'BP_GPIO1': (self._gpio_arm_phy_leds, 1, 1, 1),
+            'BP_GPIO2': (self._gpio_arm_phy_leds, 1, 2, 1),
+            'BP_GPIO3': (self._gpio_arm_phy_leds, 1, 3, 1),
+            'BP_GPIO4': (self._gpio_arm_phy_leds, 1, 4, 1),
+            'BP_GPIO5': (self._gpio_arm_phy_leds, 1, 5, 1),
+            'BP_SLOT_NUMBER': (self._gpio_arm_phy_leds, 1, 0, 4),  # Also corresponds to BP_GPIO0-3
+            'QSFPA_ModPrsL': (self._gpio_sfp_qsfp, 0, 0, 1),
+            'QSFPA_ResetL': (self._gpio_sfp_qsfp, 0, 2, 1),
+            'QSFPA_IntL': (self._gpio_sfp_qsfp, 0, 1, 1),
+            'QSFPA_LPMode': (self._gpio_sfp_qsfp, 0, 4, 1),
+            'QSFPA_ModSelL': (self._gpio_sfp_qsfp, 0, 3, 1),
+            'QSFPB_ModPrsL': (self._gpio_sfp_qsfp, 0, 5, 1),
+            'QSFPB_ResetL': (self._gpio_sfp_qsfp, 0, 7, 1),
+            'QSFPB_IntL': (self._gpio_sfp_qsfp, 0, 6, 1),
+            'QSFPB_LPMode': (self._gpio_sfp_qsfp, 1, 5, 1),
+            'QSFPB_ModSelL': (self._gpio_sfp_qsfp, 1, 4, 1),
+            'SFP_LOS': (self._gpio_power, 0, 7, 1),
+            'SFP_TxFault': (self._gpio_sfp_qsfp, 1, 0, 1),
+            'SFP_TxDisable': (self._gpio_sfp_qsfp, 1, 1, 1),
+            'SFP_RS0': (self._gpio_sfp_qsfp, 1, 2, 1),
+            'SFP_RS1': (self._gpio_sfp_qsfp, 1, 3, 1),
+            'SFP_ModSelL': (self._gpio_power, 1, 7, 1),
+            'FMCA_PG_M2C': (self._gpio_power, 0, 3, 1),
+            'FMCB_PG_M2C': (self._gpio_power, 1, 3, 1)
+        })
+
+        # -------------------
+        # QSFP EEPROMs
+        # -------------------
+
+        self._qsfpa = qsfp.QSFP(self.i2c, bus_name='QSFPA', gpio_prefix='QSFPA_', gpio=self._gpio, parent=self)
+        self._qsfpb = qsfp.QSFP(self.i2c, bus_name='QSFPB', gpio_prefix='QSFPB_', gpio=self._gpio, parent=self)
+
+        self.qsfp = Ccoll((self._qsfpa, self._qsfpb))
+        # self.logger.info(' Instantiating I2C temperature sensors')
+        # self._tmp_power = tmp100.tmp100(self.i2c, self._TMP_POWER_I2C_ADDR, 'GPIO')
+        # self._tmp_phy = tmp100.tmp100(self.i2c, self._TMP_PHY_I2C_ADDR, 'GPIO')
+        # self._tmp_fpga = tmp100.tmp100(self.i2c, self._TMP_FPGA_I2C_ADDR, 'GPIO')
+        # self._tmp_arm = tmp100.tmp100(self.i2c, self._TMP_ARM_I2C_ADDR, 'GPIO')
+
+        # self.logger.info(' Instantiating I2C current/power monitors')
+        # self._power_ice_3v3 = ina230.ina230(self.i2c, self._POWER_ICE3V3_I2C_ADDR, 'SMPS')
+        self._power_ice_12v0 = ina230.ina230(self.i2c, self._POWER_ICE12V0_I2C_ADDR, 'SMPS')
+        # self._power_ice_5v0 = ina230.ina230(self.i2c, self._POWER_ICE5V0_I2C_ADDR, 'SMPS')
+        # self._power_ice_1v0_gtx = ina230.ina230(self.i2c, self._POWER_ICE1V0GTX_I2C_ADDR, 'SMPS')
+        # self._power_ice_vadj = ina230.ina230(self.i2c, self._POWER_ICEVADJ_I2C_ADDR, 'SMPS')
+        # self._power_ice_1v2 = ina230.ina230(self.i2c, self._POWER_ICE1V2_I2C_ADDR, 'SMPS')
+        # self._power_ice_1v5 = ina230.ina230(self.i2c, self._POWER_ICE1V5_I2C_ADDR, 'SMPS')
+        self._power_ice_1v0 = ina230.ina230(self.i2c, self._POWER_ICE1V0_I2C_ADDR, 'SMPS')
+        # self._power_ice_1v8 = ina230.ina230(self.i2c, self._POWER_ICE1V8_I2C_ADDR, 'SMPS')
+
+        # self._power_fmca_12v0 = ina230.ina230(self.i2c, self._POWER_FMCA12V0_I2C_ADDR, 'SMPS')
+        # self._power_fmca_3v3 = ina230.ina230(self.i2c, self._POWER_FMCA3V3_I2C_ADDR, 'SMPS')
+        # self._power_fmca_vadj = ina230.ina230(self.i2c, self._POWER_FMCAVADJ_I2C_ADDR, 'SMPS')
+
+        # self._power_fmcb_12v0 = ina230.ina230(self.i2c, self._POWER_FMCB12V0_I2C_ADDR, 'SMPS')
+        # self._power_fmcb_3v3 = ina230.ina230(self.i2c, self._POWER_FMCB3V3_I2C_ADDR, 'SMPS')
+        # self._power_fmcb_vadj = ina230.ina230(self.i2c, self._POWER_FMCBVADJ_I2C_ADDR, 'SMPS')
+
+        # self.TEMPERATURE_SENSOR_TABLE = {
+        #     # sensor name: tmp object
+        #     'TEMP_POWER': self._tmp_power,
+        #     'TEMP_PHY': self._tmp_phy,
+        #     'TEMP_FPGA': self._tmp_fpga,
+        #     'TEMP_ARM': self._tmp_arm
+        # }
+
+        # self.POWER_SENSOR_TABLE = {
+        #     # sensor name : (ina230 object, output voltage(volts), rshunt(inductor) (mohm), typical current(amps), current tolerance (0<tol<1))
+        #     'ICE_3V3': (self._power_ice_3v3, 3., 2.36, 8., 0.5),         #SER1360-182L
+        #     'ICE_12V0': (self._power_ice_12v0, 12., 5.5, 3., 0.5),       #SER1360-602L
+        #     'ICE_5V0': (self._power_ice_5v0, 5., 2.36, 11., 0.5),        #SER1360-182L
+        #     'ICE_1V0_GTX': (self._power_ice_1v0_gtx, 1., 0.77, 16., 0.5),#SER1360-331L
+        #     'ICE_1V2': (self._power_ice_1v2, 1.2, 0.77, 8., 0.5),        #SER1360-651L
+        #     'ICE_1V5': (self._power_ice_1v5, 1.5, 2.36, 3., 0.5),        #SER1360-182L
+        #     'ICE_1V0': (self._power_ice_1v0, 1., 0.77, 16., 0.5),        #SER1360-331L
+        #     'ICE_1V8': (self._power_ice_1v8, 1.8, 5.5, 1., 0.5),         #SER1360-602L
+        #     'ICE_VADJ': (self._power_ice_vadj, 2.5, 2.36, 8., 0.5),
+        #     'FMCA_12V0': (self._power_fmca_12v0, 12., 5, 2., 0.5),
+        #     'FMCB_12V0': (self._power_fmcb_12v0, 12., 5, 2., 0.5),
+        #     'FMCA_3V3': (self._power_fmca_3v3, 3., 5, 5., 0.5),
+        #     'FMCB_3V3': (self._power_fmcb_3v3, 3., 5, 5., 0.5),
+        #     'FMCA_VADJ': (self._power_fmca_vadj, 2.5, 5, 1., 0.5),
+        #     'FMCB_VADJ': (self._power_fmcb_vadj, 2.5, 5, 1., 0.5)
+        # }
+
+
+    async def close_hw_async(self):
+        self.logger.debug('Closing Iceboard hardware')
+        if self.i2c:
+            self.i2c = None
 
     # **********************************
     # Local methods
@@ -685,12 +944,43 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         else:
             return None
 
-    # Motherboard-related methods
     # ---------------------------
-    # *** JFC: method rename
+    # Motherboard EEPROM
+    # ---------------------------
     async def _write_motherboard_spi_eeprom_base64(self, *args, **kwargs):
         result = await self._tuber_motherboard_eeprom_write_base64_async(*args, **kwargs)
         return(result)
+
+    def read_motherboard_eeprom(self, addr, length, **kwargs):
+        """ Reads the Motherboard's EEPROM through the I2C interface object (via the FPGA)
+
+        Parameters:
+
+            addr (int): start memory address
+
+            length (int): number of bytes to read
+
+            kwargs: additional parameters passed to the self.i2c object
+
+        Returns:
+
+            Read data as bytes
+
+        """
+        return self._i2c_mb_eeprom_data.read(addr, length, **kwargs)
+
+    def write_motherboard_eeprom(self, addr, data, **kwargs):
+        """ Writes the Motherboard's EEPROM through the I2C interface object (via the FPGA)
+
+        Parameters:
+
+            addr (int): start memory address
+
+            data (bytes): daat to write
+
+            kwargs: additional parameters passed to the self.i2c object
+        """
+        return self._i2c_mb_eeprom_data.write(addr, data, **kwargs)
 
     # def get_motherboard_serial(self):
     #     """ Read the motherboard serial number from the IPMI data. """
@@ -700,6 +990,270 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
     # *** JFC: We now have the equivalent ARM method. Will delete this when we
     #     confirm it behaves the same.
 
+    # def get_serial_number(self):
+    #     """
+    #     Returns the board's serial number. which is actually the FPGA's
+    #     serial number.
+    #     """
+    #     return self.get_serial_number(); # tentative code
+
+    # -------------------------
+    # Motherboard IO Expanders
+    # -------------------------
+
+    def _init_gpio_expanders(self):
+        """
+        Initializes GPIO expanders using the I2C Interface object.
+
+        This is normally done at boot time by the ARM processor and does not
+        need to be redone. This method can be usedif the
+        Iceboard is operated without the ARM processor support.
+
+        History
+
+        140304 JM: created. todo: make more flexible for I/O pin configuration
+        of each expander. Need to confirm I/O pin config with JF
+        """
+        self._gpio_power.init(cfg0_def=0b10101000,  # 1 = input, 0=output
+                              cfg1_def=0b10101000,
+                              out0_default=None,
+                              out1_default=None,
+                              bken0=0b00,  # We need to disable 100K internal
+                              #       pull-ups/down so the PG_M2C can work
+                              #       properly (there is another external 100K
+                              #       pull up to VCC3V3 which pulls to GND
+                              #       when there is no power. Pulling up
+                              #       doesn't work when board is off , pull
+                              #       down doesn't work when board is ON)
+                              bken1=0b00,
+                              pupd0=0b00001000,  # don't care, pullups not enabled
+                              pupd1=0b00001000
+                              )
+        self._gpio_sw_leds.init(cfg1_def=0b00000000)
+        self._gpio_arm_phy_leds.init(cfg0_def=0b11110000)
+        self._gpio_sfp_qsfp.init(cfg0_def=0b01100011, cfg1_def=0b11001111)
+
+
+
+    # -------------------------
+    # Motherboard LEDs
+    # -------------------------
+    async def set_led(self, led_name, state):
+        """
+        Set the LED(s) specified in 'led_name' to the the 'state' using the I2C Interface.
+
+        Parameters:
+
+            led_name (str or list of str): Name of LED to set. Can be a list of LED names found in
+                gpio object.
+
+            state (bool or list of bool): State to set the led in . Can be a single boolean value, or
+                an array with the same length as 'led_name'
+        """
+        if isinstance(led_name, str):
+            led_name = [led_name]
+
+        if isinstance(state, (bool, int)):
+            state = [state] * len(led_name)
+
+        await asyncio.sleep(0)
+        for (led, led_state) in zip(led_name, state):
+            self._gpio.write(led, led_state)
+
+    async def get_led(self, led_name):
+        """
+        Returns the status of specified LED(s) in a dictionary using the I2C Interface.
+
+        Parameters:
+
+            led_name (str or list of str): Name of LED to set. Can be a list of LED names found in
+                gpio object.
+
+        Returns:
+            dict in the format {led_name:led_status} describing the LED state for each requested LED name.
+        """
+        led_status = {}
+        if isinstance(led_name, str):
+            led_name = [led_name]
+
+        for led in led_name:
+            led_status[led] = self._gpio.read(led)
+
+        return(led_status)
+
+    # -------------------------
+    # Motherboard Clock source
+    # -------------------------
+
+    async def get_iceboard_clock_source_async(self):
+        """ Returns the clock source curently used by the IceBoard using Tuber"""
+        return await self.tuber_get_clock_source_async()
+
+    get_iceboard_clock_source_sync = async_to_sync(get_iceboard_clock_source_async)
+
+
+    # -------------------------
+    # Motherboard Temperatures
+    # -------------------------
+
+
+    def get_motherboard_temperature(self, sensor):
+        """ Get the motherboard temperature sensor value using Tuber (sychrounous wrapper).
+        """
+        return run_async(self.tuber_get_motherboard_temperature_async(sensor))
+
+
+    # def _init_temperature_sensors(self, temperature_sensor_name=None, bit_resolution=12):
+    #     """ Initialize temperature sensors.
+
+    #     'temperature_sensor_name' can be a list of temperature sensor names
+    #     found in TEMPERATURE_SENSOR_TABLE. If temperature_sensor_name=None,
+    #     all sensors in the list are initialized.
+
+    #     'bit_resolution' is the number of bits of resolution of the
+    #     temperature register. It can take values 9, 10, 11, 12
+
+    #     History:
+    #     140318 JM: created
+    #     """
+    #     if bit_resolution<9 or bit_resolution>12:
+    #         raise self.ValueError('Bit_resolution is out of range. Must be 9,10,11 or 12 bits')
+    #     else:
+    #         if temperature_sensor_name == None:
+    #             temperature_sensor_name = self.TEMPERATURE_SENSOR_TABLE.keys()
+    #         elif isinstance(temperature_sensor_name, str):
+    #             temperature_sensor_name = [temperature_sensor_name]
+
+    #         for temp_sensor in temperature_sensor_name:
+    #             if temp_sensor not in self.TEMPERATURE_SENSOR_TABLE:
+    #                 raise ValueError(
+    #                      'Invalid temperature sensor name. Valid names are %s'
+    #                       % ','.join(self.TEMPERATURE_SENSOR_TABLE.keys()))
+    #             else:
+    #                 tmp_object = self.TEMPERATURE_SENSOR_TABLE[temp_sensor]
+    #                 try:
+    #                     tmp_object.init(bit_resolution)
+    #                 except:
+    #                     self.logger.info(
+    #                         '%r: Temperature sensor %s failed to initialize.'
+    #                          % (self, temp_sensor))
+
+    # def get_temperature(self, temperature_sensor_name=None):
+    #     """
+    #     Returns the current temperature measured on the specified
+    #     sensor(s).  NOTE: some temperatures are taken from the FPGA
+    #     inetrnal SYSTEM monitor.
+
+    #     initializes temperature expanders
+    #     'temperature_sensor_name' can be a list of temperature sensor
+    #     names found in TEMPERATURE_SENSOR_TABLE
+
+    #     Returns a dictionary with keys corresponding to the temperature_sensor_name names.
+
+    #     History:
+    #     140318 JM: created
+    #     """
+    #     temperature_dict = {}
+    #     if temperature_sensor_name == None:
+    #         temperature_sensor_name = self.TEMPERATURE_SENSOR_TABLE.keys()
+    #     elif isinstance(temperature_sensor_name, str):
+    #         temperature_sensor_name = [temperature_sensor_name]
+
+    #     for temp_sensor in temperature_sensor_name:
+    #         if temp_sensor not in self.TEMPERATURE_SENSOR_TABLE:
+    #             raise ValueError('Invalid temperature sensor name')
+    #         else:
+    #             tmp_object = self.TEMPERATURE_SENSOR_TABLE[temp_sensor]
+    #             temperature_dict[temp_sensor] = tmp_object.get_temperature()
+
+    #     return temperature_dict
+
+    # -----------------------------------------------
+    # Motherboard Voltage, Current and Power sensors
+    # -----------------------------------------------
+
+
+    # def _init_power_sensors(self, power_sensor_name=None):
+    #     """
+    #     initializes current/power monitors
+    #
+    #     'power_sensor_name' can be a list of current/power monitor names
+    #     found in POWER_SENSOR_TABLE. If power_sensor_name=None, all sensors
+    #     in POWER_SENSOR_TABLE are initialized.
+
+    #     History:
+    #     140320 JM: created
+    #     """
+    #     if power_sensor_name == None:
+    #         power_sensor_name = self.POWER_SENSOR_TABLE.keys()
+    #     elif isinstance(power_sensor_name, str):
+    #         power_sensor_name = [power_sensor_name]
+
+    #     for power_sensor in power_sensor_name:
+    #         if power_sensor not in self.POWER_SENSOR_TABLE:
+    #            raise ValueError(
+    #                'Invalid power sensor name. Valid names are %s'
+    #                % ','.join(self.POWER_SENSOR_TABLE.keys()))
+    #         else:
+    #             power_sensor_object, v_out, r_shunt, i_typ, tol_i = self.POWER_SENSOR_TABLE[power_sensor]
+    #             try:
+    #                 power_sensor_object.init(v_out=v_out, r_shunt=r_shunt, i_typ=i_typ, tol_i=tol_i)
+    #             except:
+    #                 self.logger.info('%r: Power sensor %s failed to initialize.' % (self, power_sensor))
+
+
+    # def get_power(self, power_sensor_name=None):
+    #     """
+    #     Returns the voltage, current and power of the power monitoring system.
+    #     Includes power measured internally from  the FPGA's system monitor.
+    #     Multiple targets can be specified.
+
+    #     Arguments:
+
+    #        'power_sensor_name' can be a list of temperature sensor
+    #         names found in POWER_SENSOR_TABLE. If
+    #         power_sensor_name=None, measurements of all sensors in
+    #         TEMPERATURE_SENSOR_TABLE are returned.
+
+    #     Returns dictionary with keys corresponding to the
+    #     power_sensor_name names. The respective value is a (bus
+    #     voltage (V), shunt voltage (V), current (A), power (W)) tuple.
+
+    #     History:
+    #     140320 JM: created
+    #     """
+    #     power_dict = {}
+    #     if power_sensor_name == None:
+    #         power_sensor_name = self.POWER_SENSOR_TABLE.keys()
+    #     elif isinstance(power_sensor_name, str):
+    #         power_sensor_name = [power_sensor_name]
+
+    #     for power_sensor in power_sensor_name:
+    #         if power_sensor not in self.POWER_SENSOR_TABLE:
+    #             raise ValueError(
+    #                    'Invalid power sensor name. Valid names are %s.'
+    #                    % ','.join(self.POWER_SENSOR_TABLE.keys()))
+    #         else:
+    #             power_sensor_object = self.POWER_SENSOR_TABLE[power_sensor][0]
+
+    #             try:
+    #                 bus_voltage = power_sensor_object.get_bus_voltage()
+    #                 shunt_voltage = power_sensor_object.get_shunt_voltage()
+    #                 current = power_sensor_object.get_current()
+    #                 power =  power_sensor_object.get_power()
+    #             except:
+    #                 bus_voltage = None
+    #                 shunt_voltage = None
+    #                 current = None
+    #                 power = None
+    #             power_dict[power_sensor]=(bus_voltage, shunt_voltage, current, power)
+
+    #     return power_dict
+
+
+
+
+    # -------------------------
     # Mezzanine-related methods
     # -------------------------
 
@@ -709,15 +1263,87 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         data = await self._tuber_mezzanine_eeprom_read_base64_async(mezzanine)  # returns a str
         return base64.decodebytes(data.encode())  # encode the str into bytes before calling base64.decodebytes()
 
-    async def get_iceboard_clock_source_async(self):
-        return await self.tuber_get_clock_source_async()
 
-    get_iceboard_clock_source_sync = async_to_sync(get_iceboard_clock_source_async)
-
-    def get_motherboard_temperature(self, sensor):
-        """ Synchronous wrapper to return motherboard temperature sensor value.
+    def read_mezzanine_eeprom(self, mezzanine, addr, length, **kwargs):
         """
-        return run_async(self.tuber_get_motherboard_temperature_async(sensor))
+        Reads the mezzanine EEPROM using the I2CInterface object.
+
+        Return: bytes
+        """
+        eeprom_object = self._FMC_EEPROM_TABLE[mezzanine]
+        return eeprom_object.read(addr, length, **kwargs)
+
+    def write_mezzanine_eeprom(self, mezzanine, addr, data, **kwargs):
+        eeprom_object = self._FMC_EEPROM_TABLE[mezzanine]
+        return eeprom_object.write(addr, data, **kwargs)
+
+    async def set_mezzanine_power_async(self, fmc_number=list(range(NUMBER_OF_FMC_SLOTS)), state=[True]*NUMBER_OF_FMC_SLOTS):
+        """
+        Enables or disables power of the specified FMC slot using the I2C Interface object (via the FPGA) .
+
+        This method differs from the Tuber equivalent as it does power sequencing to prevent the FMC board switchers to
+        create too much of a current spike when enabled.
+
+        History:
+            140223 JFC: Modified to use register names.
+
+            140304 JM: Modified it so a state for every fmc can be specified.
+                For now, state is either a boolean or a list of booleans with
+                the same length as 'fmc_number' Todo: 140223 JFC: used masked
+                writes to avoid side effects.
+        """
+        if isinstance(fmc_number, int):
+            fmc_number = [fmc_number]
+
+        if isinstance(state, (bool, int)):
+            state = [state] * len(fmc_number)
+
+        for (fmc, fmc_state) in zip(fmc_number, state):
+            if fmc not in list(range(self.NUMBER_OF_FMC_SLOTS)):
+                raise ValueError('FMC number %i is not a valid value' % fmc)
+            else:
+                # out_reg = 'OUT%i' % fmc # sets the register name to access based on the FMC number
+                # cfg_reg = 'CFG%i' % fmc
+                # Turn off all power signals before we enable the GPIO outputs
+                # self._gpio_power.write(out_reg, 0b00000000)
+                # self._gpio_power.write(cfg_reg, 0b10101000)
+
+                # Bits are:
+                #  7: SFP_LOS/SFM_ModPrsn
+                #  6: FMC_CLK_DIR
+                #  5: FMC_PRSNT
+                #  4: FMC_PG_C2M
+                #  3: FMC_PG_M2C
+                #  2: FMC_EN_VADJ
+                #  1: FMC_EN_3V3
+                #  0: FMC_EN_12V
+                if fmc_state:
+                    # Turn on 12V, 3.3V and VADJ power to board
+                    self._gpio_power.write(fmc, 0b00000010, mask=0b00000010)
+                    # self._gpio_power.write(fmc, 0b00000110, mask=0b00000110)
+                    await asyncio.sleep(0.010)
+                    # Turn on 12V, 3.3V and VADJ power to board
+                    self._gpio_power.write(fmc, 0b00000100, mask=0b00000100)
+                    await asyncio.sleep(0.100)
+                    # Turn on 12V, 3.3V and VADJ power to board
+                    self._gpio_power.write(fmc, 0b00000001, mask=0b00000001)
+                    await asyncio.sleep(0.050)
+                    # Set Power Good (start switcher) and CLKDIR to 1
+                    self._gpio_power.write(fmc, 0b01010000, mask=0b01010000)
+                    await asyncio.sleep(0.050)
+                else:
+                    # Stop mezzanine switcher (PG=0)
+                    self._gpio_power.write(fmc, 0b00000000, mask=0b01010000)
+                    await asyncio.sleep(0.030)
+                    # Turn off 12V
+                    self._gpio_power.write(fmc, 0b00000000, mask=0b00000001)
+                    await asyncio.sleep(0.030)
+                    # Turn off rail
+                    self._gpio_power.write(fmc, 0b00000000, mask=0b00000010)
+                    await asyncio.sleep(0.030)
+                    # Turn off rail
+                    self._gpio_power.write(fmc, 0b00000000, mask=0b00000100)
+                    await asyncio.sleep(0.100)
 
     # ---------------------
     # Tuber-related methods
@@ -763,9 +1389,9 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
                 values = '= %s' % prop_properties
             print('%-30s: %s' % (prop_name, values))
 
-    # ------------------
-    # ARM shell commands
-    # ------------------
+    # ---------------------------
+    # ARM Linux shell commands
+    # ---------------------------
 
     async def _call_subprocess(self, cmd):
         """
@@ -779,7 +1405,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         while p.poll() is None:
             await asyncio.sleep(0)
         if p.returncode:
-            msg = ''.join(p.stderr.readlines())
+            msg = b''.join(p.stderr.readlines())
             raise RuntimeError(
                 f"The command '{cmd}' returned with the error code {p.returncode}. "
                 f"stderr is displayed below:\n {msg}")
@@ -824,7 +1450,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         method won't work because this corrupts the ARMs filesystem (did we
         say this was a bad hack?).
         """
-        image_header = '\xfa\xb8\x00\x10\x8e\xd0\xbc\x00'
+        image_header = b'\xfa\xb8\x00\x10\x8e\xd0\xbc\x00'
         with bz2.BZ2File(image_filename) as fh:
             data = fh.read(100)  # read a few bytes to make sure this is really a bz2 file
             if not data.startswith(image_header):
@@ -888,628 +1514,5 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         print('%r: Remounting the SD card file system as readonly' % self)
         await self.arm_exec('mount / -o remount,ro')
         return True
-
-########################################################################################################
-########################################################################################################
-########################################################################################################
-########################################################################################################
-########################################################################################################
-########################################################################################################
-########################################################################################################
-########################################################################################################
-########################################################################################################
-########################################################################################################
-
-
-class IceBoardHardware(object):
-    """
-    Provides access to the hardware of an IceBoard Rev2/Rev3, including:
-        - LED control
-        - GPIO input/output
-        - Temperature sensors
-        - Power monitoring for every rail (voltage,current)
-        - Motherboard EEPROM
-
-    This class implements these methods by issuring I2C commands
-    through the I2C interface provided either by the FPGA or by the
-    ARM.
-
-    Part or all of of functionnalities described in this class might
-    eventually be implemented in the ARM processor itself. In thise
-    case, these those will be available through the ARM's Tuber
-    interface.
-    """
-
-    # ------------------------------------
-    # Define hardware-specific constants
-    # ------------------------------------
-    NUMBER_OF_FMC_SLOTS = 2  # Indicates the number of FMC slots supported by this platform
-
-    # I2C switch addresses (visible on all buses on a specific port)
-    _FPGA_I2C_SWITCH_ADDR = 0b1110100  # 0x74
-    _ARM0_I2C_SWITCH_ADDR = 0b1110000  # 0x70
-    _ARM1_I2C_SWITCH_ADDR = 0b1110001  # 0x71
-    _ARM2_I2C_SWITCH_ADDR = 0b1110010  # 0x72
-    _ARM3_I2C_SWITCH_ADDR = 0b1110011  # 0x73
-
-    FPGA_I2C_BUS_LIST = {
-        # Bus name, (FPGA I2C port, I2C switch enable bit)
-        "FMC":   (0, 0),  # equivalent to FMCA. Included for backwards compatibility with single-FMC code
-        "FMCA":  (0, 0),
-        "FMCB":  (0, 1),
-        "QSFPA": (0, 2),
-        "QSFPB": (0, 3),
-        "SFP":   (0, 4),
-        "SMPS":  (0, 5),
-        "BP":    (0, 6),
-        "GPIO":  (0, 7)
-        }
-
-    # FMC EEPROM, on FMCA or FMCB
-    _FMC_EEPROM_ADDR = 0x50  # 0x50 (0x51 is also used for the 2nd page of large eeprom with address width > 16 bits).
-    _FMC_EEPROM_ADDR_WIDTH = 7  # FMC EEPROM internal addresses are 7 bits wide.
-    _FMC_EEPROM_PAGE_SIZE = 8  #
-
-    # Oversize , non-FMC-standard EEPROM found on some McGill Mezzanines
-
-    # FMC EEPROM internal addresses are is 17 bits wide. (2 bytes as data, 1 bit in lsb of I2C address)
-    _MCGILL_FMC_EEPROM_ADDR_WIDTH = 17
-    _MCGILL_FMC_EEPROM_PAGE_SIZE = 256  #
-
-    # Motherboard EEPROM
-    _MOTHERBOARD_EEPROM_DATA_ADDR = 0x57  #
-    _MOTHERBOARD_EEPROM_SERIAL_ADDR = 0x5F  #
-    # EEPROM internal addresses are is 17 bits wide. (2 bytes as data, 1 bit in lsb of I2C address)
-    _MOTHERBOARD_EEPROM_ADDR_WIDTH = 7
-    _MOTHERBOARD_EEPROM_PAGE_SIZE = 8  #
-
-    # IO Expanders, on GPIO bus
-    _GPIO_POWER_I2C_ADDR = 0b0100000  # 0x20
-    _GPIO_SFP_QSFP_I2C_ADDR = 0b0100001  # 0x21
-    _GPIO_SW_LEDS_ADDR = 0b0100010  # 0x22
-    _GPIO_ARM_PHY_LEDS_ADDR = 0b0100011  # 0x23
-
-    # # Temperature sensors, on GPIO bus
-    # _TMP_ARM_I2C_ADDR   = 0b1001010 #0x4A
-    # _TMP_PHY_I2C_ADDR   = 0b1001100 #0x4C
-    # _TMP_FPGA_I2C_ADDR  = 0b1001011 #0x4B
-    # _TMP_POWER_I2C_ADDR = 0b1001000 #0x48
-
-    # # Power monitors, on SMPS bus
-    # _POWER_ICEVADJ_I2C_ADDR   = 0b1000011 #0x43
-    _POWER_ICE12V0_I2C_ADDR = 0b1000111  # 0x47
-    # _POWER_ICE5V0_I2C_ADDR    = 0b1001000 #0x48
-    # _POWER_ICE3V3_I2C_ADDR    = 0b1001001 #0x49
-    # _POWER_ICE1V5_I2C_ADDR    = 0b1001100 #0x4C
-    # _POWER_ICE1V2_I2C_ADDR    = 0b1001101 #0x4D
-    _POWER_ICE1V0_I2C_ADDR = 0b1001110  # 0x4E
-    # _POWER_ICE1V8_I2C_ADDR    = 0b1001011 #0x4B
-    # _POWER_ICE1V0GTX_I2C_ADDR = 0b1001111 #0x4F
-
-    # _POWER_FMCA12V0_I2C_ADDR  = 0b1000000 #0x40
-    # _POWER_FMCA3V3_I2C_ADDR   = 0b1000001 #0x41
-    # _POWER_FMCAVADJ_I2C_ADDR  = 0b1000010 #0x42
-
-    # _POWER_FMCB12V0_I2C_ADDR  = 0b1000100 #0x44
-    # _POWER_FMCB3V3_I2C_ADDR   = 0b1000101 #0x45
-    # _POWER_FMCBVADJ_I2C_ADDR  = 0b1000110 #0x46
-
-    def __init__(self, iceboard):
-        """
-        Creates all the I2C objects needed to interface the hardware. In order
-        to do this, the following methods will be required from the iceboard
-        object:
-
-            - i2c_set_port(...) # Port number 0 (connected to the FPGA I2C switch) is used for all accesses
-            - i2c_write_read(...) # FPGA I2C engine
-
-        Those methods can be provided either by the ARM or the core FPGA firmware.
-
-        For FPGA-based I2C:
-            - fpga_core is not Null
-            - fpga_core provides the following methods
-        """
-
-        self._logger = logging.getLogger(__name__)
-        self._iceboard = iceboard
-
-    def __repr__(self):
-        return "%r.%s" % (self._iceboard, self.__class__.__name__)
-
-
-    async def open_async(self):
-        """ Initializing objects to access the Iceboard hardware
-        """
-        self._logger.debug('%r: Initializing Iceboard hardware' % self._iceboard)
-        self._i2c = self._iceboard.i2c
-        assert self._i2c, "I2C interface is not initialized"
-        self._logger.debug('%r: Instantiating Motherboard EEPROM managers' % self._iceboard)
-        self._motherboard_eeprom_data = eeprom.eeprom(
-            self._i2c, self._MOTHERBOARD_EEPROM_DATA_ADDR, 'GPIO',
-            self._MOTHERBOARD_EEPROM_ADDR_WIDTH,
-            self._MOTHERBOARD_EEPROM_PAGE_SIZE)
-        self._motherboard_eeprom_serial = eeprom.eeprom(
-            self._i2c, self._MOTHERBOARD_EEPROM_SERIAL_ADDR, 'GPIO',
-            self._MOTHERBOARD_EEPROM_ADDR_WIDTH,
-            self._MOTHERBOARD_EEPROM_PAGE_SIZE)
-
-        self._logger.debug('%r:  Instantiating FMC EEPROM managers' % self._iceboard)
-
-        # We check if the EEPROM has multiple pages, and if so, we *assume* that
-        # the EEPROM is a large (non-FMC compliant) EEPROM with 2-byte addresses.
-        # Otherwise we assume the EEPROM has a single byte of addressing.
-        #
-        # If the EEPROM is multipage but has a single address byte (4Kbit,
-        # 8kbit or 16kbit EEPROMs), then the EEPROM contents will be
-        # corrupted, even by read operations, because the second address byte
-        # will be interpreted as data to be written. It would be equally bad
-        # if there has another I2C device at the address following the EEPROM
-        # address.
-        if self._i2c.is_present(self._FMC_EEPROM_ADDR+1, bus_name='FMCA'):
-            self._logger.debug('%r: Detected multipage EEPROM on FMCA. Assuming >16-bit addressing.' % self._iceboard)
-            self._fmca_eeprom = eeprom.eeprom(
-                self._i2c, self._FMC_EEPROM_ADDR, 'FMCA',
-                self._MCGILL_FMC_EEPROM_ADDR_WIDTH,
-                self._MCGILL_FMC_EEPROM_PAGE_SIZE)
-        else:
-            self._fmca_eeprom = eeprom.eeprom(
-                self._i2c, self._FMC_EEPROM_ADDR, 'FMCA',
-                self._FMC_EEPROM_ADDR_WIDTH,
-                self._FMC_EEPROM_PAGE_SIZE)
-
-        if self._i2c.is_present(self._FMC_EEPROM_ADDR+1, bus_name='FMCB'):
-            self._logger.debug('%r: Detected multipage EEPROM on FMCB. Assuming >16-bit addressing.' % self._iceboard)
-            self._fmcb_eeprom = eeprom.eeprom(
-                self._i2c, self._FMC_EEPROM_ADDR, 'FMCB',
-                self._MCGILL_FMC_EEPROM_ADDR_WIDTH, self._MCGILL_FMC_EEPROM_PAGE_SIZE)
-        else:
-            self._fmcb_eeprom = eeprom.eeprom(
-                self._i2c, self._FMC_EEPROM_ADDR, 'FMCB',
-                self._FMC_EEPROM_ADDR_WIDTH, self._FMC_EEPROM_PAGE_SIZE)
-
-        self._FMC_EEPROM_TABLE = {
-            1: self._fmca_eeprom,
-            2: self._fmcb_eeprom
-            }
-
-        self._logger.debug('%r: Instantiating I2C GPIO manager' % self._iceboard)
-        self._gpio_power = pca9575.pca9575(self._i2c, self._GPIO_POWER_I2C_ADDR, 'GPIO')
-        self._gpio_sw_leds = pca9575.pca9575(self._i2c, self._GPIO_SW_LEDS_ADDR, 'GPIO')
-        self._gpio_arm_phy_leds = pca9575.pca9575(self._i2c, self._GPIO_ARM_PHY_LEDS_ADDR, 'GPIO')
-        self._gpio_sfp_qsfp = pca9575.pca9575(self._i2c, self._GPIO_SFP_QSFP_I2C_ADDR, 'GPIO')
-
-        self._gpio = gpio.GPIO(gpio_table={
-            # name : (expander object, byte, lsb bit number,  width)
-            'GP_SW1': (self._gpio_sw_leds, 0, 0, 1),
-            'GP_SW2': (self._gpio_sw_leds, 0, 1, 1),
-            'GP_SW3': (self._gpio_sw_leds, 0, 2, 1),
-            'GP_SW4': (self._gpio_sw_leds, 0, 3, 1),
-            'GP_SW5': (self._gpio_sw_leds, 0, 4, 1),
-            'GP_SW6': (self._gpio_sw_leds, 0, 5, 1),
-            'GP_SW7': (self._gpio_sw_leds, 0, 6, 1),
-            'GP_SW8': (self._gpio_sw_leds, 0, 7, 1),
-            'GP_LED1': (self._gpio_sw_leds, 1, 7, 1),
-            'GP_LED2': (self._gpio_sw_leds, 1, 6, 1),
-            'GP_LED3': (self._gpio_sw_leds, 1, 5, 1),
-            'GP_LED4': (self._gpio_sw_leds, 1, 4, 1),
-            'GP_LED5': (self._gpio_sw_leds, 1, 3, 1),
-            'GP_LED6': (self._gpio_sw_leds, 1, 2, 1),
-            'GP_LED7': (self._gpio_sw_leds, 1, 1, 1),
-            'GP_LED8': (self._gpio_sw_leds, 1, 0, 1),
-            'GP_LED9': (self._gpio_arm_phy_leds, 0, 0, 1),
-            'GP_LED10': (self._gpio_arm_phy_leds, 0, 1, 1),
-            'GP_LED11': (self._gpio_arm_phy_leds, 0, 2, 1),
-            'GP_LED12': (self._gpio_arm_phy_leds, 0, 3, 1),
-            'GTX1V8PowerFault': (self._gpio_arm_phy_leds, 0, 4, 1),
-            'PHYAPowerFault': (self._gpio_arm_phy_leds, 0, 5, 1),
-            'PHYBPowerFault': (self._gpio_arm_phy_leds, 0, 6, 1),
-            'ArmPowerFault': (self._gpio_arm_phy_leds, 0, 7, 1),
-            'BP_GPIO0': (self._gpio_arm_phy_leds, 1, 0, 1),
-            'BP_GPIO1': (self._gpio_arm_phy_leds, 1, 1, 1),
-            'BP_GPIO2': (self._gpio_arm_phy_leds, 1, 2, 1),
-            'BP_GPIO3': (self._gpio_arm_phy_leds, 1, 3, 1),
-            'BP_GPIO4': (self._gpio_arm_phy_leds, 1, 4, 1),
-            'BP_GPIO5': (self._gpio_arm_phy_leds, 1, 5, 1),
-            'BP_SLOT_NUMBER': (self._gpio_arm_phy_leds, 1, 0, 4),  # Also corresponds to BP_GPIO0-3
-            'QSFPA_ModPrsL': (self._gpio_sfp_qsfp, 0, 0, 1),
-            'QSFPA_ResetL': (self._gpio_sfp_qsfp, 0, 2, 1),
-            'QSFPA_IntL': (self._gpio_sfp_qsfp, 0, 1, 1),
-            'QSFPA_LPMode': (self._gpio_sfp_qsfp, 0, 4, 1),
-            'QSFPA_ModSelL': (self._gpio_sfp_qsfp, 0, 3, 1),
-            'QSFPB_ModPrsL': (self._gpio_sfp_qsfp, 0, 5, 1),
-            'QSFPB_ResetL': (self._gpio_sfp_qsfp, 0, 7, 1),
-            'QSFPB_IntL': (self._gpio_sfp_qsfp, 0, 6, 1),
-            'QSFPB_LPMode': (self._gpio_sfp_qsfp, 1, 5, 1),
-            'QSFPB_ModSelL': (self._gpio_sfp_qsfp, 1, 4, 1),
-            'SFP_LOS': (self._gpio_power, 0, 7, 1),
-            'SFP_TxFault': (self._gpio_sfp_qsfp, 1, 0, 1),
-            'SFP_TxDisable': (self._gpio_sfp_qsfp, 1, 1, 1),
-            'SFP_RS0': (self._gpio_sfp_qsfp, 1, 2, 1),
-            'SFP_RS1': (self._gpio_sfp_qsfp, 1, 3, 1),
-            'SFP_ModSelL': (self._gpio_power, 1, 7, 1),
-            'FMCA_PG_M2C': (self._gpio_power, 0, 3, 1),
-            'FMCB_PG_M2C': (self._gpio_power, 1, 3, 1)
-        })
-
-        self._qsfpa = qsfp.QSFP(self._i2c, bus_name='QSFPA', gpio_prefix='QSFPA_', gpio=self._gpio, parent=self)
-        self._qsfpb = qsfp.QSFP(self._i2c, bus_name='QSFPB', gpio_prefix='QSFPB_', gpio=self._gpio, parent=self)
-
-        self.qsfp = Ccoll((self._qsfpa, self._qsfpb))
-        # self._logger.info(' Instantiating I2C temperature sensors')
-        # self._tmp_power = tmp100.tmp100(self._i2c, self._TMP_POWER_I2C_ADDR, 'GPIO')
-        # self._tmp_phy = tmp100.tmp100(self._i2c, self._TMP_PHY_I2C_ADDR, 'GPIO')
-        # self._tmp_fpga = tmp100.tmp100(self._i2c, self._TMP_FPGA_I2C_ADDR, 'GPIO')
-        # self._tmp_arm = tmp100.tmp100(self._i2c, self._TMP_ARM_I2C_ADDR, 'GPIO')
-
-        # self._logger.info(' Instantiating I2C current/power monitors')
-        # self._power_ice_3v3 = ina230.ina230(self._i2c, self._POWER_ICE3V3_I2C_ADDR, 'SMPS')
-        self._power_ice_12v0 = ina230.ina230(self._i2c, self._POWER_ICE12V0_I2C_ADDR, 'SMPS')
-        # self._power_ice_5v0 = ina230.ina230(self._i2c, self._POWER_ICE5V0_I2C_ADDR, 'SMPS')
-        # self._power_ice_1v0_gtx = ina230.ina230(self._i2c, self._POWER_ICE1V0GTX_I2C_ADDR, 'SMPS')
-        # self._power_ice_vadj = ina230.ina230(self._i2c, self._POWER_ICEVADJ_I2C_ADDR, 'SMPS')
-        # self._power_ice_1v2 = ina230.ina230(self._i2c, self._POWER_ICE1V2_I2C_ADDR, 'SMPS')
-        # self._power_ice_1v5 = ina230.ina230(self._i2c, self._POWER_ICE1V5_I2C_ADDR, 'SMPS')
-        self._power_ice_1v0 = ina230.ina230(self._i2c, self._POWER_ICE1V0_I2C_ADDR, 'SMPS')
-        # self._power_ice_1v8 = ina230.ina230(self._i2c, self._POWER_ICE1V8_I2C_ADDR, 'SMPS')
-
-        # self._power_fmca_12v0 = ina230.ina230(self._i2c, self._POWER_FMCA12V0_I2C_ADDR, 'SMPS')
-        # self._power_fmca_3v3 = ina230.ina230(self._i2c, self._POWER_FMCA3V3_I2C_ADDR, 'SMPS')
-        # self._power_fmca_vadj = ina230.ina230(self._i2c, self._POWER_FMCAVADJ_I2C_ADDR, 'SMPS')
-
-        # self._power_fmcb_12v0 = ina230.ina230(self._i2c, self._POWER_FMCB12V0_I2C_ADDR, 'SMPS')
-        # self._power_fmcb_3v3 = ina230.ina230(self._i2c, self._POWER_FMCB3V3_I2C_ADDR, 'SMPS')
-        # self._power_fmcb_vadj = ina230.ina230(self._i2c, self._POWER_FMCBVADJ_I2C_ADDR, 'SMPS')
-
-        # self.TEMPERATURE_SENSOR_TABLE = {
-        #     # sensor name: tmp object
-        #     'TEMP_POWER': self._tmp_power,
-        #     'TEMP_PHY': self._tmp_phy,
-        #     'TEMP_FPGA': self._tmp_fpga,
-        #     'TEMP_ARM': self._tmp_arm
-        # }
-
-        # self.POWER_SENSOR_TABLE = {
-        #     # sensor name : (ina230 object, output voltage(volts), rshunt(inductor) (mohm), typical current(amps), current tolerance (0<tol<1))
-        #     'ICE_3V3': (self._power_ice_3v3, 3., 2.36, 8., 0.5),         #SER1360-182L
-        #     'ICE_12V0': (self._power_ice_12v0, 12., 5.5, 3., 0.5),       #SER1360-602L
-        #     'ICE_5V0': (self._power_ice_5v0, 5., 2.36, 11., 0.5),        #SER1360-182L
-        #     'ICE_1V0_GTX': (self._power_ice_1v0_gtx, 1., 0.77, 16., 0.5),#SER1360-331L
-        #     'ICE_1V2': (self._power_ice_1v2, 1.2, 0.77, 8., 0.5),        #SER1360-651L
-        #     'ICE_1V5': (self._power_ice_1v5, 1.5, 2.36, 3., 0.5),        #SER1360-182L
-        #     'ICE_1V0': (self._power_ice_1v0, 1., 0.77, 16., 0.5),        #SER1360-331L
-        #     'ICE_1V8': (self._power_ice_1v8, 1.8, 5.5, 1., 0.5),         #SER1360-602L
-        #     'ICE_VADJ': (self._power_ice_vadj, 2.5, 2.36, 8., 0.5),
-        #     'FMCA_12V0': (self._power_fmca_12v0, 12., 5, 2., 0.5),
-        #     'FMCB_12V0': (self._power_fmcb_12v0, 12., 5, 2., 0.5),
-        #     'FMCA_3V3': (self._power_fmca_3v3, 3., 5, 5., 0.5),
-        #     'FMCB_3V3': (self._power_fmcb_3v3, 3., 5, 5., 0.5),
-        #     'FMCA_VADJ': (self._power_fmca_vadj, 2.5, 5, 1., 0.5),
-        #     'FMCB_VADJ': (self._power_fmcb_vadj, 2.5, 5, 1., 0.5)
-        # }
-
-
-    def close(self):
-        self._logger.debug('Closing Iceboard hardware')
-        if self._i2c:
-            self._i2c = None
-
-    async def init_async(self):
-        pass
-
-
-    def _init_gpio_expanders(self):
-        """
-        Initializes GPIO expanders
-
-        History
-
-        140304 JM: created. todo: make more flexible for I/O pin configuration
-        of each expander. Need to confirm I/O pin config with JF
-        """
-        self._gpio_power.init(cfg0_def=0b10101000,  # 1 = input, 0=output
-                              cfg1_def=0b10101000,
-                              out0_default=None,
-                              out1_default=None,
-                              bken0=0b00,  # We need to disable 100K internal
-                              #       pull-ups/down so the PG_M2C can work
-                              #       properly (there is another external 100K
-                              #       pull up to VCC3V3 which pulls to GND
-                              #       when there is no power. Pulling up
-                              #       doesn't work when board is off , pull
-                              #       down doesn't work when board is ON)
-                              bken1=0b00,
-                              pupd0=0b00001000,  # don't care, pullups not enabled
-                              pupd1=0b00001000
-                              )
-        self._gpio_sw_leds.init(cfg1_def=0b00000000)
-        self._gpio_arm_phy_leds.init(cfg0_def=0b11110000)
-        self._gpio_sfp_qsfp.init(cfg0_def=0b01100011, cfg1_def=0b11001111)
-
-    def get_i2c_interface(self):
-        """
-        Returns an I2C interface object that provides a standardized bus selection.
-        """
-        return self._i2c
-
-    def get_number_of_fmc_slots(self):
-        return self.NUMBER_OF_FMC_SLOTS
-
-    # def get_slot_number(self):
-    #     return self._gpio.read('BP_SLOT_NUMBER') + 1
-
-    def read_motherboard_eeprom(self, addr, length, **kwargs):
-        return self._motherboard_eeprom_data.read(addr, length, **kwargs)
-
-    def write_motherboard_eeprom(self, addr, data, **kwargs):
-        return self._motherboard_eeprom_data.write(addr, data, **kwargs)
-
-    def read_mezzanine_eeprom(self, mezzanine, addr, length, **kwargs):
-        """
-        Reads the mezzanine EEPROM via the FPGA.
-
-        Return: bytes
-        """
-        eeprom_object = self._FMC_EEPROM_TABLE[mezzanine]
-        return eeprom_object.read(addr, length, **kwargs)
-
-    def write_mezzanine_eeprom(self, mezzanine, addr, data, **kwargs):
-        eeprom_object = self._FMC_EEPROM_TABLE[mezzanine]
-        return eeprom_object.write(addr, data, **kwargs)
-
-    async def set_mezzanine_power_async(self, fmc_number=list(range(NUMBER_OF_FMC_SLOTS)), state=[True]*NUMBER_OF_FMC_SLOTS):
-        """
-        Enables or disables power of the specified FMC slot.
-
-        Proper power sequencing is done to prevent the FMC board switchers to
-        create too much a current spike when enabled.
-
-        History:
-            140223 JFC: Modified to use register names.
-
-            140304 JM: Modified it so a state for every fmc can be specified.
-                For now, state is either a boolean or a list of booleans with
-                the same length as 'fmc_number' Todo: 140223 JFC: used masked
-                writes to avoid side effects.
-        """
-        if isinstance(fmc_number, int):
-            fmc_number = [fmc_number]
-
-        if isinstance(state, (bool, int)):
-            state = [state] * len(fmc_number)
-
-        for (fmc, fmc_state) in zip(fmc_number, state):
-            if fmc not in list(range(self.NUMBER_OF_FMC_SLOTS)):
-                raise ValueError('FMC number %i is not a valid value' % fmc)
-            else:
-                # out_reg = 'OUT%i' % fmc # sets the register name to access based on the FMC number
-                # cfg_reg = 'CFG%i' % fmc
-                # Turn off all power signals before we enable the GPIO outputs
-                # self._gpio_power.write(out_reg, 0b00000000)
-                # self._gpio_power.write(cfg_reg, 0b10101000)
-
-                # Bits are:
-                #  7: SFP_LOS/SFM_ModPrsn
-                #  6: FMC_CLK_DIR
-                #  5: FMC_PRSNT
-                #  4: FMC_PG_C2M
-                #  3: FMC_PG_M2C
-                #  2: FMC_EN_VADJ
-                #  1: FMC_EN_3V3
-                #  0: FMC_EN_12V
-                if fmc_state:
-                    # Turn on 12V, 3.3V and VADJ power to board
-                    self._gpio_power.write(fmc, 0b00000010, mask=0b00000010)
-                    # self._gpio_power.write(fmc, 0b00000110, mask=0b00000110)
-                    await asyncio.sleep(0.010)
-                    # Turn on 12V, 3.3V and VADJ power to board
-                    self._gpio_power.write(fmc, 0b00000100, mask=0b00000100)
-                    await asyncio.sleep(0.100)
-                    # Turn on 12V, 3.3V and VADJ power to board
-                    self._gpio_power.write(fmc, 0b00000001, mask=0b00000001)
-                    await asyncio.sleep(0.050)
-                    # Set Power Good (start switcher) and CLKDIR to 1
-                    self._gpio_power.write(fmc, 0b01010000, mask=0b01010000)
-                    await asyncio.sleep(0.050)
-                else:
-                    # Stop mezzanine switcher (PG=0)
-                    self._gpio_power.write(fmc, 0b00000000, mask=0b01010000)
-                    await asyncio.sleep(0.030)
-                    # Turn off 12V
-                    self._gpio_power.write(fmc, 0b00000000, mask=0b00000001)
-                    await asyncio.sleep(0.030)
-                    # Turn off rail
-                    self._gpio_power.write(fmc, 0b00000000, mask=0b00000010)
-                    await asyncio.sleep(0.030)
-                    # Turn off rail
-                    self._gpio_power.write(fmc, 0b00000000, mask=0b00000100)
-                    await asyncio.sleep(0.100)
-
-    async def set_led(self, led_name, state):
-        """
-        Set the LED(s) specified in 'led_name' to the the 'state'.
-        'led_name' can be a list of LED names found in
-        gpio object.  'state' can be a single boolean value, or
-        an array with the same length as 'led_name'
-        """
-        if isinstance(led_name, str):
-            led_name = [led_name]
-
-        if isinstance(state, (bool, int)):
-            state = [state] * len(led_name)
-
-        await asyncio.sleep(0)
-        for (led, led_state) in zip(led_name, state):
-            self._gpio.write(led, led_state)
-
-    async def get_led(self, led_name):
-        """
-        Returns the status of specified LED(s) in a dictionary
-        led_status where each key is a led_name and the respective value
-        is the led status.
-        """
-        led_status = {}
-        if isinstance(led_name, str):
-            led_name = [led_name]
-
-        for led in led_name:
-            led_status[led] = self._gpio.read(led)
-
-        return(led_status)
-
-    # def _init_temperature_sensors(self, temperature_sensor_name=None, bit_resolution=12):
-    #     """ Initialize temperature sensors.
-
-    #     'temperature_sensor_name' can be a list of temperature sensor names
-    #     found in TEMPERATURE_SENSOR_TABLE. If temperature_sensor_name=None,
-    #     all sensors in the list are initialized.
-
-    #     'bit_resolution' is the number of bits of resolution of the
-    #     temperature register. It can take values 9, 10, 11, 12
-
-    #     History:
-    #     140318 JM: created
-    #     """
-    #     if bit_resolution<9 or bit_resolution>12:
-    #         raise self.ValueError('Bit_resolution is out of range. Must be 9,10,11 or 12 bits')
-    #     else:
-    #         if temperature_sensor_name == None:
-    #             temperature_sensor_name = self.TEMPERATURE_SENSOR_TABLE.keys()
-    #         elif isinstance(temperature_sensor_name, str):
-    #             temperature_sensor_name = [temperature_sensor_name]
-
-    #         for temp_sensor in temperature_sensor_name:
-    #             if temp_sensor not in self.TEMPERATURE_SENSOR_TABLE:
-    #                 raise ValueError(
-    #                      'Invalid temperature sensor name. Valid names are %s'
-    #                       % ','.join(self.TEMPERATURE_SENSOR_TABLE.keys()))
-    #             else:
-    #                 tmp_object = self.TEMPERATURE_SENSOR_TABLE[temp_sensor]
-    #                 try:
-    #                     tmp_object.init(bit_resolution)
-    #                 except:
-    #                     self._logger.info(
-    #                         '%r: Temperature sensor %s failed to initialize.'
-    #                          % (self._iceboard, temp_sensor))
-
-    # def _init_power_sensors(self, power_sensor_name=None):
-    #     """
-    #     initializes current/power monitors
-    #
-    #     'power_sensor_name' can be a list of current/power monitor names
-    #     found in POWER_SENSOR_TABLE. If power_sensor_name=None, all sensors
-    #     in POWER_SENSOR_TABLE are initialized.
-
-    #     History:
-    #     140320 JM: created
-    #     """
-    #     if power_sensor_name == None:
-    #         power_sensor_name = self.POWER_SENSOR_TABLE.keys()
-    #     elif isinstance(power_sensor_name, str):
-    #         power_sensor_name = [power_sensor_name]
-
-    #     for power_sensor in power_sensor_name:
-    #         if power_sensor not in self.POWER_SENSOR_TABLE:
-    #            raise ValueError(
-    #                'Invalid power sensor name. Valid names are %s'
-    #                % ','.join(self.POWER_SENSOR_TABLE.keys()))
-    #         else:
-    #             power_sensor_object, v_out, r_shunt, i_typ, tol_i = self.POWER_SENSOR_TABLE[power_sensor]
-    #             try:
-    #                 power_sensor_object.init(v_out=v_out, r_shunt=r_shunt, i_typ=i_typ, tol_i=tol_i)
-    #             except:
-    #                 self._logger.info('%r: Power sensor %s failed to initialize.' % (self._iceboard, power_sensor))
-
-    # def get_temperature(self, temperature_sensor_name=None):
-    #     """
-    #     Returns the current temperature measured on the specified
-    #     sensor(s).  NOTE: some temperatures are taken from the FPGA
-    #     inetrnal SYSTEM monitor.
-
-    #     initializes temperature expanders
-    #     'temperature_sensor_name' can be a list of temperature sensor
-    #     names found in TEMPERATURE_SENSOR_TABLE
-
-    #     Returns a dictionary with keys corresponding to the temperature_sensor_name names.
-
-    #     History:
-    #     140318 JM: created
-    #     """
-    #     temperature_dict = {}
-    #     if temperature_sensor_name == None:
-    #         temperature_sensor_name = self.TEMPERATURE_SENSOR_TABLE.keys()
-    #     elif isinstance(temperature_sensor_name, str):
-    #         temperature_sensor_name = [temperature_sensor_name]
-
-    #     for temp_sensor in temperature_sensor_name:
-    #         if temp_sensor not in self.TEMPERATURE_SENSOR_TABLE:
-    #             raise ValueError('Invalid temperature sensor name')
-    #         else:
-    #             tmp_object = self.TEMPERATURE_SENSOR_TABLE[temp_sensor]
-    #             temperature_dict[temp_sensor] = tmp_object.get_temperature()
-
-    #     return temperature_dict
-
-    # def get_power(self, power_sensor_name=None):
-    #     """
-    #     Returns the voltage, current and power of the power monitoring system.
-    #     Includes power measured internally from  the FPGA's system monitor.
-    #     Multiple targets can be specified.
-
-    #     Arguments:
-
-    #        'power_sensor_name' can be a list of temperature sensor
-    #         names found in POWER_SENSOR_TABLE. If
-    #         power_sensor_name=None, measurements of all sensors in
-    #         TEMPERATURE_SENSOR_TABLE are returned.
-
-    #     Returns dictionary with keys corresponding to the
-    #     power_sensor_name names. The respective value is a (bus
-    #     voltage (V), shunt voltage (V), current (A), power (W)) tuple.
-
-    #     History:
-    #     140320 JM: created
-    #     """
-    #     power_dict = {}
-    #     if power_sensor_name == None:
-    #         power_sensor_name = self.POWER_SENSOR_TABLE.keys()
-    #     elif isinstance(power_sensor_name, str):
-    #         power_sensor_name = [power_sensor_name]
-
-    #     for power_sensor in power_sensor_name:
-    #         if power_sensor not in self.POWER_SENSOR_TABLE:
-    #             raise ValueError(
-    #                    'Invalid power sensor name. Valid names are %s.'
-    #                    % ','.join(self.POWER_SENSOR_TABLE.keys()))
-    #         else:
-    #             power_sensor_object = self.POWER_SENSOR_TABLE[power_sensor][0]
-
-    #             try:
-    #                 bus_voltage = power_sensor_object.get_bus_voltage()
-    #                 shunt_voltage = power_sensor_object.get_shunt_voltage()
-    #                 current = power_sensor_object.get_current()
-    #                 power =  power_sensor_object.get_power()
-    #             except:
-    #                 bus_voltage = None
-    #                 shunt_voltage = None
-    #                 current = None
-    #                 power = None
-    #             power_dict[power_sensor]=(bus_voltage, shunt_voltage, current, power)
-
-    #     return power_dict
-
-    # def get_serial_number(self):
-    #     """
-    #     Returns the board's serial number. which is actually the FPGA's
-    #     serial number.
-    #     """
-    #     return self._iceboard.get_serial_number(); # tentative code
-
-    # def get_info(self):
-    #     """Loads the info data on the motherboard"""
-    #     pass
-
-    # def status(self):
-    #     """Displays the status of the motherboard"""
-
 
 # vim: sts=4 ts=4 sw=4 tw=80 smarttab expandtab
