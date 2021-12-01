@@ -10,20 +10,28 @@ from .crate import Crate
 
 class Motherboard(HardwareMap):
     """
-    Defines a generic motherboard (Iceboard or others) with hardware map
-    management methods. A motherboard is uniquely identified by its model
+    Hardware base class that defines a generic motherboard (Iceboard or others) with hardware map
+    management methods. All motherboards across all Motherboard subclasses are uniquely identified by its model
     number and serial number, and has a network hostname.
 
-    A motherboard can optinally be connected to one crate and have multiple mezzanines.
+    A motherboard can optinally be connected to one crate and have multiple mezzanines. This class defines the HardWare
+    map methods that  create and update Motherboooards while ensuring related Crate and Mezzanines are kept up to date.
+
+    Since this class inherits directly from HardwareMap, it is treated as a hardware base class and will create a
+    class and instance registry to track all subsequent Motherboard subclasses.
+
+    A Motherboard class is a generic class that has no part number. It cannot be instantiated with only a serial number,
+    but it *can*  be instantiated with a hostname since that uniquely identifies it. The application can resolve and
+    upadte the model and serial number later with update_instance().
     """
 
     # Define the class and instance registry that will be used by HardwareMap
     # to track all Motherboard subclass instances. This should *not* be
     # defined in further subclasses.
-    _class_registry = {}  # {part_number:class}
-    _instance_registry = {}  # {(model,serial):instance}
+    # _class_registry = {}  # {part_number:class}
+    # _instance_registry = {}  # {(model,serial):instance}
 
-    # Define the part number associated with this class. This *must* be defined in subclasses.
+    # This is a generic class and has no part number. This *must* be defined in subclasses.
     part_number = None  # shall be a string in real classes
     _ipmi_part_numbers = None  # list of strings listing all models by which the board can be self-identified (via EEPROM, IPMI, mDNS etc)
 
@@ -32,9 +40,9 @@ class Motherboard(HardwareMap):
     port = None  # port number on which to access the platform `hostname`. Must be defined by subclasses. Is used by fpga_master.
 
     def __init__(self, hostname=None, serial=None, slot=None, subarray=None, **kwargs):
-        """ Create or update an Motherboard object.
+        """ Create a Motherboard object.
 
-        Do not instantiate hardware map objects directly. Instead use  the
+        Do not instantiate hardware map objects directly. Instead use the
         get_unique_instance(...) class method to ensure that objects with
         matching hostname or serial numbers will be reused if available.
 
@@ -76,11 +84,11 @@ class Motherboard(HardwareMap):
               methods provided by the motherboard.
 
             - set_fpga_bitstream_async(): programs the FPGA with the target
-              firmware. The Firmware instance is created, but is not yet
+              firmware. The Firmware instance is created in self.fpga, but is not yet
               usable.
 
             - open_fpga_async() establishes the communication link with the
-              FPGA.
+              FPGA, crete the objects that handle the firmware, and provides basic management interfaces and methods.
 
             - init_fpga_async() initializes the firmware in the desired
               operational state.
@@ -212,7 +220,7 @@ class Motherboard(HardwareMap):
         # print(f"In et_unique_instance")
 
         matching_boards = [
-            c for c in cls._instance_registry if (
+            c for c in cls.get_all_instances() if (
                 (hostname is not None and c.hostname == hostname)
                 or ((new_class or cls).part_number
                     and serial
@@ -221,9 +229,11 @@ class Motherboard(HardwareMap):
 
         # print(f"Matches: {matching_boards}")
         if not len(matching_boards):  # no matching crate, create one
-            print(f"{cls!r}: Creating {new_class or cls}(serial={serial}, hostname={hostname}, slot={slot}, subarray={subarray}, kwargs={kwargs})")
+            self.logger.debug(
+                f"{cls!r}: Creating {new_class or cls}(serial={serial}, hostname={hostname}, "
+                f"slot={slot}, subarray={subarray}, kwargs={kwargs})")
             ib = (new_class or cls)(serial=serial, hostname=hostname, slot=slot, subarray=subarray, **kwargs)
-            print(f"{cls!r}: Updating Motherboard with crate_number={crate_number}")
+            self.logger.debug(f"{cls!r}: Updating Motherboard with crate_number={crate_number}")
             return ib.update_instance(crate_number=crate_number)
         elif len(matching_boards) == 1:  # one match, update existing one
             return matching_boards[0].update_instance(
@@ -251,7 +261,7 @@ class Motherboard(HardwareMap):
         subclass instance. If the class needs to be changed, a new class
         instance is created and the Motherboard references are updated to the new class.
 
-        Paremeters:
+        Parameters:
 
         """
         serial = serial or self.serial
@@ -305,7 +315,7 @@ class Motherboard(HardwareMap):
     def get_id(self, lane=None, default_crate=None, default_slot=None, numeric_only=False):
         """ Returns a (crate, slot) tuple representing a unique IceBoard ID,
         using numeric values whenever possible. A `lane` field can be
-        optionally appended.
+        optionally appended to the tuple to create channel/lane IDs.
 
         Parameters:
 
