@@ -30,9 +30,9 @@ class MasterIceboardObject(object):
 
 class IceCrate(Crate, IceCrateBase):
     """
-    Provide the basic methods to operate the IceCrate.
+    Generic IceCrate base class tha define the methotd and attrubutes common to various IceCrate models.
     """
-
+    # This is still a generic class. part numbers will be defined in subclases.
     part_number = None
     _ipmi_part_numbers = None  # Must match part number in IPMI data
 
