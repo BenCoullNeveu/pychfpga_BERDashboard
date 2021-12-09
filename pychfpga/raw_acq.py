@@ -750,22 +750,23 @@ class RawPacketProcessor(object):
             formats=['u1', '>u2', 'u1', 'u1', 'u1', '>u8']))
 
         self.packet_dtype = np.dtype([
-            ('header', self.header_dtype, 1),
-            ('data', np.int8, self.DATA_SIZE),
-            ('padding', np.int8, self.recv.buf.shape[-1] - self.RAW_PACKET_LENGTH)])
+            ('header', self.header_dtype),
+            ('data', np.int8, (self.DATA_SIZE,)),
+            ('padding', np.int8, (self.recv.buf.shape[-1] - self.RAW_PACKET_LENGTH), )
+            ])
 
         # Useful views into the packet buffer for raw data
         self.buf = self.recv.buf
         self.buf_packet_length = self.recv.buf_packet_length
         self.BUF_SIZE = self.buf.shape[0]
-        self.buf_struct = self.buf.view(self.packet_dtype)
-        self.buf_cookie = self.buf_struct['header']['cookie'][:, 0]
-        self.buf_stream_id = self.buf_struct['header']['stream_id'][:, 0]
+        self.buf_struct = self.buf.view(self.packet_dtype)[:,0]
+        self.buf_cookie = self.buf_struct['header']['cookie']
+        self.buf_stream_id = self.buf_struct['header']['stream_id']
         # self.buf_source_crate = self.buf_struct['header']['source_crate'][:, 0]
-        self.buf_slot_chan = self.buf_struct['header']['slot_chan'][:, 0]
-        self.buf_flags = self.buf_struct['header']['flags'][:, 0]
-        self.buf_ts_dirty = self.buf_struct['header']['ts'][:, 0]
-        self.buf_data = self.buf_struct['data'][:, 0]
+        self.buf_slot_chan = self.buf_struct['header']['slot_chan']
+        self.buf_flags = self.buf_struct['header']['flags']
+        self.buf_ts_dirty = self.buf_struct['header']['ts']
+        self.buf_data = self.buf_struct['data']
 
         # Computed buffer parameters
         self.buf_ts = np.empty(self.BUF_SIZE, dtype=np.uint64)  # maskeed buf_ts_dirty
@@ -2146,7 +2147,7 @@ class CorrPacketProcessor(object):
                 self.count,
                 self.sat_cplx)
         else:
-            print(f'Correlator HDF5 data capture is inactive. {packets} integrated correlator were not saved')
+            print(f'Correlator HDF5 data capture is inactive. {packets} integrated correlator packets were not saved')
 
         # Convert the products in the matrix format
         # m = self.raw_to_vector_map
@@ -2261,9 +2262,9 @@ class CorrPacketProcessor(object):
                         software_integration_period=100,
                         firmware_integration_period=100,
                         frame0_irigb_time=0,
-                        number_of_correlators = None, # has to be provided
-                        number_of_correlated_inputs= None, # has to be provided
-                        number_of_bins_per_frame = None, # has to be provided
+                        number_of_correlators=None,  # has to be provided
+                        number_of_correlated_inputs= None,  # has to be provided
+                        number_of_bins_per_frame=None,  # has to be provided
 
                         ):
         """ Start the capture of data in a HDF5 file.
@@ -2328,7 +2329,7 @@ class CorrPacketProcessor(object):
             self.log.info(f'{self!r}: Correlator HDF5 data writer is started')
         except Exception as e:
             self.log.error(
-                f'{self!r}: Could not open correlaor file {self.hdf5_base_dir}/{base_filename}. '
+                f'{self!r}: Could not open correlator file {self.hdf5_base_dir}/{base_filename}. '
                 f'Error is\n{e!r}')
 
     def stop_corr_hdf5(self):
@@ -2394,7 +2395,7 @@ class HDF5CorrWriter(object):
 
         # self.raw_to_vector_map = CORR.get_raw_to_matrix_map()[..., i, j]
         # print('*** Warning: using N=4 , works only for 4 channel correlator***')
-        self.raw_to_vector_map =  CORR.get_raw_corr_map(N=number_of_correlated_inputs, Nbins=number_of_bins_per_frame, Ncorr=number_of_correlators)
+        _, self.raw_to_vector_map  =  CORR.get_raw_corr_map(N=number_of_correlated_inputs, Nbins=number_of_bins_per_frame, Ncorr=number_of_correlators)
         self.raw_to_vector_map = self.raw_to_vector_map[..., i, j]  # keep only a subset of the inputs to save to disk
 
         self.n_prod = len(i)
@@ -2657,6 +2658,9 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
                               software_integration_period=100,
                               firmware_integration_period=1,
                               frame0_irigb_time=0,
+                              number_of_correlators=None,  # has to be provided
+                              number_of_correlated_inputs= None,  # has to be provided
+                              number_of_bins_per_frame=None,  # has to be provided
                               ):
         self.receiver.corr_packet_processor.start_corr_hdf5(
             base_dir=base_dir,
@@ -2666,7 +2670,11 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
             elements_per_file=elements_per_file,
             firmware_integration_period=firmware_integration_period,
             software_integration_period=software_integration_period,
-            frame0_irigb_time=frame0_irigb_time)
+            frame0_irigb_time=frame0_irigb_time,
+            number_of_correlators=number_of_correlators,  # has to be provided
+            number_of_correlated_inputs=number_of_correlated_inputs,  # has to be provided
+            number_of_bins_per_frame=number_of_bins_per_frame  # has to be provided
+            )
         return f"started correlator hdf5 writing to disk with parameters {firmware_integration_period}."
 
     @endpoint('stop-corr-hdf5')
@@ -2823,7 +2831,11 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
             capture_n_inputs=4,
             software_integration_period=1,
             firmware_integration_period=1,
-            frame0_irigb_time=0):
+            frame0_irigb_time=0,
+            number_of_correlators=None,  # has to be provided
+            number_of_correlated_inputs= None,  # has to be provided
+            number_of_bins_per_frame=None,  # has to be provided
+            ):
 
         result = await self.post(
             'start-corr-hdf5',
@@ -2834,7 +2846,11 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
             capture_n_inputs=capture_n_inputs,
             software_integration_period=software_integration_period,
             firmware_integration_period=firmware_integration_period,
-            frame0_irigb_time=frame0_irigb_time)
+            frame0_irigb_time=frame0_irigb_time,
+            number_of_correlators=number_of_correlators,  # has to be provided
+            number_of_correlated_inputs=number_of_correlated_inputs,  # has to be provided
+            number_of_bins_per_frame=number_of_bins_per_frame  # has to be provided
+            )
         return result
 
     async def stop_corr_hdf5(self):
