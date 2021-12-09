@@ -318,7 +318,7 @@ class RawFrameReceiver(object):
             while True:
                 try:
                     s = self.socket.recv_into(self.buf[0])
-                    if self.buf_cookie[0] != cookie:
+                    if self.buf_cookie[0] & 0xfe != cookie:
                         continue
                     ts = self.buf_ts[0] & self.ts_mask
                     if self.last_ts is None:
@@ -342,7 +342,7 @@ class RawFrameReceiver(object):
                 s = self.socket.recv_into(self.buf[self.n])
                 # check if the packet has the right cookie
                 print(f'got packet len={s} cookie=0x{self.buf_cookie[self.n]:02x} ts={self.buf_ts[self.n] & self.ts_mask}')
-                if self.buf_cookie[self.n] != cookie:
+                if self.buf_cookie[self.n] & 0xfe != cookie:
                     continue
 
                 # Ignore packets that don't have the right length
