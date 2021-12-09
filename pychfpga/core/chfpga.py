@@ -46,9 +46,9 @@ from . import GPIO
 from . import SYSMON
 from . import FreqCtr
 from . import REFCLK
-
 # FPGA Channelizer (F-Engine)
 from . import ANT
+from . import PROBER  # needed to access RawFrameReceiver
 
 # FPGA Corner-turn Engine
 from . import chan_crossbar
@@ -223,7 +223,9 @@ class chFPGA(FPGAFirmware):
 
     _FPGA_CONTROL_BASE_PORT = 41000
     _BROADCAST_BASE_PORT = 41000
+    _ZCU111_LOCAL_DATA_PORT_NUMBER = 41000 # port to which the ZCU111 is sending its adc/correlator UDP packets
 
+    _XILINX_OUI = 0x000A35
 
 
     _CHFPGA_COOKIE = 0x42  # Expected cookie value for chFPGA, both on the SPI and UDP MMI
@@ -243,8 +245,6 @@ class chFPGA(FPGAFirmware):
     # # Register address of the first byte of the IP config word
     # _GPIO_IPCONFIG_REG       = _CONTROL_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 0x08D
 
-
-    _XILINX_OUI = 0x000A35
 
 
     def __init__(self, motherboard, processing_frequency=None):
@@ -353,6 +353,9 @@ class chFPGA(FPGAFirmware):
                 f"{self!r}: The FPGA is not programmed with a bitstream. "
                 f'Cannot open link with the FPGA and initialize it')
 
+        # discover ethernet interface through which we communicate withthe motherboard. We will use the same interface to listen to data.
+        self.set_interface_ip_address()
+
         if self.mb.part_number == "ZCU111":
             self.mmi = TCPipe_BSB_MMI(self.mb.tcpipe)
         elif self.mb.part_number == "MGK7MB":
@@ -364,6 +367,30 @@ class chFPGA(FPGAFirmware):
         if self.mmi:
             self.mmi.close()
             self.mmi = None
+
+    def set_interface_ip_address(self):
+        """Sets the IP address of the interface through which the
+        board communicates with the motherboard, if this interface is not yet defined.
+
+        This sets the ``self.interface_ip_addr`` attributes. The interface is not changes if it already is non-zero.
+
+        The interface if obtained by opening a TCP socket to the motherboard processor and inspecting the
+        socket that was used.
+
+        This is used to open targeted UDP sockets, and therefore assumes that
+        the UDP data or command packets are arriving through the same
+        interface (even if, in some cases, the data comes from a separate
+        FPGA-bound ethernet port instead of the processor's port).
+        """
+
+        if not self.interface_ip_addr:  # set the interface only of we haven't manually defined one
+            if self.mb.hostname:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.connect((self.mb.hostname, self.mb.port))
+                (self.interface_ip_addr, _) = s.getsockname()
+                s.close()
+            else:
+                self.interface_ip_addr = None
 
     async def open_udp_mmi_async(self):
         """ Setup the FPGA UDP communication and return a mmi object.
@@ -390,19 +417,6 @@ class chFPGA(FPGAFirmware):
         #         'resources are not available.' % (self, cookie, self._CHFPGA_COOKIE))
 
         # self.fpga_serial_number = self.get_fpga_serial_number()  # Get SN from the SPI link (slow)
-
-        # Get the address of the interface through which we can access the
-        # board over UDP by opening a TCP socket to the ARM and inspeting the
-        # interface that was used. This assumes that both the ARM and FPGAs
-        # are accessed through the same interface.
-        if not self.interface_ip_addr:  # set the interface only of we haven't manually defined one
-            if self.mb.hostname:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.connect((self.mb.hostname, self.mb.port))
-                (self.interface_ip_addr, _) = s.getsockname()
-                s.close()
-            else:
-                self.interface_ip_addr = None
 
         # Compute the IP address to use for the FPGA UDP interface For now, we
         # replace a.b.c.d by a.b.3.d. We need to find a more generic mechanism
@@ -551,7 +565,6 @@ class chFPGA(FPGAFirmware):
         self.fpga_control_port_number = fpga_control_port_number
         self.local_control_port_number = local_control_port_number
         self.interface_ip_addr = interface_ip_addr
-
         # IRIG-B year and day processing. If True, target IRIGB year and day
         # will always be written as zero binary values to me compatible with
         # the IRIG-B generator
@@ -1425,6 +1438,10 @@ class chFPGA(FPGAFirmware):
 
         Does not change the target MAC or IP address.
         """
+        if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
+            if port != self._ZCU111_LOCAL_DATA_PORT_NUMBER:
+                raise ValueError(f'Cannot current set data port number to {port} on this platform.')
+            return
         word = await self.fpga_core_reg_read_async(self._REMOTE_IP_PORT_ADDR)
         await self.fpga_core_reg_write_async(self._REMOTE_IP_PORT_ADDR, (word & 0xFFFF) | (port << 16))
 
@@ -1432,7 +1449,7 @@ class chFPGA(FPGAFirmware):
         """ Return the port number to which the FPGA is sending its captured data stream on the control network.
         """
         if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
-            return 41000
+            return self._ZCU111_LOCAL_DATA_PORT_NUMBER
         else:
             return((await self.fpga_core_reg_read_async(self._REMOTE_IP_PORT_ADDR)) >> 16)
 
@@ -1511,8 +1528,7 @@ class chFPGA(FPGAFirmware):
         self.GPIO.TARGET_IP_ADDR = ip_addr_int
 
         # Set the UDP  Channel 1 outgoing packet destination port number, on the ARM-FPGA SPI registers
-        word = await self.fpga_core_reg_read_async(self._REMOTE_IP_PORT_ADDR)
-        await self.fpga_core_reg_write_async(self._REMOTE_IP_PORT_ADDR, (word & 0xFFFF) | (port << 16))
+        await self.set_local_data_port_number_async(port)
 
     async def get_fpga_firmware_cookie(self, resync=False):
         """
@@ -2720,25 +2736,41 @@ class chFPGA(FPGAFirmware):
         for ant in self.ANT.values():
             ant.PROBER.RESET = 1
 
-    def get_data_receiver(self, verbose=1):
+    def get_data_receiver(self, verbose=1, threaded=False):
         if self.recv:
             return self.recv
-        chFPGA_config = run_async(self.get_config_async(basic=True))  # get only the info needed to start the receiver
-        self.recv = chFPGA_receiver(chFPGA_config, verbose=verbose)
-        self.logger.debug('Started data receiver threads on %s:%i' % (self.recv.host_ip, self.recv.port_number))
-        run_async(self.set_local_data_port_number_async(self.recv.port_number))
+        if threaded:
+            # Old threaded data receiver
+            chFPGA_config = run_async(self.get_config_async(basic=True))  # get only the info needed to start the receiver
+            self.recv = chFPGA_receiver(chFPGA_config, verbose=verbose)
+            self.logger.debug('Started data receiver threads on %s:%i' % (self.recv.host_ip, self.recv.port_number))
+            run_async(self.set_local_data_port_number_async(self.recv.port_number))
+        else:
+            sock = self.get_data_socket()
+            self.recv = PROBER.RawFrameReceiver(sock)
+
         return self.recv
 
     def get_data_socket(self, port_number=0):
         """
-        Return a socket tha is bound to the port that receives the raw/correlator data.
+        Return a UDP socket that receives the raw/correlator data.
+
+        If the socket does not already exists, the FPGA will be configured to send the data to the returned socket.
+
+        Parameters:
+
+            port_number (int): If non-zero, get a socket bound to the specified port. If not specified, the existing data port number will be used. If there is no existing port number,  a random port will be chosen.
 
 
+        Returns:
+
+            socket.socket(): a UDP socket.
         """
         # Make sure there is a list of opened sockets
 
-        if not self._data_socket:
 
+        if not self._data_socket:
+            port_number = port_number or run_async(self.get_local_data_port_number_async())
             opened_sockets = __main__.__dict__.setdefault('__opened_sockets__', {})
 
             # If we want to use a specific local port that was previously reserved, use its socket.
