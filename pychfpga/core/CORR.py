@@ -153,7 +153,7 @@ class CORR(object):
             corr.SOFT_RESET = 1  # make sure we stop sending readouts in progres
             corr.INTEGRATION_PERIOD = integration_period - 1
             corr.AUTOCORR_ONLY = autocorr_only
-            if self.fpga.PLATFORM_ID == 'ZCU111':
+            if self.fpga.PLATFORM_ID == self.fpga._PLATFORM_ID_ZCU111:
                 corr.BINS_PER_FRAME = bins_per_frame - 1
             else:
                 self.logger.error(f'{self!r}: Using the old CORR.BINS_PER_FRAME register. Remove this line when the firmware is updated')
@@ -507,7 +507,19 @@ class CorrFrameReceiver(object):
         watch -cd -n .5 "grep :A6  /proc/net/udp"
     """
 
-    def __init__(self, socket, packets_per_chunk=1*34*8, ignore_packet_size=False):
+    def __init__(self, socket, N=16, Nbins=128, Ncorr=8, packets_per_chunk=1*34*8, ignore_packet_size=False):
+
+        NCHAN = N
+        NCORR = Ncorr
+
+        NCLOCKS_PER_BIN = NCHAN // 2 // 2  # 1/2 because we process only half of the matrix, 1/2 because we interleave
+        NI_CLOCKS_PER_BIN = NCHAN // 2  # Clocks per bin of a straight Non-interleaved correlator architecture using the minimal amount of CMACs
+        NI_CMAC_PER_CORR = (NCHAN + 1)  # number of CMACs per correlator if computations are done in NI_CLOCKS_PER_BIN clocks
+        NPROD_TOTAL = NCHAN * (NCHAN + 1) // 2  # Total number of products per correlator frame
+        CMAC_INTERLEAVE_FACTOR = NI_CLOCKS_PER_BIN // NCLOCKS_PER_BIN
+        NCMAC_PER_CORR = CMAC_INTERLEAVE_FACTOR * NI_CMAC_PER_CORR  # Number of interleaved CMACs per core needed to make the computations in the target number of clocks
+        NBINS_PER_CMAC = NBINS_PER_CORR = Nbins   # Number of bins per CMAC. =512/4=128
+        NPROD_PER_CMAC = Nbins * NCLOCKS_PER_BIN  # Number of products per CMAC, limited by BRAM size (512 x (18+18) bits for the accumulator & capture RAM)
 
         self.NCHAN = NCHAN
         self.socket = socket
@@ -524,31 +536,40 @@ class CorrFrameReceiver(object):
             formats=['u1', '<i4', '<i4']))
 
         self.packet_dtype = np.dtype([
-            ('cookie', np.uint8, 1),
-            ('proto', np.uint8, 1),
-            ('corr', np.uint8, 1),
-            ('cmac', np.uint8, 1),
-            ('geometry', '<u4', 1),
-            ('ts', '<u4', 1),
-            ('data', self.product_dtype, self.NPROD)])
+            ('cookie', np.uint8),
+            ('proto', np.uint8),
+            ('corr', np.uint8),
+            ('cmac', np.uint8),
+            ('geometry', '<u4'),
+            ('ts', '<u4'),
+            ('data', self.product_dtype, (self.NPROD, ))])
 
-        # Pre-allocate buffers
-        # Buffer in which recv_into() will put the data directly
-        self.buf = np.zeros((self.NPACKETS, self.PACKET_SIZE), dtype=np.uint8)  # can use empty(), but the uninitialized data can be confusing for debugging
+        # Pre-allocate buffers in which recv_into() will put the received data
+        # directly. We could use empty() to save some cycles, but the
+        # uninitialized data can be confusing for debugging
+        self.buf = np.zeros((self.NPACKETS, self.PACKET_SIZE), dtype=np.uint8)
+
+        # Various views of the buffer to allow quick and easy access to the
+        # packet contents. This does not cause new memory allocations.
+        self.buf_struct = self.buf.view(self.packet_dtype)[:, 0]  # (NPACKETS,)
+        self.buf_data_h = self.buf_struct['data']['h']  # (NPACKETS, NPROD)
+        self.buf_data_l = self.buf_struct['data']['l']  # (NPACKETS, NPROD)
+        self.buf_data_sat = self.buf_struct['data']['sat']  # (NPACKETS, NPROD)
+        self.buf_ts = self.buf_struct['ts']  # (NPACKETS,)
+        self.buf_corr = self.buf_struct['corr']  # (NPACKETS,)
+        self.buf_cmac = self.buf_struct['cmac']  # (NPACKETS,)
+
+        # Initialize variables used by the packet receiver
         self.n = 0  # number of packets currently stored in the buffer
         self.last_ts = None  # timestamp of the last packet written in the buffer
 
-        # Various views of the buffer to allow quick and easy access to the packet contents
-        self.buf_struct = self.buf.view(self.packet_dtype)
-        self.buf_data_h = self.buf_struct['data'][:, 0]['h']
-        self.buf_data_l = self.buf_struct['data'][:, 0]['l']
-        self.buf_data_sat = self.buf_struct['data'][:, 0]['sat']
-        self.buf_ts = self.buf_struct['ts'][:, 0]
-        self.buf_corr = self.buf_struct['corr'][:, 0]
-        self.buf_cmac = self.buf_struct['cmac'][:, 0]
-
-        # Temporary storage to extract the real/imaginary part from the 5-byte packed product
+        # Pre-allocate temporary storage to extract the real/imaginary part from the 5-byte packed product
         self.temp32 = np.empty((self.NPACKETS, self.NPROD), dtype=np.int32)
+
+        # Pre-compute the remapping vectors that will be used to convert the
+        # raw integrated results (Nresults, NCORR, NPROD) into more palatable
+        # arrays
+        self.raw_to_matrix_map, self.raw_to_vector_map = get_raw_corr_map(N=N, Nbins=Nbins, Ncorr=Ncorr)
 
     def flush(self, timeout=0.001, timestamp_jump_threshold=2):
         """ Flush the UDP buffer until the timout occurs or the packet timestamp jumps by more `threshold` or more.
@@ -691,6 +712,7 @@ class CorrFrameReceiver(object):
         # Storage for the accumulated value
         self.acc_re = np.zeros((number_of_results, self.NCORR, self.NCMAC, self.NPROD), dtype=np.int64)
         self.acc_im = np.zeros((number_of_results, self.NCORR, self.NCMAC, self.NPROD), dtype=np.int64)
+        print(f'acc_re shape (N_results, Ncorr, Ncmac, Nprod) = {self.acc_re.shape}')
         # Number of saturations for the real and imaginary part of each product
         self.sat = np.zeros((number_of_results, self.NCORR, self.NCMAC, self.NPROD, 2), dtype=np.int32)
         self.sat_cplx = np.zeros((number_of_results, self.NCORR, self.NCMAC, self.NPROD), dtype=np.complex64)
@@ -832,7 +854,7 @@ class CorrFrameReceiver(object):
         if return_format == 'raw':
             return (self.data, self.count, self.sat_cplx)
         elif return_format == 'matrix':
-            m = get_raw_to_matrix_map()
+            m = self.raw_to_matrix_map
             matrix = self.data[:, m[0], m[1], m[2]]
             # conjugate the lower triangle
             (i, j) = np.triu_indices(self.NCHAN)
@@ -841,7 +863,8 @@ class CorrFrameReceiver(object):
                     self.count[:, m[0], m[1]],
                     self.sat_cplx[:, m[0], m[1], m[2]])
         elif return_format == 'vector':
-            m = get_raw_to_vector_map()
+            print('Returning vector format')
+            m = self.raw_to_vector_map
             return (self.data[:, m[0], m[1], m[2]],
                     self.count[:, m[0], m[1]],
                     self.sat_cplx[:, m[0], m[1], m[2]])
@@ -870,6 +893,9 @@ class CorrFrameReceiver(object):
         np.left_shift(self.temp32, 4, self.temp32)
         np.right_shift(self.temp32, 14, self.temp32)
         # Add the sign-extended value to the 64-bit accumulator.
+        print(f'corr shape = {corr.shape}')
+        print(f'cmac shape = {cmac.shape}')
+
         self.acc_re[integ_number, corr, cmac] += self.temp32[:number_of_packets]
 
         # Extract the real part (in bits 17:0 of the data_l).
