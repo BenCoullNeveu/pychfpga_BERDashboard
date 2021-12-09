@@ -229,11 +229,11 @@ class Motherboard(HardwareMap):
 
         # print(f"Matches: {matching_boards}")
         if not len(matching_boards):  # no matching crate, create one
-            self.logger.debug(
+            print( # cannot use logger?
                 f"{cls!r}: Creating {new_class or cls}(serial={serial}, hostname={hostname}, "
                 f"slot={slot}, subarray={subarray}, kwargs={kwargs})")
             ib = (new_class or cls)(serial=serial, hostname=hostname, slot=slot, subarray=subarray, **kwargs)
-            self.logger.debug(f"{cls!r}: Updating Motherboard with crate_number={crate_number}")
+            print(f"{cls!r}: Updating Motherboard with crate_number={crate_number}")
             return ib.update_instance(crate_number=crate_number)
         elif len(matching_boards) == 1:  # one match, update existing one
             return matching_boards[0].update_instance(
