@@ -205,7 +205,7 @@ class ZCU111(Motherboard):
         """ Open communication link with the FPGA. This creates the MMI interface, gather configuration information from the firmware, and instantiate the objects that will handle the firmware."""
 
 
-        if False:
+        if True:
             # Before we start the firmware, make sure we have our clocks.
             rf_pll_spi_port = 2
             # Set SPI mux to route PLL output mux pin to I2C-SPI MISO input
