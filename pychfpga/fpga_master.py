@@ -828,7 +828,7 @@ class FPGAMaster(object):
             software_integration_period=software_integration_period,
             firmware_integration_period=self.corr_firmware_integration_period, # also for time computation only
             frame0_irigb_time=self.frame0_irigb_time.nano if self.frame0_irigb_time else 0,  # update frame 0 time from last sync
-            **corr_params,
+            **corr_params,  # add correlator parameters
             )         for server_name, server in self.raw_acq.items()])
 
 
