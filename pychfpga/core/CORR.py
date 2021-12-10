@@ -192,17 +192,26 @@ def get_raw_corr_map(N=16, Nbins=128, Ncorr=8):
 
     Returns:
 
-        A numpy array of the shape (3, NBINS_TOTAL, NCHAN, NCHAN) where each
-        element [:, bin_number, i, j] returns the tuple ``(corr_number,
-        cmac_number, prod_number)`` so that::
+        raw_to_matrix_map, raw_to_vector_map
 
-            raw_data(raw_to_matrix[0], raw_to_matrix[1], raw_to_matrix[2])
+        where
 
-        or equivalently::
+            - raw_to_matrix_map is a numpy array of shape (3, NBINS, NCHAN,
+              NCHAN) where each element [:, bin_number, i, j] returns the
+              tuple ``(corr_number, cmac_number, prod_number)`` so that::
 
-            raw_data(tuple(raw_to_matrix))
+                raw_data(raw_to_matrix[0], raw_to_matrix[1], raw_to_matrix[2])
 
-        extracts the raw data and reorders it in a matrix that represents (freq_bin_number, i, j)
+              or equivalently::
+
+                raw_data(tuple(raw_to_matrix))
+
+              extracts the raw data and reorders it in a matrix that represents (freq_bin_number, i, j)
+
+            - raw_to_matrix_map is a numpy array of shape (3, NBINS, NPROD)
+              where each element [:, bin_number, prod] returns the tuple
+              ``(corr_number, cmac_number, prod_number)`` and can be used to
+              index raw data as above.
 
 
     The basic correlator structure is made of a fixed array (Y) of N samples
