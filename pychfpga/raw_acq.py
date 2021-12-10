@@ -695,7 +695,7 @@ class RawAcqReceiver(object):
             'corr_name': self.corr_name or 'Unknown'
         }
         fields.update(extra_fields)
-        return os.path.expanduser(path % fields)
+        return os.path.expanduser(path.format(**fields) % fields)
 
 
 #######################################################
@@ -1631,7 +1631,7 @@ class HDF5RawWriter(object):
         fields = dict(
             file_number=self.file_number)
 
-        filename = os.path.join(self.base_dir, self.filename % fields)
+        filename = os.path.join(self.base_dir, self.filename.format(**fields) % fields)
         self.open(filename)
         self.n = 0
         self.file_number += 1
@@ -1855,13 +1855,13 @@ class CorrPacketProcessor(object):
         #       4 byte timestamp
         #   Up to NPROD 5-byte products
         self.packet_dtype = np.dtype([
-            ('cookie', np.uint8, 1),
-            ('proto', np.uint8, 1),
-            ('corr', np.uint8, 1),
-            ('cmac', np.uint8, 1),
-            ('geometry', '<u4', 1),
-            ('ts', '<u4', 1),
-            ('data', self.product_dtype, self.NPROD)])
+            ('cookie', np.uint8),
+            ('proto', np.uint8),
+            ('corr', np.uint8),
+            ('cmac', np.uint8),
+            ('geometry', '<u4'),
+            ('ts', '<u4'),
+            ('data', self.product_dtype, (self.NPROD,))])
 
         # Storage for testing packet length
         self.buf_packet_length_ok = np.empty(self.BUF_SIZE, dtype=bool)
@@ -1870,16 +1870,16 @@ class CorrPacketProcessor(object):
         # the main buffer without moving the data around in memory
 
         # See the main buffer as a struct
-        self.buf_struct = self.buf.view(self.packet_dtype)
+        self.buf_struct = self.buf.view(self.packet_dtype)[:, 0]
         # Header fields.
-        self.buf_cookie = self.buf_struct['cookie'][:, 0]
-        self.buf_corr = self.buf_struct['corr'][:, 0]
-        self.buf_cmac = self.buf_struct['cmac'][:, 0]
-        self.buf_ts = self.buf_struct['ts'][:, 0]  # watch out! Covers part of the stream id
+        self.buf_cookie = self.buf_struct['cookie']
+        self.buf_corr = self.buf_struct['corr']
+        self.buf_cmac = self.buf_struct['cmac']
+        self.buf_ts = self.buf_struct['ts']  # watch out! Covers part of the stream id
         # data fields
-        self.buf_data_h = self.buf_struct['data'][:, 0]['h']
-        self.buf_data_l = self.buf_struct['data'][:, 0]['l']
-        self.buf_data_sat = self.buf_struct['data'][:, 0]['sat']
+        self.buf_data_h = self.buf_struct['data']['h']
+        self.buf_data_l = self.buf_struct['data']['l']
+        self.buf_data_sat = self.buf_struct['data']['sat']
 
         # Temporary storage to extract the real/imaginary part from the 5-byte packed product
         self.temp32 = np.empty((self.BUF_SIZE, self.NPROD), dtype=np.int32)
@@ -2384,21 +2384,23 @@ class HDF5CorrWriter(object):
         # self.prod_axis = np.array([(i, j) for i, j in itertools.product(range(inputs_per_file), repeat=2) if i >= j],
         #                           dtype=self.prod_dtype)
 
-        # Compute the index arrays that will build the product vector form the
+        # Compute the index arrays that will build the product vector from the
         # raw correlator data for the desired inputs
         (i, j) = np.triu_indices(self.n_inputs)
         self.prod_axis = np.array(list(zip(i, j)), dtype=self.prod_dtype)
+        self.n_prod = len(i)
 
 
         # Pre-compute the matrix that will be used to re-index the raw data
         # vectors from the correlator into an easy-to-index matrix format.
 
         # self.raw_to_vector_map = CORR.get_raw_to_matrix_map()[..., i, j]
-        # print('*** Warning: using N=4 , works only for 4 channel correlator***')
+        print(f'HDF5: getting correlator mapping matrix for N={number_of_correlated_inputs}, Nbins={number_of_bins_per_frame}, Ncorr={number_of_correlators}')
         _, self.raw_to_vector_map  =  CORR.get_raw_corr_map(N=number_of_correlated_inputs, Nbins=number_of_bins_per_frame, Ncorr=number_of_correlators)
-        self.raw_to_vector_map = self.raw_to_vector_map[..., i, j]  # keep only a subset of the inputs to save to disk
+        # self.raw_to_vector_map = self.raw_to_vector_map[..., i, j]  # keep only a subset of the inputs to save to disk
+        self.raw_to_vector_map = self.raw_to_vector_map[..., :self.n_prod]  # keep only a subset of the inputs to save to disk
 
-        self.n_prod = len(i)
+        print(f'raw_to-vector_map={self.raw_to_vector_map}')
 
         self.start_time = time.time()
 
@@ -2417,7 +2419,7 @@ class HDF5CorrWriter(object):
             file_number=self.file_number,
             elapsed_seconds=time.time() - self.start_time)
 
-        filename = self.filename % fields
+        filename = self.filename.format(**fields) % fields
         filename = os.path.join(self.base_dir, filename)
         self.open(filename)
         self.n = 0
@@ -2489,11 +2491,13 @@ class HDF5CorrWriter(object):
         m = self.raw_to_vector_map
 
         current_time = time.time()
-        print(f'shapes are: raw_data {raw_data[m[0], m[1], m[2]].dtype}'
-              f'counts {counts[m[0], m[1]].dtype}, '
-              f'sat {saturations[m[0], m[1], m[2]].dtype}')
+        print(f'shapes are: raw_data {raw_data}, '
+              f'counts {counts}, '
+              f'sat {saturations}')
         self.time[n1] = (integ_number, fpga_frame_number, irigb_time, current_time)
         self.vis[n1] = raw_data[m[0], m[1], m[2]]
+
+        print(f'remapped vis[{n1},:100,0] = {self.vis[n1,:100,0].real}')
         if self.include_counts:
             self.counts[n1] = counts[m[0], m[1]]
         if self.include_sat:
