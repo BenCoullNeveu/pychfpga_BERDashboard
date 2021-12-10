@@ -818,7 +818,7 @@ class FPGAMaster(object):
             f'seconds (0 = infinite)')
 
         self.log.debug(
-            f'{self!r}: firmware integ={self.corr_firmware_integration_period}')
+            f'{self!r}: firmware integ={self.corr_firmware_integration_period}, corr_params={corr_params}')
         await asyncio.gather(*[server.start_corr_hdf5(
             base_dir=capture_folder,
             base_filename=capture_filename,
@@ -849,7 +849,7 @@ class FPGAMaster(object):
             'run_folder': self.run_folder
             }
         fields.update(extra_fields)
-        return os.path.expanduser(pattern % fields)
+        return os.path.expanduser(pattern.format(**fields) % fields)
 
         # Register configuration with the Comet server
     def register_config(self):
