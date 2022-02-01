@@ -476,6 +476,24 @@ class chFPGA(FPGAFirmware):
             fpga_ip_addr=self.fpga_ip_addr,
             fpga_port_number=self.fpga_control_port_number)
 
+        # Make sure the PMA core uses the SGMII protocol with autonegociation
+
+        self.logger.debug(f"{self!r}: Initializing SFP in SGMII mode with autonegociation")
+        await self.set_sgmii_config_vector(an=True, reset=1)
+        await self.set_sgmii_config_vector(an=True, reset=0)
+        await asyncio.sleep(0.050)  # wait for autonegotiation to complete
+        status = await self.get_sgmii_status_vector()
+        if status & 1:
+            self.logger.debug(f"{self!r}: SFP autonegociation successful")
+        else:
+            self.logger.debug(f"{self!r}: SFP autonegociation failed. Disabling autoneg.")
+            await self.set_sgmii_config_vector(an=False, reset=1)
+            await self.set_sgmii_config_vector(an=False, reset=0)
+            await asyncio.sleep(0.050)  # wait for autonegotiation to complete
+            status = await self.get_sgmii_status_vector()
+            if not (status & 1):
+                raise IOError(f"{self!r}: Cannot get the SFP module to establish a link")
+
         self.logger.debug(f"{self!r}: Clearing FPGAs UDP communication stack")
         await self.reset_fpga_udp_stack()
         # self.mmi.flush()
@@ -846,7 +864,7 @@ class chFPGA(FPGAFirmware):
         #         mezz.close()
 
         await self.close_mmi_async()
-        await super().close_async()  # Make sure we close superclasses
+        # await super().close_async()  # Make sure we close superclasses (there are none)
 
     def is_open(self):
         return bool(self.mmi)
@@ -1328,6 +1346,52 @@ class chFPGA(FPGAFirmware):
             "UDP communication stack" % (self, self.hostname))
         await self.tuber_set_pci_switch_direction_async('SEL_ARM')
         await self.tuber_set_pci_switch_direction_async('SEL_SFP')
+
+    async def set_sgmii_config_vector(
+            self, sgmii=1, an=1, pause=0, duplex=1, reset=0,
+            los=0, fault=0, an_trig=False, loopback=0, speed=2):
+        """
+
+
+
+            bit 0: 1000BASE-X:0, SGMII=1
+            bit 5: 1000BASE-X: full duplex
+            bits: 8-7: 1000BASE-X: pause
+            bits 13:12: 1000BASE-X: remote fault
+
+            bit 16: unidir
+            bit 17: loopback
+            bit 18: power down
+            bit 19: isolate
+            bit 20: auto-negotiation enable
+
+            bit 28: loss_of_signal
+            bit 29: reset
+            bit 30: an_restart
+            bit 31: basex_or_sgmii
+
+
+        """
+        val = (loopback << 17) + (an << 20) + (los << 28)
+        if sgmii:
+            val |= (1 << 31) + (1 << 0) + (speed << 10) + (duplex << 12)
+        else:
+            val |= (duplex << 5) + (pause << 7) + (fault << 12)
+
+        if reset:
+            # await self.fpga_core_reg_write_async(18 * 4, val | (1<<29))
+            val |= 1 << 29
+        if an_trig:
+            # await self.fpga_core_reg_write_async(18 * 4, val | (1 << 30))
+            val |= 1 << 30
+        await self.fpga_core_reg_write_async(18 * 4, val)
+        return val
+
+    async def get_sgmii_status_vector(self):
+        val = await self.fpga_core_reg_read_async(19 * 4)
+        print(f'link={bool(val&1)}, sync={bool(val&(1<<1))}, RUDI={(val>>2)&(0b11111):05b}, PHY={(val>>7)&1}, ERR={(val>>13)&1} ERRCODE={(val>>8)&3:02b},speed={(val>>10)&3:02b}, duplex={(val>>12)&1}, pause={(val>>14)&3:02b}')
+        return val
+
 
     async def set_fpga_control_networking_parameters_async(
             self,
@@ -6254,7 +6318,6 @@ class chFPGA(FPGAFirmware):
 
         print('*** TEST PASSED! ***')
         return True, None, None, None
-
 
 
 # class chFPGA_MGK7MB_Firmware(FPGAFirmware, chFPGA):
