@@ -721,6 +721,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
 
         # Set LEDs to indicate initialization state
         await self.set_led('GP_LED1', 1)  # Full FPGA firmware is initialized
+
     async def open_hw_async(self):
         """ Initializing objects to access the Iceboard hardware
 
