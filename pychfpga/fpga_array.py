@@ -2445,7 +2445,7 @@ class FPGAArray(object):
                     if tx not in tx_list:
                         self.logger.debug(f'{self!r}: In {ib.crate!r}, {rx} has no corresponding transmitter')
 
-        if mode != 'shuffle128':  # ***JFC: temporary hack
+        if mode != 'shuffle128' and mode !='shuffle16':  # ***JFC: temporary hack
             # Get the exhaustive frequency map that is implemented by the current corner
             freq_map = self.get_frequency_map(format='l:bb')
             # Retain only one bin number  for each bin
