@@ -14,6 +14,8 @@ FROM python:3.7-slim as base
 RUN set -ex \
     && apt-get update -yqq \
     && apt-get install -yqq --no-install-recommends curl openssh-client git git-lfs \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Add github.com to known_hosts
 RUN set -ex \
@@ -25,15 +27,20 @@ RUN set -ex \
 # Python Dependencies Layer
 ########################################################
 FROM base as runtime
-# Copy project dependencies into the docker image.
-COPY . /pychfpga
+
+RUN set -ex \
+    && git lfs install \
+    && pip install --upgrade pip
+
+RUN --mount=type=ssh,id=github_ssh_key set -ex \
+    && git clone git@bitbucket.org:winterlandcosmology/pychfpga.git --depth 1 --branch jfc/dev --single-branch /pychfpga \
+    && rm -rf /pychfpga/docs
 
 # Change directory to /pychfpga
 WORKDIR /pychfpga
 
 # Install project dependencies.
 RUN --mount=type=ssh,id=github_ssh_key set -ex \
-    && pip install --upgrade pip \
     && pip install -e .
 
 # Exposing ports normally used by the application
