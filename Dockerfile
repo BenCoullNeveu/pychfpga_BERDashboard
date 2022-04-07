@@ -13,7 +13,7 @@ FROM python:3.7-slim as base
 # Install Linux Dependencies
 RUN set -ex \
     && apt-get update -yqq \
-    && apt-get install -yqq --no-install-recommends curl openssh-client git
+    && apt-get install -yqq --no-install-recommends curl openssh-client git git-lfs \
 
 # Add github.com to known_hosts
 RUN set -ex \
