@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-## NOTE: Environemt Parameter DOCKER_BUILDKIT=1 is required to be set, before the build,
+## NOTE: Environemt Parameter   is required to be set, before the build,
 ## docker build -f Dockerfile -t chimefrb/pychfpga:latest --ssh github_ssh_key=$SSH_AUTH_SOCK .
 ## docker build -f Dockerfile -t chimefrb/pychfpga:latest --ssh github_ssh_key=/path/to/id_rsa .
 ## where $SSH_AUTH_SOCK contains the path of the unix file socket for the ssh-agent
@@ -29,7 +29,7 @@ RUN --mount=type=ssh,id=github_ssh_key set -ex \
     && git lfs install \
     && pip install --upgrade pip \
     && git clone git@bitbucket.org:winterlandcosmology/pychfpga.git --depth 1 --branch jfc/dev --single-branch /pychfpga \
-    && git clone git@bitbucket.org:winterlandcosmology/ch_config.git --depth 1 --branch jfc/dev --single-branch /ch_config \
+    && git clone git@bitbucket.org:chime/ch_config.git --depth 1 --branch jfc/dev --single-branch /ch_config \
     && rm -rf /pychfpga/docs \
     && rm -rf /pychfpga/pychfpga/arm_firmware \
     && rm -rf /pychfpga/.git
