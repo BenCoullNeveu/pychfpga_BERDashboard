@@ -476,22 +476,25 @@ class chFPGA(FPGAFirmware):
             fpga_ip_addr=self.fpga_ip_addr,
             fpga_port_number=self.fpga_control_port_number)
 
-        # Make sure the PMA core uses the SGMII protocol with autonegociation
-
-        self.logger.debug(f"{self!r}: Initializing SFP in SGMII mode with autonegociation")
-        await self.set_sgmii_config_vector(an=True, reset=1)
-        await self.set_sgmii_config_vector(an=True, reset=0)
-        await asyncio.sleep(0.050)  # wait for autonegotiation to complete
-        status = await self.get_sgmii_status_vector()
-        if status & 1:
-            self.logger.debug(f"{self!r}: SFP autonegociation successful")
-        else:
-            self.logger.debug(f"{self!r}: SFP autonegociation failed. Disabling autoneg.")
-            await self.set_sgmii_config_vector(an=False, reset=1)
-            await self.set_sgmii_config_vector(an=False, reset=0)
-            await asyncio.sleep(0.050)  # wait for autonegotiation to complete
+        for trial in range(10):
+            # Make sure the PMA core uses the SGMII protocol with autonegociation
+            self.logger.debug(f"{self!r}: Initializing SFP in SGMII mode with autonegociation (trial {trial+1})")
+            await self.set_sgmii_config_vector(an=True, reset=1)
+            await self.set_sgmii_config_vector(an=True, reset=0)
+            await asyncio.sleep(0.150)  # wait for autonegotiation to complete
             status = await self.get_sgmii_status_vector()
-            if not (status & 1):
+            if status & 1:
+                self.logger.debug(f"{self!r}: SFP successfully established link with autonegociation")
+                break
+            else:
+                self.logger.debug(f"{self!r}: SFP autonegociation did not succeed (trial {trial+1}). SFP module might not support it. Disabling autonegociation and retrying.")
+                await self.set_sgmii_config_vector(an=False, reset=1)
+                await self.set_sgmii_config_vector(an=False, reset=0)
+                await asyncio.sleep(0.150)  # wait for autonegotiation to complete
+                status = await self.get_sgmii_status_vector()
+                if status & 1:
+                    self.logger.debug(f"{self!r}: SFP successfully established link without autonegociation")
+                    break
                 raise IOError(f"{self!r}: Cannot get the SFP module to establish a link")
 
         self.logger.debug(f"{self!r}: Clearing FPGAs UDP communication stack")
@@ -1795,7 +1798,15 @@ class chFPGA(FPGAFirmware):
         }
 
     async def set_irigb_source_async(self, source):
-        """ Set the source of the IRIG-B signal."""
+        """
+        Set the source of the IRIG-B signal. Also configures the user SMA as
+        an 'input' if that SMA is used as a source.
+
+        Parameters:
+
+            source (str): Name of the source to use.
+
+        """
         if source not in self._IRIGB_SOURCE_TABLE:
             raise ValueError(
                 'Invalid IRIG-B source name. Valid names are %s'
@@ -1805,6 +1816,11 @@ class chFPGA(FPGAFirmware):
         await self.fpga_core_reg_write_async(self._IRIGB_SAMPLE2_ADDR, (w2 & 0x3FFFFFFF) | ((src & 0b011) << 30))
         w2 = await self.fpga_core_reg_read_async(self._IRIGB_TARGET0_ADDR)
         await self.fpga_core_reg_write_async(self._IRIGB_TARGET0_ADDR, (w2 & 0x7FFFFFFF) | ((src >> 2) << 31))
+
+        # If an user SMA is used, configure it as an input
+        if source in self.GPIO.USER_OUTPUTS:
+            self.set_user_output_source(output=source, source='input')
+
 
     async def get_irigb_source_async(self):
         """ Get the name of the current source of the IRIG-B signal."""
@@ -4335,24 +4351,6 @@ class chFPGA(FPGAFirmware):
             return None
         else:
             return self.REFCLK.get_sync_source()
-
-
-    async def set_irigb_source_async(self, source):
-        """
-        Set the source of the IRIG-B signal. Also configures the user SMA as
-        an 'input' if that SMA is used as a source.
-
-        Parameters:
-
-            source (str): Name of the source to use.
-
-        """
-        await super().set_irigb_source_async(source=source)
-        # If an user SMA is used, configure it as an input
-        if source in self.GPIO.USER_OUTPUTS:
-            self.set_user_output_source(output=source, source='input')
-
-    set_irigb_source_sync = async_to_sync(set_irigb_source_async)
 
     def set_pwm(self, enable, offset, high_time, period, local_sync=False):
         """ Sets the frame-based PWM generator. All times are stated as the number of frames.
