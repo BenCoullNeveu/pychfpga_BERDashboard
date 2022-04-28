@@ -4,8 +4,13 @@ version: '3.8'
 services:
   controller:
     image: chimefrb/pychfpga:latest
-    container_name: controller
-    command: ["fpga_master", "/ch_config/frb_allenby_config.yaml:frb"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: developer
+      args:
+        github_ssh_key: $SSH_AUTH_SOCK
+    command: ["fpga_master", "/ch_config/config.yaml:jfc.mcgill"]
     ports:
       - "54321:54321"
     deploy:
@@ -18,15 +23,11 @@ services:
         limits:
           cpus: "1"
           memory: "2gb"
-      restart_policy:
-        condition: any
-        delay: 15s
-        window: 15s
     environment:
       - PYTHONUNBUFFERED=1
-  power_supply:
+  ps:
     image: chimefrb/pychfpga:latest
-    command: ["chime_rx_ps", "/ch_config/frb_allenby_config.yaml:frb"]
+    command: ["chime_rx_ps", "/ch_config/config.yaml:jfc.mcgill"]
     ports:
       - "54324:54324"
     deploy:
@@ -39,15 +40,11 @@ services:
         limits:
           cpus: "1"
           memory: "2gb"
-      restart_policy:
-        condition: any
-        delay: 15s
-        window: 15s
     environment:
       - PYTHONUNBUFFERED=1
   gps:
     image: chimefrb/pychfpga:latest
-    command: ["chime_gps", "/ch_config/frb_allenby_config.yaml:frb"]
+    command: ["chime_gps", "/ch_config/config.yaml:jfc.mcgill"]
     ports:
       - "54325:54325"
     deploy:
@@ -60,15 +57,11 @@ services:
         limits:
           cpus: "1"
           memory: "2gb"
-      restart_policy:
-        condition: any
-        delay: 15s
-        window: 15s
     environment:
       - PYTHONUNBUFFERED=1
   raw_acq:
     image: chimefrb/pychfpga:latest
-    command: ["chime_raw_acq", "/ch_config/frb_allenby_config.yaml:frb"]
+    command: ["chime_raw_acq", "/ch_config/config.yaml:jfc.mcgill"]
     ports:
       - "54322:54322"
       - "54326:54326/udp"
@@ -82,9 +75,5 @@ services:
         limits:
           cpus: "2"
           memory: "2gb"
-      restart_policy:
-        condition: any
-        delay: 15s
-        window: 15s
     environment:
       - PYTHONUNBUFFERED=1

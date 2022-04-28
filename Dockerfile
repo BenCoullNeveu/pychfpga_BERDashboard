@@ -21,7 +21,7 @@ RUN set -ex \
     && ssh-keyscan bitbucket.org >> ~/.ssh/known_hosts
 
 ########################################################
-# Python Dependencies Layer
+# Python Dependencies
 ########################################################
 FROM base as runtime
 
@@ -29,10 +29,7 @@ RUN --mount=type=ssh,id=github_ssh_key set -ex \
     && git lfs install \
     && pip install --upgrade pip \
     && git clone git@bitbucket.org:winterlandcosmology/pychfpga.git --depth 1 --branch jfc/dev --single-branch /pychfpga \
-    && git clone git@bitbucket.org:chime/ch_config.git --depth 1 --branch jfc/dev --single-branch /ch_config \
-    && rm -rf /pychfpga/docs \
-    && rm -rf /pychfpga/pychfpga/arm_firmware \
-    && rm -rf /pychfpga/.git
+    && git clone git@bitbucket.org:chime/ch_config.git --depth 1 --branch jfc/dev --single-branch /ch_config
 
 # Change directory to /pychfpga
 WORKDIR /pychfpga
@@ -46,3 +43,13 @@ EXPOSE 54321-54330
 
 # Default entrypoint
 CMD ["fpga_master", "--help"]
+
+FROM runtime as production
+RUN set -ex \
+    && rm -rf /pychfpga/docs \
+    && rm -rf /pychfpga/pychfpga/arm_firmware \
+    && rm -rf /pychfpga/.git
+
+FROM runtime as developer
+RUN set -ex \
+    && pip install ipython
