@@ -1,0 +1,79 @@
+---
+version: '3.8'
+
+services:
+  controller:
+    image: chimefrb/pychfpga:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: developer
+      args:
+        github_ssh_key: $SSH_AUTH_SOCK
+    command: ["fpga_master", "/ch_config/config.yaml:jfc.mcgill"]
+    ports:
+      - "54321:54321"
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        reservations:
+          cpus: "0.5"
+          memory: "256M"
+        limits:
+          cpus: "1"
+          memory: "2gb"
+    environment:
+      - PYTHONUNBUFFERED=1
+  ps:
+    image: chimefrb/pychfpga:latest
+    command: ["chime_rx_ps", "/ch_config/config.yaml:jfc.mcgill"]
+    ports:
+      - "54324:54324"
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        reservations:
+          cpus: "0.5"
+          memory: "256M"
+        limits:
+          cpus: "1"
+          memory: "2gb"
+    environment:
+      - PYTHONUNBUFFERED=1
+  gps:
+    image: chimefrb/pychfpga:latest
+    command: ["chime_gps", "/ch_config/config.yaml:jfc.mcgill"]
+    ports:
+      - "54325:54325"
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        reservations:
+          cpus: "0.5"
+          memory: "256M"
+        limits:
+          cpus: "1"
+          memory: "2gb"
+    environment:
+      - PYTHONUNBUFFERED=1
+  raw_acq:
+    image: chimefrb/pychfpga:latest
+    command: ["chime_raw_acq", "/ch_config/config.yaml:jfc.mcgill"]
+    ports:
+      - "54322:54322"
+      - "54326:54326/udp"
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        reservations:
+          cpus: "1"
+          memory: "256M"
+        limits:
+          cpus: "2"
+          memory: "2gb"
+    environment:
+      - PYTHONUNBUFFERED=1

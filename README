@@ -70,6 +70,15 @@ If you want to operate the Quality Control (QC) test scripts, you can ask for th
 
 	$ pip install -e ./pychfpga[qc]  # install in-place with the QC dependencies
 
+Build Docker Image
+------------------
+In order to build the docker image for `pychfpga` you need to have access to ssh-identity with read permissions to this and other `wtl` repositories.
+
+- Environemt Parameter DOCKER_BUILDKIT=1 is required to be set, before the build.
+- In order to build the image execute the following command if the correct ssh-identity is already loaded into the `ssh-agent` 
+	$ docker build -f Dockerfile -t chimefrb/pychfpga:latest --ssh github_ssh_key=$SSH_AUTH_SOCK .
+- Alternatively, if you have the private key, you can use:
+        $ docker build -f Dockerfile -t chimefrb/pychfpga:latest --ssh github_ssh_key=/path/to/id_rsa .
 
 
 Configuring the hardware
