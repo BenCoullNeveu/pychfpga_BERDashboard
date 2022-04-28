@@ -1,0 +1,90 @@
+---
+version: '3.8'
+
+services:
+  controller:
+    image: chimefrb/pychfpga:latest
+    container_name: controller
+    command: ["fpga_master", "/ch_config/frb_allenby_config.yaml:frb"]
+    ports:
+      - "54321:54321"
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        reservations:
+          cpus: "0.5"
+          memory: "256M"
+        limits:
+          cpus: "1"
+          memory: "2gb"
+      restart_policy:
+        condition: any
+        delay: 15s
+        window: 15s
+    environment:
+      - PYTHONUNBUFFERED=1
+  power_supply:
+    image: chimefrb/pychfpga:latest
+    command: ["chime_rx_ps", "/ch_config/frb_allenby_config.yaml:frb"]
+    ports:
+      - "54324:54324"
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        reservations:
+          cpus: "0.5"
+          memory: "256M"
+        limits:
+          cpus: "1"
+          memory: "2gb"
+      restart_policy:
+        condition: any
+        delay: 15s
+        window: 15s
+    environment:
+      - PYTHONUNBUFFERED=1
+  gps:
+    image: chimefrb/pychfpga:latest
+    command: ["chime_gps", "/ch_config/frb_allenby_config.yaml:frb"]
+    ports:
+      - "54325:54325"
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        reservations:
+          cpus: "0.5"
+          memory: "256M"
+        limits:
+          cpus: "1"
+          memory: "2gb"
+      restart_policy:
+        condition: any
+        delay: 15s
+        window: 15s
+    environment:
+      - PYTHONUNBUFFERED=1
+  raw_acq:
+    image: chimefrb/pychfpga:latest
+    command: ["chime_raw_acq", "/ch_config/frb_allenby_config.yaml:frb"]
+    ports:
+      - "54322:54322"
+      - "54326:54326/udp"
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        reservations:
+          cpus: "1"
+          memory: "256M"
+        limits:
+          cpus: "2"
+          memory: "2gb"
+      restart_policy:
+        condition: any
+        delay: 15s
+        window: 15s
+    environment:
+      - PYTHONUNBUFFERED=1

@@ -8,17 +8,14 @@
 ########################################################
 # Base Image with Linux Dependencies
 ########################################################
-FROM python:3.7-slim as base
+FROM python:3.8-slim as base
 
 # Install Linux Dependencies
 RUN set -ex \
     && apt-get update -yqq \
     && apt-get install -yqq --no-install-recommends curl openssh-client git git-lfs \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Add github.com to known_hosts
-RUN set -ex \
+    && rm -rf /var/lib/apt/lists/* \
     && mkdir -p -m 0600 ~/.ssh \
     && ssh-keyscan github.com >> ~/.ssh/known_hosts \
     && ssh-keyscan bitbucket.org >> ~/.ssh/known_hosts
@@ -28,13 +25,14 @@ RUN set -ex \
 ########################################################
 FROM base as runtime
 
-RUN set -ex \
-    && git lfs install \
-    && pip install --upgrade pip
-
 RUN --mount=type=ssh,id=github_ssh_key set -ex \
+    && git lfs install \
+    && pip install --upgrade pip \
     && git clone git@bitbucket.org:winterlandcosmology/pychfpga.git --depth 1 --branch jfc/dev --single-branch /pychfpga \
-    && rm -rf /pychfpga/docs
+    && git clone git@bitbucket.org:winterlandcosmology/ch_config.git --depth 1 --branch jfc/dev --single-branch /ch_config \
+    && rm -rf /pychfpga/docs \
+    && rm -rf /pychfpga/pychfpga/arm_firmware \
+    && rm -rf /pychfpga/.git
 
 # Change directory to /pychfpga
 WORKDIR /pychfpga
