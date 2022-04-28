@@ -1,0 +1,37 @@
+ARM firmrware releases
+
+R11.3: original, with dfmux libs and firmware
+R11.3a: removed dfmux libs and firmware. libicecore.so does not support MGK7BP16 backplane part number
+R11.3b: Fix backplane part number recognition with new libicecore.so. Can't read clock source
+R11.3c: new uimage (uimage.old1) that properly sets direction. Boot hangs.
+R11.3d: new uimage (uimage.d) that sets pulldowns instead of pullups. Boot hangs.
+
+
+
+
+Mount filesystem partition
+sudo mount -o loop,offset=32000512 dfmux_release_11.3b.img mnt/
+
+Mount FAT boot partition:
+sudo mount -o loop,offset=999936 dfmux_release_11.3d.img mnt/
+
+Unmount:
+sudo umount mnt/
+
+
+R11.3a
+rm mnt/usr/share/tuber/libdfmux.so
+rm mnt/usr/lib/iceboard/dfmux_mgk7mb_mgmezz04.bit
+
+R11.3b
+cp libiceboard.so mnt/usr/share/tuber/
+
+R11.3c:
+R11.3d
+Mount FAT
+copy uiage
+
+
+R11.3e:
+
+sudo cp S60blink mnt/etc/init.d/

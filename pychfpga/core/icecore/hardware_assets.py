@@ -42,47 +42,59 @@ class IceCrateBase:
         return "%s(%r)" % (self.__class__.__name__, self.serial)
 
 
-class IceBoardBase(tuber.TuberObject):
-    """Basic IceBoard object.
+class TuberIceBoardBase(tuber.TuberObject):
+    """ Base class used to provide Tuber access to an Iceboard.
 
-    The object implement TuberObject and therefore exposes all functions
+    The class imherits TuberObject and therefore exposes all functions
     provided by the board ARM processor software.
 
+    Provides some Iceboard-specific Tuber wrappers methods in addition to the TuberObject loral and remote methods.
+
+    In order to be operational, this class must be subclassed by a class that defines the following instance attributes:
+
+        self.hostname
+        self.serial
+        self.slot
+        self.crate
     """
 
-    # class attributes are not needed.
+    # Set the name of the set of software functions provided by Tuber (i.e.
+    # the board's 'personnality'). This is needed by the TuberObject
+    # superclass.
+    tuber_objname = 'IceBoard'
 
-    # hostname = None  # The hostname (or IP) to use for this resource
-    # serial = None # Column(String, doc="The serial number written on the board (verbatim!)")
-    # slot = None  # The IceCrate slot occupied by this board (first slot is slot 1)
 
-    # backplane_serial = None  # The serial number of IceCrate occupied by this board
+    @property
+    def tuber_uri(self):
+        """Smarter, IceBoard-aware tuber_uri.
 
-    # mezzanine = {}  # A {FMC_number, FMCMezzanine_object} dict describing the mezzanines. FMC number is 1 or 2.
-
-    # Defines the set of software functionalities provided buy the ARM processor.
-    # This overrides the TuberObject property so we can define a dynamic instance attribute.
-
-    tuber_objname = 'IceBoard' #
-
-    def __init__(self, hostname=None, serial=None):
+        The version of 'tuber_uri' in tuber.py doesn't know about calculating
+        hostnames from serials, for instance.
         """
-        """
-        self.hostname = hostname
-        self.serial = serial
-        self.crate = None
-        self.mezzanine = {}
 
-    def __repr__(self):
-        return "%r.%s(%s)" % (
-            self.crate,
-            self.__class__.__name__,
-            "slot=%s" % self.slot
-            if self.crate
-            else "serial=%s" % self.serial
-            if self.serial
-            else "hostname=%s" % self.hostname,
+        if self.hostname:
+            # We have a hostname; just use it.
+            return "http://{}/tuber".format(self.hostname)
+
+        if self.serial:
+            # We have a serial number; compute the hostname.
+            return "http://iceboard{}.local/tuber".format(self.serial)
+
+        if self.slot and self.crate:
+            # We have a slot and crate,
+            # we can use the crate-based hostname (i.e. slot3.crate001.local).
+            return "http://slot{0}.icecrate{1}.local/tuber".format(
+                self.slot, self.crate.serial
+            )
+
+        raise NameError(
+            "Couldn't figure out a Tuber URI for this object! "
+            "I need serial or crate information."
         )
+
+    @tworoutine.tworoutine
+    async def resolve(self):
+        await self._tuber_get_meta_async()
 
     def set_fpga_bitstream(self, buf):
         """
@@ -180,37 +192,53 @@ class IceBoardBase(tuber.TuberObject):
         b64_string = base64.b64encode(fru.encode())
         return self._tuber_backplane_eeprom_write_base64_async(b64_string)
 
-    @property
-    def tuber_uri(self):
-        """Smarter, IceBoard-aware tuber_uri.
 
-        The version of 'tuber_uri' in tuber.py doesn't know about calculating
-        hostnames from serials, for instance.
+
+class IceBoardBase(TuberIceBoardBase):
+    """Basic functional IceBoard object.
+
+
+    """
+
+    # class attributes are not needed.
+
+    # hostname = None  # The hostname (or IP) to use for this resource
+    # serial = None # Column(String, doc="The serial number written on the board (verbatim!)")
+    # slot = None  # The IceCrate slot occupied by this board (first slot is slot 1)
+
+    # backplane_serial = None  # The serial number of IceCrate occupied by this board
+
+    # mezzanine = {}  # A {FMC_number, FMCMezzanine_object} dict describing the mezzanines. FMC number is 1 or 2.
+
+    # Defines the set of software functionalities provided buy the ARM processor.
+    # This overrides the TuberObject property so we can define a dynamic instance attribute.
+
+
+    def __init__(self, hostname=None, serial=None):
         """
 
-        if self.hostname:
-            # We have a hostname; just use it.
-            return "http://{}/tuber".format(self.hostname)
+        The hostname, serial, crate and mezzanine are initialized only if they
+        dont already exist, or if there are specified as non-None arguments.
+        """
+        # Make parameter initialization conditional for cases where those are initialized by classes that appear earlier in the MRO.
 
-        if self.serial:
-            # We have a serial number; compute the hostname.
-            return "http://iceboard{}.local/tuber".format(self.serial)
+        self.hostname = hostname
+        self.serial = serial
+        self.crate = None
+        self.mezzanine = {}
 
-        if self.slot and self.crate:
-            # We have a slot and crate,
-            # we can use the crate-based hostname (i.e. slot3.crate001.local).
-            return "http://slot{0}.icecrate{1}.local/tuber".format(
-                self.slot, self.crate.serial
-            )
-
-        raise NameError(
-            "Couldn't figure out a Tuber URI for this object! "
-            "I need serial or crate information."
+    def __repr__(self):
+        return "%r.%s(%s)" % (
+            self.crate,
+            self.__class__.__name__,
+            "slot=%s" % self.slot
+            if self.crate
+            else "serial=%s" % self.serial
+            if self.serial
+            else "hostname=%s" % self.hostname,
         )
 
-    @tworoutine.tworoutine
-    async def resolve(self):
-        await self._tuber_get_meta_async()
+
 
 class FMCMezzanineBase():
     """Basic FMC Mezzanine object.

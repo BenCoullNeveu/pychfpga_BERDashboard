@@ -10,6 +10,7 @@ History:
 from .Module import Module_base, BitField
 import numpy as np
 
+
 class FUNCGEN_base(Module_base):
     """ Implements interface to the function generator within a procecessor
     pipeline"""
@@ -32,7 +33,6 @@ class FUNCGEN_base(Module_base):
     SEND_FRAME = BitField(STATUS, 0x02, 0, doc="debug")
     DELAY_CTR = BitField(STATUS, 0x04, 0, width=16, doc="Debug: Delay counter")
 
-
     FN_ADC = 0
     FN_BUFFER = 1
     FN_NOISE = 2
@@ -41,7 +41,7 @@ class FUNCGEN_base(Module_base):
     FN_FRAME4 = 5
     FN_BUFFER_NIBBLE4 = 6
     BUFFER_SIZE = 2048  # bytes
-    FRAME_SIZE = 2048 # bytes
+    FRAME_SIZE = 2048  # bytes
 
     # The following define the source of the data
     DATA_SOURCE_NAMES = {
@@ -111,8 +111,8 @@ class FUNCGEN_base(Module_base):
         # self.ant = ant_ch_instance
         # fpga = ant_ch_instance.fpga
         super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
-        self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
-    # Specialized functions
+        # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
+        self._lock()
 
     def reset(self):
         """ Resets the function generator"""
@@ -120,7 +120,8 @@ class FUNCGEN_base(Module_base):
 
     def set_data_source(self, source_name, data=None, seed=None):
         """
-        Selects the source of the data outputed by the function generator: ADC signal, noise generator, frame counters, waveform buffer.
+        Selects the source of the data outputed by the function generator: ADC
+        signal, noise generator, frame counters, waveform buffer.
 
         If the noise generator is selected, the seed can be specified as as 15-bit value in ``seed``.
 
@@ -148,7 +149,7 @@ class FUNCGEN_base(Module_base):
         Gets the data source currently selected by the the SOURCE selector.
         """
         data_source_number = self.FUNCTION  # make sure we read this only once
-        return [key for (key,value) in self.DATA_SOURCE_NAMES.items() if value == data_source_number][0]
+        return [key for (key, value) in self.DATA_SOURCE_NAMES.items() if value == data_source_number][0]
 
     def set_function(self, function_name, **kwargs):
         """
@@ -162,7 +163,9 @@ class FUNCGEN_base(Module_base):
         if function_name not in self.FUNCTION_NAMES:
             raise Exception("Invalid function name. Valid ones are '%s'" % ', '.join(self.FUNCTION_NAMES.keys()))
         (fn_number, buffer_gen) = self.FUNCTION_NAMES[function_name]
-        buffer_info = '%s(%s)' % (function_name, ', '.join('%s=%.30r' % (arg, val) for (arg,val) in kwargs.items()))
+        function_args = ', '.join('%s=%.30r' % (arg, val) for (arg, val) in kwargs.items())
+        buffer_info = f'{function_name}({function_args})'
+        print(f'*** Setting function to {buffer_info}')
         self.set_buffer(buffer_gen(self=self, **kwargs), function_number=fn_number, info=buffer_info)
 
     def get_function(self):
@@ -181,16 +184,18 @@ class FUNCGEN_base(Module_base):
         """
 
         data = np.array(data, np.uint8)
+        if self.buffer_cache is None:
+            self.buffer_cache = np.zeros(self.BUFFER_SIZE, np.uint8)
 
+        # Write the data, page by page
         for page in range(4):
-            pslc = slice(page * 512, (page + 1) * 512)
+            page_slice = slice(page * 512, page * 512 + 512)
+            page_data = data[page_slice]
             self.RAM_PAGE = page
-            self.write_ram(0, data[pslc])
+            self.write_ram(0, page_data)
+            self.buffer_cache[page_slice] = page_data
 
-            if self.buffer_cache is None:
-                self.buffer_cache = np.zeros(self.BUFFER_SIZE, np.uint8)
-            self.buffer_cache[pslc] = data[pslc]
-
+        # Write info on the buffer contents in an unused page
         self.RAM_PAGE = 4
         self.write_ram(0, function_number)
         self.write_ram(1, info.encode() + b'\x00')
@@ -211,7 +216,7 @@ class FUNCGEN_base(Module_base):
         fn_number = data[0]
         data_str = data[1:].tostring()
         info = data_str[:data_str.index(chr(0))]
-        return (fn_number, info, None) # Fn number, info string, CRC32
+        return (fn_number, info, None)  # Fn number, info string, CRC32
 
     def get_sim_output(self, adc_input=None, source=None, number_of_frames=4):
         """
@@ -250,7 +255,9 @@ class FUNCGEN_base(Module_base):
             return (flags, adc_data)
         elif source == 'noise':
             flags = np.zeros((number_of_frames, self.FRAME_SIZE), np.int8)
-            data = np.tile(np.random.random_integers(-128, 127, size=self.FRAME_SIZE).astype(np.uint8).view('>u4'), (number_of_frames, 1))
+            data = np.tile(
+                np.random.random_integers(-128, 127, size=self.FRAME_SIZE).astype(np.uint8).view('>u4'),
+                (number_of_frames, 1))
             return (flags, data)
         elif source == 'buffer':
             flags = np.zeros((number_of_frames, self.FRAME_SIZE), np.int8)
@@ -259,14 +266,14 @@ class FUNCGEN_base(Module_base):
         else:
             raise RuntimeError('Unknown or unsupported data source')
 
-
     def init(self):
         """ Initializes the function generator """
-        if not self.fpga.is_fmc_present_for_channel(self.instance_number):
-            self.set_data_source('buffer') # use the dunction generator if the ADC is not present
+        if self.fpga._NUMBER_OF_FMC_SLOTS and not self.fpga.is_fmc_present_for_channel(self.instance_number):
+            # use the function generator if there are FMC slots in the system but the ADC is not present
+            self.set_data_source('buffer')
             self.set_function('ramp')
         else:
-            self.set_data_source('adc') # use the ADC data
+            self.set_data_source('adc')  # use the ADC data
 
     def status(self):
         """ Displays the status of the function generator module """
@@ -274,5 +281,3 @@ class FUNCGEN_base(Module_base):
         print(' Function number: %i' % self.FUNCTION)
         print(' Ramp counter status:')
         print('    RAMP_CTR: %i' % self.RAMP_CTR)
-
-

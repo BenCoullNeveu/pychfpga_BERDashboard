@@ -14,14 +14,14 @@ import logging
 import numpy as np
 import time
 import zlib
-import ast
+import ast  # used to savely eval EEPROM contents
 from datetime import datetime
 
 # Local packages
 
 from ..core.icecore.hw.ipmi_fru import FRU, Board, Product, MultiDict
 from ..core.icecore_ext import FMCMezzanine
-from ..core.chFPGA_controller import chFPGA_controller
+from ..core.chfpga import chFPGA  # used to check for compatible firmware instance
 
 # mezzanine-specific modules
 from . import ADC
@@ -251,8 +251,8 @@ class FMCMezzanine_MGADC08(FMCMezzanine):
             adc_bandwidth=2):
         """ Initializes the FMC board modules"""
 
-        if not isinstance(self.iceboard, chFPGA_controller):
-            raise RuntimeError('%r: This %s mezzanine require a motherboard with the chFPGA firmware (chFPGA_controller instance)' % (self, self.__class__))
+        if not isinstance(self.iceboard.fpga, chFPGA):
+            raise RuntimeError('%r: This %s mezzanine require a motherboard with the chFPGA firmware' % (self, self.__class__))
 
         # Do nothing if the FMC is not present
         if not await self.is_mezzanine_present_async():

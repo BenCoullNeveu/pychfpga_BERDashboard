@@ -284,8 +284,7 @@ class GPIO_base(Module_base):
     def init(self):
         """
         Initializes the GPIO module operations.
-        This puts the antenna processors and correlators in reset state."""
-        # reset the antenna processors. This causes them to stop sending data.
+        This puts the channelizers and correlators in reset state."""
         self.ANT_RESET = 1
         self.CORR_RESET = 1
 

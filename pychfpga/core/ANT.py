@@ -39,11 +39,13 @@ class ANT_channel(object):
         self.ant_number = instance_number  # store current channelizer number for this instance
         self.fpga = fpga_instance
         self.logger = logging.getLogger(__name__)
-
-        self.ADCDAQ = ADCDAQ.ADCDAQ_base(
-            fpga_instance,
-            base_address + self.ADCDAQ_OFFSET_ADDR * submodule_address_increment,
-            instance_number)
+        if self.fpga.HAS_ADCDAQ:
+            self.ADCDAQ = ADCDAQ.ADCDAQ_base(
+                fpga_instance,
+                base_address + self.ADCDAQ_OFFSET_ADDR * submodule_address_increment,
+                instance_number)
+        else:
+            self.ADCDAQ = None
         self.FFT = FFT.FFT_base(
             fpga_instance,
             base_address + self.FFT_OFFSET_ADDR * submodule_address_increment,
@@ -74,7 +76,8 @@ class ANT_channel(object):
         """ Initializes the channelizer modules"""
         # self.logger.debug('Initializing modules for channel #%i' % self.ant_number)
         # self.logger.debug('  - ADCDAQ')
-        self.ADCDAQ.init(fmc_present)
+        if self.ADCDAQ:
+            self.ADCDAQ.init(fmc_present)
         # self.logger.debug('  - SRCSEL')
         # self.SRCSEL.init()
         # self.logger.debug('  - FFT')
@@ -212,8 +215,9 @@ class ANT_base(object):
             ant.init(fmc_present[i])
         #self.logger.debug("%r: Initializing delay tables", self.fpga)
 
-        if delay_table is not None:
-            self.set_adc_delays(delay_table)
+        if self.fpga.HAS_ADCDAQ:
+            if delay_table is not None:
+                self.set_adc_delays(delay_table)
 
     def status(self):
         """ Displays the status of all channelizer modules"""

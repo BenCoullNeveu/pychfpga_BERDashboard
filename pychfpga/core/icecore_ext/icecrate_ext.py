@@ -5,11 +5,8 @@ import logging
 import time
 
 from .ccoll import Ccoll
-from .hardware_map import HardwareMap
+from .crate import Crate
 from ..icecore.hardware_assets import IceCrateBase
-
-# from ..icecore import session
-# from ..icecore.handler import HandlerParentAttribute
 
 from .lib.eeprom import eeprom as EEPROM
 from .lib import ina230  # I2C Voltage and current monitor
@@ -30,116 +27,23 @@ class MasterIceboardObject(object):
         obj = getattr(self._crate.master_iceboard, self._iceboard_object_name)
         return getattr(obj, name)
 
-class IceCrate(IceCrateBase, HardwareMap):
-    """
-    Provide the basic methods to operate the IceCrate.
-    """
-    _class_registry = {}  # {part_number:class}
-    _instance_registry = {}  # {(model,serial):instance}
 
+class IceCrate(Crate, IceCrateBase):
+    """
+    Generic IceCrate base class tha define the methotd and attrubutes common to various IceCrate models.
+    """
+    # This is still a generic class. part numbers will be defined in subclases.
     part_number = None
     _ipmi_part_numbers = None  # Must match part number in IPMI data
-    crate_number = None
-
-    NUMBER_OF_SLOTS = 0
-
-    def __init__(self, serial=None, crate_number=None, **kwargs):
-        """ Create all the objects needed to interface the backplane hardware.
-
-        __init__ should only passively create objects. It must not attempt to
-        access methods provided by the ARM as the Crate may be created before
-        IceBoards are associated to it.
-
-        IceCrate handler that provides access to the backplane through an
-        IceBoard.
-
-        This defines the attributes and methods that are available to all
-        IceCrates (including those inherited from IceCrateHandler).
-
-        Any attributes added by the user must be accessed after it has been
-        ensured that the correct IceCrate has been instantiated.
-
-        NOTE: attempting to access an unknown attribute might cause an
-        infinite recursion loop as Tuber tries to access the master_iceboard
-        object that may not already exist.
-        """
-        if self.serial and not self.part_number:
-            raise RuntimeError('Cannot create a generic IceCrate with a serial number')
-        if isinstance(serial, int): # make sure serial is a string
-            serial = f'{serial:03d}'
-
-        super().__init__(serial=serial, **kwargs)
-        self.crate_number = crate_number
-
-        self.logger = logging.getLogger(__name__)
-        self.logger.debug('%r: Instantiating IceCrate object' % self)
-
-        self.logger.debug(f"{self!r}: Created {self.__class__.__name__}(serial={serial}, crate_number={crate_number})")
-
-    def __repr__(self):
-        # return "IceCrate(%s)" % self.get_id()[0]
-        return '%s(%s)' % (self.__class__.__name__, self.get_id())
-
-
-
-    @classmethod
-    def get_unique_instance(cls, new_class=None, serial=None, crate_number=None):
-        """
-        Creates a new IceCrate instance if one with matching crate_number or
-        serial number does not exist, otherwise return an existing one
-        augmented with the new serial or crate_number information.
-
-        """
-        matching_crates = [
-            c for c in cls._instance_registry
-            if (crate_number is not None and c.crate_number == crate_number)
-            or ((new_class or cls).part_number and serial and c.part_number == (new_class or cls).part_number and c.serial == serial)
-            ]
-        # print(f'{cls!r}: Found crates {matching_crates}')
-        if not len(matching_crates):  # no matching crate, create one
-            return (new_class or cls)(serial=serial, crate_number=crate_number)
-        elif len(matching_crates) == 1:  # one match, update existing one
-            return matching_crates[0].update_instance(new_class=new_class, serial=serial, crate_number=crate_number)
-        else:
-            raise RuntimeError('Multiple IceCrates with same keys (should never happen)')
-
-    def update_instance(self, new_class=None,  serial=None, crate_number=None):
-        """
-        Update the class, serial or crate_number info of specified IceCrate
-        subclass instance. If the class needs to be changed, a new class
-        instance is created and the IceBoard references are updated to the new class.
-
-        Parameters:
-
-            new_class
-
-
-        """
-        new_args = dict(
-            serial=serial or self.serial,
-            crate_number=crate_number if crate_number is not None else self.crate_number)
-        if new_class and self.__class__ is not new_class:
-            other = new_class(**new_args)
-            self.delete_instance()
-            other.slot = self.slot  # copy over the slot info
-            # Update all IceBoard crate references to the new instance
-            for ib in self.get_all_instances('IceBoard'):
-                if ib.crate is self:
-                    ib.crate = other
-            return other
-        else:  # otherwise update serial and crate_number
-            if serial and not self.part_number:
-                raise RuntimeError('Cannot assign a serial number to  generic IceCrate')
-            for k, v in new_args.items():
-                setattr(self, k, v)
-            return self
 
     def init(self):
         pass
 
     @property
     def master_iceboard(self):
-        active_iceboards = [(slot, iceboard) for (slot, iceboard) in self.slot.items() if iceboard.hostname or iceboard.serial]
+        active_iceboards = [(slot, iceboard)
+                            for (slot, iceboard) in self.slot.items()
+                            if iceboard.hostname or iceboard.serial]
         return sorted(active_iceboards)[0][1]
 
     _BP_RX_TO_TX_MAP = {}
@@ -165,7 +69,6 @@ class IceCrate(IceCrateBase, HardwareMap):
     @classmethod
     def get_rx_net_length(cls, rx_slot_lane_tuple):
         return cls._BP_RX_NET_LENGTH[rx_slot_lane_tuple]
-
 
     def get_string_id(self):
         """ Return a string composed of the backplane model and serial number
@@ -1225,6 +1128,11 @@ class IceCrate_MGK7BP1(IceCrate):
     _BP_RX_TO_TX_MAP = {(slot, lane): (slot, lane) for slot in range(17) for lane in range(16)}
     _BP_TX_TO_RX_MAP = {tx: rx for (rx, tx) in _BP_RX_TO_TX_MAP.items()}
 
+    @property
+    def _i2c(self):
+        """ Returns the I2C Interface object on the first available iceboard"""
+        return self.master_iceboard.i2c # self.MasterIceboardObject(self, 'i2c')
+
     def __init__(self, **kwargs):
         """
         Creates all the I2C objects needed to interface the hardware.
@@ -1238,12 +1146,7 @@ class IceCrate_MGK7BP1(IceCrate):
         super().__init__(**kwargs)
 
         self._I2C_BACKPLANE_BUS_NAME = 'BP'
-        # self.logger = logging.getLogger(__name__)
-        self.logger.debug('Initializing Iceboard hardware')
-        self._i2c = MasterIceboardObject(self, 'i2c')
-        # self._i2c = iceboard.i2c
-        # self._iceboard_hw = iceboard.hw
-        # self._iceboard = iceboard
+        # self.logger.debug('Initializing Iceboard hardware')
 
         self.logger.debug(' Instantiating Backplane I2C resource managers')
         self._eeprom_data = EEPROM(

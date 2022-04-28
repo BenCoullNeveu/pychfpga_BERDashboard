@@ -19,17 +19,35 @@ class sc18is602b(object):
     GPIO_CONFIG = 0xF7
 
 
-    def __init__(self, i2c_interface, address, port=None, verbose=0):
+    def __init__(self, i2c_interface, address, port=None, verbose=0, clock_rate=3):
         """
+
+        Parameters:
+
+            i2c_interface (I2CInterface): I2C interface object
+
+            address (int): I2C address
+
+            port: object passed to i2c_interface.select_bus() to enable communication to this device
+
+            verbose (int):
+
+            clock_rate(int): SPI clock rate
+                0: 1843 kHz
+                1: 461 kHz
+                2: 115 kHz
+                3: 58 kHz
+
         """
         self.i2c = i2c_interface
         self.address = address
         self.bus_name = port
+        self.clock_rate = clock_rate
 
     def init(self):
         """
         """
-        self.set_config(order=0, mode=0, clock_rate=3)
+        self.set_config(order=0, mode=0, clock_rate=self.clock_rate)
 
     def select(self):
         """
