@@ -4,18 +4,19 @@
 import logging
 import time
 
-from .ccoll import Ccoll
-from .crate import Crate
-from ..icecore.hardware_assets import IceCrateBase
+from pychfpga.common import Ccoll
+from pychfpga.hardware import Crate
 
-from .lib.eeprom import eeprom as EEPROM
-from .lib import ina230  # I2C Voltage and current monitor
-from .lib import tmp421  # I2C temperature sensor
-from .lib import pca9698  # I2C 40-bit IO Expander
-from .lib import amc6821  # I2C fan Controller
-from .lib import pca9575  # 1-slot backplane I2C IO Expander
-from .lib import gpio
-from .lib import qsfp
+from .icecore.hardware_assets import IceCrateBase
+
+from ..lib.eeprom import eeprom as EEPROM
+from ..lib import ina230  # I2C Voltage and current monitor
+from ..lib import tmp421  # I2C temperature sensor
+from ..lib import pca9698  # I2C 40-bit IO Expander
+from ..lib import amc6821  # I2C fan Controller
+from ..lib import pca9575  # 1-slot backplane I2C IO Expander
+from ..lib import gpio
+from ..lib import qsfp
 
 
 class MasterIceboardObject(object):

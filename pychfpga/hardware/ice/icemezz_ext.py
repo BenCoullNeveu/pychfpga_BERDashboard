@@ -2,9 +2,10 @@
 import logging
 
 # Local packages
-from .mezzanine import Mezzanine
-from ..icecore.hardware_assets import FMCMezzanineBase
-from .async_utils import run_async, async_to_sync
+from pychfpga.common import run_async, async_to_sync
+
+from pychfpga.hardware.mezzanine import Mezzanine
+from .icecore.hardware_assets import FMCMezzanineBase
 
 
 class FMCMezzanine(Mezzanine, FMCMezzanineBase):
