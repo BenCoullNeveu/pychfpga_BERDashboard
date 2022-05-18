@@ -771,7 +771,7 @@ class chFPGA(FPGAFirmware):
                 self._CHAN_BASE_ADDR,
                 self._CHAN_ADDR_INCREMENT,
                 self._CHAN_SUBMODULE_ADDR_INCREMENT)
-            self.ANT_FMC_NUMBER = [i // 8 for i in range(self.NUMBER_OF_CHANNELIZERS)]
+            self.CHAN_FMC_NUMBER = [i // 8 for i in range(self.NUMBER_OF_CHANNELIZERS)]
 
             await asyncio.sleep(0)
             self.logger.debug('%r: === Instantiating 1st CROSSBAR' % self)
@@ -842,11 +842,11 @@ class chFPGA(FPGAFirmware):
                     self.logger.warning(f'{self!r}:   An MGADC08 ADC Board is *not* present on FMC slot {fmc_number}')
 
             # Determine if the FMC board corresponding to each channelizer is present
-            # self.ANT_FMC_IS_PRESENT = [self._adc_board[self.ANT_FMC_NUMBER[i]].is_present() for i in range(self.NUMBER_OF_CHANNELIZERS)]
+            # self.ANT_FMC_IS_PRESENT = [self._adc_board[self.CHAN_FMC_NUMBER[i]].is_present() for i in range(self.NUMBER_OF_CHANNELIZERS)]
             self.ANT_FMC_IS_PRESENT = [False] * self.NUMBER_OF_CHANNELIZERS
-            for (ant_number, fmc_number) in enumerate(self.ANT_FMC_NUMBER):
+            for (chan_number, fmc_number) in enumerate(self.CHAN_FMC_NUMBER):
                 if fmc_number + 1 in self.mezzanine.keys():
-                    self.ANT_FMC_IS_PRESENT[ant_number] = True
+                    self.ANT_FMC_IS_PRESENT[chan_number] = True
 
             self._data_socket = None
 
@@ -2301,7 +2301,7 @@ class chFPGA(FPGAFirmware):
             tuple.
         """
 
-        return {self.get_id(ch): ant.PROBER.get_stream_id() for ch, ant in self.chan.items()}
+        return {self.get_id(ch): chan.PROBER.get_stream_id() for ch, chan in self.chan.items()}
 
 
 
@@ -2606,14 +2606,14 @@ class chFPGA(FPGAFirmware):
 
         if source in data_sources:
             self.set_ant_reset(1)  # Reset is needed to resynchronize the system with the new data
-            for ant in self.get_channelizers(channels):
-                ant.FUNCGEN.set_data_source(source)
+            for chan in self.get_channelizers(channels):
+                chan.FUNCGEN.set_data_source(source)
             self.set_ant_reset(0)  # Reset is needed to resynchronize the system with the new data
         elif source in function_names:
             self.set_ant_reset(1)  # Reset is needed to resynchronize the system with the new data
-            for ant in self.get_channelizers(channels):
-                ant.FUNCGEN.set_data_source('funcgen')
-                ant.FUNCGEN.set_function(source, **kwargs)
+            for chan in self.get_channelizers(channels):
+                chan.FUNCGEN.set_data_source('funcgen')
+                chan.FUNCGEN.set_function(source, **kwargs)
             self.set_ant_reset(0)  # Reset is needed to resyncronize the system with the new data
         else:
             raise ValueError("Invalid data source or function name '%s'. Valid data sources are %s:" % (
@@ -2624,7 +2624,7 @@ class chFPGA(FPGAFirmware):
         """
             Returns a list of data source for all channels.
         """
-        return [ant.FUNCGEN.get_data_source() for ant in self.chan.values()]
+        return [chan.FUNCGEN.get_data_source() for chan in self.chan.values()]
 
     def set_funcgen_function(self, function=None, channels=None, **kwargs):
         """
@@ -2642,8 +2642,8 @@ class chFPGA(FPGAFirmware):
             channels = self.default_channels
 
         for ch in channels:
-            ant = self.chan[ch]
-            ant.FUNCGEN.set_function(function.lower(), **kwargs)
+            chan = self.chan[ch]
+            chan.FUNCGEN.set_function(function.lower(), **kwargs)
 
     def get_adc_board(self, channel):
         """
@@ -2725,9 +2725,9 @@ class chFPGA(FPGAFirmware):
 
         # Set the capture period for all specified channels
         for ch in channels:
-            ant = self.chan[ch]
+            chan = self.chan[ch]
             # Set the period so we are ready to capture data correctly after the SYNC resets the CAPTURE logic
-            ant.ADCDAQ.CAPTURE2_PERIOD = capture_period
+            chan.ADCDAQ.CAPTURE2_PERIOD = capture_period
 
         # self.current_ADC_mode = mode_value
         if sync:
@@ -2774,8 +2774,8 @@ class chFPGA(FPGAFirmware):
             channels = self.default_channels
 
         for ch in channels:
-            ant = self.chan[ch]
-            ant.ADCDAQ.set_ADCDAQ_mode(mode)
+            chan = self.chan[ch]
+            chan.ADCDAQ.set_ADCDAQ_mode(mode)
 
     set_ADCDAQ_mode = set_adcdaq_mode
 
@@ -2812,8 +2812,8 @@ class chFPGA(FPGAFirmware):
         Stops the transmission of data.
         """
         self.GPIO.GLOBAL_TRIG = 0  # disable data transmission if continuous mode is currentlly selected
-        for ant in self.chan.values():
-            ant.PROBER.RESET = 1
+        for chan in self.chan.values():
+            chan.PROBER.RESET = 1
 
     def get_data_receiver(self, verbose=1, threaded=False):
         if self.recv:
@@ -2826,7 +2826,7 @@ class chFPGA(FPGAFirmware):
             run_async(self.set_local_data_port_number_async(self.recv.port_number))
         else:
             sock = self.get_data_socket()
-            self.recv = PROBER.RawFrameReceiver(sock)
+            self.recv = prober.RawFrameReceiver(sock)
 
         return self.recv
 
@@ -3026,23 +3026,23 @@ class chFPGA(FPGAFirmware):
         self.GPIO.HOST_FRAME_READ_RATE = 5
 
         # Stop data capture on *ALL* channels
-        for ant in self.get_channelizers():
-            ant.PROBER.RESET = 1
+        for chan in self.get_channelizers():
+            chan.PROBER.RESET = 1
 
-        for ant in self.get_channelizers(channels):
-            ant.PROBER.SUB_PERIOD = 23  # disable sub period
-            ant.PROBER.set_data_source(source)
-            ant.PROBER.config_capture(
+        for chan in self.get_channelizers(channels):
+            chan.PROBER.SUB_PERIOD = 23  # disable sub period
+            chan.PROBER.set_data_source(source)
+            chan.PROBER.config_capture(
                 frames_per_burst=frames_per_burst,
                 burst_period=burst_period_in_frames,
                 number_of_bursts=number_of_bursts,
                 offset=offset,
                 send_delay=send_delay)
-            ch = ant.ant_number
+            ch = chan.chan_number
             self.logger.debug('%r: %s raw data capture on channel %i' % (
                 self,
                 ('Disabling', 'Enabling')[ch in channels], ch))
-            ant.PROBER.RESET = 0
+            chan.PROBER.RESET = 0
 
         # ** line below no longer supported by firmware *** enables data transmission if continuous mode is selected
         self.set_trig(1)
@@ -3079,9 +3079,9 @@ class chFPGA(FPGAFirmware):
             f'{self!r}: Setting dynamic capture parameters to '
             f'sub_period={sub_period} and source={source} for channels={channels}')
 
-        for ant in self.get_channelizers(channels):
-            ant.PROBER.set_data_source(source)
-            ant.PROBER.SUB_PERIOD = sub_period
+        for chan in self.get_channelizers(channels):
+            chan.PROBER.set_data_source(source)
+            chan.PROBER.SUB_PERIOD = sub_period
 
     def set_fft_bypass(self, bypass_mode, channels=None):
         """
@@ -3123,7 +3123,7 @@ class chFPGA(FPGAFirmware):
         """
         Returns a list indicating if the FFT is bypassed or not for each channel.
         """
-        return [bool(ant.FFT.BYPASS) for ant in self.chan.values()]
+        return [bool(chan.FFT.BYPASS) for chan in self.chan.values()]
 
     get_FFT_bypass = get_fft_bypass  # for legacy code compatibility
 
@@ -3142,9 +3142,9 @@ class chFPGA(FPGAFirmware):
         self.logger.debug('%r: Setting SCALER bypass mode for channel %s' % (
             self,
             ', '.join([str(i) for i in channels])))
-        for ant in self.chan.values():
-            if ant.ant_number in channels:
-                ant.SCALER.BYPASS = bypass_mode
+        for chan in self.chan.values():
+            if chan.chan_number in channels:
+                chan.SCALER.BYPASS = bypass_mode
             # else:
             #     self.logger.warning('Attempting to set SCALER bypass mode for channel channel %i '
             #                          'which is not present on this card' % ch)
@@ -3153,7 +3153,7 @@ class chFPGA(FPGAFirmware):
         """
         Returns a list indicating if the SCALER is bypassed or not for each channel.
         """
-        return [bool(ant.SCALER.BYPASS) for ant in self.chan.values()]
+        return [bool(chan.SCALER.BYPASS) for chan in self.chan.values()]
 
     def set_global_trigger(self, trigger_state):
         """
@@ -3433,19 +3433,19 @@ class chFPGA(FPGAFirmware):
             self.sync()  # This automatically clears the error counter
             time.sleep(delay)
             s = ''
-            for (i, ant) in self.chan.items():
-                e = ant.ADCDAQ.RAMP_ERR_CTR
+            for i, chan in self.chan.items():
+                e = chan.ADCDAQ.RAMP_ERR_CTR
                 # We still sometimes get one (and only one) spurious error
                 # count just after sync. There is probably still a firmware
                 # problem. We'll ignore it by software.
                 if e == 1:
                     e = 0
-                be = ant.ADCDAQ.BIT_ERR_CTR  # bit error counters
+                be = chan.ADCDAQ.BIT_ERR_CTR  # bit error counters
                 word_errors.append(e)
-                # ant.ADCDAQ.RAMP_ERR_CLEAR = 0
-                # ant.ADCDAQ.RAMP_ERR_CLEAR = 1
+                # chan.ADCDAQ.RAMP_ERR_CLEAR = 0
+                # chan.ADCDAQ.RAMP_ERR_CLEAR = 1
                 if verbose:
-                    s += '%2i (%08X) ' % (e, be)
+                    s += f'{e:2d} ({be:08X}) '
             self.logger.debug(f'{self!r}: {s}')
         self.set_adc_mode(old_adc_mode)
         return sum(word_errors)
@@ -4155,7 +4155,7 @@ class chFPGA(FPGAFirmware):
         """
         Return the gain bank that will be used on the next automatic bank switch.
         """
-        return [ant.SCALER.READ_COEFF_BANK ^ 1 for ant in self.chan.values()]
+        return [chan.SCALER.READ_COEFF_BANK ^ 1 for chan in self.chan.values()]
 
     def get_gains(self, bank=0, use_cache=True):
         """
@@ -4174,10 +4174,10 @@ class chFPGA(FPGAFirmware):
                  ``log gain`` is an integer.
         """
         gain_list = []
-        for ch in self.get_channelizers():
-            glog = ch.SCALER.SHIFT_LEFT
-            glin = ch.SCALER.get_gain_table(bank=bank, use_cache=True)
-            gain_list.append([ch.ant_number, [glin, glog]])
+        for chan in self.get_channelizers():
+            glog = chan.SCALER.SHIFT_LEFT
+            glin = chan.SCALER.get_gain_table(bank=bank, use_cache=True)
+            gain_list.append([chan.chan_number, [glin, glog]])
         return gain_list
 
     def get_gain_timestamps(self, bank=0):
@@ -4193,7 +4193,7 @@ class chFPGA(FPGAFirmware):
             list of (channel_number, timestamp), one for each channel.
             Elements are None if the gains was not set for that channel.
         """
-        return [(ch.ant_number, ch.SCALER.get_gains_timestamp(bank=bank)) for ch in self.get_channelizers()]
+        return [(chan.chan_number, chan.SCALER.get_gains_timestamp(bank=bank)) for chan in self.get_channelizers()]
 
     def switch_gains(self, bank=None, when='now'):
         """
@@ -4213,25 +4213,25 @@ class chFPGA(FPGAFirmware):
         if when is None:
             return
 
-        for ant in self.chan.values():
+        for chan in self.chan.values():
             if bank is None or bank < 0:
-                next_bank = ant.SCALER.READ_COEFF_BANK ^ 1
+                next_bank = chan.SCALER.READ_COEFF_BANK ^ 1
             else:
                 next_bank = bank
 
             if when == 'now':
-                ant.SCALER.SYNCHRONIZE_GAIN_BANK = False
-                ant.SCALER.READ_COEFF_BANK = next_bank
+                chan.SCALER.SYNCHRONIZE_GAIN_BANK = False
+                chan.SCALER.READ_COEFF_BANK = next_bank
             else:
-                ant.SCALER.SYNCHRONIZE_GAIN_BANK = True
-                ant.SCALER.READ_COEFF_BANK = next_bank
-                ant.SCALER.GAIN_BANK_SWITCH_FRAME_NUMBER = when
+                chan.SCALER.SYNCHRONIZE_GAIN_BANK = True
+                chan.SCALER.READ_COEFF_BANK = next_bank
+                chan.SCALER.GAIN_BANK_SWITCH_FRAME_NUMBER = when
 
     def reset_fft_overflow_count(self):
         """ Reset the FFT overflow counter in all channelizers.
         """
-        for ant in self.chan.values():
-            ant.FFT.reset_fft_overflow_count()
+        for chan in self.chan.values():
+            chan.FFT.reset_fft_overflow_count()
 
     def set_fft_shift(self, fft_shift=0b11111111111, channels=None):
         """
@@ -4251,10 +4251,10 @@ class chFPGA(FPGAFirmware):
         if channels is None:
             channels = self.default_channels
 
-        for ant in self.chan.values():
-            if ant.ant_number in channels:
-                self.logger.debug('%r: Setting FFT shift of channel %i' % (self, ant.ant_number))
-                ant.FFT.FFT_SHIFT = fft_shift
+        for chan in self.chan.values():
+            if chan.chan_number in channels:
+                self.logger.debug('%r: Setting FFT shift of channel %i' % (self, chan.chan_number))
+                chan.FFT.FFT_SHIFT = fft_shift
 
     set_FFT_shift = set_fft_shift  # For legacy code compatibility
 
@@ -4266,7 +4266,7 @@ class chFPGA(FPGAFirmware):
 
             list of int: one integer indicating the shift pattern for each channelizer.
         """
-        return [ant.FFT.FFT_SHIFT for ant in self.chan.values()]
+        return [chan.FFT.FFT_SHIFT for chan in self.chan.values()]
 
     get_FFT_shift = get_fft_shift  # for legacy compatibility
 
@@ -4431,10 +4431,10 @@ class chFPGA(FPGAFirmware):
 #         self.sync() # sync the board to make sure that data acquisition starts on the right ramp sample
 
 #         # Clear the word and bit error counters
-#         for ant in self.chan.values():
-#             print 'Clearing channelizer', ant.ant_number
-#             ant.ADCDAQ.RAMP_ERR_CLEAR=0
-#             ant.ADCDAQ.RAMP_ERR_CLEAR=1
+#         for chan in self.chan.values():
+#             print 'Clearing channelizer', chan.chan_number
+#             chan.ADCDAQ.RAMP_ERR_CLEAR=0
+#             chan.ADCDAQ.RAMP_ERR_CLEAR=1
 #         self.logger.info('%r: Measuring the data acquisition error rate over %0.1f seconds...' % (
 #               self, test_duration))
 #         t0 = time.time();
@@ -4442,21 +4442,21 @@ class chFPGA(FPGAFirmware):
 #         bit_error = np.zeros((len(self.chan), 8))
 #         try:
 #             while time.time() - t0 <= test_duration:
-#                 for (i, ant) in self.chan.items():
+#                 for (i, chan) in self.chan.items():
 #                     print  self.chan[i].ADCDAQ.RAMP_ERR_CTR,
-#                     word_error[i] += ant.ADCDAQ.RAMP_ERR_CTR
+#                     word_error[i] += chan.ADCDAQ.RAMP_ERR_CTR
 #                     for bit_number in range(8):
-#                         bit_error[i, bit_number] += ((ant.ADCDAQ.BIT_ERR_CTR >> (bit_number*4)) & 0x0F)
-#                     ant.ADCDAQ.RAMP_ERR_CLEAR = 0
-#                     ant.ADCDAQ.RAMP_ERR_CLEAR = 1
+#                         bit_error[i, bit_number] += ((chan.ADCDAQ.BIT_ERR_CTR >> (bit_number*4)) & 0x0F)
+#                     chan.ADCDAQ.RAMP_ERR_CLEAR = 0
+#                     chan.ADCDAQ.RAMP_ERR_CLEAR = 1
 #                     # self.logger.info('CH%i: %3i (%08X)' % (
-#                       ant.ant_number, ant.ADCDAQ.RAMP_ERR_CTR, ant.ADCDAQ.BIT_ERR_CTR))
+#                       chan.chan_number, chan.ADCDAQ.RAMP_ERR_CTR, chan.ADCDAQ.BIT_ERR_CTR))
 #         except KeyboardInterrupt:
 #             pass
 #
-#         for (i, ant) in enumerate(self.chan):
+#         for (i, chan) in enumerate(self.chan):
 #             self.logger.info('%r: CH%i: %5i word errors, bit errors (7:0) = (%s)' % (
-#                   self, ant.ant_number, word_error[i], ','.join('%3i' % e for e in bit_error[i,::-1])))
+#                   self, chan.chan_number, word_error[i], ','.join('%3i' % e for e in bit_error[i,::-1])))
 #         total_word_errors = np.sum(word_error)
 #         self.logger.info('%r: There were %i word errors in total' % (self, total_word_errors))
 # #        self.set_adc_mode(old_adc_mode)
@@ -5874,12 +5874,12 @@ class chFPGA(FPGAFirmware):
         try:
             # await self.check_command_count(reset=True)
             await self.clear_fpga_udp_errors()
-            for i, ant in self.chan.items():
-                metrics.add('fpga_fft_overflow_count', value=ant.FFT.OVERFLOW_COUNT, chan=i)
-                metrics.add('fpga_scaler_overflow_count', value=ant.SCALER.STATS_SCALER_OVERFLOWS, chan=i)
-                metrics.add('fpga_adc_overflow_count', value=ant.SCALER.STATS_ADC_OVERFLOWS, chan=i)
+            for i, chan in self.chan.items():
+                metrics.add('fpga_fft_overflow_count', value=chan.FFT.OVERFLOW_COUNT, chan=i)
+                metrics.add('fpga_scaler_overflow_count', value=chan.SCALER.STATS_SCALER_OVERFLOWS, chan=i)
+                metrics.add('fpga_adc_overflow_count', value=chan.SCALER.STATS_ADC_OVERFLOWS, chan=i)
                 if reset:
-                    ant.FFT.reset_fft_overflow_count()
+                    chan.FFT.reset_fft_overflow_count()
         except IOError as e:
             self.logger.error('%r: Error getting FPGA channelizer metrics. Error is %r' % (self, e))
         return metrics

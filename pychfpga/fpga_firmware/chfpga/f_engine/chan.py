@@ -23,7 +23,7 @@ from numpy import NaN as npNaN
 
 
 class Chan:
-    """ Implements the interface to one of the channelizer"""
+    """ Implements the interface to an individual channelizer"""
 
     # Channelizer module addresses
     ADCDAQ_OFFSET_ADDR  = 0
@@ -35,7 +35,7 @@ class Chan:
     # INJECT_OFFSET_ADDR  = 6
 
     def __init__(self, fpga_instance, base_address, submodule_address_increment, instance_number):
-        self.ant_number = instance_number  # store current channelizer number for this instance
+        self.chan_number = instance_number  # store current channelizer number for this instance
         self.fpga = fpga_instance
         self.logger = logging.getLogger(__name__)
         if self.fpga.HAS_ADCDAQ:
@@ -66,14 +66,14 @@ class Chan:
     def __repr__(self):
         """ Return a string that represents this object and its parent object.
         """
-        return "%r.%s(%i)" % (self.fpga, self.__class__.__name__, self.ant_number)
+        return "%r.%s(%i)" % (self.fpga, self.__class__.__name__, self.chan_number)
 
     def init(self, fmc_present):
 
         self.fmc_present = fmc_present
 
         """ Initializes the channelizer modules"""
-        # self.logger.debug('Initializing modules for channel #%i' % self.ant_number)
+        # self.logger.debug('Initializing modules for channel #%i' % self.chan_number)
         # self.logger.debug('  - ADCDAQ')
         if self.ADCDAQ:
             self.ADCDAQ.init(fmc_present)
@@ -98,7 +98,7 @@ class Chan:
             channel ID as a (board, slot, channel) tuple
         """
 
-        return self.fpga.get_id(self.ant_number)
+        return self.fpga.get_id(self.chan_number)
 
     def status(self):
         """ Displays the status of the channelizer modules"""
@@ -166,16 +166,16 @@ class ChanArray:
 
     # Low-level access functions
 
-    # def read(self, ant_number, module_number, addr, *args, **kwargs):
+    # def read(self, chan_number, module_number, addr, *args, **kwargs):
     #     """ Reads from the register of a module of a specified channelizer"""
     #     fpga = self.fpga
-    #     data = fpga.read(fpga.ANT_PORT[ant_number], module_number, addr, *args, **kwargs)
+    #     data = fpga.read(fpga.ANT_PORT[chan_number], module_number, addr, *args, **kwargs)
     #     return data
 
-    # def write(self, ant_number, module_number, addr, data, *args, **kwargs):
+    # def write(self, chan_number, module_number, addr, data, *args, **kwargs):
     #     """ Writes to the register of a module of a specified channelizer"""
     #     fpga = self.fpga
-    #     fpga.write(fpga.ANT_PORT[ant_number], module_number, addr, data, *args, **kwargs)
+    #     fpga.write(fpga.ANT_PORT[chan_number], module_number, addr, data, *args, **kwargs)
 
     def init(self, delay_table=None, fmc_present=None):
         """ Initializes all channelizer modules
@@ -209,9 +209,9 @@ class ChanArray:
             self.fpga.GPIO.CHAN_CLK_SRC = 1 # uses the internal clock to clock the channelizer
 
         #self.logger.debug("%r: Initializing each channelizer", self.fpga)
-        for (i, ant) in enumerate(self.chan):
-            # self.logger.debug('%r: Initializing channelizer #%i %s' % (self.fpga, ant.ant_number, '' if fmc_present[i] else '(No ADC board)'))
-            ant.init(fmc_present[i])
+        for i, chan in enumerate(self.chan):
+            # self.logger.debug('%r: Initializing channelizer #%i %s' % (self.fpga, chan.chan_number, '' if fmc_present[i] else '(No ADC board)'))
+            chan.init(fmc_present[i])
         #self.logger.debug("%r: Initializing delay tables", self.fpga)
 
         if self.fpga.HAS_ADCDAQ:
@@ -220,8 +220,8 @@ class ChanArray:
 
     def status(self):
         """ Displays the status of all channelizer modules"""
-        for ant in self.chan:
-            ant.status()
+        for chan in self.chan:
+            chan.status()
 
         #self.chan[1].ADCDAQ.set_divclk_phase(1) # Adjust phase of the DIVCLK signal to allow proper sampling of the deserialized words
 
@@ -238,7 +238,7 @@ class ChanArray:
         if not isinstance(adc_delay_table, dict):
             adc_delay_table = dict(enumerate(adc_delay_table))
 
-        for ch, ant in enumerate(self.chan):
+        for ch, chan in enumerate(self.chan):
             if ch in adc_delay_table:
                 tap_delays = adc_delay_table[ch]['tap_delays']
                 sample_delay = adc_delay_table[ch]['sample_delay']
@@ -246,7 +246,7 @@ class ChanArray:
                 if (tap_delays is not None and  any(bd is None or bd < 0 for bd in tap_delays)) or (sample_delay is not None and sample_delay < 0):
                     self.logger.warning("%r: Skipping channel set_delay on channel %i since Invalid bit or sample delay detected in delay table entry" % (self, ch))
                 else:
-                    ant.ADCDAQ.set_delays((tap_delays, sample_delay, clock_delay))
+                    chan.ADCDAQ.set_delays((tap_delays, sample_delay, clock_delay))
 
     def get_adc_delays(self):
         """
@@ -302,7 +302,7 @@ class ChanArray:
         try:
             while 1:
                 for chan in self.chan:
-                    print('CH%i: %3i' % (ant.ant_number, chan.ADCDAQ.RAMP_ERR_CTR), end=' ')
+                    print('CH%i: %3i' % (chan.chan_number, chan.ADCDAQ.RAMP_ERR_CTR), end=' ')
                 print()
         except KeyboardInterrupt:
             pass
