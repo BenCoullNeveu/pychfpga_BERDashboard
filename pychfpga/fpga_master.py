@@ -1072,11 +1072,13 @@ class FPGAMaster(object):
         # Set-up raw_acq servers to receive data from the boards specified in
         # the config. This will set-up the FPGA data transmission ports.
         # self.log.info("Sending configuration to raw_acq server(s)")
+        self.log.info("Starting raw_acq servers")
         await self.start_raw_acq_servers()
 
 
         # Setup noise injection for normal operation
         # Allow the noise injection field to be omitted or null
+        self.log.info("Setting up noise injection")
         self.setup_noise_injection(conf.fpga.get('noise_injection',{}))
 
         # Start correlator data transmission if present in the FPGA-based
@@ -1085,6 +1087,7 @@ class FPGAMaster(object):
         corr_config = self.config.fpga.get('firmware_correlator', {})
 
         if corr_config and corr_config.enable:
+            self.log.info("Setting up firmware corelator")
             self.corr_firmware_integration_period = corr_config.firmware_integration_period
             self.corr_autocorr_only = corr_config.autocorr_only
             await self.fpgas.start_correlators_async(
