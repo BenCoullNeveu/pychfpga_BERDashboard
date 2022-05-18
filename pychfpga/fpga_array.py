@@ -4592,7 +4592,7 @@ class FPGAArray(object):
         m = await asyncio.gather(*[ib.get_metrics_async() for ib in self.ib])
         metrics += m
         self.logger.debug(f'{self!r}: Got {len(m)} IceBoard temperature & power supply metrics')
-        metrics += await asyncio.gather(*[ib.get_fpga_udp_metrics_async() for ib in self.ib])
+        metrics += await asyncio.gather(*[ib.get_fpga_udp_metrics_async() for ib in self.ib if ib.fpga])
 
     async def get_fpga_metrics_async(self, metrics, reset=True):
         """ Get the monitoring information on the FPGA firmware status across the array.
