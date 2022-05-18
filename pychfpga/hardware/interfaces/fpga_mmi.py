@@ -9,11 +9,12 @@ commands sent directly to the FPGA Ethernet port.
 """
 import logging
 import numpy as np
-from . import udp as udp
-from ...chfpga import chFPGA
-from .bsb_mmi import BSB_MMI
 
-class FpgaMmiException(IOError):
+from .udp import Udp as UDP
+from .bsb_mmi import BSB_MMI
+# pychfpga.fpga_firmware.chfpga.chFPGA:  imported at runtime to prevent circular imports (chFPGA imports fpga_mmi)
+
+class FPGAMmiException(IOError):
     pass
 
 
@@ -21,7 +22,7 @@ class TimeoutException(IOError):
     pass
 
 
-class FpgaMmi(BSB_MMI):
+class FPGAMmi(BSB_MMI):
     """
     Provides access to the FPGA's Byte-serial-bus BSB memory mapped registers of the FPGA over UDP Ethernet packets.
 
@@ -31,15 +32,12 @@ class FpgaMmi(BSB_MMI):
          single packet. By default, the command queue is flushed at every
          write command.
     """
-    BROADCAST_IP_ADDR = udp.Udp.BROADCAST
+    BROADCAST_IP_ADDR = UDP.BROADCAST
     PROTO_UDP = 'UDP'
     PROTO_TCP = 'TCP'
     TimeoutException = TimeoutException
 
-    _BROADCAST_BASE_PORT = chFPGA._BROADCAST_BASE_PORT
-    _FPGA_IP_SETUP_BASE_ADDR = chFPGA._FPGA_IP_SETUP_BASE_ADDR
-    _FPGA_SERIAL_NUMBER_ADDR = chFPGA._FPGA_SERIAL_NUMBER_ADDR
-    _FPGA_TIMESTAMP_ADDR = chFPGA._FPGA_TIMESTAMP_ADDR
+
 
     # Maximum BSB packet lengths, limited by the size of the FIFOs
     # These are approximale. Have to lookup the UDP buffer sizes.
@@ -63,6 +61,9 @@ class FpgaMmi(BSB_MMI):
          using UDP broadcasts (set_fpga_networking_parameters is True)
         """
         super().__init__()
+
+
+
         self.logger = logging.getLogger(__name__)
         self.fpga_ip_addr = fpga_ip_addr
         self.fpga_port_number = fpga_port_number  # Command listening port on the FPGA
@@ -102,7 +103,7 @@ class FpgaMmi(BSB_MMI):
             self.close()  # make sure the current socket is closed
             self._set_fpga_networking_parameters()
 
-        self.udp = udp.Udp(
+        self.udp = UDP(
             remote_ip_addr=self.fpga_ip_addr,
             remote_port_number=self.fpga_port_number,  # None or 0: use local port number
             local_port_number=self.local_port_number,  # 0 : use random port assigned by OS
@@ -143,6 +144,7 @@ class FpgaMmi(BSB_MMI):
         """
         import socket  # used for inet_aton()
         import struct
+        from pychfpga.fpga_firmware.chfpga import chFPGA
 
         ip_addr = self.fpga_ip_addr
         port_number = self.local_port_number
@@ -154,7 +156,7 @@ class FpgaMmi(BSB_MMI):
         logger.debug(
             '%r: Broadcasting on port %i to configure FPGA S/N %016X '
             'with address %s:%i' %
-            (self, self._BROADCAST_BASE_PORT, serial_number, ip_addr, port_number))
+            (self, chFPGA._BROADCAST_BASE_PORT, serial_number, ip_addr, port_number))
 
         # Build the array of bytes to fill the network configuration register
         # block
@@ -168,13 +170,13 @@ class FpgaMmi(BSB_MMI):
         # target FPGA serial number
         trial = 0
         while trial < number_of_trials:
-            with FpgaMmi(FpgaMmi.BROADCAST_IP_ADDR, FpgaMmi._BROADCAST_BASE_PORT) as mmi:
+            with FPGAMmi(FPGAMmi.BROADCAST_IP_ADDR, FPGAMmi._BROADCAST_BASE_PORT) as mmi:
                 # Send string with trigger flag cleared
-                mmi.write(self._FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig1)
+                mmi.write(chFPGA._FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig1)
                 # resend with trigger flag set. The 0-to-1 transition will load the desired networking parameters
-                mmi.write(self._FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig2)
+                mmi.write(chFPGA._FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig2)
                 # Write zeros everywhere to make sure we stop latching data
-                mmi.write(self._FPGA_IP_SETUP_BASE_ADDR, [0] * len(ip_setup_string + trig2))
+                mmi.write(chFPGA._FPGA_IP_SETUP_BASE_ADDR, [0] * len(ip_setup_string + trig2))
             # logger.debug('FPGA S/N %016X is configured with address %s:%i' % (serial_number, ip_addr, port_number))
             if not check:
                 return
@@ -189,7 +191,7 @@ class FpgaMmi(BSB_MMI):
         logger.debug(
             '%r: Unable to configure FPGA S/N %016X with address %s:%i'
             % (self, serial_number, ip_addr, port_number))
-        raise FpgaMmiException(
+        raise FPGAMmiException(
             '%r: Unable to configure FPGA S/N %016X with address %s:%i'
             % (self, serial_number, ip_addr, port_number))
 
@@ -203,11 +205,13 @@ class FpgaMmi(BSB_MMI):
         specified address. Instead, all fields will be None.
         """
         trial = 0
-        with FpgaMmi(self.fpga_ip_addr, self.local_port_number) as mmi:
+        from pychfpga.fpga_firmware.chfpga import chFPGA
+
+        with FPGAMmi(self.fpga_ip_addr, self.local_port_number) as mmi:
             while trial < number_of_trials:
                 try:
-                    serial = mmi.read(self._FPGA_SERIAL_NUMBER_ADDR, type=np.dtype('>u8'), timeout=timeout, retry=0)
-                    timestamp = mmi.read(self._FPGA_TIMESTAMP_ADDR, type=np.dtype('>u4'), timeout=timeout, retry=0)
+                    serial = mmi.read(chFPGA._FPGA_SERIAL_NUMBER_ADDR, type=np.dtype('>u8'), timeout=timeout, retry=0)
+                    timestamp = mmi.read(chFPGA._FPGA_TIMESTAMP_ADDR, type=np.dtype('>u4'), timeout=timeout, retry=0)
                     return (serial, timestamp)
                 except mmi.TimeoutException:
                     trial += 1
@@ -392,7 +396,7 @@ class FpgaMmi(BSB_MMI):
                 break
 
             if len(data) != read_length + 1:
-                raise FpgaMmiException(
+                raise FPGAMmiException(
                     "%r: FPGA Read command returned %i bytes. %i were expected." %
                     (self, len(data), read_length + 1))
 
@@ -414,6 +418,8 @@ def discover_fpgas(interface_ip_addr=None, source_subarrays=[0], timeout=0.1):
           the network as reading from them cause them to redirect their
           outputs to this machine on the broadcast port.
     """
+    from pychfpga.fpga_firmware.chfpga import chFPGA
+
     logger = logging.getLogger(__name__)
 
     if isinstance(source_subarrays, int):
@@ -426,13 +432,13 @@ def discover_fpgas(interface_ip_addr=None, source_subarrays=[0], timeout=0.1):
             'Searching ICEBoards on subarray %i through interface %s' %
             (subarray, interface_ip_addr))
 
-        with FpgaMmi(
-                FpgaMmi.BROADCAST_IP_ADDR,
-                FpgaMmi._BROADCAST_BASE_PORT + subarray,
+        with FPGAMmi(
+                FPGAMmi.BROADCAST_IP_ADDR,
+                FPGAMmi._BROADCAST_BASE_PORT + subarray,
                 interface_ip_addr=interface_ip_addr) as mmi:
             mmi.flush()
             serials = mmi.broadcast_read(
-                FpgaMmi._FPGA_SERIAL_NUMBER_ADDR,
+                chFPGA._FPGA_SERIAL_NUMBER_ADDR,
                 type=np.dtype('>u8'),
                 timeout=timeout)
         serial_list += serials
