@@ -14,10 +14,10 @@ Was CH_DIST.PY in the old days.
 
 import numpy as np
 import logging
-from ..Module import Module_base, BitField
+from ..mmi import MMI, BitField
 
 
-class ChanBinSel(Module_base):
+class ChanBinSel(MMI):
     """ Implements interface to the FR_DIST within a processor pipeline"""
     # Create local variables for page numbers to make the bitfield table more readable
     CONTROL = BitField.CONTROL

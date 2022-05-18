@@ -13,10 +13,10 @@ History:
 """
 #import time
 import numpy as np
-from ..Module import Module_base, BitField
+from ..mmi import MMI, BitField
 
 
-class FFT(Module_base):
+class FFT(MMI):
     """ Implements interface to the FR_DIST within a procecessor pipeline"""
     # Create local variables for page numbers tomake the table more readable
     CONTROL = BitField.CONTROL

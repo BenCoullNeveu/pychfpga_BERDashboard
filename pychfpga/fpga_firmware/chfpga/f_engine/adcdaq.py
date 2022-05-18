@@ -14,10 +14,10 @@ History:
 
 import time
 import numpy as np
-from ..Module import Module_base, BitField
+from ..mmi import MMI, BitField
 
 
-class ADCDAQ(Module_base):
+class ADCDAQ(MMI):
     """ Implements interface to the ADC data acquisition logic"""
 
     # Create local variables for page numbers to make the table more readable

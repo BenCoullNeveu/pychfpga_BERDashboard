@@ -7,13 +7,6 @@ History:
 """
 from . import xglink
 
-from ..Module import BitField
-
-# Types of memory-mapped registers
-CONTROL = BitField.CONTROL
-STATUS = BitField.STATUS
-DRP = BitField.DRP
-
 
 class Shuffle(xglink.XGLinkArray):
     """ Object that represents the GTX data links of the FPGA-based

@@ -25,11 +25,11 @@ import numpy as np
 from wtl.metrics import Metrics
 
 # local packages
-from ..Module import Module_base, BitField
+from ..mmi import MMI, BitField
 from . import SHUFFLE_BIN_SEL
 
 
-class ShuffleCrossbar(Module_base):
+class ShuffleCrossbar(MMI):
     """ Instantiates a container for all correlators blocks"""
 
     CONTROL = BitField.CONTROL

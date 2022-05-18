@@ -21,12 +21,12 @@ GPIO.py module
     2012-10-21 JFC: Added HOST_FRAME_READ_RATE bitfield
 """
 
-from ..Module import Module_base, BitField
+from ..mmi import MMI, BitField
 import logging
 
 #import numpy as np
 
-class GPIO_base(Module_base):
+class GPIO_base(MMI):
     """ Provides access to the system-level GPIO lines """
 
     # Create local variables for page numbers to make the table more readable

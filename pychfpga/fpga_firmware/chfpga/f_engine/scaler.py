@@ -13,10 +13,10 @@ import time
 import numpy as np
 
 # Local packages
-from ..Module import Module_base, BitField
+from ..mmi import MMI, BitField
 
 
-class SCALER(Module_base):
+class SCALER(MMI):
     """ Implements interface to the SCALER module within a procecessor pipeline"""
     # Create local variables for page numbers tomake the table more readable
     CONTROL = BitField.CONTROL

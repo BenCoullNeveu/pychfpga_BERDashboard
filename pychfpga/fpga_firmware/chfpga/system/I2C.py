@@ -15,10 +15,10 @@ History:
 import logging
 
 import numpy as np
-from ..Module import Module_base, BitField, CONTROL, STATUS
+from ..mmi import MMI, BitField, CONTROL, STATUS
 
 
-class I2C_base(Module_base):
+class I2C_base(MMI):
     """ Object defining the interface to the FPGA's firmware-implemented I2C interface.
 
     """

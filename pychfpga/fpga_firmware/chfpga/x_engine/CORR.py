@@ -12,7 +12,7 @@ import logging
 import numpy as np
 import socket
 
-from ..Module import Module_base, BitField
+from ..mmi import MMI, BitField
 
 #############################################
 # Basic Geometry of the firmware correlator
@@ -40,7 +40,7 @@ raw_to_matrix_map = None
 raw_to_vector_map = None
 
 
-class CORR_core(Module_base):
+class CORR_core(MMI):
     """ Implements interface to one of the correlator"""
 
     CONTROL = BitField.CONTROL

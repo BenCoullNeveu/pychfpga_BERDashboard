@@ -14,7 +14,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import asyncio
 
-from ..Module import Module_base, BitField
+from ..mmi import MMI, BitField
 from wtl.metrics import Metrics
 
 # Types of memory-mapped registers
@@ -23,7 +23,7 @@ STATUS = BitField.STATUS
 DRP = BitField.DRP
 
 
-class QPLL(Module_base):
+class QPLL(MMI):
     """ Implements interface to one of the COMMON """
 
     QPLL_LOCK                = BitField(STATUS, 0, 0, doc='Indicates if the QPLL is locked')
@@ -66,7 +66,7 @@ class QPLL(Module_base):
         return self.read_all_fields()
 
 
-class GTX(Module_base):
+class GTX(MMI):
     """ Implements interface to a GTX_CHANNEL block """
 
 
@@ -391,7 +391,7 @@ class GTX(Module_base):
             eye_diag.gtx.instance_number + 1))
 
 
-class XGLinkCore(Module_base):
+class XGLinkCore(MMI):
     """ Instantiates a container for all the xglink core module
 
     The XGLink core implements an array of QPLLs and GTXes with a primitive

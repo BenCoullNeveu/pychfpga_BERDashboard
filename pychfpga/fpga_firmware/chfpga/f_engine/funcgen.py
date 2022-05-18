@@ -7,11 +7,11 @@ History:
     2012-10-17 JFC: Sets ramp as default function
 """
 
-from ..Module import Module_base, BitField
+from ..mmi import MMI, BitField
 import numpy as np
 
 
-class FUNCGEN(Module_base):
+class FUNCGEN(MMI):
     """ Implements interface to the function generator within a procecessor
     pipeline"""
     # Create local variables for page numbers tomake the table more readable

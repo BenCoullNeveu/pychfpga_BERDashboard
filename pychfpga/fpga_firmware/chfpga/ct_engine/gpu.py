@@ -1,18 +1,18 @@
 #!/usr/bin/python
 
 """
-GPU.py module
+gpu.py module
     Implements interface to the GPU links
 
 History:
     2013-10-29 : JFC : Created
 """
 import logging
-from ..Module import BitField
+from ..mmi import BitField
 from . import xglink
 
 
-class GPU_base(xglink.XGLinkCore):
+class GPU(xglink.XGLinkCore):
     """ Instantiates a container for all the GPU link ressources
 
     This class provides access to the memory-mapped registers and

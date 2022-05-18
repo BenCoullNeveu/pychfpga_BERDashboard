@@ -14,10 +14,10 @@ import logging
 import numpy as np
 import socket
 
-from ..Module import Module_base, BitField
+from ..mmi import MMI, BitField
 
 
-class PROBER(Module_base):
+class PROBER(MMI):
     """ Implements the interface to the data PROBER within a channel processor
     """
     # Create local variables for page numbers tomake the table more readable

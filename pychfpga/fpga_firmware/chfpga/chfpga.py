@@ -56,7 +56,7 @@ from .f_engine import prober  # needed to access RawFrameReceiver
 from .ct_engine import chan_crossbar
 from .ct_engine import shuffle_crossbar
 from .ct_engine import shuffle
-from .ct_engine import GPU
+from .ct_engine import gpu
 
 # FPGA Correlator (X-Engine)
 from .x_engine import CORR  # 16-channel correlator (if implemented in firmware)
@@ -817,7 +817,7 @@ class chFPGA(FPGAFirmware):
 
             if self.NUMBER_OF_GPU_LINKS:
                 self.logger.debug('%r: === Instantiating GPU LINKS' % self)
-                self.GPU = GPU.GPU_base(self, self._GPU_LINK_BASE_ADDR, self._GPU_LINK_ADDR_INCREMENT)
+                self.GPU = gpu.GPU(self, self._GPU_LINK_BASE_ADDR, self._GPU_LINK_ADDR_INCREMENT)
             else:
                 self.GPU = None
 

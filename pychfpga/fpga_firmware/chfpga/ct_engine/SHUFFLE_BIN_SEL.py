@@ -15,11 +15,11 @@ History:
 import numpy as np
 from collections import OrderedDict
 
-from ..Module import Module_base, BitField
+from ..mmi import MMI, BitField
 import logging
 
 
-class SHUFFLE_BIN_SEL_base(Module_base):
+class SHUFFLE_BIN_SEL_base(MMI):
     """ Implements an interface to the SHUFFLE_BIN_SEL FPGA module"""
 
     # Create local variables for page numbers to make the bitfield table more readable

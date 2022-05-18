@@ -14,12 +14,12 @@ import asyncio
 
 
 from wtl.metrics import Metrics
-from ..Module import Module_base, BitField
+from ..mmi import MMI, BitField
 
 from . import chan_bin_sel
 
 
-class ChanCrossbar(Module_base):
+class ChanCrossbar(MMI):
     """ Object that allows access to a channelizer crossbar"""
 
     CONTROL = BitField.CONTROL

@@ -14,10 +14,10 @@ Todo:
 """
 import logging
 
-from ..Module import Module_base, BitField
+from ..mmi import MMI, BitField
 
 
-class SYSMON_base(Module_base):
+class SYSMON_base(MMI):
     # Registers
     TEMP_ADDR = 0x00
     TEMP_MIN_ADDR = 0x24

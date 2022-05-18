@@ -14,9 +14,9 @@ import numpy as np
 import time
 import logging
 
-from ..Module import Module_base, BitField
+from ..mmi import MMI, BitField
 
-class SPI_base(Module_base):
+class SPI_base(MMI):
     # SPI addresses
 
     CONTROL = BitField.CONTROL

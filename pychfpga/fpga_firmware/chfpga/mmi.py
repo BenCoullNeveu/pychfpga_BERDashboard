@@ -3,8 +3,8 @@
 # pylint: disable=C0301
 
 """
-Module.py module
-  Module base class definition
+mmi.py module
+  Firmware module Memory Mapped interface
 #
 # History:
     2011-08-03 JFC : Created from ANT.py
@@ -153,7 +153,7 @@ class BitField(object):
         # Extract the desired bits
         return (int(value) >> self.bit) & ((1 << self.width)-1)
 
-class Module_base(object):
+class MMI(object):
     """ Implements basic interfaces to a module. It is intended to be inherited by a subclass that specializes to specific modules"""
     _locked = False # when 1, prevents the object to be modified
 
