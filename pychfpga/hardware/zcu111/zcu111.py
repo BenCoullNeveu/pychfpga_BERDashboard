@@ -18,24 +18,19 @@ from wtl.metrics import Metrics
 
 # Local packages
 
-from .motherboard import Motherboard
-from .async_utils import run_async, async_to_sync
-from .tcpipe import TCPipe, TCPipe_I2C
-from .fpga_firmware import FPGAFirmware
-from .ccoll import Ccoll
-# from ..chfpga import chFPGA
+from pychfpga.hardware import Motherboard
+from pychfpga.common import run_async, async_to_sync, Ccoll
+from pychfpga.hardware.interfaces import TCPipe, TCPipe_I2C
+from pychfpga.fpga_firmware import FPGAFirmware
 
-from .. import I2C as i2c
-from .. import GPIO as fpga_gpio
-
-from .lib.pca9575 import pca9575  as tca9575a # I2C 16-bit IO Expander
-from .lib.tca9548a import tca9548a as tca9548a  # I2C switch
-from .lib.tca9544a import tca9544a as pca9544a # I2C switch
-from .lib.sc18is602b import sc18is602b # I2C-to-SPI bridge
-from .lib.tca6416a import tca6416a
-from .lib.lmk04208spi import lmk04208spi # RF dual PLL
-from .lib.lmx2594spi import lmx2594spi # ADC/DAC PLL
-from .lib.eeprom import eeprom
+from ..lib.pca9575 import pca9575  as tca9575a # I2C 16-bit IO Expander
+from ..lib.tca9548a import tca9548a as tca9548a  # I2C switch
+from ..lib.tca9544a import tca9544a as pca9544a # I2C switch
+from ..lib.sc18is602b import sc18is602b # I2C-to-SPI bridge
+from ..lib.tca6416a import tca6416a
+from ..lib.lmk04208spi import lmk04208spi # RF dual PLL
+from ..lib.lmx2594spi import lmx2594spi # ADC/DAC PLL
+from ..lib.eeprom import eeprom
 
 
 class iic_dummy:
