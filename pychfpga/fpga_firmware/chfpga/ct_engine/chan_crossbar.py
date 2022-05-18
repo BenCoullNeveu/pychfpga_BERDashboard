@@ -14,7 +14,7 @@ import asyncio
 
 
 from wtl.metrics import Metrics
-from .Module import Module_base, BitField
+from ..Module import Module_base, BitField
 
 from . import chan_bin_sel
 

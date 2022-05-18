@@ -14,7 +14,7 @@ import logging
 import numpy as np
 import socket
 
-from .Module import Module_base, BitField
+from ..Module import Module_base, BitField
 
 
 class PROBER_base(Module_base):

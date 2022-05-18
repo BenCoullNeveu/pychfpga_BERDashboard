@@ -12,7 +12,7 @@ History:
     2012-10-17 JFC: Added correlator frequency
     2012-11-09 JFC: Modified to use Module. Uses fpga SYSTEM_CLOCK_FREQUENCY variable.
 """
-from .Module import Module_base, BitField
+from ..Module import Module_base, BitField
 
 class FreqCtr_base(Module_base):
     """

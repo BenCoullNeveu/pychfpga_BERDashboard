@@ -7,7 +7,7 @@ History:
 """
 from . import xglink
 
-from .Module import BitField
+from ..Module import BitField
 
 # Types of memory-mapped registers
 CONTROL = BitField.CONTROL

@@ -7,7 +7,7 @@ History:
     2012-10-17 JFC: Sets ramp as default function
 """
 
-from .Module import Module_base, BitField
+from ..Module import Module_base, BitField
 import numpy as np
 
 

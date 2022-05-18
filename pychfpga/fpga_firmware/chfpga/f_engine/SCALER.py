@@ -13,7 +13,7 @@ import time
 import numpy as np
 
 # Local packages
-from .Module import Module_base, BitField
+from ..Module import Module_base, BitField
 
 
 class SCALER_base(Module_base):

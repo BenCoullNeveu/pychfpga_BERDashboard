@@ -14,7 +14,7 @@ History:
 
 import time
 import numpy as np
-from .Module import Module_base, BitField
+from ..Module import Module_base, BitField
 
 
 class ADCDAQ_base(Module_base):

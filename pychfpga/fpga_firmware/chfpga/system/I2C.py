@@ -15,7 +15,7 @@ History:
 import logging
 
 import numpy as np
-from .Module import Module_base, BitField, CONTROL, STATUS
+from ..Module import Module_base, BitField, CONTROL, STATUS
 
 
 class I2C_base(Module_base):

@@ -15,7 +15,7 @@ History:
 import numpy as np
 from collections import OrderedDict
 
-from .Module import Module_base, BitField
+from ..Module import Module_base, BitField
 import logging
 
 

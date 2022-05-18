@@ -14,7 +14,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import asyncio
 
-from .Module import Module_base, BitField
+from ..Module import Module_base, BitField
 from wtl.metrics import Metrics
 
 # Types of memory-mapped registers

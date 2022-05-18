@@ -8,7 +8,7 @@ History:
     2013-10-29 : JFC : Created
 """
 import logging
-from .Module import BitField
+from ..Module import BitField
 from . import xglink
 
 

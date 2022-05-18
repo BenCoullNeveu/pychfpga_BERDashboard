@@ -14,7 +14,7 @@ import numpy as np
 import time
 import logging
 
-from .Module import Module_base, BitField
+from ..Module import Module_base, BitField
 
 class SPI_base(Module_base):
     # SPI addresses

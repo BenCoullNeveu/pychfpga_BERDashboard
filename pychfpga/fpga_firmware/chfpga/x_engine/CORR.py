@@ -12,7 +12,7 @@ import logging
 import numpy as np
 import socket
 
-from .Module import Module_base, BitField
+from ..Module import Module_base, BitField
 
 #############################################
 # Basic Geometry of the firmware correlator

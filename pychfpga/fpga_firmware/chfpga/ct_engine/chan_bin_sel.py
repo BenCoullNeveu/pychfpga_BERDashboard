@@ -13,8 +13,8 @@ Was CH_DIST.PY in the old days.
 """
 
 import numpy as np
-from .Module import Module_base, BitField
 import logging
+from ..Module import Module_base, BitField
 
 
 class ChanBinSel(Module_base):

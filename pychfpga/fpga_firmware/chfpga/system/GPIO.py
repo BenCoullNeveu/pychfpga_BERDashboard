@@ -21,7 +21,7 @@ GPIO.py module
     2012-10-21 JFC: Added HOST_FRAME_READ_RATE bitfield
 """
 
-from .Module import Module_base, BitField
+from ..Module import Module_base, BitField
 import logging
 
 #import numpy as np

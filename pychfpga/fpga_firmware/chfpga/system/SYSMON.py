@@ -14,7 +14,7 @@ Todo:
 """
 import logging
 
-from .Module import Module_base, BitField
+from ..Module import Module_base, BitField
 
 
 class SYSMON_base(Module_base):

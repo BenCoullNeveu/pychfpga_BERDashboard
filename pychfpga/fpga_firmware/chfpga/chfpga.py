@@ -41,24 +41,25 @@ from .chFPGA_receiver import chFPGA_receiver
 
 
 # FPGA subsystems handlers
-from . import SPI
-from . import I2C
-from . import GPIO
-from . import SYSMON
-from . import FreqCtr
-from . import REFCLK
+from .system import SPI
+from .system import I2C
+from .system import GPIO
+from .system import SYSMON
+from .system import FreqCtr
+from .system import REFCLK
+
 # FPGA Channelizer (F-Engine)
-from . import ANT
-from . import PROBER  # needed to access RawFrameReceiver
+from .f_engine import ANT
+from .f_engine import PROBER  # needed to access RawFrameReceiver
 
 # FPGA Corner-turn Engine
-from . import chan_crossbar
-from . import shuffle_crossbar
-from . import shuffle
-from . import GPU
+from .ct_engine import chan_crossbar
+from .ct_engine import shuffle_crossbar
+from .ct_engine import shuffle
+from .ct_engine import GPU
 
 # FPGA Correlator (X-Engine)
-from . import CORR  # 16-channel correlator (if implemented in firmware)
+from .x_engine import CORR  # 16-channel correlator (if implemented in firmware)
 
 
 class chFPGA_config(object):

@@ -13,7 +13,7 @@ REFCLK.py module
     2012-09-23 JFC: Removed MMCM status registers. Converted bitfield list to independent variables. Commented out set_refclk200_phase.
 """
 
-from .Module import Module_base, BitField
+from ..Module import Module_base, BitField
 
 import logging
 import time
