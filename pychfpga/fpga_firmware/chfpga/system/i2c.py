@@ -18,7 +18,7 @@ import numpy as np
 from ..mmi import MMI, BitField, CONTROL, STATUS
 
 
-class I2C_base(MMI):
+class I2C(MMI):
     """ Object defining the interface to the FPGA's firmware-implemented I2C interface.
 
     """
@@ -52,7 +52,7 @@ class I2C_base(MMI):
 
 
     def __init__(self, fpga, base_address):
-        super(I2C_base, self).__init__(fpga, base_address)
+        super().__init__(fpga, base_address)
         self.current_port = None
         self.logger = logging.getLogger(__name__)
 

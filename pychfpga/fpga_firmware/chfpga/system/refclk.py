@@ -19,7 +19,7 @@ import logging
 import time
 import numpy as np
 
-class REFCLK_base(MMI):
+class REFCLK(MMI):
 
     sync_delay = 9  # default value.
 
@@ -57,7 +57,7 @@ class REFCLK_base(MMI):
     def __init__(self, fpga, base_address):
         self.fpga = fpga
         self.logger = logging.getLogger(__name__)
-        super(self.__class__, self).__init__(fpga, base_address)
+        super().__init__(fpga, base_address)
 
     def init(self):
         # Sets the REFCLK delay to zero by default.

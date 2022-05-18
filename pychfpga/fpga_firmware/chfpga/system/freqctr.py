@@ -14,7 +14,7 @@ History:
 """
 from ..mmi import MMI, BitField
 
-class FreqCtr_base(MMI):
+class FreqCtr(MMI):
     """
     Implements the Frequency Counter Interface.
     """
@@ -76,7 +76,7 @@ class FreqCtr_base(MMI):
 
     def __init__(self, fpga_instance, base_address, verbose=1):
         self.verbose = verbose
-        super(self.__class__, self).__init__(fpga_instance, base_address)
+        super().__init__(fpga_instance, base_address)
         self._lock()  # prevent further property creation to avoid creating attributes by mistake
 
 

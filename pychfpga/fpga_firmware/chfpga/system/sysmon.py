@@ -17,7 +17,7 @@ import logging
 from ..mmi import MMI, BitField
 
 
-class SYSMON_base(MMI):
+class SYSMON(MMI):
     # Registers
     TEMP_ADDR = 0x00
     TEMP_MIN_ADDR = 0x24
@@ -62,7 +62,7 @@ class SYSMON_base(MMI):
             fpga._PLATFORM_ID_ZCU111,
             )
 
-        super(self.__class__, self).__init__(fpga_instance, base_address)
+        super().__init__(fpga_instance, base_address)
         self._lock()  # Prevent accidental addition of attributes
 
     def init(self):

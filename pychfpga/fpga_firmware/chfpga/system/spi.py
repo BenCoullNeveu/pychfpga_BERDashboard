@@ -16,7 +16,7 @@ import logging
 
 from ..mmi import MMI, BitField
 
-class SPI_base(MMI):
+class SPI(MMI):
     # SPI addresses
 
     CONTROL = BitField.CONTROL
@@ -39,7 +39,7 @@ class SPI_base(MMI):
 
     def __init__(self, fpga, base_address):
         self.fpga_instance = fpga;
-        super(self.__class__,self).__init__(fpga, base_address)
+        super().__init__(fpga, base_address)
         self.current_port = 0
         self.logger = logging.getLogger(__name__)
         self._lock() # Prevent inadvertent changes to the class instance

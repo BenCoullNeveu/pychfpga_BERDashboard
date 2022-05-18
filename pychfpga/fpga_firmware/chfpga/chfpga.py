@@ -41,12 +41,12 @@ from .chFPGA_receiver import chFPGA_receiver
 
 
 # FPGA subsystems handlers
-from .system import SPI
-from .system import I2C
-from .system import GPIO
-from .system import SYSMON
-from .system import FreqCtr
-from .system import REFCLK
+from .system import spi
+from .system import i2c
+from .system import gpio
+from .system import sysmon
+from .system import freqctr
+from .system import refclk
 
 # FPGA Channelizer (F-Engine)
 from .f_engine import chan
@@ -612,7 +612,7 @@ class chFPGA(FPGAFirmware):
                 # Instantiate and initialize the GPIO subsystem
                 self.logger.debug('%r: === Instantiating and initializing GPIO' % self)
                 await asyncio.sleep(0)
-                self.GPIO = GPIO.GPIO_base(self, self._SYSTEM_GPIO_BASE_ADDR)
+                self.GPIO = gpio.GPIO(self, self._SYSTEM_GPIO_BASE_ADDR)
                 # self.GPIO.init() # don't cal linit() yet as this sends some commands. The module can still read the cookie without it.
 
                 # Read the firmware version cookie from the GPIO subsystem (this
@@ -740,27 +740,27 @@ class chFPGA(FPGAFirmware):
             self.logger.debug('%r: === Instantiating FPGA ressources' % self)
 
             self.logger.debug('%r: === Instantiating SYSMON' % self)
-            self.SYSMON = SYSMON.SYSMON_base(self, self._SYSTEM_SYSMON_BASE_ADDR)
+            self.SYSMON = sysmon.SYSMON(self, self._SYSTEM_SYSMON_BASE_ADDR)
 
             if self.HAS_SPI:
                 self.logger.debug('%r: === Instantiating SPI' % self)
-                self.SPI = SPI.SPI_base(self, self._SYSTEM_SPI_BASE_ADDR)
+                self.SPI = spi.SPI(self, self._SYSTEM_SPI_BASE_ADDR)
             else:
                 self.SPI = None
 
             if self.HAS_I2C:
                 self.logger.debug('%r: === Instantiating I2C' % self)
-                self.I2C = I2C.I2C_base(self, self._SYSTEM_I2C_BASE_ADDR)
+                self.I2C = i2c.I2C(self, self._SYSTEM_I2C_BASE_ADDR)
             else:
                 self.I2C = None
 
 
             self.logger.debug('%r: === Instantiating FreqCtr' % self)
-            self.FreqCtr = FreqCtr.FreqCtr_base(self, self._SYSTEM_FREQ_CTR_BASE_ADDR)
+            self.FreqCtr = freqctr.FreqCtr(self, self._SYSTEM_FREQ_CTR_BASE_ADDR)
 
             if self.HAS_REFCLK:
                 self.logger.debug('%r: === Instantiating REFCLK' % self)
-                self.REFCLK = REFCLK.REFCLK_base(self, self._SYSTEM_REFCLK_BASE_ADDR)
+                self.REFCLK = refclk.REFCLK(self, self._SYSTEM_REFCLK_BASE_ADDR)
             else:
                 self.REFCLK = None
 

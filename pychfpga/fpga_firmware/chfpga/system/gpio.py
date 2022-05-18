@@ -26,7 +26,7 @@ import logging
 
 #import numpy as np
 
-class GPIO_base(MMI):
+class GPIO(MMI):
     """ Provides access to the system-level GPIO lines """
 
     # Create local variables for page numbers to make the table more readable
@@ -118,7 +118,7 @@ class GPIO_base(MMI):
     NUMBER_OF_BP_SHUFFLE_LANES = BitField(STATUS, 36, 0, width=8, doc='Number of backplane links (including the direct internal link)')
 
     def __init__(self, fpga, base_address):
-        super(GPIO_base, self).__init__(fpga, base_address)
+        super().__init__(fpga, base_address)
         self.logger = logging.getLogger(__name__)
         self._lock() # prevent further property creation to avoid creating attributes by mistake
 
