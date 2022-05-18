@@ -1741,7 +1741,7 @@ class FPGAArray(object):
                 self.compute_cb3_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
                 # self.shuffle512_cb3_freq_remap(bin_map, bad_links, bin_priority)
             # Apply crates 0 & 1 map to all pair of crates
-            bin_map = {(crate, slot): bin_map[(crate & 1, slot)]
+            bin_map = {(crate, slot): bin_map[((crate or 0) & 1, slot)]
                        for (crate, slot) in self.ib.get_id()}
 
             # cb3_map = self.shuffle512_cb3_remap(mode=mode,
