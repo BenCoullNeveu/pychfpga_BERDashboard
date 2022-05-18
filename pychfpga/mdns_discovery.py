@@ -14,7 +14,7 @@ from zeroconf import IPVersion, ServiceStateChange, Zeroconf
 from zeroconf.asyncio import AsyncServiceBrowser, AsyncZeroconf, AsyncServiceInfo
 
 # Local packages
-from . import Motherboard, Crate
+from pychfpga.hardware import Motherboard, Crate
 
 
 def _to_int(v):
