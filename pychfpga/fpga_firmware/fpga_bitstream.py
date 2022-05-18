@@ -20,7 +20,7 @@ class FPGABitstream(object):
     is loaded in memory when needed.
     """
 
-    DEFAULT_BITSTREAM_FOLDER = '../../fpga_bitstreams'
+    DEFAULT_BITSTREAM_FOLDER = './bitstreams'
     bitstream_cache = {} # {url:file_data}
 
     def __init__(self, url, folder=None):

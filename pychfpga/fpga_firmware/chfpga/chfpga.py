@@ -32,12 +32,13 @@ from wtl.metrics import Metrics
 
 # Local packages
 
-from .icecore_ext import async_to_sync, run_async
-from .icecore_ext import FPGAFirmware
+from pychfpga.common import async_to_sync, run_async
+from pychfpga.hardware.interfaces import TCPipe_BSB_MMI, FPGAMmi
+
+from pychfpga.fpga_firmware import FPGAFirmware
 
 from .chFPGA_receiver import chFPGA_receiver
 
-from .icecore_ext.tcpipe import TCPipe_BSB_MMI
 
 # FPGA subsystems handlers
 from . import SPI
@@ -395,6 +396,7 @@ class chFPGA(FPGAFirmware):
     async def open_udp_mmi_async(self):
         """ Setup the FPGA UDP communication and return a mmi object.
         """
+
         self.logger.debug(f'{self!r}: Opening UDP connection to the FPGA')
         # # Overrides communication parameter defaults if specified
         # if udp_retries is not None:
@@ -445,7 +447,6 @@ class chFPGA(FPGAFirmware):
         # -------------------------------------------------------------------------
         # Open the UDP MMI interface
         # -------------------------------------------------------------------------
-        from .icecore_ext.lib import fpga_mmi
         self.logger.info(
             '%r: Opening FPGA MMI with FPGA=(%s:%s),  local=(%s:%s)' % (
                 self,
@@ -455,7 +456,7 @@ class chFPGA(FPGAFirmware):
                 self.local_control_port_number))
 
 
-        self.mmi = fpga_mmi.FpgaMmi(
+        self.mmi = FPGAMmi(
             fpga_ip_addr=self.fpga_ip_addr,
             fpga_port_number=self.fpga_control_port_number,  # none or 0: use local port number
             interface_ip_addr=self.interface_ip_addr,
@@ -5848,105 +5849,7 @@ class chFPGA(FPGAFirmware):
         self.GPU.reset()
 
 
-    async def get_status(self):
-        """
-        (`async` method) Return status information on the board, and mezzanines, including voltages
-        current, power consumption, temperatures etc.
 
-        Parameters:
-            None
-
-
-        Returns:
-
-            dict: An dict containing the status information in the format ``{metric:value,
-            ...}`` where both ``metric`` and ``value`` are strings.
-        """
-
-        info = dict()
-        metrics = Metrics(
-            type='GAUGE',
-            slot=(self.slot or 0) - 1,
-            id=self.get_string_id(),
-            crate_id=self.crate.get_string_id() if self.crate else None,
-            crate_number=self.crate.crate_number if self.crate else None)
-
-        if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
-            return (info, metrics)
-
-        ####################################
-        # Motherboard temperatures
-        ####################################
-
-        mb_temp_sensors = [
-            ('MB FPGA Die Temp', 'FPGA DIE', self.TEMPERATURE_SENSOR.MB_FPGA_DIE),
-            ('MB FPGA Temp'    , 'FPGA',     self.TEMPERATURE_SENSOR.MB_FPGA    ),
-            ('MB ARM Temp'     , 'ARM',      self.TEMPERATURE_SENSOR.MB_ARM     ),
-            ('MB PHY Temp'     , 'PHY',      self.TEMPERATURE_SENSOR.MB_PHY     ),
-            ('MB POW Temp'     , 'Switcher', self.TEMPERATURE_SENSOR.MB_POWER   )]
-
-        for display_name, sensor, sensor_name in mb_temp_sensors:
-            value = await self.tuber_get_motherboard_temperature_async(sensor_name)
-            info[display_name] = '%0.1fC' % value
-            metrics.add('fpga_motherboard_temp', value,  sensor=sensor)
-
-        ####################################
-        # Motherboard voltages and currents
-        ####################################
-
-        mb_power_sensors = [
-            ('MB VCC12V'    , 'VCC12V'    , self.RAIL.MB_VCC12V0   , True),
-            ('MB VCC3V3'    , 'VCC3V3'    , self.RAIL.MB_VCC3V3    , True),
-            ('MB VADJ'      , 'VADJ'      , self.RAIL.MB_VADJ      , False),  # VADJ is normally powered from VCC5V0
-            ('MB VCC5V5'    , 'VCC5V5'    , self.RAIL.MB_VCC5V5    , True),
-            ('MB VCC1V0'    , 'VCC1V0'    , self.RAIL.MB_VCC1V0    , False),
-            ('MB VCC1V0 GTX', 'VCC1V0 GTX', self.RAIL.MB_VCC1V0_GTX, False),
-            ('MB VCC1V2'    , 'VCC1V2'    , self.RAIL.MB_VCC1V2    , False),
-            ('MB VCC1V5'    , 'VCC1V5'    , self.RAIL.MB_VCC1V5    , False),
-            ('MB VCC1V8'    , 'VCC1V8'    , self.RAIL.MB_VCC1V8    , False)]
-
-        total_power = 0
-        for display_name, sensor, tuber_sensor_name, add_to_total_power in mb_power_sensors:
-            voltage = await self.tuber_get_motherboard_voltage_async(tuber_sensor_name)
-            current = await self.tuber_get_motherboard_current_async(tuber_sensor_name)
-            info[display_name] = '%0.1fV@%0.3fA' % (voltage, current)
-            metrics.add('fpga_motherboard_voltage', value=voltage, sensor=sensor)
-            metrics.add('fpga_motherboard_current', value=current, sensor=sensor)
-            if add_to_total_power:
-                total_power += voltage * current
-
-        ####################################
-        # Mezzanines voltages and currents
-        ####################################
-
-        mezz_power_sensors = [
-            ('Mezz %i VCC12V'    , 'VCC12V'    , self.RAIL.MEZZ_VCC12V0),
-            ('Mezz %i VCC3V3'    , 'VCC3V3'    , self.RAIL.MEZZ_VCC3V3),
-            ('Mezz %i VADJ'      , 'VADJ'      , self.RAIL.MEZZ_VADJ)]
-
-        for mezz in [1, 2]:
-            for display_name, sensor, sensor_name in mezz_power_sensors:
-                voltage = await self.tuber_get_mezzanine_voltage_async(sensor_name, mezz)
-                current = await self.tuber_get_mezzanine_current_async(sensor_name, mezz)
-                info[display_name % mezz] = '%0.1fV@%0.3fA' % (voltage, current)
-                metrics.add('fpga_mezzanine_voltage', value=voltage, sensor=sensor, mezzanine=mezz)
-                metrics.add('fpga_mezzanine_current', value=current, sensor=sensor, mezzanine=mezz)
-
-        info['MB Total power'] = '%0.1fW' % total_power
-        metrics.add('fpga_motherboard_power', value=total_power)
-
-        ####################################
-        # Motherboard QSFPs present
-        ####################################
-
-        for qsfp in [1, 2]:
-            is_present = await self.tuber_is_qsfp_present_async(qsfp)
-            metrics.add('fpga_motherboard_qsfp_present', value=is_present, qsfp=qsfp)
-
-        # is_voltage_nominal
-        # sysmon?
-        # QSFP voltage, temp, signal
-        return (info, metrics)
 
     async def get_bp_shuffle_metrics_async(self, reset=True):
         if not self.is_open() or not self.BP_SHUFFLE:
@@ -5999,82 +5902,6 @@ class chFPGA(FPGAFirmware):
             self.logger.error('%r: Unhandled error while  getting FPGA crossbar metrics. Error is %r\n\n%s' % (self, e, traceback.format_exc()))
         return metrics
 
-    async def get_metrics_async(self):
-        """ Get the Iceboard hardware monitoring information.
-
-        Returns:
-            a :cls:`Metrics` object.
-        """
-        try:
-            _, metrics = await self.get_status()
-        except Exception as e:
-            self.logger.error('%r: Error getting FPGA hardware metrics. Error is %r' % (self, e))
-            metrics = Metrics()
-        return metrics
-
-    async def get_backplane_metrics_async(self):
-        """ Get the backplane hardware monitoring information, as accessed from this Iceboard.
-
-        Returns:
-            A :cls:`Metrics` object.
-
-        Note: an 'info' dict is also created but is not returned as the metrics is sufficient for now.
-
-        """
-
-        info = dict()
-        crate_number = self.crate.crate_number if self.crate else None
-        crate_id = self.crate.get_string_id() if self.crate else None
-        metrics = Metrics(crate_number=crate_number, crate_id=crate_id, type='GAUGE')
-
-        if (await self.is_backplane_present_async()):
-            try:
-                ####################################
-                # Backplane temperatures
-                ####################################
-
-                bp_temp_sensors = [
-                    ('BP Slot1 Temp', 'Slot1', self.TEMPERATURE_SENSOR.BP_SLOT1),
-                    ('BP Slot16 Temp', 'Slot16', self.TEMPERATURE_SENSOR.BP_SLOT16)]
-
-                for display_name, sensor, sensor_name in bp_temp_sensors:
-                    value = await self.tuber_get_backplane_temperature_async(sensor_name)
-                    info[display_name] = '%0.1fC' % value
-                    metrics.add('fpga_backplane_temp', value, sensor=sensor)
-
-                ####################################
-                # Backplane voltages and currents
-                ####################################
-
-                voltage = await self.tuber_get_backplane_voltage_async()
-                current = await self.tuber_get_backplane_current_async()
-                power = await self.tuber_get_backplane_power_async()
-                info['BP VCC3V3'] = '%0.1fV@%0.3fA' % (voltage, current)
-                info['BP power'] = '%0.1fW' % power
-                metrics.add('fpga_backplane_voltage', value=voltage)
-                metrics.add('fpga_backplane_current', value=current)
-                metrics.add('fpga_backplane_power', value=power)
-
-                ####################################
-                # Fan tray
-                ####################################
-
-                metrics.add('fpga_backplane_fantray_tachometer', value=(await self.tuber_get_fantray_tachometer_async()))
-                metrics.add('fpga_backplane_fantray_duty_cycle',
-                            value=(await self.tuber_get_fantray_duty_cycle_async()) / 255.)
-
-                ####################################
-                # Backplane QSFPs present
-                ####################################
-                for slot in range(1, 17):
-                    is_present = await self.tuber_is_bp_qsfp_present_async(slot)
-                    metrics.add('fpga_backplane_qsfp_present', value=is_present, slot=(slot-1))
-
-            except Exception as e:
-                self.logger.error('%r: error getting backplane metrics: error is %r\n\n%s' % (self, e, traceback.format_exc()))
-        return metrics
-
-        # backplane QSFP voltage, temp, signal-level
 
 
 
