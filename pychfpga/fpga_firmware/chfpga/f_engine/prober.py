@@ -17,7 +17,7 @@ import socket
 from ..Module import Module_base, BitField
 
 
-class PROBER_base(Module_base):
+class PROBER(Module_base):
     """ Implements the interface to the data PROBER within a channel processor
     """
     # Create local variables for page numbers tomake the table more readable
@@ -57,7 +57,7 @@ class PROBER_base(Module_base):
     def __init__(self, fpga_instance, base_address, instance_number):
         # self.ant = ant_instance
         self.logger = logging.getLogger(__name__)
-        super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
+        super().__init__(fpga_instance, base_address, instance_number)
         self._lock()  # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
     # Specialized functions
 

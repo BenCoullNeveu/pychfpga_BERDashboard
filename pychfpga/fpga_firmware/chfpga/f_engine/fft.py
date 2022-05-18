@@ -16,7 +16,7 @@ import numpy as np
 from ..Module import Module_base, BitField
 
 
-class FFT_base(Module_base):
+class FFT(Module_base):
     """ Implements interface to the FR_DIST within a procecessor pipeline"""
     # Create local variables for page numbers tomake the table more readable
     CONTROL = BitField.CONTROL
@@ -37,7 +37,7 @@ class FFT_base(Module_base):
     OVERFLOW_COUNT          = BitField(STATUS, 0x02, 0, width=8, doc="Number of FFT overflows since reset (rolls back)")
 
     def __init__(self, fpga_instance, base_address, instance_number):
-        super(FFT_base, self).__init__(fpga_instance, base_address, instance_number)
+        super().__init__(fpga_instance, base_address, instance_number)
 
     def reset(self):
         self.pulse_bit('RESET')

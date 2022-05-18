@@ -110,7 +110,7 @@ class ZCU111(Motherboard):
     _ipmi_part_numbers = ['ZCU111']
 
     NUMBER_OF_FMC_SLOTS = 0
-    NUMBER_OF_ANTENNAS = 4
+    NUMBER_OF_CHANNELIZERS = 4
 
     port = 7  # port number on which to access the platform `hostname`
 

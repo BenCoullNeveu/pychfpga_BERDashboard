@@ -49,8 +49,8 @@ from .system import FreqCtr
 from .system import REFCLK
 
 # FPGA Channelizer (F-Engine)
-from .f_engine import ANT
-from .f_engine import PROBER  # needed to access RawFrameReceiver
+from .f_engine import chan
+from .f_engine import prober  # needed to access RawFrameReceiver
 
 # FPGA Corner-turn Engine
 from .ct_engine import chan_crossbar
@@ -696,12 +696,9 @@ class chFPGA(FPGAFirmware):
 
             # Identify the number of channelizers and their properties
             self.CHANNELIZERS_CLOCK_SOURCE = self.GPIO.CHANNELIZERS_CLOCK_SOURCE
-            self.NUMBER_OF_ANTENNAS = self.GPIO.NUMBER_OF_CHANNELIZERS
+            self.NUMBER_OF_CHANNELIZERS = self.GPIO.NUMBER_OF_CHANNELIZERS
             self.NUMBER_OF_ANTENNAS_WITH_FFT = self.GPIO.NUMBER_OF_CHANNELIZERS_WITH_FFT
             self.LIST_OF_ANTENNAS_WITH_FFT = list(range(self.NUMBER_OF_ANTENNAS_WITH_FFT))
-
-            # if self.NUMBER_OF_ANTENNAS == 0:
-            #     self.NUMBER_OF_ANTENNAS = 16
 
             # Get corner-turn engine configuration info
             self.NUMBER_OF_CROSSBAR_INPUTS = self.GPIO.NUMBER_OF_CROSSBAR_INPUTS
@@ -717,11 +714,11 @@ class chFPGA(FPGAFirmware):
             self.LIST_OF_IMPLEMENTED_CORRELATORS = list(range(self.NUMBER_OF_CORRELATORS))
             self.NUMBER_OF_INPUTS_TO_CORRELATE = self.GPIO.NUMBER_OF_CHANNELIZERS_TO_CORRELATE
 
-            self.default_channels = list(range(self.NUMBER_OF_ANTENNAS))
+            self.default_channels = list(range(self.NUMBER_OF_CHANNELIZERS))
 
             self.logger.debug('%r: Hardware platform: %s' % (self, self._PLATFORM_ID_LIST[self.PLATFORM_ID][0]))
             self.logger.debug('%r: Firmware timestamp: %s' % (self, self.get_version()))
-            self.logger.debug('%r: Number of channelizers: %i' % (self, self.NUMBER_OF_ANTENNAS))
+            self.logger.debug('%r: Number of channelizers: %i' % (self, self.NUMBER_OF_CHANNELIZERS))
             self.logger.debug('%r: Number of channelizers with FFT: %i (antennas %s)' % (
                 self,
                 len(self.LIST_OF_ANTENNAS_WITH_FFT),
@@ -769,12 +766,12 @@ class chFPGA(FPGAFirmware):
 
             self.logger.debug('%r: === Instantiating CHAN' % self)
             # Instantiate a channelizer for for each input
-            self.ANT = ANT.ANT_base(
+            self.chan = chan.ChanArray(
                 self,
                 self._CHAN_BASE_ADDR,
                 self._CHAN_ADDR_INCREMENT,
                 self._CHAN_SUBMODULE_ADDR_INCREMENT)
-            self.ANT_FMC_NUMBER = [i // 8 for i in range(self.NUMBER_OF_ANTENNAS)]
+            self.ANT_FMC_NUMBER = [i // 8 for i in range(self.NUMBER_OF_CHANNELIZERS)]
 
             await asyncio.sleep(0)
             self.logger.debug('%r: === Instantiating 1st CROSSBAR' % self)
@@ -845,8 +842,8 @@ class chFPGA(FPGAFirmware):
                     self.logger.warning(f'{self!r}:   An MGADC08 ADC Board is *not* present on FMC slot {fmc_number}')
 
             # Determine if the FMC board corresponding to each channelizer is present
-            # self.ANT_FMC_IS_PRESENT = [self._adc_board[self.ANT_FMC_NUMBER[i]].is_present() for i in range(self.NUMBER_OF_ANTENNAS)]
-            self.ANT_FMC_IS_PRESENT = [False] * self.NUMBER_OF_ANTENNAS
+            # self.ANT_FMC_IS_PRESENT = [self._adc_board[self.ANT_FMC_NUMBER[i]].is_present() for i in range(self.NUMBER_OF_CHANNELIZERS)]
+            self.ANT_FMC_IS_PRESENT = [False] * self.NUMBER_OF_CHANNELIZERS
             for (ant_number, fmc_number) in enumerate(self.ANT_FMC_NUMBER):
                 if fmc_number + 1 in self.mezzanine.keys():
                     self.ANT_FMC_IS_PRESENT[ant_number] = True
@@ -1015,8 +1012,8 @@ class chFPGA(FPGAFirmware):
 
         # self.logger.info('%r: --- Initializing FPGA subsystems' % self)
         self.logger.debug('%r: === Initializing Channelizers' % self)
-        self.ANT.init(delay_table=adc_delay_table, fmc_present=self.ANT_FMC_IS_PRESENT)
-        # self.ANT.status()
+        self.chan.init(delay_table=adc_delay_table, fmc_present=self.ANT_FMC_IS_PRESENT)
+        # self.chan.status()
 
         self.logger.debug('%r: === Initializing Corner-Turn engine' % self)
         self.logger.debug('%r: === Initializing 1st Crossbar' % self)
@@ -1076,7 +1073,7 @@ class chFPGA(FPGAFirmware):
         self.logger.debug("%r: Done with initializations." % self)
 
         await asyncio.sleep(0)
-        self.set_ant_reset(0)  # Disable antenna reset
+        self.set_ant_reset(0)  # Disable channelizer reset
 
         self._last_init_time = time.time()
 
@@ -2212,7 +2209,7 @@ class chFPGA(FPGAFirmware):
 
     def get_channels(self):
         """ Return a list of available channel numbers """
-        return list(self.ANT.keys())
+        return list(self.chan.keys())
 
     def get_channelizers(self, channels=None):
         """ Return a list of channelizer objects for the specified or all channel numbers
@@ -2227,9 +2224,9 @@ class chFPGA(FPGAFirmware):
 
         """
         if channels is None:
-            return list(self.ANT.values())
+            return list(self.chan.values())
         else:
-            return [self.ANT[ch] for ch in channels]
+            return [self.chan[ch] for ch in channels]
 
 
 
@@ -2284,7 +2281,7 @@ class chFPGA(FPGAFirmware):
 
         if channels is None:
             channels = self.get_channels()
-        return [self.ANT[ch].PROBER.get_stream_id() for ch in channels]
+        return [self.chan[ch].PROBER.get_stream_id() for ch in channels]
 
     def get_stream_id(self, channel):
         """ Return the stream_id of a specified channel.
@@ -2293,7 +2290,7 @@ class chFPGA(FPGAFirmware):
             int: the stream IDs
         """
 
-        return self.ANT[channel].PROBER.get_stream_id()
+        return self.chan[channel].PROBER.get_stream_id()
 
     def get_stream_id_map(self):
         """ Return the stream_ids of every channel of the board, indexed by channel_id.
@@ -2304,7 +2301,7 @@ class chFPGA(FPGAFirmware):
             tuple.
         """
 
-        return {self.get_id(ch): ant.PROBER.get_stream_id() for ch, ant in self.ANT.items()}
+        return {self.get_id(ch): ant.PROBER.get_stream_id() for ch, ant in self.chan.items()}
 
 
 
@@ -2339,7 +2336,7 @@ class chFPGA(FPGAFirmware):
         config.system_local_data_port_number = await self.get_local_data_port_number_async()
         config.system_local_corr_port_number = self.local_control_port_number + self.GPIO.CORR_IP_PORT_OFFSET if self.local_control_port_number is not None else None
 
-        config.number_of_antennas = self.NUMBER_OF_ANTENNAS
+        config.number_of_channelizers = self.NUMBER_OF_CHANNELIZERS
         config.system_list_of_antennas_with_channelizers = self.LIST_OF_ANTENNAS_WITH_FFT
 
         config.number_of_correlators_max = self.NUMBER_OF_CORRELATORS_MAX
@@ -2363,11 +2360,11 @@ class chFPGA(FPGAFirmware):
             config.adc_serial = [self.mezzanine[mezz_number].serial if mezz_number in self.mezzanine else None
                                  for mezz_number in (1, 2)]  # mezz1._board_info['Serial #']
 
-            config.antenna_data_source = self.get_data_source()
-            config.antenna_fft_bypass = self.get_FFT_bypass()
-            config.antenna_fft_shift_schedule = self.get_FFT_shift()
-            config.antenna_scaler_gain = self.get_gains()
-            config.antenna_adc_data_acquisition_delay_tables = self.ANT.get_adc_delays()
+            config.channelizer_data_source = self.get_data_source()
+            config.channelizer_fft_bypass = self.get_FFT_bypass()
+            config.channelizer_fft_shift_schedule = self.get_FFT_shift()
+            config.channelizer_scaler_gain = self.get_gains()
+            config.channelizer_adc_data_acquisition_delay_tables = self.chan.get_adc_delays()
             config.FPGA_board_frequency = self.FreqCtr.read_frequency('CLK200', gate_time=0.05)
             config.CTRL_clock_frequency = self.FreqCtr.read_frequency('CTRL_CLK', gate_time=0.05)
             config.ant_clock = self.FreqCtr.read_frequency('ANT_CLK', gate_time=0.05)
@@ -2423,7 +2420,7 @@ class chFPGA(FPGAFirmware):
             self.set_adc_mask(0xff)  # restore full ADC data
 
     def pulse_ant_reset(self):
-        """ Resets the stats of all antenna processor modules and clear the processing pipeline.
+        """ Resets the stats of all channelizers and clear the processing pipeline.
         Memory-mapped registers are not affected.
         """
         self.GPIO.pulse_ant_reset()  # resets all
@@ -2599,8 +2596,8 @@ class chFPGA(FPGAFirmware):
         changed. user `setfuncgen_function()` if the function generator is
         already active and you want to change only the waveform
         """
-        data_sources = self.ANT[0].FUNCGEN.DATA_SOURCE_NAMES.keys()
-        function_names = self.ANT[0].FUNCGEN.FUNCTION_NAMES.keys()
+        data_sources = self.chan[0].FUNCGEN.DATA_SOURCE_NAMES.keys()
+        function_names = self.chan[0].FUNCGEN.FUNCTION_NAMES.keys()
 
         source = source.lower()
 
@@ -2627,7 +2624,7 @@ class chFPGA(FPGAFirmware):
         """
             Returns a list of data source for all channels.
         """
-        return [ant.FUNCGEN.get_data_source() for ant in self.ANT.values()]
+        return [ant.FUNCGEN.get_data_source() for ant in self.chan.values()]
 
     def set_funcgen_function(self, function=None, channels=None, **kwargs):
         """
@@ -2636,21 +2633,21 @@ class chFPGA(FPGAFirmware):
 
         This may cause one frame to partially contain the new waveform.
         """
-        if (function is None) or (function.lower() not in self.ANT[0].FUNCGEN.FUNCTION_NAMES):
+        if (function is None) or (function.lower() not in self.chan[0].FUNCGEN.FUNCTION_NAMES):
             raise ValueError("Invalid function generator function '%s'. Valid functions are %s:" % (
                 function,
-                ', '.join(self.ANT[0].FUNCGEN.FUNCTION_NAMES.keys())))
+                ', '.join(self.chan[0].FUNCGEN.FUNCTION_NAMES.keys())))
 
         if channels is None:
             channels = self.default_channels
 
         for ch in channels:
-            ant = self.ANT[ch]
+            ant = self.chan[ch]
             ant.FUNCGEN.set_function(function.lower(), **kwargs)
 
     def get_adc_board(self, channel):
         """
-        Returns the ADC board object that is associated with the specified antenna channel.
+        Returns the ADC board object that is associated with the specified channel.
         If channel is a list, returns a list of unique board objects associated with the specified channels.
         """
 
@@ -2728,7 +2725,7 @@ class chFPGA(FPGAFirmware):
 
         # Set the capture period for all specified channels
         for ch in channels:
-            ant = self.ANT[ch]
+            ant = self.chan[ch]
             # Set the period so we are ready to capture data correctly after the SYNC resets the CAPTURE logic
             ant.ADCDAQ.CAPTURE2_PERIOD = capture_period
 
@@ -2777,7 +2774,7 @@ class chFPGA(FPGAFirmware):
             channels = self.default_channels
 
         for ch in channels:
-            ant = self.ANT[ch]
+            ant = self.chan[ch]
             ant.ADCDAQ.set_ADCDAQ_mode(mode)
 
     set_ADCDAQ_mode = set_adcdaq_mode
@@ -2815,7 +2812,7 @@ class chFPGA(FPGAFirmware):
         Stops the transmission of data.
         """
         self.GPIO.GLOBAL_TRIG = 0  # disable data transmission if continuous mode is currentlly selected
-        for ant in self.ANT.values():
+        for ant in self.chan.values():
             ant.PROBER.RESET = 1
 
     def get_data_receiver(self, verbose=1, threaded=False):
@@ -2908,12 +2905,12 @@ class chFPGA(FPGAFirmware):
         if isinstance(stream_ids, list):
             stream_ids = dict(enumerate(stream_ids))
         elif isinstance(stream_ids, int):
-            stream_ids = {ch: (stream_ids * 16 + ch) for ch in self.ANT.keys()}
+            stream_ids = {ch: (stream_ids * 16 + ch) for ch in self.chan.keys()}
         elif not isinstance(stream_ids, dict):
             raise TypeError('parameter must be a list, a dict or an integer')
 
         for ch, stream_id in stream_ids.items():
-            self.ANT[ch].PROBER.STREAM_ID = stream_id
+            self.chan[ch].PROBER.STREAM_ID = stream_id
 
     def start_data_capture(
             self,
@@ -3090,11 +3087,11 @@ class chFPGA(FPGAFirmware):
         """
         Sets the BYPASS flag on both the FFT modules.
         If the list of channels is specified, only these channels will be set.
-        All antenna processors are reset to force the FFT to resynchronize to the frame boundaries.
+        All channelizers are reset to force the FFT to resynchronize to the frame boundaries.
 
         History:
             2012-08-31 JFC: Added this function
-            2012-10-02 JFC: Added antenna reset after bypass change to ensure the FFT is synced.
+            2012-10-02 JFC: Added channelizer reset after bypass change to ensure the FFT is synced.
             2013-12-05 JFC: Changed behavior so only the specified channels are changed.
             2014-02-09 JFC: Removed scaler bypass setting
         """
@@ -3104,16 +3101,16 @@ class chFPGA(FPGAFirmware):
 
         configured_channels = set()
         for ch in channels:
-            if ch not in self.ANT:
-                self.logger.warning('%r: FFT bypass mode on antena channel %i are not set '
+            if ch not in self.chan:
+                self.logger.warning('%r: FFT bypass mode on channel %i are not set '
                                      'because that channel is not available' % (self, ch))
             elif ch not in self.LIST_OF_ANTENNAS_WITH_FFT and not bypass_mode:
                 self.logger.warning('%r: FFT bypass mode was disabled on channel %i'
                                      ' which has no FFT module. The command will have no effect.' % (self, ch))
             else:
-                self.ANT[ch].FFT.BYPASS = bypass_mode
+                self.chan[ch].FFT.BYPASS = bypass_mode
                 configured_channels.add(ch)
-        self.logger.debug('%r: Setting FFT bypass mode to %s for Antenna %s' % (
+        self.logger.debug('%r: Setting FFT bypass mode to %s for channel %s' % (
             self,
             str(bool(bypass_mode)),
             ', '.join([str(i) for i in configured_channels])))
@@ -3124,9 +3121,9 @@ class chFPGA(FPGAFirmware):
 
     def get_fft_bypass(self):
         """
-        Returns a list indicating if the FFT is bypassed or not for each antenna.
+        Returns a list indicating if the FFT is bypassed or not for each channel.
         """
-        return [bool(ant.FFT.BYPASS) for ant in self.ANT.values()]
+        return [bool(ant.FFT.BYPASS) for ant in self.chan.values()]
 
     get_FFT_bypass = get_fft_bypass  # for legacy code compatibility
 
@@ -3142,28 +3139,28 @@ class chFPGA(FPGAFirmware):
         if channels is None:
             channels = self.default_channels
 
-        self.logger.debug('%r: Setting SCALER bypass mode for Antenna %s' % (
+        self.logger.debug('%r: Setting SCALER bypass mode for channel %s' % (
             self,
             ', '.join([str(i) for i in channels])))
-        for ant in self.ANT.values():
+        for ant in self.chan.values():
             if ant.ant_number in channels:
                 ant.SCALER.BYPASS = bypass_mode
             # else:
-            #     self.logger.warning('Attempting to set SCALER bypass mode for antenna channel %i '
+            #     self.logger.warning('Attempting to set SCALER bypass mode for channel channel %i '
             #                          'which is not present on this card' % ch)
 
     def get_scaler_bypass(self):
         """
-        Returns a list indicating if the SCALER is bypassed or not for each antenna.
+        Returns a list indicating if the SCALER is bypassed or not for each channel.
         """
-        return [bool(ant.SCALER.BYPASS) for ant in self.ANT.values()]
+        return [bool(ant.SCALER.BYPASS) for ant in self.chan.values()]
 
     def set_global_trigger(self, trigger_state):
         """
         Sets the global trigger to the specified value.
 
         In injection mode, the injection buffers are read only when
-        trigger=True. This allows the buffers from all the antennas to be read
+        trigger=True. This allows the buffers from all the channels to be read
         simultaneously. In this case, the CAPTURE flag if the injected frames
         is always set.
 
@@ -3184,7 +3181,7 @@ class chFPGA(FPGAFirmware):
         return self.GPIO.get_bitstream_date()
 
     def get_adc_delays(self):
-        delay_table = self.ANT.get_adc_delays()
+        delay_table = self.chan.get_adc_delays()
         delay_table['sync_delays'] = self.REFCLK.get_sync_delays()
         return delay_table
 
@@ -3401,7 +3398,7 @@ class chFPGA(FPGAFirmware):
         """
         sync_delays = delay_table.get('sync_delays', None)
         self.REFCLK.set_sync_delays(sync_delays)
-        self.ANT.set_adc_delays(delay_table)
+        self.chan.set_adc_delays(delay_table)
 
     def check_ramp_errors(self, delay=0.1, trials=10, verbose=1):
         """
@@ -3436,7 +3433,7 @@ class chFPGA(FPGAFirmware):
             self.sync()  # This automatically clears the error counter
             time.sleep(delay)
             s = ''
-            for (i, ant) in self.ANT.items():
+            for (i, ant) in self.chan.items():
                 e = ant.ADCDAQ.RAMP_ERR_CTR
                 # We still sometimes get one (and only one) spurious error
                 # count just after sync. There is probably still a firmware
@@ -3474,7 +3471,7 @@ class chFPGA(FPGAFirmware):
         # Get current ADC mode. Make sure we don't access boards not on the channel list: they may be powered off
         old_adc_mode = self.get_adc_mode(channels=channels)
         for ch in channels:
-            self.ANT[ch].ADCDAQ.set_delays((None, 0, 0))  # set all sample delays to zero before sync
+            self.chan[ch].ADCDAQ.set_delays((None, 0, 0))  # set all sample delays to zero before sync
         self.set_adc_mode('pulse', channels=channels, sync=True)  # generate pulse pattern and sync
         period = 11  # The pulse waveform repeats every 11 samples
         for i in range(1):
@@ -3484,7 +3481,7 @@ class chFPGA(FPGAFirmware):
         for i, ch in enumerate(channels):
             # d = np.zeros((32, 11), dtype=np.uint8) # 32 delays x 11 offsets
             # self.logger.info('%.32s: Reading channel %i.' % (self, ch))
-            adcdaq = self.ANT[ch].ADCDAQ
+            adcdaq = self.chan[ch].ADCDAQ
             for dly in range(32):
                 # Set delay, don't change sample delay. No need to sync because sample delay not changed.
                 adcdaq.set_delays(([dly] * 8, None, None))
@@ -3760,8 +3757,8 @@ class chFPGA(FPGAFirmware):
         self.logger.info('%r: ----------- chFPGA status ---------------' % self)
         self.logger.info('%r:  Controller IP address: %s, port: %i ' % (self, self.ip_addr, self.fpga.port_number))
         self.logger.info('%r:  Firmware version: %s' % (self, self.get_fpga_firmware_version()))
-        self.logger.info('%r:  Number of antenna inputs: %i' % (self, self.NUMBER_OF_ANTENNAS))
-        self.logger.info('%r:  Number of antennas with channelizers: %i (antennas %s)' % (
+        self.logger.info('%r:  Number of channel inputs: %i' % (self, self.NUMBER_OF_CHANNELIZERS))
+        self.logger.info('%r:  Number of channelizers with FFT: %i (channels %s)' % (
             self,
             len(self.LIST_OF_ANTENNAS_WITH_FFT),
             str(self.LIST_OF_ANTENNAS_WITH_FFT)))
@@ -3792,7 +3789,7 @@ class chFPGA(FPGAFirmware):
             raise ValueError('Number of bits %i is invalid. Only 4 or 8 is allowed' % width)
 
         # Set the channelizer data width
-        self.ANT.set_data_width(width)
+        self.chan.set_data_width(width)
 
         # Set the crossbar data width
         self.CROSSBAR.set_data_width(width)
@@ -3805,7 +3802,7 @@ class chFPGA(FPGAFirmware):
         If all the hardware modules are not set in the same mode, an error is raised.
         """
         # get the channelizer and crossbar data width
-        chan_data_width = self.ANT.get_data_width()
+        chan_data_width = self.chan.get_data_width()
         xbar_data_width = self.CROSSBAR.get_data_width()
 
         if xbar_data_width and xbar_data_width != chan_data_width:
@@ -3837,7 +3834,7 @@ class chFPGA(FPGAFirmware):
         else:
             # Set the scaler to use offset binary
             for channel in channels:
-                self.ANT[channel].SCALER.USE_OFFSET_BINARY = offset
+                self.chan[channel].SCALER.USE_OFFSET_BINARY = offset
             if sync:
                 self.sync()
 
@@ -4061,10 +4058,10 @@ class chFPGA(FPGAFirmware):
             #) (16384, 8), except that the latter offers more gain resolution.
 
         Examples:
-            set_gain(1) # Sets all gains to 1, leaves the poscslaler unchanged fro all antennas.
+            set_gain(1) # Sets all gains to 1, leaves the poscslaler unchanged for all channelizers.
             set_gain((1, None)) # Same thing
-            set_gain(postscaler = 26) # Sets postscaler on all antennas
-            set_gain((1,31)) # For all antennas, sets all gains to 1 and postscaler to 31
+            set_gain(postscaler = 26) # Sets postscaler on all channelizers
+            set_gain((1,31)) # For all channelizers, sets all gains to 1 and postscaler to 31
             set_gain(16384,8) # In 4-bit, FFT enabled mode, outputs a value of '1' on bin 0 when the input of the FFT is a constant '1'.
             set_gain(np.arange(1024), channels=[1,2,3])
             set_gain({1: 16384, 4: 1300+15000*j, 5: np.arange(1024)}) # sets ADC channels 1-3 to a real gain of 16384, channel 4 to complex gain of (1300+15000j), and channels 5-7 with a gain ramp from 0 to 1023.
@@ -4129,25 +4126,25 @@ class chFPGA(FPGAFirmware):
                     continue
 
                 # Warn and skip if a channel does not exist
-                if ch not in self.ANT.keys():
-                    self.logger.warning('%r: Gains on antenna channel %i are not set because that channel is not available' % (
+                if ch not in self.chan.keys():
+                    self.logger.warning('%r: Gains on channel %i are not set because that channel is not available' % (
                         self, ch))
                     continue
 
                 # Set the postscaler value
                 if Glog is not None:
-                    self.ANT[ch].SCALER.SHIFT_LEFT = Glog
+                    self.chan[ch].SCALER.SHIFT_LEFT = Glog
 
                 if use_fixed_gain:
                     if not np.isscalar(Glin):
                         raise TypeError('%r: Only scalar gains are allowed when using set_fixed_gain=True.' % self)
-                    self.ANT[ch].SCALER.USE_GAIN_TABLE = 0
-                    self.ANT[ch].SCALER.set_fixed_gain(Glin)
+                    self.chan[ch].SCALER.USE_GAIN_TABLE = 0
+                    self.chan[ch].SCALER.set_fixed_gain(Glin)
                 else:  # use vector-based gain table
-                    self.ANT[ch].SCALER.USE_GAIN_TABLE = 1
-                    self.ANT[ch].SCALER.set_gain_table(Glin, bank=bank, gain_timestamp=timestamp_value)
+                    self.chan[ch].SCALER.USE_GAIN_TABLE = 1
+                    self.chan[ch].SCALER.set_gain_table(Glin, bank=bank, gain_timestamp=timestamp_value)
                 configured_channels.add(ch)
-        self.logger.debug('%r: Setting scaler gains for Antenna %s' % (
+        self.logger.debug('%r: Setting scaler gains for channel %s' % (
             self,
             ', '.join([str(i) for i in configured_channels])))
 
@@ -4158,7 +4155,7 @@ class chFPGA(FPGAFirmware):
         """
         Return the gain bank that will be used on the next automatic bank switch.
         """
-        return [ant.SCALER.READ_COEFF_BANK ^ 1 for ant in self.ANT.values()]
+        return [ant.SCALER.READ_COEFF_BANK ^ 1 for ant in self.chan.values()]
 
     def get_gains(self, bank=0, use_cache=True):
         """
@@ -4216,7 +4213,7 @@ class chFPGA(FPGAFirmware):
         if when is None:
             return
 
-        for ant in self.ANT.values():
+        for ant in self.chan.values():
             if bank is None or bank < 0:
                 next_bank = ant.SCALER.READ_COEFF_BANK ^ 1
             else:
@@ -4233,7 +4230,7 @@ class chFPGA(FPGAFirmware):
     def reset_fft_overflow_count(self):
         """ Reset the FFT overflow counter in all channelizers.
         """
-        for ant in self.ANT.values():
+        for ant in self.chan.values():
             ant.FFT.reset_fft_overflow_count()
 
     def set_fft_shift(self, fft_shift=0b11111111111, channels=None):
@@ -4254,22 +4251,22 @@ class chFPGA(FPGAFirmware):
         if channels is None:
             channels = self.default_channels
 
-        for ant in self.ANT.values():
+        for ant in self.chan.values():
             if ant.ant_number in channels:
-                self.logger.debug('%r: Setting FFT shift of antenna %i' % (self, ant.ant_number))
+                self.logger.debug('%r: Setting FFT shift of channel %i' % (self, ant.ant_number))
                 ant.FFT.FFT_SHIFT = fft_shift
 
     set_FFT_shift = set_fft_shift  # For legacy code compatibility
 
     def get_fft_shift(self):
         """
-        Returns the FFT shift schedule for each antenna.
+        Returns the FFT shift schedule for each channelizer.
 
         Returns:
 
             list of int: one integer indicating the shift pattern for each channelizer.
         """
-        return [ant.FFT.FFT_SHIFT for ant in self.ANT.values()]
+        return [ant.FFT.FFT_SHIFT for ant in self.chan.values()]
 
     get_FFT_shift = get_fft_shift  # for legacy compatibility
 
@@ -4421,7 +4418,7 @@ class chFPGA(FPGAFirmware):
             channels = self.default_channels
 
         for ch in channels:
-            self.ANT[ch].ADCDAQ.BYTE_MASK = mask
+            self.chan[ch].ADCDAQ.BYTE_MASK = mask
 
 #     def check_adc_data_acquisition(self, test_duration=1):
 #         """
@@ -4434,19 +4431,19 @@ class chFPGA(FPGAFirmware):
 #         self.sync() # sync the board to make sure that data acquisition starts on the right ramp sample
 
 #         # Clear the word and bit error counters
-#         for ant in self.ANT.values():
-#             print 'Clearing antenna', ant.ant_number
+#         for ant in self.chan.values():
+#             print 'Clearing channelizer', ant.ant_number
 #             ant.ADCDAQ.RAMP_ERR_CLEAR=0
 #             ant.ADCDAQ.RAMP_ERR_CLEAR=1
 #         self.logger.info('%r: Measuring the data acquisition error rate over %0.1f seconds...' % (
 #               self, test_duration))
 #         t0 = time.time();
-#         word_error = np.zeros(len(self.ANT))
-#         bit_error = np.zeros((len(self.ANT), 8))
+#         word_error = np.zeros(len(self.chan))
+#         bit_error = np.zeros((len(self.chan), 8))
 #         try:
 #             while time.time() - t0 <= test_duration:
-#                 for (i, ant) in self.ANT.items():
-#                     print  self.ANT[i].ADCDAQ.RAMP_ERR_CTR,
+#                 for (i, ant) in self.chan.items():
+#                     print  self.chan[i].ADCDAQ.RAMP_ERR_CTR,
 #                     word_error[i] += ant.ADCDAQ.RAMP_ERR_CTR
 #                     for bit_number in range(8):
 #                         bit_error[i, bit_number] += ((ant.ADCDAQ.BIT_ERR_CTR >> (bit_number*4)) & 0x0F)
@@ -4457,7 +4454,7 @@ class chFPGA(FPGAFirmware):
 #         except KeyboardInterrupt:
 #             pass
 #
-#         for (i, ant) in enumerate(self.ANT):
+#         for (i, ant) in enumerate(self.chan):
 #             self.logger.info('%r: CH%i: %5i word errors, bit errors (7:0) = (%s)' % (
 #                   self, ant.ant_number, word_error[i], ','.join('%3i' % e for e in bit_error[i,::-1])))
 #         total_word_errors = np.sum(word_error)
@@ -5877,7 +5874,7 @@ class chFPGA(FPGAFirmware):
         try:
             # await self.check_command_count(reset=True)
             await self.clear_fpga_udp_errors()
-            for i, ant in self.ANT.items():
+            for i, ant in self.chan.items():
                 metrics.add('fpga_fft_overflow_count', value=ant.FFT.OVERFLOW_COUNT, chan=i)
                 metrics.add('fpga_scaler_overflow_count', value=ant.SCALER.STATS_SCALER_OVERFLOWS, chan=i)
                 metrics.add('fpga_adc_overflow_count', value=ant.SCALER.STATS_ADC_OVERFLOWS, chan=i)

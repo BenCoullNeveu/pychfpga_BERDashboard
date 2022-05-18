@@ -41,11 +41,6 @@ class ReceiverThread(threading.Thread):
     data = bytearray(BUF_SIZE)
     data_buf = memoryview(data)
     data_block = np.zeros((16, 2048 + 10), dtype=np.uint8)
-    # Number of frequency bin pairs, Number of antennas, Number of bytes per word, header
-    # NUMBER_OF_CORRELATORS = 5
-    # NUMBER_OF_ANTENNAS_TO_CORRELATE = 5 #8
-    # NUMBER_OF_MULTIPLIERS = NUMBER_OF_ANTENNAS_TO_CORRELATE + 1
-    # MAX_NUMBER_OF_CHANNELS_PER_CORRELATOR = 128
     MAX_CORR_FRAME_LENGTH = 128 * 4 * 5 + 12  # 128 bins x 4 product/bin x 5 bytes/product + 12 header bytes
 
 #        frame_block = {'timestamp' :0, 'data':frame_data}

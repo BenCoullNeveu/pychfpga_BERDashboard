@@ -16,7 +16,7 @@ import numpy as np
 from ..Module import Module_base, BitField
 
 
-class SCALER_base(Module_base):
+class SCALER(Module_base):
     """ Implements interface to the SCALER module within a procecessor pipeline"""
     # Create local variables for page numbers tomake the table more readable
     CONTROL = BitField.CONTROL
@@ -61,7 +61,7 @@ class SCALER_base(Module_base):
 
     def __init__(self, fpga_instance, base_address, instance_number):
 
-        super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
+        super().__init__(fpga_instance, base_address, instance_number)
 
         self.cached_gain_table = {}
         self.cached_gain_timestamp = {}

@@ -3,7 +3,7 @@
 # pylint: disable=C0301
 
 """
-ANT.py module
+chan.py module
     Implements interface to the channelizer modules
 
 History:
@@ -13,17 +13,16 @@ History:
 """
 import logging
 
-from . import ADCDAQ
-# import SRCSEL
-from . import FFT
-from . import SCALER
-from . import PROBER
-from . import FUNCGEN
+from . import adcdaq
+from . import fft
+from . import scaler
+from . import prober
+from . import funcgen
 from numpy import NaN as npNaN
 # import INJECT
 
 
-class ANT_channel(object):
+class Chan:
     """ Implements the interface to one of the channelizer"""
 
     # Channelizer module addresses
@@ -40,25 +39,25 @@ class ANT_channel(object):
         self.fpga = fpga_instance
         self.logger = logging.getLogger(__name__)
         if self.fpga.HAS_ADCDAQ:
-            self.ADCDAQ = ADCDAQ.ADCDAQ_base(
+            self.ADCDAQ = adcdaq.ADCDAQ(
                 fpga_instance,
                 base_address + self.ADCDAQ_OFFSET_ADDR * submodule_address_increment,
                 instance_number)
         else:
             self.ADCDAQ = None
-        self.FFT = FFT.FFT_base(
+        self.FFT = fft.FFT(
             fpga_instance,
             base_address + self.FFT_OFFSET_ADDR * submodule_address_increment,
             instance_number)
-        self.SCALER = SCALER.SCALER_base(
+        self.SCALER = scaler.SCALER(
             fpga_instance,
             base_address + self.SCALER_OFFSET_ADDR * submodule_address_increment,
             instance_number)
-        self.PROBER = PROBER.PROBER_base(
+        self.PROBER = prober.PROBER(
             fpga_instance,
             base_address + self.PROBER_OFFSET_ADDR * submodule_address_increment,
             instance_number)
-        self.FUNCGEN = FUNCGEN.FUNCGEN_base(
+        self.FUNCGEN = funcgen.FUNCGEN(
             fpga_instance,
             base_address + self.FUNCGEN_OFFSET_ADDR * submodule_address_increment,
             instance_number)
@@ -112,7 +111,7 @@ class ANT_channel(object):
         scaler_out = self.SCALER.get_sim_output(fft_out)
         return scaler_out
 
-class ANT_base(object):
+class ChanArray:
     """
     Instantiates a container for all channelizers available on the FPGA.
     It mimics the basin functionnalities of a 'dict'.
@@ -125,9 +124,9 @@ class ANT_base(object):
         self.logger = logging.getLogger(__name__)
         # Create an instance of ADC_chip for each chip of the FMC board
         self.frame_length = fpga.FRAME_LENGTH
-        self.ANT = []
-        for i in range(fpga.NUMBER_OF_ANTENNAS):
-            self.ANT.append(ANT_channel(self.fpga, base_address + i * address_increment, submodule_address_increment, i))
+        self.chan = []
+        for i in range(fpga.NUMBER_OF_CHANNELIZERS):
+            self.chan.append(Chan(self.fpga, base_address + i * address_increment, submodule_address_increment, i))
 
     def __repr__(self):
         """ Return a string that represents this object and its parent object.
@@ -136,11 +135,11 @@ class ANT_base(object):
 
     def __getitem__(self, key):
         """If the user indexes this object (ANT[n] instead of ANT) then return the channelizer instance"""
-        return self.ANT[key]
+        return self.chan[key]
 
     def __len__(self):
         """Returns the number of channelizers"""
-        return len(self.ANT)
+        return len(self.chan)
 
     def __contains__(self, value):
         """
@@ -148,17 +147,17 @@ class ANT_base(object):
         return value in self.keys()
 
     def __iter__(self):
-        return iter(self.ANT)
+        return iter(self.chan)
 
     def keys(self):
         """
         """
-        return list(range(self.fpga.NUMBER_OF_ANTENNAS))
+        return list(range(self.fpga.NUMBER_OF_CHANNELIZERS))
 
     def values(self):
         """
         """
-        return self.ANT
+        return self.chan
 
     def items(self):
         """
@@ -210,7 +209,7 @@ class ANT_base(object):
             self.fpga.GPIO.CHAN_CLK_SRC = 1 # uses the internal clock to clock the channelizer
 
         #self.logger.debug("%r: Initializing each channelizer", self.fpga)
-        for (i, ant) in enumerate(self.ANT):
+        for (i, ant) in enumerate(self.chan):
             # self.logger.debug('%r: Initializing channelizer #%i %s' % (self.fpga, ant.ant_number, '' if fmc_present[i] else '(No ADC board)'))
             ant.init(fmc_present[i])
         #self.logger.debug("%r: Initializing delay tables", self.fpga)
@@ -221,10 +220,10 @@ class ANT_base(object):
 
     def status(self):
         """ Displays the status of all channelizer modules"""
-        for ant in self.ANT:
+        for ant in self.chan:
             ant.status()
 
-        #self.ANT[1].ADCDAQ.set_divclk_phase(1) # Adjust phase of the DIVCLK signal to allow proper sampling of the deserialized words
+        #self.chan[1].ADCDAQ.set_divclk_phase(1) # Adjust phase of the DIVCLK signal to allow proper sampling of the deserialized words
 
     def set_adc_delays(self, adc_delay_table):
         """
@@ -239,7 +238,7 @@ class ANT_base(object):
         if not isinstance(adc_delay_table, dict):
             adc_delay_table = dict(enumerate(adc_delay_table))
 
-        for ch, ant in enumerate(self.ANT):
+        for ch, ant in enumerate(self.chan):
             if ch in adc_delay_table:
                 tap_delays = adc_delay_table[ch]['tap_delays']
                 sample_delay = adc_delay_table[ch]['sample_delay']
@@ -254,8 +253,8 @@ class ANT_base(object):
         Return the delays currently in use for all ADC data lines.
         """
         delay_table = {}
-        for ch, ant in enumerate(self.ANT):
-            (tap_delays, sample_delay, clock_delay) = ant.ADCDAQ.get_delays()
+        for ch, chan in enumerate(self.chan):
+            (tap_delays, sample_delay, clock_delay) = chan.ADCDAQ.get_delays()
             delay_table[ch] = {'tap_delays': tap_delays, 'sample_delay': sample_delay, 'clock_delay':clock_delay}
         return delay_table
 
@@ -275,7 +274,7 @@ class ANT_base(object):
             raise ValueError('Number of bits %i is invalid for the channelizers. Only 4 or 8 is allowed' % width)
 
         # Set the channelizer data width
-        for ch in self.ANT:
+        for ch in self.chan:
             if not is_four_bits and not ch.SCALER.EIGHT_BIT_SUPPORT:
                 raise ValueError('8-bit mode not supported in this build of the SCALER firmware')
             ch.SCALER.FOUR_BITS = is_four_bits
@@ -288,7 +287,7 @@ class ANT_base(object):
 
         four_bits = set() # use a set to uniquely record all the possible encountered states
 
-        for ch in self.ANT:
+        for ch in self.chan:
             four_bits.add(ch.SCALER.FOUR_BITS)
 
         if four_bits == set([0]):
@@ -302,8 +301,8 @@ class ANT_base(object):
     def print_ramp_errors(self):
         try:
             while 1:
-                for ant in self.ANT:
-                    print('CH%i: %3i' % (ant.ant_number, ant.ADCDAQ.RAMP_ERR_CTR), end=' ')
+                for chan in self.chan:
+                    print('CH%i: %3i' % (ant.ant_number, chan.ADCDAQ.RAMP_ERR_CTR), end=' ')
                 print()
         except KeyboardInterrupt:
             pass

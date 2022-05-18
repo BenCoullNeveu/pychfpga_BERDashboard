@@ -163,7 +163,7 @@ class FreqCtr_base(Module_base):
         print('   FMCB MGT PLL Ref clock 0: %7.3f MHz' % (self.read_frequency('FMCB_MGT_PLL_REFCLK0', gate_time=gate_time) / 1e6))
         print('   FMCB MGT PLL Ref clock 1: %7.3f MHz' % (self.read_frequency('FMCB_MGT_PLL_REFCLK1', gate_time=gate_time) / 1e6))
         print(' ADC clocks')
-        for i in range(fpga.NUMBER_OF_ANTENNAS):
+        for i in range(fpga.NUMBER_OF_CHANNELIZERS):
             print('   ADC%02i clock:              %7.3f MHz%s' % (i, self.read_frequency('ADC_CLK%i' % i, gate_time=gate_time) / 1e6, '' if fpga.is_fmc_present(0) else ' (No ADC board in FMCA - Cannot clock the channelizers)'))
         print('   Resolution:     %10.6f MHz' % (resolution / 1e6))
         print('   Gate time:      %.3f s' % (gate_time))
