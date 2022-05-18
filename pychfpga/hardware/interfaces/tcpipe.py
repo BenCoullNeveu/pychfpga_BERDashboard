@@ -2,7 +2,7 @@
 import logging
 import socket
 
-from .lib.bsb_mmi import BSB_MMI
+from .bsb_mmi import BSB_MMI
 
 class TCPipe:
     """ Interface to the TCP-based command and control protocol to the FPGA board.

@@ -1,11 +1,9 @@
 """
 Generate read/write command to access the FPGA's memory-mapped registers through its byte-serial bus (BSB) protocol.
-
+Is meant to be be inherited by an interface class that provides a _send_command() method that does the actual data transfer.
 """
 
 import numpy as np
-from . import udp as udp
-
 
 class FpgaMmiException(IOError):
     pass
@@ -26,6 +24,8 @@ class BSB_MMI:
         RAM or DRP (read/write)
 
     The read/write methods determine the target and select the appropriate operation code based on the upper bits of the address.
+
+    This class shall be inherited by a class tha tprovides the _send_command() method to send/receive the packets created and decoded by this class.
     """
 
     # Define address ranges of various targets. That will be used to map to the proper command.
