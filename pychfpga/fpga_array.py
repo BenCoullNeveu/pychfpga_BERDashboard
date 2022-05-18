@@ -1,11 +1,12 @@
 #!/usr/bin/python
 """
 fpga_array.py module. Defines the objects that represent and handles
-operations one the whole array of CHIME ICE hardware.
+operations on an array of FPGA motherboards.
 """
 
 
 # Python Standard Library packages
+
 import argparse
 import logging
 import logging.handlers
@@ -50,19 +51,23 @@ except ImportError:
         sys.path.insert(0, pychfpga_path)
 
 from wtl import log
-from pychfpga.core.icecore_ext import Ccoll
-# from pychfpga.core.icecore import HardwareMap, HWMResource
-from pychfpga.core.icecore_ext import mdns_discover
+from wtl.metrics import Metrics
+from wtl.namespace import NameSpace, merge_dict
+from wtl.config import load_yaml_config
 
-# from pychfpga.core.icecore import IceBoardPlus
-from pychfpga.core.icecore_ext import Motherboard, Crate, IceBoard, IceCrate, ZCU111
-# from pychfpga.core.chFPGA_controller import chFPGA_controller
-from pychfpga.MGADC08.MGADC08 import FMCMezzanine_MGADC08  # Import to make sure this Mezzanine is registered
-from pychfpga.Agilent_N5764A import AgilentN5764A
-# from pychfpga.gpu_node import GpuNodeHandler
-from pychfpga import Metrics
-from pychfpga import NameSpace, merge_dict
-from pychfpga import load_yaml_config
+from pychfpga.common import Ccoll
+
+from pychfpga.mdns_discovery import mdns_discover
+
+from pychfpga.hardware import Motherboard, Crate
+
+# Import platform-specific hardware-handling classes that are to be supported by fpga_array.
+# By importing those, we make sure they are registered in the hardware map.
+# Once registered, the we can find classes based on model numbers.
+from pychfpga.hardware.ice import IceBoard, IceCrate
+from pychfpga.hardware.zcu111 import ZCU111
+from pychfpga.hardware.Agilent_N5764A import AgilentN5764A
+
 
 
 #####################################
