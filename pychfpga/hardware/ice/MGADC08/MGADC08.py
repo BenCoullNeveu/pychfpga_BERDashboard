@@ -19,9 +19,10 @@ from datetime import datetime
 
 # Local packages
 
-from ..core.icecore.hw.ipmi_fru import FRU, Board, Product, MultiDict
-from ..core.icecore_ext import FMCMezzanine
-from ..core.chfpga import chFPGA  # used to check for compatible firmware instance
+from pychfpga.fpga_firmware.chfpga import chFPGA  # used to check for compatible firmware instance
+
+from ..icecore.hw.ipmi_fru import FRU, Board, Product, MultiDict
+from ..icemezz_ext import FMCMezzanine
 
 # mezzanine-specific modules
 from . import ADC
