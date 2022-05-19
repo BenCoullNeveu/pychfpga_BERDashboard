@@ -62,6 +62,32 @@ from .ct_engine import gpu
 from .x_engine import CORR  # 16-channel correlator (if implemented in firmware)
 
 
+# Default ADC delays
+ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = {
+    'valid': True,
+    'sync_delays': (4, 5),
+    0:  {'tap_delays': [16] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH0
+    1:  {'tap_delays': [7] * 8,                            'sample_delay': 3, 'clock_delay': 0},  # CH1
+    2:  {'tap_delays': [22] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH2
+    3:  {'tap_delays': [19] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH3
+    4:  {'tap_delays': [15] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH4
+    5:  {'tap_delays': [14, 13, 14, 14, 13, 14, 15, 14], 'sample_delay': 3, 'clock_delay': 0},  # CH5
+    6:  {'tap_delays': [18] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH6
+    7:  {'tap_delays': [17] * 8,                           'sample_delay': 4, 'clock_delay': 0},  # CH7
+    8:  {'tap_delays': [15, 17, 15, 18, 17, 14, 17, 15], 'sample_delay': 3, 'clock_delay': 0},  # CH8
+    9:  {'tap_delays': [16] * 8,                           'sample_delay': 4, 'clock_delay': 0},  # CH9
+    10: {'tap_delays': [20] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH10
+    11: {'tap_delays': [18] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH11
+    12: {'tap_delays': [15] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH12
+    13: {'tap_delays': [18] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH13
+    14: {'tap_delays': [18] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH14
+    15: {'tap_delays': [16] * 8,                           'sample_delay': 3, 'clock_delay': 0}   # CH15
+}
+
+# Select the default delay table
+ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2
+ADC_DELAY_TABLE_FOLDER = '../../adc_delay_tables'  # relative to this module location
+
 class chFPGA_config(object):
     """
     Simple namespace that holds chFPGA configuration information stored within its attributes. Is returned
@@ -113,11 +139,11 @@ class chFPGA(FPGAFirmware):
 
     """
 
-    PLATFORM_SUPPORT = { # (platform_model, firmware_config): {firmware_filename: <fw_fn>, <other platform parameters>}
-        ("MGK7MB", "chFPGA"): dict(firmware_url='chFPGA_MGK7MB_Rev2.bit', processing_frequency = 200e6),
-        ("MGK7MB", "siFPGA"): dict(firmware_url='SIFPGA_MGK7MB.bit', processing_frequency = 200e6),
-        ("MGK7MB", "chordFPGA"): dict(firmware_url='chordFPGA_MGK7MB_Rev2.bit', processing_frequency = 300e6),
-        ("ZCU111", "siFPGA"): dict(firmware_url='sifpga_zcu111_wrapper.bit', processing_frequency = 200e6)
+    PLATFORM_SUPPORT = { # (platform_model, firmware_config, modes): {firmware_filename: <fw_fn>, <other platform parameters>}
+        ("MGK7MB", "chFPGA", ("shuffle16", "shuffle128", "shuffle256", "shuffle512")): dict(firmware_url='chFPGA_MGK7MB_Rev2.bit', processing_frequency = 200e6),
+        ("MGK7MB", "siFPGA", ("corr16",)): dict(firmware_url='SIFPGA_MGK7MB.bit', processing_frequency = 200e6),
+        ("MGK7MB", "chordFPGA", ("chord16",)): dict(firmware_url='chordFPGA_MGK7MB_Rev2.bit', processing_frequency = 300e6),
+        ("ZCU111", "siFPGA", ("corr4")): dict(firmware_url='sifpga_zcu111_wrapper.bit', processing_frequency = 200e6)
     }
 
 
@@ -878,7 +904,7 @@ class chFPGA(FPGAFirmware):
             reference_frequency=10e6,
             adc_mode=0,
             adc_bandwidth=2,
-            adc_delay_table=None,
+            adc_delay_table=ADC_DELAY_TABLE,
             data_width=4,
             group_frames=4,
             enable_gpu_link=1,
@@ -902,7 +928,8 @@ class chFPGA(FPGAFirmware):
              reference_frequency (float): Frequency in Hz of the Iceboard's reference clock (default
                  is 10 MHz)
 
-             adc_delay_table (dict): initial setting of the ADC delays. see `set_adc_delays`
+             adc_delay_table (dict): initial setting of the ADC delays. see `set_adc_delays`.
+                 A default delay table is used if none is provided.
 
              data_width (int): 4 or 8. Indicate of the channelizer output is in (4+4)bit or (8+8
                  bit) mode
@@ -987,7 +1014,7 @@ class chFPGA(FPGAFirmware):
                 await self.mb.set_mezzanine_power_async(mezz_number - 1, True)
                 # mezz.set_power(True)
                 await asyncio.sleep(0.2)  # Give it some time for the power to stabilize
-                # We need to initialize the ADC board before we initialize ANT
+                # We need to initialize the ADC board before we initialize the channelizer
                 # (and its data acquisition) because the delay blocks need a
                 # clock
                 self.logger.debug('%r:   Initializing FMC%i' % (self, mezz_number - 1))
@@ -2586,6 +2613,12 @@ class chFPGA(FPGAFirmware):
 
     # set_data_path = set_channelizer # for legacy compatibility
 
+    def get_funcgen_buffer(self):
+        """ Return the current function generator buffer.
+
+        """
+        return {chan.get_id():chan.FUNCGEN.get_buffer() for chan in ib.chan.values()}
+
     def set_data_source(self, source=None,  channels=None, **kwargs):
         """
         Selects the data that is being fed into the channelizer. If a wafeform
@@ -3155,6 +3188,18 @@ class chFPGA(FPGAFirmware):
         """
         return [bool(chan.SCALER.BYPASS) for chan in self.chan.values()]
 
+    def reset_scaler_overflow_flags(self, channels=None):
+        """ Resets the SCALER overflow flags.
+
+        Parameters:
+
+            channels (list of int): channels to reset. if None, the default channel list (all channels) is used.
+        """
+        for ch in channels or self.default_channels:
+            self.chan[ch].SCALER.OVERFLOW_RESET = 1
+            self.chan[ch].SCALER.OVERFLOW_RESET = 0
+
+
     def set_global_trigger(self, trigger_state):
         """
         Sets the global trigger to the specified value.
@@ -3335,7 +3380,7 @@ class chFPGA(FPGAFirmware):
 
     def _load_adc_delays(self, tag='default'):
         filename = '%s.yaml' % self.get_string_id()
-        fullpath = os.path.join(os.path.dirname(__file__), '..', 'adc_delay_tables', filename)
+        fullpath = os.path.join(os.path.dirname(__file__), ADC_DELAY_TABLE_FOLDER, filename)
 
         # print 'Loading YAML file %s' % filename
         try:
@@ -3366,7 +3411,7 @@ class chFPGA(FPGAFirmware):
         if not delay_table:
             raise ValueError('Please specify a valid delay table')
         filename = '%s.yaml' % self.get_string_id()
-        fullpath = os.path.join(os.path.dirname(__file__), '..', 'adc_delay_tables', filename)
+        fullpath = os.path.join(os.path.dirname(__file__), '..', ADC_DELAY_TABLE_FOLDER, filename)
         print('Loading YAML file %s' % filename)
         try:
             with open(fullpath, 'r') as yamlfile:

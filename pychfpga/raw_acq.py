@@ -43,7 +43,7 @@ except ImportError:
 
 # Local imports
 from pychfpga import __version__
-from pychfpga.core import CORR
+from pychfpga.fpga_firmware.chfpga import CORR
 
 
 class RawAcqReceiver(object):
