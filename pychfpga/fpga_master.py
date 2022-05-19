@@ -1307,9 +1307,10 @@ class FPGAMaster(object):
 
 
     async def get_channelizer_output(self):
-
+        """ Return the output of the channelizer, assuming  the function generator is configuring to send its buffer.
+        """
         # Query each FPGA for its current buffer
-        fpga_buffer = await self.fpgas.get_chan_output_async()
+        fpga_buffer = await self.fpgas.get_funcgen_buffer_async()
 
         # Convert the input identifier and buffer
         # to a format that can be easily interpreted

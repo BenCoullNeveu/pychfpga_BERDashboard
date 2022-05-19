@@ -3507,14 +3507,19 @@ class FPGAArray(object):
                     ch_out[(crate, slot, lane)] = [bin for bin in range(1024)]
         return ch_out
 
-    async def get_chan_output_async(self):
-        ch_out = OrderedDict()
+    async def get_funcgen_buffer_async(self):
+        """ Return the waveform produced by the function generator.
+
+        This will correspond to the function generator output if it is
+        configured to send its buffer, and will correspond to the channelizer
+        output if the FFT and SCALER are bypassed.
+        """
+        ch_out = {}
         for ic in self.ic:
             for ib in ic.slot.values():
-                for ant in ib.ANT.values():
-                    ch_out[ant.get_id()] = ant.FUNCGEN.get_buffer()
+                ch_out.update(ib.get_funcgen_buffer())
                 await asyncio.sleep(0)
-        return (ch_out)
+        return ch_out
 
     def get_shuffle_output(self, chan_map):
         """
