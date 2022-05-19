@@ -75,17 +75,7 @@ from pychfpga.hardware.Agilent_N5764A import AgilentN5764A
 
 
 
-
 class FPGAArray(object):
-
-    OPERATIONAL_MODES = {  # { op_mode:firmware_name, ... }
-        'shuffle16': 'chFPGA',
-        'shuffle128': 'chFPGA',
-        'shuffle256': 'chFPGA',
-        'shuffle512': 'chFPGA',
-        'corr4': 'siFPGA',
-        'corr16': 'siFPGA'
-    }
 
     # Map the string to the function that computes the FPGA IP address from the ARM IP address
     FPGA_IP_ADDR_FN_TABLE = {
