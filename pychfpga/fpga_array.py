@@ -763,8 +763,11 @@ class FPGAArray(object):
         # to establish communication with them to self-discover the missing
         # serial/slot/crate information.
 
+
+        self.logger.info(f'{self!r}: Hardware map so far:')
         for ib in self.hwm:
-            print(f'{ib}(hostname={ib.hostname}, serial={ib.serial}, slot={ib.slot})')
+            print(f'    {ib}(hostname={ib.hostname}, serial={ib.serial}, slot={ib.slot})')
+
         if self.hwm:
             self.logger.info(f'{self!r}: Establishing communication with the motherboards')
             t0 = time.time()
@@ -803,6 +806,11 @@ class FPGAArray(object):
                 await asyncio.gather(*[ib.discover_slot_async() for ib in ib_without_slot])
                 self.logger.info(f'{self!r}: Finished Auto-Discovering slot numbers for IceBoards. '
                                  f'Took {time.time() - t0} seconds.')
+
+        self.logger.info(f'{self!r}: Hardware map so far:')
+        for ib in self.hwm:
+            print(f'    {ib}(hostname={ib.hostname}, serial={ib.serial}, slot={ib.slot})')
+
         if discover_crate:
             # select boards that do not have a crate, or ones that have a generic crate (no part number)
             ib_without_crate = [ib for ib in self.hwm if ib.hostname and (not ib.crate or not ib.crate.part_number)]
