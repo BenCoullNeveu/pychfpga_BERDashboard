@@ -21,9 +21,41 @@ class FPGABitstream(object):
     """
 
     DEFAULT_BITSTREAM_FOLDER = './bitstreams'
-    bitstream_cache = {} # {url:file_data}
+    bitstream_cache = {} # {(url, mtime):file_data, ...}
 
-    def __init__(self, url, folder=None):
+
+    @classmethod
+    def get_bitstream(cls, url, folder=None):
+        """ Returns a FPGABitstream object for specified url. A cached object is returned if it was already loaded and processed and the file has the same timestamp.
+
+        Parameters:
+
+            url (str): URL or path/filename of the bitstream
+
+            folder (str): folder in which to find the firmware. Applies only to non-URL locations.
+
+        """
+        # if we have a real URL, we cannot determine if it has changed, so we always reload it.
+        if '://' in url:
+            return cls(url=url)
+
+        # Open as a file with relative path. mode='rb': b is important ->
+        # binary
+        logger = logging.getLogger(__name__)
+        bitstream_folder = folder or cls.DEFAULT_BITSTREAM_FOLDER
+        filename = os.path.join(os.path.dirname(__file__), bitstream_folder, url)
+
+        mtime = os.path.getmtime(filename)
+        logger.debug(f'{cls!r}: Bitstream file timestamp at {filename} is {mtime}')
+
+        if (filename, mtime) in cls.bitstream_cache:
+            b = cls.bitstream_cache[(filename, mtime)]
+            logger.info(f'{cls!r}: Reusing existing FPGABitstream object for file {filename} ...')
+        else:
+            b = cls.bitstream_cache[(filename, mtime)] = cls(url=filename)
+        return b
+
+    def __init__(self, url):
         """ Creates a bitstream object from the specified 'url', which can be
         a filename or a remote resource.
 
@@ -35,7 +67,6 @@ class FPGABitstream(object):
         """
         self.logger = logging.getLogger(__name__)
         self.url = url
-        self.bitstream_folder = folder or self.DEFAULT_BITSTREAM_FOLDER
         self.load_time = None  # time at which the file was loaded
         self.file_mtime = None # Modification date of the file. Used to quickly determine if it should be reloaded.
         self.load_bitstream()
@@ -85,27 +116,17 @@ class FPGABitstream(object):
         timestamp = None
         md5_string = None
 
-        self.logger.info(f'{self!r}: Reading file from URL {self.url} ...')
         if '://' in self.url:
+            self.logger.info(f'{self!r}: Loading bitstream from URL {self.url} ...')
             with urllib.request.urlopen(self.url) as res:
                 data = res.read()
         else:
             # Open as a file with relative path. mode='rb': b is important ->
             # binary
-            filename = os.path.join(
-                os.path.dirname(__file__),
-                self.bitstream_folder,
-                self.url)
-            mtime = os.path.getmtime(filename)
-            print(f'mtime={mtime}')
-            print(f'and = {self.url} in {self.bitstream_cache.keys()}')
-            if (mtime == self.file_mtime) and (self.url in self.bitstream_cache):
-                data = self.bitstream_cache[self.url]
-            else:
-                with open(filename, 'rb') as file:
-                    data = file.read()
-                self.file_mtime = mtime
-                self.bitstream_cache[self.url] = data  # store data in cache
+            self.logger.info(f'{self!r}: Loading bitstream file at {self.url} ...')
+            with open(self.url, 'rb') as file:
+                data = file.read()
+            self.file_mtime = os.path.getmtime(self.url)
 
         self.logger.info(f'{self!r}: Bitstream size is {len(data)/1e6:0.3f} MBytes')
 

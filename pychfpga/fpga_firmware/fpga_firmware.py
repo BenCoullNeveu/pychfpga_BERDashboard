@@ -3,7 +3,7 @@ from .fpga_bitstream import FPGABitstream
 class FPGAFirmware():
     # FIRMWARE_URL = None
     # PLATFORM_MODEL = None
-    _bitstream_cache = {}
+    # _bitstream_cache = {}
     _class_registry = {}  # {class_name:class}
 
     PLATFORM_SUPPORT = {} # Indicates the platform/config-specific bitstream filename and parameters. Overriden by subclasses
@@ -19,21 +19,30 @@ class FPGAFirmware():
     #     """
     #     return cls._class_registry[name]
 
+    # @classmethod
+    # def get_bitstream_object(cls, url, folder=None):
+    #     """ Returns the bitstream object for the specified platform and bitstream configuration.
+    #     """
+    #     if url not in cls._bitstream_cache:
+    #         cls._bitstream_cache[url] = FPGABitstream(url, folder=folder)
+    #     cls.bitstream = cls._bitstream_cache[url]
+    #     cls.bitstream.load_bitstream()  # reload bitstream if it has changed
+    #     return cls.bitstream
+
     @classmethod
-    def get_bitstream_object(cls, url, folder=None):
-        """ Returns the bitstream object for the specified platform and bitstream configuration.
+    def get_modes_for_platform(cls, platform_name):
+        """ Returns a list of valid firmware operational modes for the specified platform.
         """
-        if url not in cls._bitstream_cache:
-            cls._bitstream_cache[url] = FPGABitstream(url, folder=folder)
-        cls.bitstream = cls._bitstream_cache[url]
-        cls.bitstream.load_bitstream()  # reload bitstream if it has changed
-        return cls.bitstream
 
+        return [mode for (fw_cls_name, fw_cls) in cls._class_registry.items()
+                    for (pf_name, fw_name, modes), pf_info in fw_cls.PLATFORM_SUPPORT.items()
+                    for mode in modes
+                    if pf_name == platform_name]
 
     @classmethod
-    def get_firmware(cls, platform_name, firmware_name, folder=None):
+    def get_firmware(cls, platform_name, mode, bitfile_override=None, folder_override=None):
         """ Search all the FPGAFirmware classes and return the FPGAFirmware subclass
-        and Bitstream that matches the specified firmware for the specified
+        and Bitstream that matches the specified firmware operating mode for the specified
         platform.
 
         Returns:
@@ -48,14 +57,16 @@ class FPGAFirmware():
         """
         fw = [(fw_cls, pf_info.copy())
                     for (fw_cls_name, fw_cls) in cls._class_registry.items()
-                    for (pf_name, fw_name), pf_info in fw_cls.PLATFORM_SUPPORT.items()
-                    if pf_name == platform_name and fw_name == firmware_name]
+                    for (pf_name, fw_name, modes), pf_info in fw_cls.PLATFORM_SUPPORT.items()
+                    if pf_name == platform_name and mode in modes]
 
         if not fw:
-            raise RuntimeError(f'Could not find firmware named {firmware_name} for platform {platform_name}')
+            raise RuntimeError(f'Could not find firmware for mode {mode} for platform {platform_name}')
         elif len(fw) > 1:
-            raise RuntimeError(f'FOund multiple matches for firmware named {firmware_name} and platform {platform_name}')
+            raise RuntimeError(f'Found multiple matches for firmware mode {mode} and platform {platform_name}')
         fw_cls, pf_info = fw[0]
-        bs = cls.get_bitstream_object(pf_info.pop('firmware_url'), folder=folder)
+        # bs = cls.get_bitstream_object(bitfile_override or pf_info.pop('firmware_url'), folder=folder_override)
+        url = bitfile_override or pf_info.pop('firmware_url')
+        bs = FPGABitstream.get_bitstream(url, folder=folder_override)
         return fw_cls, bs, pf_info
 
