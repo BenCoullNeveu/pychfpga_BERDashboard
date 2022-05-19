@@ -282,7 +282,6 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         #   crate
         #   mezzanine
         #   fpga
-        #   firmware_name
 
         super().__init__(hostname=hostname, serial=serial, slot=slot, subarray=subarray, **kwargs)
 
@@ -379,22 +378,23 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
                                     f'(hardware map) one. Updating to the discovered value.')
             self.update_instance(serial=actual_serial)
         self.logger.debug(f'{self!r}: finished discovering the serial number of board at {self.tuber_uri}')
-        return(self.serial)
+        return self.serial
 
     async def discover_slot_async(self, update=True):
         """ Discover the slot number of this IceBoard, and update the hardware map accordingly if `update=True`
 
-        This is done using Tuber.
+        In the Iceboar dimplementation, this is done using Tuber.
         """
         actual_slot = await self.tuber_get_backplane_slot_async()
         if update:
             if not actual_slot:
-                self.logger.warning(f'{self!r}: The board is not connected to a backplane. Slot number is not updated.')
-            elif self.slot and actual_slot != self.slot:
-                self.logger.warning(f'{self!r}: The discovered slot ({actual_slot}) number differs from the current '
-                                    f'(hardware map) one ({self.slot}). Updating to the discovered slot.')
-            self.update_instance(slot=actual_slot)
-        return(self.slot)
+                self.logger.info(f'{self!r}: The board is not connected to a backplane. Slot number is not updated.')
+            else:
+                if self.slot and actual_slot != self.slot:
+                    self.logger.warning(f'{self!r}: The discovered slot ({actual_slot}) number differs from the current '
+                                        f'(hardware map) one ({self.slot}). Updating to the discovered slot.')
+                self.update_instance(slot=actual_slot)
+        return self.slot
 
     async def discover_mezzanines_async(self, update=True):
         """Detect mezzanines attached to the Iceboard and update the hardware map accordingly if
