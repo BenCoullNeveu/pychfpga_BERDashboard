@@ -3639,21 +3639,21 @@ class FPGAArray(object):
         else:
             print('SYNC Test has PASSED!')
 
-    def soft_sync(self, sync_board):
-        """ Synchronize all boards"""
-        boards = list(self.ib)
-        print('Masking ADC data before sync')
-        for ib in boards:
-            for ant in ib.ANT:
-                ant.ADCDAQ.BYTE_MASK = 0
+    # def soft_sync(self, sync_board):
+    #     """ Synchronize all boards"""
+    #     boards = list(self.ib)
+    #     print('Masking ADC data before sync')
+    #     for ib in boards:
+    #         for ant in ib.ANT:
+    #             ant.ADCDAQ.BYTE_MASK = 0
 
-        print('Initiating global sync')
-        sync_board.REFCLK.local_sync()
+    #     print('Initiating global sync')
+    #     sync_board.REFCLK.local_sync()
 
-        print('Unmasking ADC data')
-        for ib in boards:
-            for ant in ib.ANT:
-                ant.ADCDAQ.BYTE_MASK = 255
+    #     print('Unmasking ADC data')
+    #     for ib in boards:
+    #         for ant in ib.ANT:
+    #             ant.ADCDAQ.BYTE_MASK = 255
 
     # def time_soft_sync(self, sync_board, delay):
     #     """ Synchronize all boards"""
