@@ -134,7 +134,7 @@ class ChanArray:
         return "%r.%s" % (self.fpga, self.__class__.__name__)
 
     def __getitem__(self, key):
-        """If the user indexes this object (ANT[n] instead of ANT) then return the channelizer instance"""
+        """If the user indexes this object (chan[n] instead of chan) then return the channelizer instance"""
         return self.chan[key]
 
     def __len__(self):

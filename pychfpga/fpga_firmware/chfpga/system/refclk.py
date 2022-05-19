@@ -195,12 +195,12 @@ class REFCLK(MMI):
         # prepare an empty array that will contain the ADC clock waveform for each channel
         waveforms = np.zeros((len(channels), 32))
 
-        # self.fpga.ANT[channels[0]].ADCDAQ.wait_for_bit('FIFO_EMPTY', target_value=0) # Make sure the ADCDAQ SYNC process is completed
+        # self.fpga.chan[channels[0]].ADCDAQ.wait_for_bit('FIFO_EMPTY', target_value=0) # Make sure the ADCDAQ SYNC process is completed
         for delay in range(32):
             self.set_refclk_delay(delay)
             time.sleep(0.002)
             for i, ch in enumerate(channels):
-                waveforms[i][delay] = self.fpga.ANT[ch].ADCDAQ.ADC_CLK_SAMPLE
+                waveforms[i][delay] = self.fpga.chan[ch].ADCDAQ.ADC_CLK_SAMPLE
         self.set_refclk_delay(old_refclk_delay)  # Return the reference clock delay to a known state
         return waveforms
 

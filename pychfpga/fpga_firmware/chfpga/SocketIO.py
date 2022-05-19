@@ -25,7 +25,7 @@ TimeoutException = socket.timeout
 class FPGAException(Exception):
     logger = logging.getLogger('FPGAException')
     def __init__(self, message):
-        super(self.__class__, self).__init__(message)
+        super().__init__(message)
         self.logger.exception(message)
 
 

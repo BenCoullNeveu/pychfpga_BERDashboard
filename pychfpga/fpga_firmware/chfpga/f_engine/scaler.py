@@ -221,7 +221,7 @@ class SCALER(MMI):
 
     def status(self):
         """ Displays the status of the scaler module"""
-        print('-------------- ANT[%i].SCALER STATUS --------------' % self.instance_number)
+        print('-------------- CHAN[%i].SCALER STATUS --------------' % self.instance_number)
         print(' SCALER Bypass: %s' % (bool(self.BYPASS)))
         print(' Shift left: %i' % self.SHIFT_LEFT)
 

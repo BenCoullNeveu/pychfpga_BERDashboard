@@ -275,7 +275,7 @@ class FUNCGEN(MMI):
 
     def status(self):
         """ Displays the status of the function generator module """
-        print('-------------- ANT[%i].FUNCGEN STATUS --------------' % self.instance_number)
+        print('-------------- CHAN[%i].FUNCGEN STATUS --------------' % self.instance_number)
         print(' Function number: %i' % self.FUNCTION)
         print(' Ramp counter status:')
         print('    RAMP_CTR: %i' % self.RAMP_CTR)

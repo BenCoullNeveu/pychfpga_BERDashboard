@@ -41,10 +41,10 @@ class test_adc_fft_bin(test_BaseClass):
         print "initialized"
         channels = [0,1,2,3]
         for channel in channels:
-            self.fpga_ctrl.ANT[channel].FFT.BYPASS=0
-            self.fpga_ctrl.ANT[channel].SCALER.BYPASS=0
-            self.fpga_ctrl.ANT[channel].SCALER.SHIFT_LEFT=0
-            self.fpga_ctrl.ANT[channel].FFT.FFT_SHIFT= 2**7 - 1
+            self.fpga_ctrl.chan[channel].FFT.BYPASS=0
+            self.fpga_ctrl.chan[channel].SCALER.BYPASS=0
+            self.fpga_ctrl.chan[channel].SCALER.SHIFT_LEFT=0
+            self.fpga_ctrl.chan[channel].FFT.FFT_SHIFT= 2**7 - 1
 
         x, spectra, tone = self.check_fft_bin_shape(channels)
         xs, sim_spec = pfb.sim_pfb(taps=4, L=2048, window_function=pfb.boxcar, bin_number=31, resolution=2**20)

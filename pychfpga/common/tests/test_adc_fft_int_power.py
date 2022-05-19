@@ -36,10 +36,10 @@ class test_adc_fft_int_power(test_BaseClass):
         print self.inject_dc(0)
         print "initialized"
      
-        self.fpga_ctrl.ANT[0].FFT.BYPASS=0
-        self.fpga_ctrl.ANT[0].SCALER.BYPASS=0
-        self.fpga_ctrl.ANT[0].SCALER.SHIFT_LEFT=0
-        self.fpga_ctrl.ANT[0].FFT.FFT_SHIFT= 2**7 - 1
+        self.fpga_ctrl.chan[0].FFT.BYPASS=0
+        self.fpga_ctrl.chan[0].SCALER.BYPASS=0
+        self.fpga_ctrl.chan[0].SCALER.SHIFT_LEFT=0
+        self.fpga_ctrl.chan[0].FFT.FFT_SHIFT= 2**7 - 1
         spectra, powers = self.check_fft_int_power()
 
         return spectra, powers

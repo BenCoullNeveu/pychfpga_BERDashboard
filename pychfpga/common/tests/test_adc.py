@@ -29,8 +29,8 @@ class test_adc(test_BaseClass):
         '''
         original_bypass = np.zeros((8,), dtype=np.int)
         for i in range(8):
-            original_bypass[i] = self.fpga_ctrl.ANT[i].FFT.BYPASS
-            self.fpga_ctrl.ANT[i].FFT.BYPASS=1
+            original_bypass[i] = self.fpga_ctrl.chan[i].FFT.BYPASS
+            self.fpga_ctrl.chan[i].FFT.BYPASS=1
         dc_levels = range(-128,128)
         dcs = []
         for dc_level in dc_levels:
@@ -40,7 +40,7 @@ class test_adc(test_BaseClass):
             dcs.append(dc_fft_out[0])
         #put some overflow checks here
         for i in range(8):
-            self.fpga_ctrl.ANT[i].FFT.BYPASS=original_bypass[i]
+            self.fpga_ctrl.chan[i].FFT.BYPASS=original_bypass[i]
         return dcs
         
     def check_fft_level(self):
@@ -77,7 +77,7 @@ class test_adc(test_BaseClass):
         shifts = np.arange(11)
         specs = []
         for shift in shifts:
-            self.fpga_ctrl.ANT[0].FFT.FFT_SHIFT= 2**shift - 1
+            self.fpga_ctrl.chan[0].FFT.FFT_SHIFT= 2**shift - 1
             data = []
             for i in range(20):
                 data.append(self.inject_sine( sine_amp=16.0, sine_freq=510.0, channels=[0]))
@@ -95,12 +95,12 @@ class test_adc(test_BaseClass):
         inj.set_inject_mode(self.fpga_ctrl, self.fpga_recv)
         print self.inject_dc(0)
         print "initialized"
-        #self.fpga_ctrl.ANT[0].FFT.BYPASS=1
+        #self.fpga_ctrl.chan[0].FFT.BYPASS=1
         #dcs = self.check_timestream_dc()        
-        self.fpga_ctrl.ANT[0].FFT.BYPASS=0
-        self.fpga_ctrl.ANT[0].SCALER.BYPASS=0
-        self.fpga_ctrl.ANT[0].SCALER.SHIFT_LEFT=0
-        self.fpga_ctrl.ANT[0].FFT.FFT_SHIFT= 2**7 - 1
+        self.fpga_ctrl.chan[0].FFT.BYPASS=0
+        self.fpga_ctrl.chan[0].SCALER.BYPASS=0
+        self.fpga_ctrl.chan[0].SCALER.SHIFT_LEFT=0
+        self.fpga_ctrl.chan[0].FFT.FFT_SHIFT= 2**7 - 1
         #spectra = self.check_fft_sine()
         x, spectra, tone = self.check_fft_bin_shape()
         xs, sim_spec = pfb.sim_pfb(taps=4, L=2048, window_function=pfb.boxcar, bin_number=31, resolution=2**20)        

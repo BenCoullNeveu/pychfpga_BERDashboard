@@ -103,7 +103,7 @@ class ReceiverThread(threading.Thread):
         total_queue_entries = 0
         # t0 = time.time()
         # last_display_time = t0
-        #            expected_delta=self.ANT[0].PROBER.get_burst_period()
+        #            expected_delta=self.chan[0].PROBER.get_burst_period()
         #            missing_frames = 0
         #            bad_delta = 0
         #    data2 = bytearray(buf_size)
