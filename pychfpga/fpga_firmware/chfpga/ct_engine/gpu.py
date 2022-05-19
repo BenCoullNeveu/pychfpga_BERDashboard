@@ -47,7 +47,7 @@ class GPU(xglink.XGLinkCore):
     def __init__(self, fpga_instance, base_address, address_increment, verbose=1):
         self.logger = logging.getLogger(__name__)
         self.verbose = verbose
-        super(GPU_base, self).__init__(fpga_instance, base_address, address_increment)
+        super().__init__(fpga_instance, base_address, address_increment)
 
     def set_enable(self, state):
         #  self.LINK_ENABLE = state

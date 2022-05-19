@@ -97,7 +97,7 @@ class ShuffleCrossbar(MMI):
         self.verbose = verbose
         self.logger = logging.getLogger(__name__)
         self.crossbar_level = crossbar_level
-        super(ShuffleCrossbar, self).__init__(fpga_instance, base_address)
+        super().__init__(fpga_instance, base_address)
         self.BIN_SEL = []
         for i in range(number_of_bin_sel):
             self.BIN_SEL.append(SHUFFLE_BIN_SEL.SHUFFLE_BIN_SEL_base(

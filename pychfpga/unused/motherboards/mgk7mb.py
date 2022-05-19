@@ -90,4 +90,4 @@ class MGK7MB(iceboard.IceBoard):
     """
 
     def __init__(self, i2c_interface, verbose=0):
-        super(self.__class__,self).__init__(i2c_interface = i2c_interface, verbose= verbose)
+        super().__init__(i2c_interface = i2c_interface, verbose= verbose)

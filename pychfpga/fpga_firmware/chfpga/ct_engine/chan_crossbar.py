@@ -49,7 +49,7 @@ class ChanCrossbar(MMI):
         self.verbose = verbose
         self.logger = logging.getLogger(__name__)
         self.crossbar_level = 1
-        super(ChanCrossbar, self).__init__(fpga_instance, base_address)
+        super().__init__(fpga_instance, base_address)
         self.BIN_SEL = []
         self.NUMBER_OF_CROSSBAR_INPUTS = self.fpga.NUMBER_OF_CROSSBAR_INPUTS
         self.NUMBER_OF_CROSSBAR_OUTPUTS = self.fpga.NUMBER_OF_CROSSBAR_OUTPUTS

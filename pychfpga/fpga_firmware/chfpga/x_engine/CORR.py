@@ -61,7 +61,7 @@ class CORR_core(MMI):
     OUT_FRAME_CTR = BitField(STATUS, 0x02, 0, width=8, doc="Output frame counter")
 
     def __init__(self, fpga_instance, base_address, instance_number, verbose=0):
-        super(CORR_core, self).__init__(fpga_instance, base_address, instance_number)
+        super().__init__(fpga_instance, base_address, instance_number)
         self.verbose = verbose
         self.logger = logging.getLogger(__name__)
 

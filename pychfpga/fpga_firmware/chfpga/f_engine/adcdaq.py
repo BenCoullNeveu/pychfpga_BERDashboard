@@ -227,7 +227,7 @@ class ADCDAQ(MMI):
         """
         Prints the ADCDAQ module status.
         """
-        print('-------------- ANT[%i].ADCDAQ STATUS --------------' % self.instance_number)
+        print('-------------- CHAN[%i].ADCDAQ STATUS --------------' % self.instance_number)
 
         print('Clock source: %s' % ('ADC','SYSTEM CLOCK')[self.PLL_CLK_SRC])
         print('Data Acquisition FIFO status')

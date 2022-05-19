@@ -55,7 +55,7 @@ class QPLL(MMI):
     def __init__(self, fpga_instance, base_address, instance_number):
         # self.fpga = fpga
         self.logger = logging.getLogger(__name__)
-        super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
+        super().__init__(fpga_instance, base_address, instance_number)
 
     def init(self):
         """ Initializes the antenna modules"""
@@ -204,7 +204,7 @@ class GTX(MMI):
     def __init__(self, fpga_instance, base_address, instance_number):
         # self.fpga = fpga
         self.logger = logging.getLogger(__name__)
-        super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
+        super().__init__(fpga_instance, base_address, instance_number)
         self.node_id = (self.fpga.slot, instance_number + 1)
         self._lock()
 
@@ -417,7 +417,7 @@ class XGLinkCore(MMI):
         # self.fpga = fpga
         self.logger = logging.getLogger(__name__)
         self.verbose = verbose
-        super(XGLinkCore, self).__init__(fpga_instance, base_address)
+        super().__init__(fpga_instance, base_address)
 
         i = 1
 

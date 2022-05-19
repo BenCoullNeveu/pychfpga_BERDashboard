@@ -70,7 +70,7 @@ class ReceiverThread(threading.Thread):
         self.verbose = verbose
         self.print_delay = 1
         self._send_every_frame = threading.Event()
-        super(type(self), self).__init__()
+        super().__init__()
 
     def stop(self):
         self._stopping.set()

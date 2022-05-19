@@ -14,7 +14,7 @@ import numpy as np
 import logging
 
 
-class ADC_chip(object):
+class ADC_chip:
     """
     Provides the parameters and methods related to one ADC chip.
     """
@@ -32,7 +32,6 @@ class ADC_chip(object):
     REG_TRIM = 0x13  # added kmb to set to 100ohms
 
     def __init__(self, adc_instance, adc_number):
-        # super(ADC_chip,self).__init__(fpga)
         self.adc = adc_instance  # store reference to the parent instance (ADC_Base)
         self.adc_number = adc_number  # store current ADC number for this instance
         self.logger = logging.getLogger(__name__)

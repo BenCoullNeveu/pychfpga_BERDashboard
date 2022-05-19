@@ -304,7 +304,7 @@ class YAMLLoader(yaml.SafeLoader):
         Make sure SQL database is up to date when the loader is finished.
         """
         t1 = time.time()
-        data = super(YAMLLoader, self).construct_document(*args, **kwargs)
+        data = super().construct_document(*args, **kwargs)
         # Write any pending transactions to the database
         if hasattr(self, "hwm"):
             self.hwm.commit()

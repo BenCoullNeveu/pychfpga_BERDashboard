@@ -66,7 +66,7 @@ class SHUFFLE_BIN_SEL_base(MMI):
         # self.parent = parent
         # self.fpga = fpga_instance
         self.crossbar_level = crossbar_level
-        super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
+        super().__init__(fpga_instance, base_address, instance_number)
         self.logger = logging.getLogger(__name__)
         self.NUMBER_OF_INPUTS = None
         self.cached_bin_select_table = None

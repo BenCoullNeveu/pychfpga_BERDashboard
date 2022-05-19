@@ -31,7 +31,7 @@ class Shuffle(xglink.XGLinkArray):
 
         self.lane_group_names = [name for (name, _, _) in self.lane_groups]
 
-        super(Shuffle, self).__init__(fpga_instance, base_address, address_increment, self.lane_groups, verbose)
+        super().__init__(fpga_instance, base_address, address_increment, self.lane_groups, verbose)
 
         self.NUMBER_OF_PCB_LANES = 16
         self.NUMBER_OF_QSFP_LANES = 8

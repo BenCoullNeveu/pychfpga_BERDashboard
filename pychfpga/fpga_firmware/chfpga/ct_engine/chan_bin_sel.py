@@ -60,7 +60,7 @@ class ChanBinSel(MMI):
     def __init__(self, fpga_instance, base_address, instance_number):
         # self.parent = parent
         # self.fpga = fpga_instance
-        super(ChanBinSel, self).__init__(fpga_instance, base_address, instance_number)
+        super().__init__(fpga_instance, base_address, instance_number)
         self.logger = logging.getLogger(__name__)
         self.NUMBER_OF_CROSSBAR_INPUTS = self.fpga.NUMBER_OF_CROSSBAR_INPUTS
         self.NUMBER_OF_CROSSBAR_OUTPUTS = self.fpga.NUMBER_OF_CROSSBAR_OUTPUTS
