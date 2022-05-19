@@ -124,7 +124,6 @@ class Motherboard(HardwareMap):
         super().__init__()
 
         self.fpga = None   # No firmware loaded by default
-        self.firmware_name = None
 
         self.logger.debug(
             f"{self!r}: Created {self.__class__.__name__}(hostname={hostname}, "

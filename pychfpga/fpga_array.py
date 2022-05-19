@@ -1114,14 +1114,6 @@ class FPGAArray(object):
                 return
 
             await ib.set_fpga_bitstream_async(mode, force=(prog > 1) or (trial > 1), bitfile_override=bitfile)
-            if bitfile:  # if we force a specific firmware name
-                ib.firmware_name = bitfile
-            elif not ib.firmware_name and mode:  # set firmware names based on the operational mode
-                ib.firmware_name = self.OPERATIONAL_MODES[mode]
-            if not ib.firmware_name:
-                raise ValueError('Firmware name has not been specified')
-
-            await ib.set_fpga_bitstream_async(ib.firmware_name, force=(prog > 1) or trial > 1)
             self.logger.info(f'{self!r}: Done configuring FPGAs')
 
             if not (open or 0) > 0:
