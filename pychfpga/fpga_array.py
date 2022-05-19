@@ -991,10 +991,26 @@ class FPGAArray(object):
 
         self.logger.info(f'{self!r}: Done creating {self!r}')
 
+        # Determine if we program and initialize the FPGA based on the mode and the overrides
+        # specified by `prog` and `open`.
+        if mode:
+            # automatically program the FPGA if `force` mode (prog=2) unless we
+            # explicitely specify the prog parameter
+            if prog is None:
+                prog = 2  # force FPGA programming
+            # automatically fully initializes the FPGA unless we
+            # explicitely specify the open parameter
+            if open is None:
+                open = 2 # initialize both the core firmware and the operational mode
+        else:
+            # No firmware operational mode specified. Do not program or initialize.
+            prog = 0
+            open = 0
+
         if self.ib:
             if prog:
                 ####################################
-                # Program the FPGAs and open link to firmware
+                # Program the FPGAs and open communication link to firmware
                 ####################################
                 self.logger.info(f'{self!r}: Configuring FPGAs...')
                 await asyncio.gather(*[
@@ -1011,14 +1027,13 @@ class FPGAArray(object):
 
 
 
-            if (open or 0) > 0:
+            if open >= 1:
                 ################################################
                 # Initialize the FPGA firmware
                 ################################################
                 self.logger.info(f'{self!r}: Initializing FPGA firmware')
                 await asyncio.gather(*[
                     ib.init_fpga_async(
-                        adc_delay_table=ADC_DELAY_TABLE,
                         init=open,
                         adc_mode=adc_mode,
                         adc_bandwidth=adc_bandwidth,
@@ -1026,14 +1041,36 @@ class FPGAArray(object):
                         **kwargs
                     ) for ib in self.ib])
 
+
+                ########################
+                # Initializing backplane hardware communication firmware
+                ########################
+                # The FPGA starts genereting significant heat now that is is initialized.
+                # Let's give the backplane the opportunoty to update the fan speed.
+                self.logger.info(f'{self!r}: Initializing Backplane')
+                if self.ic:
+                    self.ic.init()
+
+            if open >= 1: # we could use >=2, but it breaks backwards compatibility
                 ########################
                 # Initializing SYNC method
                 ########################
-                # As a convenience, set default sync method to irig-b if all boards have a crate
-                if sync_method is None and all(self.ib.crate):
-                    sync_method = 'irig-b'
+                # As a convenience, unless `sync_method` is explicitely specified,
+                # set default sync method to `irig-b` if *all* boards
+                # are in a crate or to 'local' if we *only* have standalone boards.
+                if sync_method is None:
+                    if all(self.ib.crate):
+                        sync_method = 'irig-b'
+                        self.logger.info(f'{self!r}: sync_method is not specified but was automatically set to "irig-b" since all boards are in crates')
+                    elif not any(self.ib.crate):
+                        sync_method = 'local'
+                        self.logger.info(f'{self!r}: sync_method is not specified but was automatically set to "local" since no board is in a crate')
+                    else:
+                        self.logger.warning(f'{self!r}: Some motherboards are in crates and some are not. `sync_method` is not set.')
+
+
                 if sync_method or sync_source:
-                    self.logger.info(f'{self!r}: Setting SYNC method')
+                    self.logger.info(f'{self!r}: Setting SYNC method to {sync_method}')
                     self.set_sync_method(
                         method=sync_method,
                         source=sync_source,
@@ -1054,18 +1091,10 @@ class FPGAArray(object):
                         corner_turn_bin_priority=corner_turn_bin_priority,
                         corner_turn_remap_level=corner_turn_remap_level)
 
-                ########################
-                # Initializing backplane hardware communication firmware
-                ########################
-
-                self.logger.info(f'{self!r}: Initializing Backplane firmware')
-                if self.ic:
-                    self.ic.init()
-
         self.print_flush()
 
         #################################
-        # Completed
+        # Completed array creation and initialization
         #################################
 
     async def prog_and_open_fpga(self, ib, prog, open, mode, bitfile=None, max_trials=3, **kwargs):
@@ -1085,6 +1114,9 @@ class FPGAArray(object):
 
         """
         for trial in range(1, max_trials + 1):
+            if not mode:
+                raise ValueError('Firmware operational mode has not been specified')
+
             if not prog:
                 return
 
@@ -4882,14 +4914,21 @@ def add_fpga_array_arguments(parser):
     parser.add_argument('--no_mezz',         action='store_true', help='Do not attempt to auto-detect the mezzanines')
     parser.add_argument('--ping',            type=int, help="1: Check if Tuber is responding. 0: Check but ignore. ")
     parser.add_argument('--mdns_timeout',    type=float, help="Time to wait for mDNS discovery replies")
-    parser.add_argument('--prog',            type=int, nargs='?', const=1, help='Programs the FPGA if not already programmed. --prog or --prog 1 programs the FPGA if the firmware is not already programmed.  --prog 2 forces the FPGA programming even if the firmware is already programmed')
+    parser.add_argument('--prog',            type=int, nargs='?', const=1,
+                        help='Overrides the FPGA programming method. Is meaningful only if --mode is specified'
+                        '--prog 0: do not program the FPGA (even if --mode is specified), '
+                        '--prog or prog 1: programs the FPGA only if not already programmed (requires --mode). '
+                        '--prog 2: always program the FPGA (requires --mode).')
     parser.add_argument('-b', '--bitfile',   type=str, help='Filename of the bitfile used to to program the FPGAs')
-    parser.add_argument('-o', '--open',      type=int, nargs='?', const=1, help='Opens communication with the FPGAs, create the Python objects representing the firmware, and initialize the firmware. --open 0 skips the firmware initialization phase')
+    parser.add_argument('-o', '--open',      type=int, nargs='?', const=1,
+                        help='Overrides FPGA initialization (open communication with the FPGAs, create the Python objects representing the firmware, and initialize the firmware'
+                        '--open 0: do not communicate with the FPGA or initialize firmware even if --mode is specified'
+                        '--open 1: initialize normally')
     parser.add_argument('--sync_method',     type=str, help="Sets the global syncing method ('distributed_time', 'centralized_time_trigger', 'centralized_soft_trigger', 'local_soft_trigger')")
     parser.add_argument('--sync_source',     type=str, help="Sets the global syncing source ('bp_gpio_int', 'bp_time', 'bp_trig')")
     parser.add_argument('--sync_master',     type=str, help="Serial number of the IceBoard that generates the time or trig signal")
     parser.add_argument('--sync_master_time_source', type=str, help="Source of the time signal used by the master board to generate the time or trigger signal ('bp_gpio_int', 'bp_time', 'bp_trig')")
-    parser.add_argument('-m', '--mode',      type=str, help="Operational mode ('shuffle16', 'shuffle256', 'shuffle512'). If not specified, set_operational_mode() is not called.")
+    parser.add_argument('-m', '--mode',      type=str, help="Operational mode ('shuffle16', 'shuffle256', etc.). When specified, the FPGA is programmed with the proper firmware bitstream (unless blocked with --prog 0) and the mode is initialized (unless blocked with -open 0). If not specified, only a connection to the platform is established")
     parser.add_argument('-f', '--frames_per_packet', '--fpp',     type=int, help="Number of frames per packeet. Default=2.")
     parser.add_argument('-s', '--sampling_frequency', type=float, help="Sampling frequency of the ADC in Hz. Default=800e6.")
     parser.add_argument('--integration_period', type=int, help="Integration period (in frames) of the firmware correlator (if present). Defaults to 65536. ")
@@ -5112,7 +5151,7 @@ def create_fpga_array(args=None):
         'FPGA Array parameters',
         'Allows interactive creation of a hardware map and initialization of all its components')
     fpga_group.sub_dict = 'cli_fpga_array'  # group all arguments in this group in a sub dictionary with this name
-    fpga_defaults = add_fpga_array_arguments(fpga_group)
+    add_fpga_array_arguments(fpga_group)
 
     ps_group = parser.add_argument_group(
         'Power Supply Array parameters', 'Allows interactive creation of Power Supply objects')
