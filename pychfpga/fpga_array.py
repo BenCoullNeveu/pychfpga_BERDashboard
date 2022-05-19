@@ -73,30 +73,7 @@ from pychfpga.hardware.Agilent_N5764A import AgilentN5764A
 #####################################
 
 
-# Default ADC delays
-ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = {
-    'valid': True,
-    'sync_delays': (4, 5),
-    0:  {'tap_delays': [16] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH0
-    1:  {'tap_delays': [7] * 8,                            'sample_delay': 3, 'clock_delay': 0},  # CH1
-    2:  {'tap_delays': [22] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH2
-    3:  {'tap_delays': [19] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH3
-    4:  {'tap_delays': [15] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH4
-    5:  {'tap_delays': [14, 13, 14, 14, 13, 14, 15, 14], 'sample_delay': 3, 'clock_delay': 0},  # CH5
-    6:  {'tap_delays': [18] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH6
-    7:  {'tap_delays': [17] * 8,                           'sample_delay': 4, 'clock_delay': 0},  # CH7
-    8:  {'tap_delays': [15, 17, 15, 18, 17, 14, 17, 15], 'sample_delay': 3, 'clock_delay': 0},  # CH8
-    9:  {'tap_delays': [16] * 8,                           'sample_delay': 4, 'clock_delay': 0},  # CH9
-    10: {'tap_delays': [20] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH10
-    11: {'tap_delays': [18] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH11
-    12: {'tap_delays': [15] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH12
-    13: {'tap_delays': [18] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH13
-    14: {'tap_delays': [18] * 8,                           'sample_delay': 3, 'clock_delay': 0},  # CH14
-    15: {'tap_delays': [16] * 8,                           'sample_delay': 3, 'clock_delay': 0}   # CH15
-}
 
-# Select the table corresponding to the FMC serial number
-ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2  # or ADC_DELAYS_REV2_SN0001
 
 
 class FPGAArray(object):
