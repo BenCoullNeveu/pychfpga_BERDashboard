@@ -39,7 +39,7 @@ except ImportError:
 
 
 # Local imports
-from pychfpga import FPGAArray
+from pychfpga import fpga_array
 from pychfpga import calculate_gains # Gain computation engine
 from pychfpga import digital_gain  # Load/save gains from disk
 from pychfpga import __version__
@@ -1036,7 +1036,7 @@ class FPGAMaster(object):
         # in the parameters, the FPGAs will be loaded with their bitstream, communication with the FPGAs
         # will be established and all the Python objects needed to operate the FPGA firmware will be
         # created and initialized.
-        self.fpgas = ca = FPGAArray(ioloop=True, **fpga_array_params)  # Starts an independent ioloop while initializing. Web clients/server stop while
+        self.fpgas = ca = fpga_array.FPGAArray(ioloop=True, **fpga_array_params)  # Starts an independent ioloop while initializing. Web clients/server stop while
         await ca.run()
 
         self.register_hardware()
