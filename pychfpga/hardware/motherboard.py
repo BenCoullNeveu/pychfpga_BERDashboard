@@ -492,6 +492,18 @@ class Motherboard(HardwareMap):
         """
         raise NotImplementedError('This method must be implemented by a subclass')
 
+    async def discover_slot_async(self, update=True):
+        """
+        Discover the slot number of this board, and update the hardware map accordingly if `update=True`
+        """
+        raise NotImplementedError('This method must be implemented by a subclass')
+
+    async def discover_crate_async(self, update=True):
+        """
+        Discover the crate for this board, and update the hardware map accordingly if `update=True`
+        """
+        raise NotImplementedError('This method must be implemented by a subclass')
+
     async def open_platform_async(self):
         """ Establish a communication link with the platform, which enables
         access to functions provided by the local processor
