@@ -2522,7 +2522,7 @@ class FPGAArray(object):
                     ib.set_funcgen_function('ab', a=(slot - 1) << 4, b=ch << 4, channels=[ch])
                 ib.set_data_source('funcgen')
 
-    def set_sync_method(self, method='distributed_time', source=None, master=None, master_time_source=None):
+    def set_sync_method(self, method='irig-b', source=None, master=None, master_time_source=None):
         """ Sets the global syncing method, and setup the boards accordingly.
 
         Parameters:
@@ -2783,10 +2783,10 @@ class FPGAArray(object):
                                            f'exceeds the maximum limit of {self.max_sync_time_difference}')
 
                 for ib in self.ib:
-                    for ant in ib.ANT:
-                        ant.SCALER.OVERFLOW_RESET = 1
-                        ant.SCALER.OVERFLOW_RESET = 0
-                break
+                    ib.reset_scaler_overflow_flags()
+
+                break # we made it all the way through successfulle, so exit the trial loop
+
             except Exception as e:
                 trial += 1
                 if trial >= max_trials:
