@@ -27,7 +27,7 @@ from pychfpga.hardware.interfaces import I2CInterface, BSB_MMI  # I2C and Byte-s
 
 from .icecore.hardware_assets import TuberIceBoardBase
 from .icecore.tuber import TuberError, TuberNetworkError, TuberRemoteError
-from .icemezz_ext import FMCMezzanine
+from .icemezz import FMCMezzanine
 
 # from lib import tmp100  # I2C Temperature sensor
 from ..lib import pca9575  # I2C 16-bit IO Expander

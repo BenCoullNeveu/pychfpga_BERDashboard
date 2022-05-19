@@ -22,7 +22,7 @@ from datetime import datetime
 from pychfpga.fpga_firmware.chfpga import chFPGA  # used to check for compatible firmware instance
 
 from ..icecore.hw.ipmi_fru import FRU, Board, Product, MultiDict
-from ..icemezz_ext import FMCMezzanine
+from ..icemezz import FMCMezzanine
 
 # mezzanine-specific modules
 from . import ADC
