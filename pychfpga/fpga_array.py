@@ -1343,7 +1343,7 @@ class FPGAArray(object):
         # Build the hardware description string from various sources
         hw_string = hwm
 
-        self.logger.debug(f"{self!r}: The hardware description string is: '{hw_string}'")
+        self.logger.debug(f"{self!r}: Processing the hardware description string is: '{hw_string}'")
         # Parse the hwm string into a hardware table. The hardware table is
         # not the hardware map, but represents the entries that we want to add
         # to the hardware map later.
@@ -1395,7 +1395,9 @@ class FPGAArray(object):
                     raise RuntimeError('A part number must be specified before a target serial number')
                 if issubclass(current_class, Motherboard):
                     serial, slot, crate_number = split_fields(el, 3)
-                    # print(f'Adding Motherboard {serial}, {slot}, {crate_number}')
+                    if slot is not None and slot < 1:
+                        raise ValueError('Slot number cannot be zero')  # because zero means 'no slot'
+                    logger.debug(f'Adding Motherboard {serial}, slot={slot}, crate={crate_number}')
                     ib = Motherboard.get_unique_instance(
                         new_class=current_class,
                         serial=serial,
@@ -1403,6 +1405,7 @@ class FPGAArray(object):
                         crate_number=crate_number)
                 elif issubclass(current_class, Crate):
                     serial, crate_number = split_fields(el, 2)
+                    logger.debug(f'Adding Crate {serial}, crate_number={crate_number}')
                     Crate.get_unique_instance(new_class=current_class, serial=serial, crate_number=crate_number)
                 else:
                     raise TypeError(f'Trying to create object {current_class} that '
