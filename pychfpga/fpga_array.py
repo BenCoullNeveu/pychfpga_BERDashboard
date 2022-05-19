@@ -1604,16 +1604,23 @@ class FPGAArray(object):
         mode = mode or self.mode
         tx_power = tx_power or self.tx_power
         self.logger.info(f'{self!r}: Setting operational mode to {mode}')
+
         # To make sure that the data acquisition and transmission will be done
-        # at the same rate, refuse to operate if there are more than one
-        # IceBoard in the array and the boards are not all set to operate on
-        # the backplane clock.
-        if len(self.ib) > 1:  # self.ic.NUMBER_OF_SLOTS
-            clock_sources = self.ib.index_by(repr).get_iceboard_clock_source_sync()
-            target_clock_source = 'CLOCK_SOURCE_BP'
-            if set(clock_sources.values()) != set([target_clock_source]):
-                raise RuntimeError('The following IceBoards are not configured to use the backplane clock: %s' % (
-                    ', '.join(repr(ib) for (ib, cs) in clock_sources.items() if cs != target_clock_source)))
+        # at the same rate, refuse to operate if
+        #   - an Iceboard that is in a crate is not using the backplane clock
+        #   - an iceboard that is not in a crate is using the backplane clock
+        clock_sources = self.ib.get_iceboard_clock_source_async()
+        bad_clock_source_without_crate = [i for i, source in enumerate(clock_sources) if not self.ib[i].crate and source == 'CLOCK_SOURCE_BP']
+        bad_clock_source_with_crate = [i for i, source in enumerate(clock_sources) if self.ib[i].crate and source != 'CLOCK_SOURCE_BP']
+
+        # We do not raise an exception if we are using the backplane clock without crate in case the crate information is not discovered
+        if bad_clock_source_without_crate:
+            msg = ', '.join(f'{self.ib[i]!r}=>{clock_sources[i]}' for i in bad_clock_source_without_crate)
+            self.logger.warning(f'The following IceBoards are in not in crates but are configured to use the backplane clock: {msg}')
+
+        if bad_clock_source_with_crate:
+            msg = ', '.join(f'{self.ib[i]!r}=>{clock_sources[i]}' for i in bad_clock_source_with_crate)
+            raise RuntimeError('The following IceBoards are in crates but are not configured to use the backplane clock: {msg}')
 
         if mode == 'chan8':
             self.ib.set_fft_bypass(True)
