@@ -258,28 +258,36 @@ class FPGAArray(object):
 
             mode (str): Operational mode of the Corner-turn engine. The following modes are supported:
 
-                - 'chan8': Corner-turn engine is mostly bypassed and raw 8-bit data from 8
-                  channelizers is sent directly to the 8 CT-Engine outputs.
+                - IceBoard, chFPGA bitstream
 
-                - 'chan4': Corner-turn engine is mostly bypassed and raw 8-bit data from 16
-                  channelizers is sent directly to the 8 CT-Engine outputs.
+                    - 'chan8': Corner-turn engine is mostly bypassed and raw 8-bit data from 8
+                      channelizers is sent directly to the 8 CT-Engine outputs.
 
-                - 'shuffle16': A corner-turn operation is applied only within the 16 channelizer
-                  outputs of this board.
+                    - 'chan4': Corner-turn engine is mostly bypassed and raw 8-bit data from 16
+                      channelizers is sent directly to the 8 CT-Engine outputs.
 
-                - 'shuffle128': A corner-turn operation is applied between the first 8 boards in a crate.
+                    - 'shuffle16': A corner-turn operation is applied only within the 16 channelizer
+                      outputs of this board.
 
-                - 'shuffle256': The corner-turn operation is applies between 16 channelizers within
-                  a board and between the 16 boards within a crate using the backplane PCB links.
+                    - 'shuffle128': A corner-turn operation is applied between the first 8 boards in a crate.
 
-                - 'shuffle512': The corner-turn operation is applies between 16 channelizers within
-                  a board, between the 16 boards within a crate using the backplane PCB links,
-                  and between 2 crates using the backplane QSFP links.
+                    - 'shuffle256': The corner-turn operation is applies between 16 channelizers within
+                      a board and between the 16 boards within a crate using the backplane PCB links.
 
-                - 'corr16': The corner-turn engine is configured to feed the
-                  internal firmware correlator (only if the firmware was
-                  compiled with it).
+                    - 'shuffle512': The corner-turn operation is applies between 16 channelizers within
+                      a board, between the 16 boards within a crate using the backplane PCB links,
+                      and between 2 crates using the backplane QSFP links.
 
+
+                - IceBoard, siFPGA bitstream
+
+                    - 'corr16': The corner-turn engine is configured to feed the
+                      internal firmware correlator (only if the firmware was
+                      compiled with it).
+
+                - ZCU111
+
+                    - 'corr4'
 
             frames_per_packet (int): Number of frames that are grouped in each
                 packets at the output of the corner turn engine. Default is 2.
