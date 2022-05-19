@@ -1113,7 +1113,7 @@ class FPGAArray(object):
             if not prog:
                 return
 
-            # Determine the proper firmware name if not already specified
+            await ib.set_fpga_bitstream_async(mode, force=(prog > 1) or (trial > 1), bitfile_override=bitfile)
             if bitfile:  # if we force a specific firmware name
                 ib.firmware_name = bitfile
             elif not ib.firmware_name and mode:  # set firmware names based on the operational mode

@@ -313,7 +313,7 @@ class ZCU111(Motherboard):
         return True
         # return self.tcpipe.is_fpga_programmed()
 
-    async def set_fpga_bitstream_async(self, firmware=None, force=False):
+    async def set_fpga_bitstream_async(self, firmware_mode=None, force=False, bitfile_override=None):
         """
         Configures the FPGA with the specified bitstream.
 
@@ -343,8 +343,7 @@ class ZCU111(Motherboard):
         if hasattr(self, 'close'):
             self.close()
 
-        fw_cls, buf, fw_info = FPGAFirmware.get_firmware(self.part_number, firmware)
-        # buf = fw_cls.get_bitstream_object(self.part_number, self.firmware_name)
+        fw_cls, buf, fw_params = FPGAFirmware.get_firmware(self.part_number, firmware_mode, bitfile_override=bitfile_override)
         crc32 = buf.crc32
         bitstream = buf.raw_bitstream
 
@@ -366,7 +365,7 @@ class ZCU111(Motherboard):
             self.logger.debug(
                 f'{self!r}: FPGA is already configured. Skipping configuration.')
 
-        self.fpga = fw_cls(self, **fw_info)
+        self.fpga = fw_cls(self, **fw_params)
 
     # Mezzanine management
 

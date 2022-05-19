@@ -755,7 +755,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
     async def is_fpga_programmed_async(self):
         return await self.tuber_is_fpga_programmed_async()
 
-    async def set_fpga_bitstream_async(self, firmware=None, force=False):
+    async def set_fpga_bitstream_async(self, firmware_mode=None, force=False, bitfile_override=None):
         '''
         Configures the FPGA with the specified bitstream.
 
@@ -785,7 +785,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         # If the bitstream is not explicitely provided, ask the handler to
         # provide it. The str() of the returned object must yield the valid
         # bitstream buffer in a string.
-        fw_cls, buf, fw_info = FPGAFirmware.get_firmware(self.part_number, firmware)
+        fw_cls, buf, fw_params = FPGAFirmware.get_firmware(self.part_number, firmware_mode, bitfile_override=bitfile_override)
         crc32 = buf.crc32
         base64_bytes = buf.base64
         self.logger.debug(f'{self!r}: Getting is_programmed')
@@ -806,7 +806,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         else:
             self.logger.debug(
                 f'{self!r}: FPGA is already configured. Skipping configuration.')
-        self.fpga = fw_cls(self, **fw_info)
+        self.fpga = fw_cls(self, **fw_params)
 
 
     FPGA_FIRMWARE_CRC32_ADDR = 4 * 3
