@@ -98,47 +98,22 @@ class chFPGA_config(object):
 
 
 class chFPGA(FPGAFirmware):
-    """
-    Creates an object that connects to an IceBoard motherboard and its chFPGA firmware and provides
-    the methods to configure it and control its operations.
+    """Provides an API to access the chFPGA firmware running on the motherboard's FPGA.
 
-    .. .. inheritance-diagram:: chFPGA_controller
-    ..    :parts: 2
+    The API provides the methods to establish communication with the FPGA to
+    access its memory map, and provides objects to configure it and control
+    its operations.
 
-    `chFPGA_controller` inherits from the following classes:
+    This class supports two methods to access the FPGA firmware:
 
-    .. image:: ./images/chfpga_controller_class_inheritance_diagram.svg
-       :width: 80%
+        - Ethernet/UDP-based
+          Memory-mapped Interface (MMI) implemented directly by the FPGA, typically used by the IceBoard motherboard. The class provides SPI-based Memory-mapped Interface to the
+      FPGA, which is used to configure the networking parameters in the FPGA via the on-board ARM processor.
 
-    - `IceBoardExt`  provides the basic Ethernet/UDP-based
-      Memory-mapped Interface (MMI) to the FPGA firmware, and provides objects
-      to access the IceBoard and IceCrate hardware (sensors, EEPROM etc)
-      directly through the FPGA.
-
-    - `IceBoardPlusHandler` provides SPI-based Memory-mapped Interface to the
-      FPGA using the ARM-FPGA SPI link, which is used to configure a basic set
-      of control registers and access some generic non-chFPGA-specific
-      peripherals such as IRIG-B.
-
-    - `IceBoardHandler` provides access and allow to execute ARM method running
-      on the IceBoard's ARM processor as if they were local methods. This is
-      done over the `Tuber` interface which provide access to the ARM
-      processor and the API provided by it to control and monitor the board's
-      hardware. `IceBoardHandler` also inherits from `Handler`, which allows
-      an `chFPGA_controller` instance to attach itself to a (volatile)
-      hardware map object and draw some of its parameters from it.
-
-
-
-    This class requires that the underlying motherbord object provides the following methods:
-
-    Methods:
-
-    Attributes:
-
-
+        - TCPipe, TCP-based memory-map interface typically supported by the ZCU111
     """
 
+    # Define the motherboard models and operational modes supported by this class, and associate corresponding FPGA configuration bitstreams and initialization parameters
     PLATFORM_SUPPORT = { # (platform_model, firmware_config, modes): {firmware_filename: <fw_fn>, <other platform parameters>}
         ("MGK7MB", "chFPGA", ("shuffle16", "shuffle128", "shuffle256", "shuffle512")): dict(firmware_url='chFPGA_MGK7MB_Rev2.bit', processing_frequency = 200e6),
         ("MGK7MB", "siFPGA", ("corr16",)): dict(firmware_url='SIFPGA_MGK7MB.bit', processing_frequency = 200e6),
@@ -1112,7 +1087,20 @@ class chFPGA(FPGAFirmware):
     ###################################
     # Core registers access methods
     ###################################
+    """
+    Core registers is a set of 32-bit registers that were traditionally
+    accessed only through an external SPI link and were not part of the
+    general memory mapped interface of chFPGA.
 
+    In modern chFPGA firmware, these registers are now also accessible through
+    the general MMI through a specific address range (to be more specific,
+    they were mapped as a RAM page for the GPIO module). This allows faster access.
+
+    On some platforms (like the IceBoard), the SPI link is necessary at
+    startup to configure the memory mapped interface (i.e. set-up the FPGA's
+    UDP networking parameters). Once the MMI is set-up, direct MMI access to
+    the core registers is possible.
+    """
 
     async def fpga_core_reg_read_async(self, addr):
         """ Reads the contents of a 32-bit core regster at the specified address
@@ -1131,10 +1119,6 @@ class chFPGA(FPGAFirmware):
     # FPGA SPI Memory-mapped interface
     # ------------------------------------
 
-    # *** JFC: Those methods can be updated one day to use the direct (non-
-    #     Tuber) links to the FPGA (on separate socket, forwarded to the FPGA
-    #     through SPI or PCIe). Otherwise we fallback to the slower tuber MMI
-    #     interface.
     async def fpga_core_reg_read_async(self, addr):
         """ Read a single 32-bit word from the FPGA at the specified byte
         address. This uses the fastest interface available (currently the ARM-
@@ -1143,7 +1127,7 @@ class chFPGA(FPGAFirmware):
         Value is returned as an unsigned integer.
         """
         word = await self.mb._tuber_fpga_spi_peek_async(addr)
-        return(word & 0xFFFFFFFF)
+        return word & 0xFFFFFFFF
 
     async def fpga_core_reg_write_async(self, addr, value):
         """ Write a single 32-bit word to the FPGA at specified byte address.
@@ -1159,16 +1143,16 @@ class chFPGA(FPGAFirmware):
         """ Return the core FPGA firmware cookie. Should always be 0xBEEFFACE.
         """
         if not (await self.is_fpga_programmed_async()):
-            return(None)
+            return None
         cookie = await self.fpga_core_reg_read_async(self.FPGA_CORE_FIRMWARE_COOKIE_ADDR)
-        return(cookie)
+        return cookie
 
     async def get_fpga_application_cookie(self):
         """ Return the application-specific FPGA firmware cookie. """
         if not (await self.is_fpga_programmed_async()):
-            return(None)
+            return None
         cookie = await self.fpga_core_reg_read_async(self.FPGA_APPLICATION_FIRMWARE_COOKIE_ADDR)
-        return(cookie)
+        return cookie
 
     async def get_fpga_serial_number(self):
         """ Return the FPGA serial number, as read from the FPGA's core
@@ -1178,7 +1162,7 @@ class chFPGA(FPGAFirmware):
             (await (self.fpga_core_reg_read_async(self.FPGA_SERIAL_NUMBER_MSW_ADDR) << 32))
             )
 
-        return(fpga_serial_number)
+        return fpga_serial_number
 
     async def get_fpga_firmware_timestamp(self):
         """ Returns a string containing the date-time of the currrent firmware
@@ -1193,7 +1177,7 @@ class chFPGA(FPGAFirmware):
         day = (timestamp >> 27) & 0x1F
         timestamp_string = '%04i-%02i-%02i %02i:%02i:%02i' % (
             year + 2000, month, day, hour, minutes, seconds)
-        return(timestamp_string)
+        return timestamp_string
 
 
 
@@ -1234,7 +1218,7 @@ class chFPGA(FPGAFirmware):
             crate_number=self.crate.crate_number if self.crate else None)
 
         if not self.is_open():
-            return(metrics)
+            return metrics
         try:
             # await self.check_command_count_async(reset=True)
             metrics.add('fpga_udp_error_current_count', value=self.mmi.error_counter)
@@ -1243,7 +1227,7 @@ class chFPGA(FPGAFirmware):
                 metrics.add('fpga_udp_' + name, value= (vect >> pos) & (2**width-1))
         except IOError as e:
             self.logger.error('%r: Error getting FPGA udp metrics. Error is %r' % (self, e))
-        return(metrics)
+        return metrics
 
     async def get_udp_status_async(self):
         vect = await self.fpga_core_reg_read_async(self._SFP_STATUS_ADDR)
@@ -1361,7 +1345,7 @@ class chFPGA(FPGAFirmware):
                      "the FPGA. Raising an exception" % (self)
             self.logger.error(errmsg)
             raise IOError(errmsg)
-        return(valid)
+        return valid
 
     async def reset_fpga_udp_stack(self):
         # self.logger.warning("%r: Resetting %s FPGA's UDP communication stack" % (self, self.hostname))
@@ -1538,7 +1522,7 @@ class chFPGA(FPGAFirmware):
         if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
             return self._ZCU111_LOCAL_DATA_PORT_NUMBER
         else:
-            return((await self.fpga_core_reg_read_async(self._REMOTE_IP_PORT_ADDR)) >> 16)
+            return (await self.fpga_core_reg_read_async(self._REMOTE_IP_PORT_ADDR)) >> 16
 
     async def set_data_target_address_async(self, ip_addr=None, port=None, mac_addr=None):
         """
@@ -1630,7 +1614,7 @@ class chFPGA(FPGAFirmware):
         by the first command sent to the FPGA to reset the communication link.
         """
         await asyncio.sleep(0)
-        return((self.mmi.read(self._GPIO_COOKIE_REG, resync=resync) & 0x7F))
+        return self.mmi.read(self._GPIO_COOKIE_REG, resync=resync) & 0x7F
 
     def get_fpga_firmware_version(self):
         """
@@ -1703,7 +1687,7 @@ class chFPGA(FPGAFirmware):
             self.logger.debug(
                 f"{self!r}: FPGA is not programmed, so cannot read the Mezzanine {mezzanine} "
                 f"EEPROM through the FPGA.")
-            return(None)
+            return None
 
         # Get the first byte to determine if this is a McGill format.
         eeprom_data = self.mb.read_mezzanine_eeprom(mezzanine, 0, 1)
@@ -1721,12 +1705,12 @@ class chFPGA(FPGAFirmware):
                 string += data_block
                 if (b'}' in data_block) or (255 in data_block):
                     break
-            return(string)
+            return string
         else:  # If not McGill format,
             self.logger.debug(
                 f"{self!r}: EEPROM in Mezzanine {mezzanine} is not McGill format. The FPGA "
                 f"will *NOT* read the EEPROM contents")
-            return(None)
+            return None
 
     # ---------------------------------------------------------
     # IRIG-B time support methods
@@ -1851,7 +1835,7 @@ class chFPGA(FPGAFirmware):
 
         for (source_name, source_number) in self._IRIGB_SOURCE_TABLE.items():
             if source == source_number:
-                return(source_name)
+                return source_name
         raise ValueError('The IRIG-B module has an unknown source number %i' % source)
 
     async def detect_irigb_source_async(self, set_source=False):
@@ -1864,7 +1848,7 @@ class chFPGA(FPGAFirmware):
                 valid_source = source
                 break
         await self.set_irigb_source_async(valid_source if set_source else old_source)
-        return(valid_source)
+        return valid_source
 
     async def _get_irigb_time_async(self, trig=True, noerror=False):
         """ Reads the Reference clock and IRIG-B time and returns an object
@@ -1950,7 +1934,7 @@ class chFPGA(FPGAFirmware):
             # just became valid (e.g. we just set the source)
             if not trig or time.time() - t0 > 2.5:
                 if noerror:
-                    return(None)
+                    return None
                 else:
                     raise RuntimeError(
                         '%.32r: Could not get a recently updated IRIG-B time. '
@@ -2041,7 +2025,7 @@ class chFPGA(FPGAFirmware):
                 ts.time == ts.time2 and
                 ts.time_struct == ts.time_struct2):
             self.logger.error("%r: IRIGB time computation error" % self)
-        return(ts)
+        return ts
 
     async def set_irigb_trigger_time_async(self, datetime_=None, delay=None):
         """ Sets the time at which the IRIG-B module will generate a trigger
@@ -2116,13 +2100,13 @@ class chFPGA(FPGAFirmware):
         ts = self._IrigTimestamp()
         ts.datetime = dt
         ts.nano = int(timegm((2000 + y, 1, d, h, m, s + 1)) * 1e9) + ss*10
-        return(ts)
+        return ts
 
     async def is_irigb_before_trigger_time_async(self):
         """ Is true if the current IRIGB is before the target trigger time that was previously set-up.
         """
         t1 = await self.fpga_core_reg_read_async(self._IRIGB_TARGET1_ADDR)
-        return(bool((t1 >> 31) & 1))
+        return bool((t1 >> 31) & 1)
 
     async def capture_frame_time_async(self, trig=True, format='nano', timeout=5):
         """ Captures the IRIG-B of the first sample of the next frame coming
@@ -2160,7 +2144,7 @@ class chFPGA(FPGAFirmware):
 
         ts = await self._get_irigb_time_async(trig=0)  # The event trigger will automatically trig IRIGB
         captured_time = ts.astype(format)
-        return((event_number, captured_time))
+        return (event_number, captured_time)
 
     async def get_frame_number_async(self):
         """
@@ -2176,7 +2160,7 @@ class chFPGA(FPGAFirmware):
                     'Timeout while waiting for a Frame. Is data flowing out '
                     'of the ADC data acquisition module?')
         event_number = await self.fpga_core_reg_read_async(self._IRIGB_EVENT_CTR_ADDR)
-        return(event_number)
+        return event_number
 
     async def capture_refclk_time_async(self, trig=True, format='nano'):
         """ Measures the time at which the next 10MHz reference clock rising
@@ -2190,7 +2174,7 @@ class chFPGA(FPGAFirmware):
         the IRIG-B time.
         """
         ts = await self._get_irigb_time_async(trig=trig)
-        return((ts.refclk_counter, ts.astype(format)))  # Return
+        return (ts.refclk_counter, ts.astype(format))  # Return
 
     async def get_irigb_time_async(self, trig=True, format='datetime', noerror=False):
         """ Return the current time as decoded on the IRIG-B input. The time
@@ -2205,7 +2189,7 @@ class chFPGA(FPGAFirmware):
           1st 2000.
         """
         ts = await self._get_irigb_time_async(trig=trig, noerror=noerror)
-        return(ts.astype(format))
+        return ts.astype(format)
 
 
 
@@ -4537,9 +4521,7 @@ class chFPGA(FPGAFirmware):
 
 
     def get_temperatures(self):
-        """ Return the core temperature of the fpga and the ADC chips.
-
-        Uses SYSMON for the FPGA core temperature.
+        """ Return the core temperature of the fpga and the mezzanine ADC chips through the FPGA's SYSMON and mezzanine SPI links.
 
         Returns:
 
