@@ -1431,7 +1431,7 @@ class FPGAMaster(object):
         # self.log.debug(f'{self!r}: Created input axis as {inputs} with dtypes {inputs.dtype}')
         # Expand some strings
         hdf5_conf = self.config.fpga.gain_hdf5.copy()
-        hdf5_conf['output_dir'] = os.path.expanduser(hdf5_conf.get('output_dir', '.'))
+        hdf5_conf['output_dir'] = self.expand_path(hdf5_conf.get('output_dir', '.'))
         # Initialize writer
         self.gain_hdf5 = digital_gain.DigitalGainArchive(
             freq=freq,
@@ -1446,8 +1446,12 @@ class FPGAMaster(object):
         string that can be used in the gains database.
 
         The serial number format is determined by the format string found in
-        the configuration under the top-level key``input_sn``. The following
-        fields are recognized:
+        the configuration under the top-level config field``input_sn``.
+
+        The format string can use both the ``%(name)fmt`` (i.e. ``%``
+        operator) syntax or the ``{name:fmt}`` (i.e. ``.format()``) syntax.
+
+        The following fields are recognized:
 
             - corr_sn (str): serial numer of the correlator, as found in the
               config under "corr_sn"
@@ -1470,9 +1474,11 @@ class FPGAMaster(object):
         If there is no crate number (None or string), the crate number is
         considered to be zero.
 
-        For example:
+        Format string examples:
 
-           input_sn: "%(corr_sn)s%(crate)02d%(slot_zero_based)02d%(input)02d"
+           input_sn: "%(corr_sn)s%(crate)02d%(slot_zero_based)02d%(input)02d" # % syntax
+
+           input_sn: "{corr_sn}{crate:02d}{slot_zero_based:02d}{input:02d}" {} syntax
 
         Parameters:
 
@@ -1495,18 +1501,7 @@ class FPGAMaster(object):
                    'slot_zero_based_str': f'{slot:02d}' if isinstance(slot, int) else str(slot),
                    'chan': chan,
                    'input': self.config.input_number_map[chan]}
-        return (self.config.input_sn.format(**args_sn) % args_sn)
-
-    # def _serial_number_to_chan_id(self, sn):
-    # We don't use this anymore: we create a reverse table from _chan_id_to_serial_number
-
-    #     mo = re.match(r'%s(\d{2})(\d{2})(\d{2})' % self.config.corr_sn, sn)
-    #     crate = int(mo.group(1))
-    #     slot = int(mo.group(2))
-    #     inp = int(mo.group(3))
-    #     chan = self.config.input_number_map.index(inp)
-
-    #     return (crate, slot, chan)
+        return self.config.input_sn.format(**args_sn) % args_sn
 
 
 class DummyFPGAMaster(FPGAMaster):
