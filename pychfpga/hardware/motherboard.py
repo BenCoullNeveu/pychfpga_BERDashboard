@@ -517,3 +517,39 @@ class Motherboard(HardwareMap):
     async def init_fpga_async(self):
         """ Initializes  the FPGA firmware."""
         raise NotImplementedError('This method must be implemented by a subclass')
+
+    # ****************************
+    # Metrics
+    # ****************************
+
+    async def get_metrics_async(self):
+        """ Get the motherboard hardware monitoring information.
+
+        Should be overriden to populate the Metrics object.
+
+        Returns:
+            a :cls:`Metrics` object.
+        """
+
+        metrics = Metrics(
+            type='GAUGE',
+            slot=(self.slot or 0) - 1,
+            id=self.get_string_id(),
+            crate_id=self.crate.get_string_id() if self.crate else None,
+            crate_number=self.crate.crate_number if self.crate else None)
+
+        return metrics
+
+    async def get_backplane_metrics_async(self):
+        """ Get the backplane hardware monitoring information.
+
+        Returns:
+            a :cls:`Metrics` object.
+        """
+        metrics = Metrics(
+            type='GAUGE',
+            crate_id=self.crate.get_string_id() if self.crate else None,
+            crate_number=self.crate.crate_number if self.crate else None)
+
+        return metrics
+

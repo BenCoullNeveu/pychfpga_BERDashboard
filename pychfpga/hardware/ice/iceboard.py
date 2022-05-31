@@ -571,15 +571,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         """
 
         info = dict()
-        metrics = Metrics(
-            type='GAUGE',
-            slot=(self.slot or 0) - 1,
-            id=self.get_string_id(),
-            crate_id=self.crate.get_string_id() if self.crate else None,
-            crate_number=self.crate.crate_number if self.crate else None)
-
-        if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
-            return (info, metrics)
+        metrics = await super().get_metrics_async()
 
         ####################################
         # Motherboard temperatures

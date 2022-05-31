@@ -438,5 +438,20 @@ class ZCU111(Motherboard):
         return None
 
 
+    #################################
+    # Metrics
+    #################################
 
+    async def get_metrics_async(self):
+        """ Get the motherboard hardware monitoring information.
+
+        Returns:
+            a :cls:`Metrics` object.
+        """
+
+        metrics = await super().get_metrics_async()
+
+        # Add ZCU111 monitoring data to metrics here
+
+        return metrics
 
