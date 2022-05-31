@@ -557,3 +557,11 @@ class Motherboard(HardwareMap):
 
         return metrics
 
+    async def get_total_power(self):
+        """ Return the total power used by this board.
+
+
+        Returns:
+            Total power in watts as a float.
+        """
+        raise NotImplementedError('This method must be implemented by a subclass')

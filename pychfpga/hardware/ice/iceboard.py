@@ -661,6 +661,21 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         return metrics
 
 
+    async def get_total_power(self):
+        """ Return the total power used by this board.
+
+        The power is measured by measuring the voltage and current on the VCC3V3, VCC5V5 and VCC12V0
+        rails.
+
+        Returns:
+            Total power, as a float.
+        """
+        # Get and sum power asynchronously. We have to use a list comprehension, not generator (a
+        # yield inside a generator is not consistent in Python 2.7)
+        power = sum([(await self.tuber_get_motherboard_voltage_async(rail)) * (await self.tuber_get_motherboard_current_async(rail))
+                     for rail in (self.RAIL.MB_VCC3V3, self.RAIL.MB_VCC5V5, self.RAIL.MB_VCC12V0)])
+        return power
+
     async def _get_backplane_metrics_async(self):
         """ Get the backplane hardware monitoring information, as accessed from this Iceboard.
 
