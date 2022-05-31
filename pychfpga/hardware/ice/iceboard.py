@@ -922,6 +922,23 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         # Set LEDs to indicate initialization state
         await self.set_led('GP_LED1', 1)  # Full FPGA firmware is initialized
 
+
+
+
+    ###################################
+    # SFP module
+    ###################################
+
+    async def reset_sfp(self):
+        """ Resets the SFP by temporarily disconnecting the FPGA from it"""
+
+        self.logger.warning(
+            "%r: Temporarily disconnecting the SFP to reset the %s FPGA's "
+            "UDP communication stack" % (self, self.hostname))
+        await self.tuber_set_pci_switch_direction_async('SEL_ARM')
+        await self.tuber_set_pci_switch_direction_async('SEL_SFP')
+
+
     async def open_hw_async(self):
         """ Initializing objects to access the Iceboard hardware
 

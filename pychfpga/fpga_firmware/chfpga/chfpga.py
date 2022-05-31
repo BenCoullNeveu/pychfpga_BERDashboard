@@ -1268,7 +1268,7 @@ class chFPGA(FPGAFirmware):
                 self.logger.warning(f'{self!r}: Resetting FPGA UDP stack (trial #{trial}/{max_trials})')
 
                 if not no_reset:
-                    await self.reset_sfp()
+                    await self.mb.reset_sfp()
                     await asyncio.sleep(0.1)
                     await self.reset_fpga_udp_stack()
                     await asyncio.sleep(0.1)
@@ -1369,12 +1369,6 @@ class chFPGA(FPGAFirmware):
         await self.fpga_core_reg_write_async(self._SFP_STATUS_ADDR, 0 << 30)
         self.mmi.send_counter = 0
 
-    async def reset_sfp(self):
-        self.logger.warning(
-            "%r: Temporarily disconnecting the SFP to reset the %s FPGA's "
-            "UDP communication stack" % (self, self.hostname))
-        await self.tuber_set_pci_switch_direction_async('SEL_ARM')
-        await self.tuber_set_pci_switch_direction_async('SEL_SFP')
 
     async def set_sgmii_config_vector(
             self, sgmii=1, an=1, pause=0, duplex=1, reset=0,
