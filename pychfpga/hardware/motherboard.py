@@ -477,8 +477,8 @@ class Motherboard(HardwareMap):
 
     async def ping_async(self, timeout=0.1):
         """
-        Returns a boolean indicating whether a tuber object is available at
-        the specified ARM hostname.
+        Returns a boolean indicating whether the motherboard is responding at
+        its hostname/address.
         """
         raise NotImplementedError('This method must be implemented by a subclass')
 
@@ -504,6 +504,10 @@ class Motherboard(HardwareMap):
         """
         raise NotImplementedError('This method must be implemented by a subclass')
 
+    # ****************************
+    # Open/Close methods
+    # ****************************
+
     async def open_platform_async(self):
         """ Establish a communication link with the platform, which enables
         access to functions provided by the local processor
@@ -515,7 +519,7 @@ class Motherboard(HardwareMap):
         raise NotImplementedError('This method must be implemented by a subclass')
 
     async def init_fpga_async(self):
-        """ Initializes  the FPGA firmware."""
+        """ Initializes the FPGA firmware."""
         raise NotImplementedError('This method must be implemented by a subclass')
 
     # ****************************
