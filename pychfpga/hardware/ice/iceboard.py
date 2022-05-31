@@ -43,8 +43,14 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
 
     The superclasses provides the following functionalities:
 
-    - Motherboard: List-based lightweight hardware map management
-    - TuberIceBoardBase: Methods provided by the on-board ARM processor via the Tuber protocol
+    - Motherboard: Generic motherboard definition with hardware map management
+    - TuberIceBoardBase: provides access and allow to execute ARM method running
+      on the IceBoard's ARM processor as if they were local methods. This is
+      done over the `Tuber` protocol which provide access to the ARM
+      processor and the API provided by it to control and monitor the board's
+      hardware. `IceBoardHandler` also inherits from `Handler`, which allows
+      an `chFPGA_controller` instance to attach itself to a (volatile)
+      hardware map object and draw some of its parameters from it.
 
     This class adds:
         - Model, serial, slot, crate and mezzanine self discovery using Tuber
