@@ -23,14 +23,14 @@ from pychfpga.common import run_async, async_to_sync, Ccoll
 from pychfpga.hardware.interfaces import TCPipe, TCPipe_I2C
 from pychfpga.fpga_firmware import FPGAFirmware
 
-from ..lib.pca9575 import pca9575  as tca9575a # I2C 16-bit IO Expander
-from ..lib.tca9548a import tca9548a as tca9548a  # I2C switch
-from ..lib.tca9544a import tca9544a as pca9544a # I2C switch
-from ..lib.sc18is602b import sc18is602b # I2C-to-SPI bridge
-from ..lib.tca6416a import tca6416a
-from ..lib.lmk04208spi import lmk04208spi # RF dual PLL
-from ..lib.lmx2594spi import lmx2594spi # ADC/DAC PLL
-from ..lib.eeprom import eeprom
+from ..i2c_devices.pca9575 import pca9575  as tca9575a # I2C 16-bit IO Expander
+from ..i2c_devices.tca9548a import tca9548a as tca9548a  # I2C switch
+from ..i2c_devices.tca9544a import tca9544a as pca9544a # I2C switch
+from ..i2c_devices.sc18is602b import sc18is602b # I2C-to-SPI bridge
+from ..i2c_devices.tca6416a import tca6416a
+from ..i2c_devices.lmk04208spi import lmk04208spi # RF dual PLL
+from ..i2c_devices.lmx2594spi import lmx2594spi # ADC/DAC PLL
+from ..i2c_devices.eeprom import eeprom
 
 
 class iic_dummy:

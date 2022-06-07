@@ -9,14 +9,14 @@ from pychfpga.hardware import Crate
 
 from .icecore.hardware_assets import IceCrateBase
 
-from ..lib.eeprom import eeprom as EEPROM
-from ..lib import ina230  # I2C Voltage and current monitor
-from ..lib import tmp421  # I2C temperature sensor
-from ..lib import pca9698  # I2C 40-bit IO Expander
-from ..lib import amc6821  # I2C fan Controller
-from ..lib import pca9575  # 1-slot backplane I2C IO Expander
-from ..lib import gpio
-from ..lib import qsfp
+from ..i2c_devices.eeprom import eeprom as EEPROM
+from ..i2c_devices import ina230  # I2C Voltage and current monitor
+from ..i2c_devices import tmp421  # I2C temperature sensor
+from ..i2c_devices import pca9698  # I2C 40-bit IO Expander
+from ..i2c_devices import amc6821  # I2C fan Controller
+from ..i2c_devices import pca9575  # 1-slot backplane I2C IO Expander
+from ..i2c_devices import gpio
+from ..i2c_devices import qsfp
 
 
 class MasterIceboardObject(object):

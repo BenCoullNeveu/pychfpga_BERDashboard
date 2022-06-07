@@ -30,12 +30,12 @@ from .icecore.tuber import TuberError, TuberNetworkError, TuberRemoteError
 from .icemezz import FMCMezzanine
 
 # from lib import tmp100  # I2C Temperature sensor
-from ..lib import pca9575  # I2C 16-bit IO Expander
-from ..lib import tca9548a  # I2C switch
-from ..lib import ina230  # I2C Voltage and current monitor
-from ..lib import eeprom
-from ..lib import qsfp
-from ..lib import gpio
+from ..i2c_devices import pca9575  # I2C 16-bit IO Expander
+from ..i2c_devices import tca9548a  # I2C switch
+from ..i2c_devices import ina230  # I2C Voltage and current monitor
+from ..i2c_devices import eeprom
+from ..i2c_devices import qsfp
+from ..i2c_devices import gpio
 
 
 class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first otherwise undefined attributes try to access Tuber
