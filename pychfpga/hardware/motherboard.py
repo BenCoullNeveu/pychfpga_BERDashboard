@@ -3,6 +3,10 @@ import logging
 import asyncio
 
 
+# private packages
+
+from wtl.metrics import Metrics
+
 # local Packages
 from .hardware_map import HardwareMap
 from .crate import Crate
