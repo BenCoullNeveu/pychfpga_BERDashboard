@@ -346,7 +346,7 @@ class FPGAMaster(object):
         capture_source = capture_source or conf.capture_source
         capture_rate = capture_rate or conf.baseline_capture_rate
         tmux_factor = tmux_factor or conf.tmux_factor
-        capture_period = 1 / capture_rate #Py3: guaranteed to be a float
+        capture_period = (1 / capture_rate) if capture_rate else 0 #Py3: guaranteed to be a float
 
         for server_name, ibs in self.raw_acq_ibs.items():
             # Compute a transmission delay for each board to prevent them from sending their data all at the same time
@@ -360,11 +360,14 @@ class FPGAMaster(object):
                     f'with period={capture_period}, source={capture_source}, '
                     f'send_delay={send_delay}')
 
-                ib.start_data_capture(period=capture_period, source=capture_source, send_delay=send_delay)
+                if capture_period:
+                    ib.start_data_capture(period=capture_period, source=capture_source, send_delay=send_delay)
+                else:
+                    ib.stop_data_capture()
 
         # If not done explicitely later, we must issue sync command after starting raw data capture,
         # otherwise raw frames will not be synced across boards.
-        if sync:
+        if capture_period and sync:
             self.fpgas.sync()
 
 
