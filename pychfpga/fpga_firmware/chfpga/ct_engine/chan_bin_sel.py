@@ -97,7 +97,7 @@ class ChanBinSel(MMI):
             bins_to_enable = list(range(bins_to_enable))
 
         min_bin_spacing = (self.LAST_FIFO_NUMBER - self.FIRST_FIFO_NUMBER + 1) * 2
-        if min(np.diff(sorted(bins_to_enable))) < min_bin_spacing:
+        if len(bins_to_enable) and min(np.diff(sorted(bins_to_enable))) < min_bin_spacing:
             raise ValueError(f'Crossbar 1 bin spacing must be at least {min_bin_spacing} bins')
 
         # Initialize filter mask (8 flags per byte)
