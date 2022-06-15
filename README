@@ -1,7 +1,7 @@
 .. Use UTF-8 encoding
 
-pychfpga: ICEBoard & FPGA-based correlator control
-==================================================
+pychfpga: FPGA array control package for radioastronomy
+=======================================================
 
 
 
@@ -168,3 +168,14 @@ To start the fpga_master server::
 
 	./fpga_master.py path_to_config_file:jfc.drao
 
+Docker
+------
+
+pychfpga is also available as a docker image, with all system and Python dependencies already installed.
+
+
+Build:
+
+export DOCKER_BUILDKIT=1
+export BUILDKIT_PROGRESS=plain
+docker build --no-cache -t pychfpga:jfc_dev .
