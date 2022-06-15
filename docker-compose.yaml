@@ -1,16 +1,23 @@
 ---
 version: '3.8'
 
+networks:
+    pychfpga_network:
 services:
-  controller:
-    image: chimefrb/pychfpga:latest
+  fpga_master:
+    image: pychfpga:jfc_dev
     build:
       context: .
       dockerfile: Dockerfile
-      target: developer
-      args:
-        github_ssh_key: $SSH_AUTH_SOCK
-    command: ["fpga_master", "/ch_config/config.yaml:jfc.mcgill"]
+      target: deploy
+      # args:
+      #   github_ssh_key: $SSH_AUTH_SOCK
+    volumes:
+        - ${DATA_FOLDER?}:/data
+        - ${CONFIG_FOLDER?}:/config
+    command: ["fpga_master", "/config/$CONFIG_NAME"]
+    networks:
+        - pychfpga_network
     ports:
       - "54321:54321"
     deploy:
@@ -25,9 +32,34 @@ services:
           memory: "2gb"
     environment:
       - PYTHONUNBUFFERED=1
+  raw_acq:
+    image: pychfpga:jfc_dev
+    volumes:
+        - ~/data:/data
+    command: ["chime_raw_acq"]
+    networks:
+        - pychfpga_network
+    ports:
+      - "54322:54322"
+      - "54326:54326/udp"
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        reservations:
+          cpus: "1"
+          memory: "256M"
+        limits:
+          cpus: "2"
+          memory: "2gb"
+    environment:
+      - PYTHONUNBUFFERED=1
   ps:
-    image: chimefrb/pychfpga:latest
-    command: ["chime_rx_ps", "/ch_config/config.yaml:jfc.mcgill"]
+    image: pychfpga:jfc_dev
+    volumes:
+        - ${DATA_FOLDER?}:/data
+        - ${CONFIG_FOLDER?}:/config
+    command: ["chime_rx_ps", "/config/$CONFIG_NAME"]
     ports:
       - "54324:54324"
     deploy:
@@ -43,8 +75,12 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
   gps:
-    image: chimefrb/pychfpga:latest
-    command: ["chime_gps", "/ch_config/config.yaml:jfc.mcgill"]
+    image: pychfpga:jfc_dev
+    volumes:
+        - ${DATA_FOLDER?}:/data
+        - ${CONFIG_FOLDER?}:/config
+    # command: ["ls", "/data/config"]
+    command: ["chime_gps", "/config/$CONFIG_NAME"]
     ports:
       - "54325:54325"
     deploy:
@@ -56,24 +92,6 @@ services:
           memory: "256M"
         limits:
           cpus: "1"
-          memory: "2gb"
-    environment:
-      - PYTHONUNBUFFERED=1
-  raw_acq:
-    image: chimefrb/pychfpga:latest
-    command: ["chime_raw_acq", "/ch_config/config.yaml:jfc.mcgill"]
-    ports:
-      - "54322:54322"
-      - "54326:54326/udp"
-    deploy:
-      mode: replicated
-      replicas: 1
-      resources:
-        reservations:
-          cpus: "1"
-          memory: "256M"
-        limits:
-          cpus: "2"
           memory: "2gb"
     environment:
       - PYTHONUNBUFFERED=1

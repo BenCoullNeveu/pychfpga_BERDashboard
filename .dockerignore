@@ -1,0 +1,7 @@
+.git
+/docs
+/old_scripts
+/sim
+/tests
+**/arm_firmware
+Dockerfile
