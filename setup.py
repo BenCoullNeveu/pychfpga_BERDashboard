@@ -6,11 +6,13 @@ import versioneer
 
 here = path.abspath(path.dirname(__file__))
 
-# Load the requirements from requirements.txt while removing the environment marks
-with open(path.join(here, 'requirements.txt')) as f:
-    requirements = [line.split(';')[0].rstrip() for line in f]
-with open(path.join(here, 'qc_requirements.txt')) as f:
-    qc_requirements = [line.split(';')[0].rstrip() for line in f]
+# Load the requirements for the base configuration and the extras.
+# The environment marks are removed.
+reqs = {}
+for req_name in ('','qc','docs'):
+  req_filename = f"{req_name}{'_' if req_name else ''}requirements.txt"
+  with open(path.join(here, req_filename)) as f:
+      reqs[req_name] = [line.split(';')[0].rstrip() for line in f]
 
 # Load the long description from the README file
 with open("README", "r", encoding='utf-8') as f:
@@ -38,9 +40,10 @@ setup(
               "Intended Audience :: Science/Research",
           ],
       python_requires='>=3.7',
-      install_requires=requirements,
+      install_requires=reqs[''],
       extras_require={
-        'qc': qc_requirements
+        'qc': reqs['qc'],
+        'docs': reqs['docs']
         },
 
       include_package_data=True,
