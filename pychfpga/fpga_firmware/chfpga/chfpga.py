@@ -1205,6 +1205,9 @@ class chFPGA(FPGAFirmware):
     async def get_fpga_udp_metrics_async(self):
         """
         """
+        if not self.is_open():
+            return metrics
+
         if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
             self.logger.warning(f'{self!r} ZCU111 platform has no UDP metrics')
             return
@@ -1216,8 +1219,6 @@ class chFPGA(FPGAFirmware):
             crate_id=self.crate.get_string_id() if self.crate else None,
             crate_number=self.crate.crate_number if self.crate else None)
 
-        if not self.is_open():
-            return metrics
         try:
             # await self.check_command_count_async(reset=True)
             metrics.add('fpga_udp_error_current_count', value=self.mmi.error_counter)
