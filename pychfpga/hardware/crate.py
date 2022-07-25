@@ -34,23 +34,27 @@ class Crate(HardwareMap):
         ensured that the correct Crate has been instantiated.
 
         """
-        if self.serial and not self.part_number:
+        if serial and not self.part_number:
             raise RuntimeError('Cannot create a generic Crate with a serial number')
 
         if isinstance(serial, int):  # make sure serial is a string
             serial = f'{serial:03d}'
 
-        super().__init__(serial=serial, **kwargs)
+        super().__init__()
+        self.serial = serial
+        self.slot = {}
         self.crate_number = crate_number
 
         self.logger = logging.getLogger(__name__)
-        self.logger.debug('%r: Instantiating Crate object' % self)
+        self.logger.debug(f'{self!r}: Instantiating Crate object')
+
+        if kwargs:
+            self.logger.warning(f'{self!r}: keyword arguments {kwargs} will be ignored')
 
         self.logger.debug(f"{self!r}: Created {self.__class__.__name__}(serial={serial}, crate_number={crate_number})")
 
     def __repr__(self):
-        # return "Crate(%s)" % self.get_id()[0]
-        return '%s(%s)' % (self.__class__.__name__, self.get_id())
+        return f'{self.__class__.__name__}(serial={self.serial})'
 
     @classmethod
     def get_unique_instance(cls, new_class=None, serial=None, crate_number=None):
