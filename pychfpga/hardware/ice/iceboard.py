@@ -167,26 +167,24 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
                  serial=None,
                  slot=None,
                  subarray=None,
-                 fpga_ip_addr=None,
                  **kwargs):
-        """ Create or update an IceBoard object.
+        """ Create a new IceBoard instance.
 
-        If the hardware map features of the object are to be used, use
-        IceBoard.get_unique_instance(...) to create an IceBoard object (or
-        reuse one that matches the serial or hostname, with the possibility of
-        updating the class type and other Iceboard parameters)
-
+        One should generally use IceBoard.get_unique_instance(...) to obtain a
+        unique instance of an IceBoard. Is there is an existing instance
+        matching the specified hostname or serial number, that instance will
+        be returned, otherwise a new instance will be created and returned.
 
         Parameters:
 
-            hostname (str): passed to Tuber. If `hostname` is None, methods
+            hostname (str): hostname or IP address of the IceBoard ARM processor.  If `hostname` is None, methods
                 provided by the IceBoard ARM processor (over Tuber) cannot be
                 used on this instance. If `hostname` is 'None' but the
                 instance has a serial number, then the board hostname can
                 potentially be resolved using mDNS discovery.
 
             serial (str or int): Serial number of the board, in the exact
-                fromat it is found on the IPMI info of the board. For
+                format it is found on the IPMI info of the board. For
                 convenience, if `serial` is an integer, it is converted into a
                 properly formatted string serial.
 
@@ -199,15 +197,17 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
             subarray: Arbitrary value that is used to group boards in logical
                 categories.
 
+            kwargs (dict): Extra arguments that are stored in the instance for
+                use in future initialization steps.
 
         Notes:
 
-        __init__() only sets the IceBoard key parameters and manages the
-        hardware map. IceBoard objects (and their subclasses) are created and
-        destroyed freely  during the process of hardware map creation.
-        __init__() therefore shall not initiate communication with the
-        hardware or do complex set-up; this is done by init(), which will be
-        called when the hardware map is completed and stable.
+        `__init__` only creates the IceBoard instances and stores its key
+        parameters for future use.  IceBoard objects are freely created and
+        destroyed during the process of hardware map creation. `__init__`
+        therefore shall not initiate communication with the hardware or
+        perform any complex operations; this is done later by init_async()
+        once the hardware map is completed and stable.
 
         """
 
@@ -270,31 +270,23 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         Python-based application-specific FPGA firmware and hardware handler are meant to be derived
         from this class.
         """
+        print(f"IceBoard.__init__(): Creating {self.__class__.__name__}(serial={serial}, hostname={hostname}, slot={slot}, subarray={subarray}, kwargs={kwargs})")
 
-        #
-        # The solution to this is to manually control the order of the init calls.
-        print(f"Creating {self.__class__.__name__}(serial={serial}, hostname={hostname}, slot={slot}, subarray={subarray}, kwargs={kwargs})")
-
-        # Initialize the subclasses. The MRO is such that Motherboard.__init__() is called first,
-        # which sets the hostname, serial etc.
-        # It in turn then calls TuberIceboardBase.__init__ without arguments which is ok: it does not expect any.
-        # This defines:
+        # First initialize the superclasses. The MRO provides the following  __init__ call sequence:
+        #   1) Motherboard.__init__() is called first and gobbles all the arguments.
+        #   2) TuberIceboardBase.__init__() is then called without arguments. This is ok: it does not expect any.
+        # The superclasses define:
         #   logger
-        #   hostname
-        #   serial
-        #   slot
-        #   subarray
-        #   other_args
-        #   crate
-        #   mezzanine
-        #   fpga
-
+        #   hostname, serial, slot, subarray: initialized from the specified parameters
+        #   extra_args : assigned any extra arguments captured in `kwargs`
+        #   crate: set to None
+        #   mezzanine: set to an empty dict
+        #   fpga: set to None. Will be set to a FPGAFirmware instance when the FPGA is programmed.
         super().__init__(hostname=hostname, serial=serial, slot=slot, subarray=subarray, **kwargs)
 
-        # Store Iceboard-specific instance attributes
-        self.mmi = None
-        self.i2c = None
-        self.hw = None
+        # Initialize key objects
+        self.mmi = None # Memory-mapped interface object to access the FPGA registers
+        self.i2c = None # I2C interface object
 
         self._mezzanine_ipmi_cache = {1: None, 2: None}
         self._is_core_open = None
@@ -431,7 +423,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
                 eeprom_data = await self._mezzanine_eeprom_read_async(m)
                 # We used to read the EEPROM via the FPGA when the platform did not provide a raw read method.
                 # That is no longer necessary, but here's the line:
-                # eeprom_data = self.hw.read_mezzanine_eeprom(m,0,512)
+                # eeprom_data = self.read_mezzanine_eeprom(m,0,512)
             except (TuberRemoteError, AttributeError):  # If the method does not exist
                 eeprom_data = None
 
@@ -477,12 +469,6 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
             mezz_class[m] = Mezzanine.get_class_by_ipmi_part_number(part_number)
 
             if update:
-                # if not self.hwm:
-                #     raise SystemError(
-                #         '%r: detect_mezzanines(): Attempt to add new '
-                #         'mezzanine objects while the IceBoard is not yet '
-                #         'added to the  hardware map. ' % self)
-
                 if m in self.mezzanine:
                     del(self.mezzanine[m])
 
