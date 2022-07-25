@@ -46,7 +46,7 @@ class Motherboard(HardwareMap):
     def __init__(self, hostname=None, serial=None, slot=None, subarray=None, **kwargs):
         """ Create a Motherboard object.
 
-        Do not instantiate hardware map objects directly. Instead use the
+        One does not usually instantiate hardware map objects directly. Instead use the
         get_unique_instance(...) class method to ensure that objects with
         matching hostname or serial numbers will be reused if available.
 
@@ -69,33 +69,36 @@ class Motherboard(HardwareMap):
             subarray: Arbitrary value that is used to group boards in logical
                 categories.
 
+            kwargs (dict): extra arguments stored in the instance to be used
+                in future initialization steps.
 
         Notes:
 
-        __init__() only sets the object key parameters and manages the
-        hardware map and does not initiate connection with the hardware it
-        represents. Indeed, Hardware map objects (and their subclasses) can be
-        created and destroyed freely  during the process of hardware map
-        creation. __init__() therefore shall not initiate communication with
-        the hardware or do complex set-up; this is done by init(), which will
-        be called when the hardware map is completed and stable.
+            - __init__() only sets the object key parameters and manages the
+                hardware map and does not initiate connection with the hardware it
+                represents. Indeed, Hardware map objects (and their subclasses) can be
+                created and destroyed freely  during the process of hardware map
+                creation. __init__() therefore shall not initiate communication with
+                the hardware or do complex set-up; this is done by init(), which will
+                be called when the hardware map is completed and stable.
 
 
-        Board initialization is done in 4 steps:
+            - The Board initialization is done in 4 steps:
 
-            - open_platform_async() establish communication with the
-              motherboard's on-board processor. This enables access to the
-              methods provided by the motherboard.
+                - open_platform_async() establishes communication with the
+                  motherboard's on-board processor. This enables access to the
+                  methods provided by the motherboard.
 
-            - set_fpga_bitstream_async(): programs the FPGA with the target
-              firmware. The Firmware instance is created in self.fpga, but is not yet
-              usable.
+                - set_fpga_bitstream_async(): programs the FPGA with the target
+                  firmware. The Firmware instance is created in self.fpga, but is not yet
+                  usable.
 
-            - open_fpga_async() establishes the communication link with the
-              FPGA, crete the objects that handle the firmware, and provides basic management interfaces and methods.
+                - open_fpga_async() establishes the communication link with
+                  the FPGA, crete the objects that handle the firmware, and
+                  provides basic management interfaces and methods.
 
-            - init_fpga_async() initializes the firmware in the desired
-              operational state.
+                - init_fpga_async() initializes the firmware in the desired
+                  operational state.
 
 
         """
@@ -120,7 +123,7 @@ class Motherboard(HardwareMap):
         self.serial = serial
         self.slot = slot
         self.subarray = subarray
-        self.other_args = kwargs
+        self.extra_args = kwargs
 
         self.crate = None  # Crate (or backplane) object on which the motherboard is mounted
         self.mezzanine = {}  # Mezzanines attached to this motherboard ({slot:mezz_object, ...})
@@ -216,7 +219,7 @@ class Motherboard(HardwareMap):
                 that matches the specified crate number, or one is created
                 with that crate number to hold the desired crate number value.
 
-            **kwargs: Any other argument is stored in the other_args
+            **kwargs: Any other argument is stored in the extra_args
                 dictionary, and will be transferred if this instance is
                 converted into a new class.
         """
@@ -233,12 +236,14 @@ class Motherboard(HardwareMap):
         # print(f"Matches: {matching_boards}")
         if not len(matching_boards):  # no matching crate, create one
             print( # cannot use logger?
-                f"{cls!r}: Creating {new_class or cls}(serial={serial}, hostname={hostname}, "
+                f"get_unique_instance: No matching instance: creating new class {(new_class or cls).__name__}(serial={serial}, hostname={hostname}, "
                 f"slot={slot}, subarray={subarray}, kwargs={kwargs})")
             ib = (new_class or cls)(serial=serial, hostname=hostname, slot=slot, subarray=subarray, **kwargs)
-            print(f"{cls!r}: Updating Motherboard with crate_number={crate_number}")
+            print(f"get_unique_instance: New instance created. Now updating Motherboard with crate_number={crate_number}")
             return ib.update_instance(crate_number=crate_number)
+
         elif len(matching_boards) == 1:  # one match, update existing one
+            print(f"get_unique_instance: Found matching instance. Updating it with new parameters")
             return matching_boards[0].update_instance(
                 new_class=new_class,
                 serial=serial,
@@ -260,11 +265,38 @@ class Motherboard(HardwareMap):
                         crate=None,
                         **kwargs):
         """
-        Update the class, serial or hostname info of specified Motherboard
-        subclass instance. If the class needs to be changed, a new class
-        instance is created and the Motherboard references are updated to the new class.
+        Selectively change the class and/or update the parameters of this Motherboard
+        subclass instance.
+
+        If the class is changed, the parameters of the old class are copied
+        into the new class, the crate and mezzanines references are updated to
+        the new instance, and the old instance is deleted.
 
         Parameters:
+
+            new_class: Motherboard subclass into which the current instance should be moved. If `None`, the class is unchanged.
+
+            serial (str): New serial number for the instance. Unchanged if `None`.
+
+            hostname (str): New hostname for the instance. Unchanged if `None`.
+
+            slot (int): New slot number for this Motherboard instance in its Crate. Unchanged if `None`.
+               If changed, all references from Crate instances to this Motherboards are deleted and a new reference to the attached crate object for the new slot is created.
+
+            subarray (str or int): New subarray for the instance. Unchanged if `None`.
+
+            crate (Crate subclass instance): New crate object to which this Motherboard subclass instance belongs.
+                Unchanged if `None`. If changed, the Motherboard reference of the old crate is deleted.
+
+            crate_number (int): Alternate way of assigning a new crate to the
+                the Motherboard instance. If there is no crate with matching crate
+                number, a new generic crate is created.
+
+            kwargs (dict): Any extra arguments to be stored in the instance for future use in downstream initializations.
+
+        Returns:
+
+            The new and/or updated Motherboard subclass instance.
 
         """
         serial = serial or self.serial
@@ -273,9 +305,10 @@ class Motherboard(HardwareMap):
         subarray = subarray if subarray is not None else self.subarray
         crate_number = (crate_number if crate_number is not None
                         else self.crate.crate_number if self.crate else None)
-        other_args = {**self.other_args, **kwargs}
+        extra_args = {**self.extra_args, **kwargs}
         if new_class and self.__class__ is not new_class:
-            other = new_class(serial=serial, hostname=hostname, slot=slot, subarray=subarray, **other_args)
+            self.logger.debug(f"update_instance: Creating new instance with {new_class.__name__}(serial={serial}, hostname={hostname}, slot={slot}, subarray={subarray}, **{extra_args})")
+            other = new_class(serial=serial, hostname=hostname, slot=slot, subarray=subarray, **extra_args)
             self.logger.debug(f"{self!r}: Updating newly created instance...")
             other.update_instance(crate_number=crate_number, crate=self.crate)  # update crate and backrefs
             # Update Mezzanine references to the new instance
@@ -292,13 +325,13 @@ class Motherboard(HardwareMap):
             self.hostname = hostname
             self.serial = serial
             self.subarray = subarray
-            self.other_args = other_args
+            self.extra_args = extra_args
             # remove previous crate backref if it exists
             if self.crate and self.slot:
                 self.crate.slot.pop(self.slot, None)
             # Assign new slot
             self.slot = slot
-            # eattach crate by crate number if specified
+            # reattach crate by crate number if specified
             self.logger.debug(f"{self!r}: Updating with with crate_number={crate_number}...")
             if crate_number is not None:
                 self.crate = Crate.get_unique_instance(crate_number=crate_number)
