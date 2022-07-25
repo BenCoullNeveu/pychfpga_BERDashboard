@@ -490,7 +490,7 @@ class chFPGA(FPGAFirmware):
                 self.logger.debug(f"{self!r}: SFP successfully established link with autonegociation")
                 break
             else:
-                self.logger.debug(f"{self!r}: SFP autonegociation did not succeed (trial {trial+1}). SFP module might not support it. Disabling autonegociation and retrying.")
+                self.logger.debug(f"{self!r}: SFP did not respond to autonegociation on trial {trial+1}. It might not support it. Retrying without autonegociation.")
                 await self.set_sgmii_config_vector(an=False, reset=1)
                 await self.set_sgmii_config_vector(an=False, reset=0)
                 await asyncio.sleep(0.150)  # wait for autonegotiation to complete
@@ -528,8 +528,7 @@ class chFPGA(FPGAFirmware):
            fpga_control_port_number=None,
            local_control_port_number=None,
            interface_ip_addr=None,
-           udp_retries=10,
-           **kwargs):
+           udp_retries=10):
         """
         Opens communication with the FPGA, retrieves the firmware configuration information and
         create the Python objects needed to operate the firmware. If `init` =1, the :meth:`init`
@@ -544,15 +543,15 @@ class chFPGA(FPGAFirmware):
 
         Parameters:
 
-            init (int): initialization level: 1: read config and initialize
-               the FPGA with the `init()` method; 0: only read the FPGA
-               config; -1: Don<t read the FPGA and do not create the Python
-               objects.
+            init (int): initialization level: If <0, do not establish
+                communication with the FPGA. Otherwise, perform the
+                open_async() process normally. See `init_async()` to see how this this
+                parameter is also used in the following initialization step.
 
             verbose (int): verbosity level, which is passed to the `init()`
                 method.
 
-            fpga_ip_address (str): FPGA's listening IP address in the form
+            fpga_ip_addr (str): FPGA's listening IP address in the form
                 'xx.xx.xx.xx'. If None (default), the address will be obtained by
                 converting the ARM address using the function provided in
                 fpga_ip_addr_fn.
@@ -564,7 +563,7 @@ class chFPGA(FPGAFirmware):
             fpga_control_port_number (int): FPGA's listening port number for commands. Defaults to 41000. If None,
                 the local port number is used.
 
-            local_port_number (int): UDP port number to use to receive command
+            local_control_port_number (int): UDP port number to use to receive command
                 replies. If 0, the number is allocated randomly by the OS. If
                 None, a fixed number based on the crate_number and a slot number
                 will be used if available.
@@ -573,10 +572,6 @@ class chFPGA(FPGAFirmware):
                 communicate with both the ARM and FPGA. If `None`, the interface
                 will be detected automatically by establishing a connection with
                 the ARM.
-
-
-            kwargs: All remaining parameters are passed to `init()` method if
-                the `init` parameter is 1.
         """
 
         # await super().open()  # Open UDP communication link
@@ -594,12 +589,16 @@ class chFPGA(FPGAFirmware):
         # the IRIG-B generator
         self.zero_target_irigb_year_and_day = False
 
-        self.logger.debug('%r: Instantiating chFPGA firmware handlers objects' % (self))
+        self.logger.debug(f'{self!r}: Opening communication with the FPGA with parameters '
+                          f'fpga_ip_addr={fpga_ip_addr}, fpga_control_port_number={fpga_control_port_number}, '
+                          f'local_control_port_number={local_control_port_number}, interface_ip_addr={interface_ip_addr}, '
+                          f'init={init}'
+                         )
 
         # If init<0, we do not perform any communication with the FPGA, so we don't read the firmware configuration
         if init < 0:
-            self.logger.warning('%r: Upon user request (init < 0), communication with the FPGA are inhibited. '
-                              'Initialization sequence stops here. Use this for debug only.' % self)
+            self.logger.warning(f'{self!r}: Upon user request (init < 0), communication with the FPGA are inhibited. '
+                              'Initialization sequence stops here. Use this for debug only.')
             return
 
         # Open a communicaition link with the FPGA to create the BSB MMI interface
