@@ -32,7 +32,7 @@ setup(
       url='https://bitbucket.org/winterlandcosmology/pychfpga',
       author='McGill University',
       author_email='jfcliche@jfcliche.com',
-      packages=find_packages(),
+      packages=find_packages(include=['pychfpga','pychfpga.*']), # include only pychfpga and its sub-packages, nothing from qc or test folders.
       classifiers=[
               "Programming Language :: Python :: 3",
               "Operating System :: OS Independent",
