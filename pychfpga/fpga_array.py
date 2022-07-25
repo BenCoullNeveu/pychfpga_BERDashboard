@@ -1020,7 +1020,7 @@ class FPGAArray(object):
                 ####################################
                 # Program the FPGAs and open communication link to firmware
                 ####################################
-                self.logger.info(f'{self!r}: Configuring FPGAs...')
+                self.logger.info(f'{self!r}: Configuring FPGAs and connecting to them...')
                 await asyncio.gather(*[
                     self.prog_and_open_fpga(
                         ib=ib,
@@ -1030,7 +1030,8 @@ class FPGAArray(object):
                         bitfile=bitfile,
                         udp_retries=udp_retries,
                         fpga_ip_addr_fn=fpga_ip_addr_fn,
-                        interface_ip_addr=if_ip)
+                        interface_ip_addr=if_ip,
+                        **ib.extra_args)
                     for ib in self.ib])
 
 
@@ -1111,9 +1112,19 @@ class FPGAArray(object):
 
         Parameters:
 
-            ib: IceBoard handler
+            ib: IceBoard object to program and open
+
+            prog (int): 0=do not program FPGA, 1=program if needed, 2= Program always
+
+            open (int): 0 = do not connect to FPGA, 1= connecto to FPGA (call open_fpga_async(...))
+
+            mode (str): operational mode. Is needed to find the proper bitstream for the platform
+
+            bitfile (FPGABitstream): If specified, overrides the bitstream selection
 
             max_trials (int): Maximun allowed number of reprogramming and retrials before raising an error.
+
+            kwargs: Any extra argument is passed to open_fpga_async(...)
 
         Exceptions:
 
@@ -1291,9 +1302,13 @@ class FPGAArray(object):
 
                    {"class": class_name, "arg1":arg1, ...}
 
-                ``class_name`` is a string describing the name of of a Motherboard or Crate subclass.
+                ``class_name`` is a string describing the name of a Motherboard or Crate subclass (e..g IceBoard, ZCU111, IceCrate etc.).
 
-                ``"arg1":arg1`` are the arguments passed to the class constructor.
+                ``"arg1":arg1`` are the arguments passed to the class
+                constructor. Arguments that are not needed directly by the
+                class constructor are stored by that constructor to be used
+                later as arguments for further initializing the platform or
+                the FPGA.
 
         Returns:
             Nothing. The new objects are added in the instance registry of each hardware base class.
@@ -1311,33 +1326,34 @@ class FPGAArray(object):
         """
         self.logger.debug(f'{self!r}: Creating Hardware Map from list {hwm}')
         # self.hwm = []  # Create empty hardware map
-        icecrate_classes = {c.__name__: c for c in Crate.get_all_classes()}
-        iceboard_classes = {c.__name__: c for c in Motherboard.get_all_classes()}
+        crate_classes = {c.__name__: c for c in Crate.get_all_classes()}
+        mb_classes = {c.__name__: c for c in Motherboard.get_all_classes()}
 
         # First pass: check 1) if the class names are valid and 2) create the crate instances
         for hwm_entry in hwm:
             params = dict(hwm_entry)  # make a copy, we'll modify it below
-            class_name = params.pop('class')
-            # check if the class name is valid
+            class_name = params.pop('class') # exctract the class name entry
 
-            if class_name not in icecrate_classes and class_name not in iceboard_classes:
-                valid_class_names = ','.join(list(icecrate_classes) + list(iceboard_classes))
+            # check if the class name is valid
+            if class_name not in crate_classes and class_name not in mb_classes:
+                valid_class_names = ','.join(list(crate_classes) + list(mb_classes))
                 raise ValueError(f"Unknown class name '{class_name}' in a list-based hardware map. "
                                  f"Valid class names are: {valid_class_names}")
             # It it is a crate, create an instance
-            if class_name in icecrate_classes:
+            if class_name in crate_classes:
                 # Create the class: it will be registered in the class registry for future use
                 # The crate can have a serial number, crate number, or both
-                Crate.get_unique_instance(new_class=icecrate_classes[class_name], **params)
+                Crate.get_unique_instance(new_class=crate_classes[class_name], **params)
+
         # Second pass: Create the IceBoards, and link them to the crates
         for hwm_entry in hwm:
             self.logger.debug(f'Processing hwm entry {hwm_entry}')
 
             params = dict(hwm_entry)  # make a copy
             class_name = params.pop('class')
-            if class_name in iceboard_classes:
-                self.logger.debug(f"Calling getuniqueinstance class={class_name}")
-                ib = Motherboard.get_unique_instance(new_class=iceboard_classes[class_name], **params)
+            if class_name in mb_classes:
+                self.logger.debug(f"process_list_hwm: Calling get_unique_instance(new_class={class_name}, {params}")
+                ib = Motherboard.get_unique_instance(new_class=mb_classes[class_name], **params)
                 # self.logger.debug('%r: Crate %r is in %r' % (self, crate_number, params))
 
     def process_str_hwm(self, hwm):
