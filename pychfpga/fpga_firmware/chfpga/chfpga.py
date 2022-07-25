@@ -301,7 +301,7 @@ class chFPGA(FPGAFirmware):
         self.recv = None
         self.mmi = None
 
-
+        self.PLATFORM_ID = None # Platform will be identified once communication is established with the FPGA. Might be called by get_metrics() before that.
 
     def get_id(self, lane=None):
         return self.mb.get_id(lane=lane)
