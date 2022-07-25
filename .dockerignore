@@ -3,5 +3,9 @@
 /old_scripts
 /sim
 /tests
+/unused
+/ice-qc
 **/arm_firmware
 Dockerfile
+docker-compose.yaml
+.dockerignore

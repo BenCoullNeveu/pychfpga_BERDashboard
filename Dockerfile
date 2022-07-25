@@ -43,9 +43,6 @@ RUN set -ex \
 ########################################################
 FROM base as pychfpga_install
 
-RUN pip install --upgrade pip
-RUN pip install wheel
-
 #    && git clone git@bitbucket.org:winterlandcosmology/pychfpga.git --depth 1 --branch jfc/dev --single-branch /pychfpga \
 #    && git clone git@bitbucket.org:chime/ch_config.git --depth 1 --branch jfc/dev --single-branch /ch_config
 
@@ -54,11 +51,19 @@ WORKDIR /pychfpga
 
 # Setup the virtual environment
 # We install the python packages in there so all the install products are in a single place so we can copy them in the final image
+# We don't use 'source/pychfpga/.venv/bin/activate' because the 'sh' does not have the source command.
+# Instead we just set the same environment variable that 'activate' does.
 ENV VIRTUAL_ENV=/pychfpga/.venv
 RUN python -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Pre-install requirements since these change very rarely
+# Update pip and install wheel in the vitrual environment to prevent warnings
+RUN --mount=type=ssh \
+    set -ex \
+    && pip install --upgrade pip \
+    && pip install wheel
+
+# Pre-install pychfpga requirements since these change very rarely
 COPY requirements.txt .
 RUN --mount=type=ssh \
     set -ex \
@@ -67,7 +72,7 @@ RUN --mount=type=ssh \
 
 # Install pychfpga repo. This step is re-done every time any of the files in the repo changes
 # pip still checks all of the dependencies (which means accessing the repo for private packages),
-# but then all those should already have been cached in the previous image stage
+# but then all those should already have been cached in the previous layer
 COPY . .
 RUN --mount=type=ssh set -ex \
     && pip install .
@@ -85,7 +90,7 @@ ENV VIRTUAL_ENV=/pychfpga/.venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # Exposing ports normally used by the application
-EXPOSE 54321-54330
+EXPOSE 54321-54324 54326/UDP 5353/UDP 6000-6511/UDP
 
 COPY --from=pychfpga_install $VIRTUAL_ENV $VIRTUAL_ENV
 
