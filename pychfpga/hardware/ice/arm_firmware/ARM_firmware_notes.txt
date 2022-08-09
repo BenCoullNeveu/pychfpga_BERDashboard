@@ -5,15 +5,31 @@ R11.3a: removed dfmux libs and firmware. libicecore.so does not support MGK7BP16
 R11.3b: Fix backplane part number recognition with new libicecore.so. Can't read clock source
 R11.3c: new uimage (uimage.old1) that properly sets direction. Boot hangs.
 R11.3d: new uimage (uimage.d) that sets pulldowns instead of pullups. Boot hangs.
-
+R11.3f: New MLO with 2s delay
+R11.3f2: Same, but built with new tool
+R11.3f3: Added linux boot delay
 
 
 
 Mount filesystem partition
-sudo mount -o loop,offset=32000512 dfmux_release_11.3b.img mnt/
+fdisk -l dfmux_release_11.3e.img
+	Disk dfmux_release_11.3e.img: 384 MiB, 402653184 bytes, 786432 sectors
+	Units: sectors of 1 * 512 = 512 bytes
+	Sector size (logical/physical): 512 bytes / 512 bytes
+	I/O size (minimum/optimal): 512 bytes / 512 bytes
+	Disklabel type: dos
+	Disk identifier: 0xe5abd18b
+
+	Device                   Boot Start    End Sectors   Size Id Type
+	dfmux_release_11.3e.img1 *     1953  62500   60548  29.6M  c W95 FAT32 (LBA)
+	dfmux_release_11.3e.img2      62501 786431  723931 353.5M 83 Linux
+
+Multiply start by 512: 62501*512 = 32000512
+
+sudo mount -o loop,offset=32000512 dfmux_release_11.3e.img mnt/
 
 Mount FAT boot partition:
-sudo mount -o loop,offset=999936 dfmux_release_11.3d.img mnt/
+sudo mount -o loop,offset=999936 dfmux_release_11.3e.img mnt/
 
 Unmount:
 sudo umount mnt/
@@ -29,9 +45,48 @@ cp libiceboard.so mnt/usr/share/tuber/
 R11.3c:
 R11.3d
 Mount FAT
-copy uiage
+copy uimage
 
 
 R11.3e:
 
+BOOT:
+sudo mount -o loop,offset=999936 dfmux_release_11.3e.img mnt/
+cp uImage mnt/
+
+sha1sum uImage ../R11.3e/uImage
+0a4545fe3191536a1515293d75d43e8e2ffb27c4  uImage
+0a4545fe3191536a1515293d75d43e8e2ffb27c4  ../R11.3e/uImage
+
+
+FILESYSTEM:
+
+sudo mount -o loop,offset=32000512 dfmux_release_11.3e.img mnt/
+rm mnt/usr/share/tuber/libdfmux.so
+rm mnt/usr/lib/iceboard/dfmux_mgk7mb_mgmezz04.bit
+cp libiceboard.so mnt/usr/share/tuber/
 sudo cp S60blink mnt/etc/init.d/
+
+e5401a4f4677272e0646b25fb8e59e3a093c958a  /home/lbuser/jfcliche/iceboard_arm_firmware/R11.3e/libiceboard.so
+
+
+Checking images
+
+sha1sum ~/jfcliche/pychfpga/pychfpga/arm_firmware/Chime_R11.3e.img.bz2 dfmux_release_11.3e.img.bz2
+cb50768460d11d84b01ec6e13b05fc02ac3e3afc  /home/lbuser/jfcliche/pychfpga/pychfpga/arm_firmware/Chime_R11.3e.img.bz2
+72ab7cc4c410bc6d574109b286693412f8f27a8d  dfmux_release_11.3e.img.bz2
+Not the same!
+
+R11.3f:
+New MLO with 2s delay
+
+R11.3g:
+New MLO and uboot.bin: added linux boot delay and fast SD card error fix
+
+Commands:
+	cd R11.3g
+	sudo mount -o loop,offset=999936 dfmux_release_11.3g.img mnt/
+	sudo cp MLO mnt/
+	sudo cp u-boot.bin mnt/
+	sudo umount mnt/
+	bzip2 -k dfmux_release_11.3g.img
