@@ -28,7 +28,7 @@ See https://www.openssh.com/legacy.html or other ways to deal with old key excha
 See content of SPI flash
 ------------------------
 
-SSH into a board nd execute:
+SSH into a board and execute:
 
 	hexdump -C -vn 512 ./mtd0
 
@@ -40,9 +40,11 @@ mtd4 seems to store IPMI board information.
 Program SPI flash bootloader
 ----------------------------
 
+The IceBoard can boot off the on-board SPI flash, but the space is limited. This is used by DfMux applications to load a bootloader than then performs a netboot.
+
 As an indication, here is how a SPI flash bootloader is programmed.
 
 	/usr/bin/flashcp /tmp/u-boot.min.spieth.spi /dev/mtd0
 
-See mcgillcosmology.com/pydfmux/master/firmware/release_notes.html page or pydfmux/docs/firmware/firmware.rst repo.
+For more info, see mcgillcosmology.com/pydfmux/master/firmware/release_notes.html page or pydfmux/docs/firmware/firmware.rst repo.
 
