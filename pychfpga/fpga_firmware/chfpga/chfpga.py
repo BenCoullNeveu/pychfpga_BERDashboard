@@ -1123,26 +1123,6 @@ class chFPGA(FPGAFirmware):
             self.mmi.write(self.mmi._RAM_BASE_ADDR + 4 * addr, value.to_bytes(4, 'little'))
 
 
-    # ------------------------------------
-    # FPGA SPI Memory-mapped interface
-    # ------------------------------------
-
-    async def fpga_core_reg_read_async(self, addr):
-        """ Read a single 32-bit word from the FPGA at the specified byte
-        address. This uses the fastest interface available (currently the ARM-
-        FPGA SPI link)
-
-        Value is returned as an unsigned integer.
-        """
-        word = await self.mb._tuber_fpga_spi_peek_async(addr)
-        return word & 0xFFFFFFFF
-
-    async def fpga_core_reg_write_async(self, addr, value):
-        """ Write a single 32-bit word to the FPGA at specified byte address.
-        This uses the fastest interface available (currently the ARM-FPGA SPI
-        link)
-        """
-        await self.mb._tuber_fpga_spi_poke_async(addr, value)
 
 
     # Bitstream management
@@ -1389,8 +1369,8 @@ class chFPGA(FPGAFirmware):
         """
 
         # self.logger.warning("%r: Resetting %s FPGA's UDP communication stack" % (self, self.hostname))
-        await self.fpga_core_reg_write_async(self._SFP_STATUS_ADDR, 3 << 30)
-        await self.fpga_core_reg_write_async(self._SFP_STATUS_ADDR, 0 << 30)
+        await self.mb.fpga_core_reg_spi_write_async(self._SFP_STATUS_ADDR, 3 << 30)
+        await self.mb.fpga_core_reg_spi_write_async(self._SFP_STATUS_ADDR, 0 << 30)
         self.mmi.send_counter = 0
 
 
@@ -1433,7 +1413,7 @@ class chFPGA(FPGAFirmware):
         if an_trig:
             # await self.fpga_core_reg_write_async(18 * 4, val | (1 << 30))
             val |= 1 << 30
-        await self.fpga_core_reg_write_async(18 * 4, val)
+        await self.mb.fpga_core_reg_spi_write_async(18 * 4, val)
         return val
 
     async def get_sgmii_status_vector(self):
@@ -1444,6 +1424,7 @@ class chFPGA(FPGAFirmware):
         This is called before the UDP MMI interface exists and therefore uses the ARM-FPGA SPI link.
 
         """
+        val = await self.mb.fpga_core_reg_spi_read_async(19 * 4)
         print(f'link={bool(val&1)}, sync={bool(val&(1<<1))}, RUDI={(val>>2)&(0b11111):05b}, PHY={(val>>7)&1}, ERR={(val>>13)&1} ERRCODE={(val>>8)&3:02b},speed={(val>>10)&3:02b}, duplex={(val>>12)&1}, pause={(val>>14)&3:02b}')
         return val
 
@@ -1540,12 +1521,13 @@ class chFPGA(FPGAFirmware):
         # self.fpga_control_port_number = fpga_port_number
         # self.fpga_ip_addr = fpga_ip_addr
 
+
         # Set the FPGA Networking parameters over the ARM-FPGA SPI interface
-        await self.fpga_core_reg_write_async(self._FPGA_MAC_ADDR_LSW_ADDR, struct.unpack('>I', mac_packed[2:6])[0])
-        await self.fpga_core_reg_write_async(
+        await self.mb.fpga_core_reg_spi_write_async(self._FPGA_MAC_ADDR_LSW_ADDR, struct.unpack('>I', mac_packed[2:6])[0])
+        await self.mb.fpga_core_reg_spi_write_async(
             self._FPGA_MAC_ADDR_MSW_IP_PORT_ADDR,
             (struct.unpack('>H', mac_packed[0:2])[0] << 16) | fpga_port_number)
-        await self.fpga_core_reg_write_async(self._FPGA_IP_ADDR_ADDR, struct.unpack('>I', ip_packed)[0])
+        await self.mb.fpga_core_reg_spi_write_async(self._FPGA_IP_ADDR_ADDR, struct.unpack('>I', ip_packed)[0])
 
         return fpga_mac_addr
 

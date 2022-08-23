@@ -828,7 +828,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         is_fpga_programmed = await self.is_fpga_programmed_async()
         if not is_fpga_programmed:
             return None
-        crc = await self.fpga_spi_mmi_read_async(self.FPGA_FIRMWARE_CRC32_ADDR)
+        crc = await self.fpga_core_reg_spi_read_async(self.FPGA_FIRMWARE_CRC32_ADDR)
         return crc
         # return self._bitstream_crc
 
@@ -840,10 +840,10 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         """
         if (await self.is_fpga_programmed_async()):
             # self._bitstream_crc = crc32
-            await self.fpga_spi_mmi_write_async(self.FPGA_FIRMWARE_CRC32_ADDR, crc32)
+            await self.fpga_core_reg_spi_write_async(self.FPGA_FIRMWARE_CRC32_ADDR, crc32)
         else:
             # self._bitstream_crc = None
-            await self.fpga_spi_mmi_write_async(self.FPGA_FIRMWARE_CRC32_ADDR, 0)
+            await self.fpga_core_reg_spi_write_async(self.FPGA_FIRMWARE_CRC32_ADDR, 0)
 
 
     # ------------------------------------
@@ -875,13 +875,19 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
 
             32-bit value read at specified core register address. Value is returned as an unsigned integer.
         """
-        word = await self._tuber_fpga_spi_peek_async(addr)
-        return(word & 0xFFFFFFFF)
+        print(f'Reading core reg via SPI at {addr:03X}')
 
-    async def fpga_spi_mmi_write_async(self, addr, value):
+        assert not (addr & 3), "Core register address is not a multiple of 4 bytes"
+        word = await self._tuber_fpga_spi_peek_async(addr)
+        return word & 0xFFFFFFFF
+
+    async def fpga_core_reg_spi_write_async(self, addr, value):
         """ Write a single 32-bit word to the FPGA core register at specified byte address.
         This uses the ARM-FPGA SPI link)
         """
+        print(f'Writing core reg via SPI at {addr:03X}')
+
+        assert not (addr & 3), "Core register address is not a multiple of 4 bytes"
         await self._tuber_fpga_spi_poke_async(addr, value)
 
 
