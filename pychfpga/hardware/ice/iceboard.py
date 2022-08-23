@@ -547,6 +547,11 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
     # -- Motherboard info
     # --------------------------
 
+
+    async def get_motherboard_ip_address(self):
+        """ Return the IP address of the ARM processor on the IceBoard """
+        return await self._tuber_get_arm_ip_async()
+
     # --------------------------
     # -- Platform metrics
     # --------------------------

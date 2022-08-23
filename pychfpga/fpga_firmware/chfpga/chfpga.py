@@ -439,7 +439,7 @@ class chFPGA(FPGAFirmware):
         # replace a.b.c.d by a.b.3.d. We need to find a more generic mechanism
         # for this (like obtaining another IP from the DHCP server)
         if not self.fpga_ip_addr:
-            ip_packed = socket.inet_aton(await self.mb._tuber_get_arm_ip_async())
+            ip_packed = socket.inet_aton(await self.mb.get_motherboard_ip_address())
             ip_tuple = tuple(c for c in ip_packed)
             ip_packed = bytes(self.fpga_ip_addr_fn(*ip_tuple))
             # ip_packed = ip_packed[:2] + chr(3) + ip_packed[3]
