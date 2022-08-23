@@ -4601,7 +4601,7 @@ class chFPGA(FPGAFirmware):
             crate_shuffle_bypass=1,
 
             remap=True,
-            chan8_channel_map=list(range(16)),
+            chan8_channel_map=list(range(8)),
             send_flags=True):
         """ Initializes the Corner Turn engine in the specified operation mode.
 
@@ -4702,7 +4702,7 @@ class chFPGA(FPGAFirmware):
             remap (bool). Defaults to True
 
             chan8_channel_map (list) : channel remapping to be used in `chan8` mode. Defaults to the
-                identity map (range(16))
+                identity map (range(8))
 
             send_flags (bool): If False, the Scaler and Frame flags will not be sent.
 
@@ -4846,7 +4846,7 @@ class chFPGA(FPGAFirmware):
             # 2nd Crossbar
             #############################
             # Bypassed. Lanes are reordered to select which of the 8 channelizers we want to forward.
-            cb2_lane_map = chan8_channel_map  # Here we could select which 8 inputs we want to stream to the GPU
+            cb2_lane_map = np.hstack((chan8_channel_map, chan8_channel_map))  # Here we could select which 8 inputs we want to stream to the GPU
             cb2_bypass = True
             cb2_bin_select_map = [[]] * number_of_cb2_bin_sel
 
