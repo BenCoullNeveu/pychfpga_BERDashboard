@@ -544,7 +544,11 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         return icecrate_class
 
     # --------------------------
-    # -- Pure ARM metrics
+    # -- Motherboard info
+    # --------------------------
+
+    # --------------------------
+    # -- Platform metrics
     # --------------------------
 
     async def _get_motherboard_metrics_async(self):
@@ -838,27 +842,40 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
 
 
     # ------------------------------------
-    # FPGA SPI Memory-mapped interface
+    # FPGA core register access methods (through the SPI ARM-FPGA link)
     # ------------------------------------
+    #  Methods to read and write FPGA's core registers through the SPI link
+    #  between the ARM the the FPGA. These methods are specific to the
+    #  IceBoard, and are used when access to the core registers is required
+    #  when the MMI interface is not yet operational.
+    #
+    #  For the IceBoard, these methods are typically used to:
+    #
+    #    - Read and write the FPGA firmware CRC that is programmed into the FPGA
+    #    - Setup the FPGA's UDP networking over which the MMI interface will be established.
+    #
+    #  The core registers are also mapped into an address space accessible through the MMI interface.
+    #  Apart from the exceptions listed above, core registers are typically accessed through this much faster MMI interface.
 
-    # *** JFC: Those methods can be updated one day to use the direct (non-
-    #     Tuber) links to the FPGA (on separate socket, forwarded to the FPGA
-    #     through SPI or PCIe). Otherwise we fallback to the slower tuber MMI
-    #     interface.
-    async def fpga_spi_mmi_read_async(self, addr):
-        """ Read a single 32-bit word from the FPGA at the specified byte
-        address. This uses the fastest interface available (currently the ARM-
-        FPGA SPI link)
+    async def fpga_core_reg_spi_read_async(self, addr):
+        """ Read a single 32-bit word from the FPGA core register at the specified byte
+        address. This uses the ARM-FPGA SPI link.
 
-        Value is returned as an unsigned integer.
+
+        Parameters:
+
+            addr (int): byte address to read from in the core register memory space. This address must be a multiple of 4.
+
+        Returns:
+
+            32-bit value read at specified core register address. Value is returned as an unsigned integer.
         """
         word = await self._tuber_fpga_spi_peek_async(addr)
         return(word & 0xFFFFFFFF)
 
     async def fpga_spi_mmi_write_async(self, addr, value):
-        """ Write a single 32-bit word to the FPGA at specified byte address.
-        This uses the fastest interface available (currently the ARM-FPGA SPI
-        link)
+        """ Write a single 32-bit word to the FPGA core register at specified byte address.
+        This uses the ARM-FPGA SPI link)
         """
         await self._tuber_fpga_spi_poke_async(addr, value)
 

@@ -356,9 +356,11 @@ class chFPGA(FPGAFirmware):
                 f"{self!r}: The FPGA is not programmed with a bitstream. "
                 f'Cannot open link with the FPGA and initialize it')
 
-        # discover ethernet interface through which we communicate withthe motherboard. We will use the same interface to listen to data.
+        # Discover ethernet interface through which we communicate withthe
+        # motherboard. We will use the same interface to listen to data.
         self.set_interface_ip_address()
 
+        # Creates the MMI interface and open communications to the FPGA through it.
         if self.mb.part_number == "ZCU111":
             self.mmi = TCPipe_BSB_MMI(self.mb.tcpipe)
         elif self.mb.part_number == "MGK7MB":
@@ -372,10 +374,10 @@ class chFPGA(FPGAFirmware):
             self.mmi = None
 
     def set_interface_ip_address(self):
-        """Sets the IP address of the interface through which the
-        board communicates with the motherboard, if this interface is not yet defined.
+        """Sets the IP address of the interface through which the host running pychfpga
+        communicates with the motherboard, if this interface is not yet defined.
 
-        This sets the ``self.interface_ip_addr`` attributes. The interface is not changes if it already is non-zero.
+        This sets the ``self.interface_ip_addr`` attribute. The interface is not changes if it already is non-zero.
 
         The interface if obtained by opening a TCP socket to the motherboard processor and inspecting the
         socket that was used.
@@ -395,8 +397,19 @@ class chFPGA(FPGAFirmware):
             else:
                 self.interface_ip_addr = None
 
+
+
+
+    ######################################################
+    # Firmware UDP stack methods
+    ######################################################
+    # These methods are used to set-up and operate the firmware UDP stack and
+    # use it to establish a UDP-based FPGA MMI interface.
+
     async def open_udp_mmi_async(self):
         """ Setup the FPGA UDP communication and return a mmi object.
+
+        IceBoard only.
         """
 
         self.logger.debug(f'{self!r}: Opening UDP connection to the FPGA')
@@ -1087,18 +1100,14 @@ class chFPGA(FPGAFirmware):
     # Core registers access methods
     ###################################
     """
-    Core registers is a set of 32-bit registers that were traditionally
-    accessed only through an external SPI link and were not part of the
-    general memory mapped interface of chFPGA.
+    Core registers is a set of 32-bit registers that can be
+    accessed both through the MMI interface AND through an external SPI link.
 
-    In modern chFPGA firmware, these registers are now also accessible through
-    the general MMI through a specific address range (to be more specific,
-    they were mapped as a RAM page for the GPIO module). This allows faster access.
+    When using the MMI interface, the core registers are mapped as a RAM page for the GPIO module.
 
     On some platforms (like the IceBoard), the SPI link is necessary at
-    startup to configure the memory mapped interface (i.e. set-up the FPGA's
-    UDP networking parameters). Once the MMI is set-up, direct MMI access to
-    the core registers is possible.
+    startup to configure the FPGA's networking stack, which is used to establish the MMI interface.
+
     """
 
     async def fpga_core_reg_read_async(self, addr):
@@ -1140,6 +1149,8 @@ class chFPGA(FPGAFirmware):
 
     async def get_fpga_core_cookie(self):
         """ Return the core FPGA firmware cookie. Should always be 0xBEEFFACE.
+
+        The cookie is obtained from a core register via the MMI interface.
         """
         if not (await self.is_fpga_programmed_async()):
             return None
@@ -1147,7 +1158,10 @@ class chFPGA(FPGAFirmware):
         return cookie
 
     async def get_fpga_application_cookie(self):
-        """ Return the application-specific FPGA firmware cookie. """
+        """ Return the application-specific FPGA firmware cookie.
+
+        The cookie is obtained from a core register via the MMI interface.
+        """
         if not (await self.is_fpga_programmed_async()):
             return None
         cookie = await self.fpga_core_reg_read_async(self.FPGA_APPLICATION_FIRMWARE_COOKIE_ADDR)
@@ -1155,7 +1169,8 @@ class chFPGA(FPGAFirmware):
 
     async def get_fpga_serial_number(self):
         """ Return the FPGA serial number, as read from the FPGA's core
-        firmware throught the MMI interface. """
+        register through the MMI interface.
+        """
         fpga_serial_number = (
             (await self.fpga_core_reg_read_async(self.FPGA_SERIAL_NUMBER_LSW_ADDR)) |
             (await (self.fpga_core_reg_read_async(self.FPGA_SERIAL_NUMBER_MSW_ADDR) << 32))
@@ -1166,6 +1181,12 @@ class chFPGA(FPGAFirmware):
     async def get_fpga_firmware_timestamp(self):
         """ Returns a string containing the date-time of the currrent firmware
         bitstream.
+
+        The value is retreived from the core register that exposes the
+        USER_ACCESS field embedded in the firmware, which is set in Vivado to
+        encode the bitstream generation time.
+
+        The USER_ACCESS field is accessed through a core register read via the MMI interface.
         """
         timestamp = await self.fpga_core_reg_read_async(self.FPGA_FIRMWARE_TIMESTAMP_ADDR)
         seconds = (timestamp >> 0) & 0x3F
@@ -1190,6 +1211,11 @@ class chFPGA(FPGAFirmware):
         except IOError:
             return False
 
+
+
+    ############################
+    # ICEBoard-specific methods
+    ############################
     UDP_STATUS_VECT_BITS = [
             # Name, lsb pos, width
             ('tx_fifo_overflow', 17, 1),
@@ -1204,6 +1230,9 @@ class chFPGA(FPGAFirmware):
 
     async def get_fpga_udp_metrics_async(self):
         """
+
+        UDP metrics obtained from a core register via the MMI interface.
+
         """
         if not self.is_open():
             return metrics
@@ -1230,11 +1259,15 @@ class chFPGA(FPGAFirmware):
         return metrics
 
     async def get_udp_status_async(self):
+        """ Return a dictionary describing the status bits of the SGMII/1000BASE-X interface.
+        """
         vect = await self.fpga_core_reg_read_async(self._SFP_STATUS_ADDR)
         return {name: ((vect >> pos) & (2**width-1)) for name, pos, width in self.UDP_STATUS_VECT_BITS}
 
     async def clear_fpga_udp_errors(self, force=False, no_reset=False, max_trials=3):
         """ Attempts to clear the FPGA UDP communication errors.
+
+        IceBoard only.
 
         Parameters:
 
@@ -1348,6 +1381,13 @@ class chFPGA(FPGAFirmware):
         return valid
 
     async def reset_fpga_udp_stack(self):
+        """
+
+        IceBoard only.
+
+        This method uses the IceBoard ARM-FPGA SPI link to access the core registers since access through UDB packsts might not work.
+        """
+
         # self.logger.warning("%r: Resetting %s FPGA's UDP communication stack" % (self, self.hostname))
         await self.fpga_core_reg_write_async(self._SFP_STATUS_ADDR, 3 << 30)
         await self.fpga_core_reg_write_async(self._SFP_STATUS_ADDR, 0 << 30)
@@ -1359,7 +1399,9 @@ class chFPGA(FPGAFirmware):
             los=0, fault=0, an_trig=False, loopback=0, speed=2):
         """
 
+        This is an IceBoard-specific method.
 
+        This is called before the UDP MMI interface exists and therefore uses the ARM-FPGA SPI link.
 
             bit 0: 1000BASE-X:0, SGMII=1
             bit 5: 1000BASE-X: full duplex
@@ -1395,7 +1437,13 @@ class chFPGA(FPGAFirmware):
         return val
 
     async def get_sgmii_status_vector(self):
-        val = await self.fpga_core_reg_read_async(19 * 4)
+        """
+
+        This is an IceBoard-specific method.
+
+        This is called before the UDP MMI interface exists and therefore uses the ARM-FPGA SPI link.
+
+        """
         print(f'link={bool(val&1)}, sync={bool(val&(1<<1))}, RUDI={(val>>2)&(0b11111):05b}, PHY={(val>>7)&1}, ERR={(val>>13)&1} ERRCODE={(val>>8)&3:02b},speed={(val>>10)&3:02b}, duplex={(val>>12)&1}, pause={(val>>14)&3:02b}')
         return val
 
@@ -1413,6 +1461,10 @@ class chFPGA(FPGAFirmware):
         This method sets the FPGA's listening addresses while assuming that the FPGA's is in
         addressing mode "00" (the default addressing mode),  which means that the channel 0
         IP/PORT/MAC will be set through the ARM-FPGA SPI registers [Note1].
+
+        This method is IceBoard-specific and uses the SPI link between its ARM
+        and the FPGA to write the core registers. This method can therefore be
+        called before the UDP MMI interface is initialized.
 
         Parameters:
 
@@ -4996,9 +5048,9 @@ class chFPGA(FPGAFirmware):
             In this mode, crossbar1 merges 16 channelizer outputs into 8
             output lanes, with 128 bins per lane, like 'shuffle16'. However,
             we do not bypass the backplane PCB shuffle. The lanes that end up
-            in one of the 8 populated slots are used. The backplane data rate is close to the limit (7.5 Gbps).
+            in one of the 8 populated slots are used. The backplane data rate is close to the limit (7.5 Gbps). We cannot send the flags due to bandwidth limitations.
 
-            Crossbar2 remaps the 8 received lanes. Crossbar 2 doubles the data rate, so we can't use it and is bypassed.
+            Crossbar2 remaps the 8 received lanes only. Crossbar 2 bin selectors doubles the data rate, so we can't use them and they are bypassed.
 
             Crossbar3 operates as in shuffle512: data from 8 input lanes is sent to the 8 output GPU lanes. We have 16 bins per lane.
             """
@@ -5032,7 +5084,7 @@ class chFPGA(FPGAFirmware):
                     np.arange(cb1_bins) * cb1_bin_spacing + (i % cb1_bin_spacing)
                     for i in range(number_of_cb1_bin_sel)]
             cb1_combine_data_flags = 0 # we cannot combine the flags of two bins because we further bin-select them in crossbar 3
-            send_flags = False # There is not enough bandwidth on the backplane to send uncombined flags
+            send_flags = False  # There is not enough bandwidth on the backplane to send uncombined flags
             cb1_output_words_per_bin = 4
             cb1_output_bins = cb1_bins
             cb1_input_lanes_per_output_lane = 16
@@ -5091,7 +5143,7 @@ class chFPGA(FPGAFirmware):
             #############################
             # 3rd Crossbar
             #############################
-            # Crossbar 2 partially combined the channels in a way that
+            # Crossbar 2 just passed the 8 lanes from the 8 boards, reordered by slot number origin
             # Crossbar 3 can finish the job, i.e. channels are spread over its
             # 8 input links.
 
