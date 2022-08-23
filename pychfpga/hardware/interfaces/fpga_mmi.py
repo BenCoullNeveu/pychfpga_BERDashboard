@@ -321,7 +321,7 @@ class FPGAMmi(BSB_MMI):
                     #             "Resynchronizing and retrying to make sure."
                     # else:
                 elif len(data) != expected_reply_length + 1:
-                    error = "FPGA Read command to returned %i bytes (0x%s). %i were expected." % (
+                    error = "FPGA Read command returned %i bytes (0x%s) while %i were expected." % (
                         len(data),
                         ' '.join('%02X' % b for b in data),
                         expected_reply_length + 1)
