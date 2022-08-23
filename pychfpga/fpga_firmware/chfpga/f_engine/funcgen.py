@@ -89,6 +89,7 @@ class FUNCGEN(MMI):
     FUNCTION_NAMES = {  # key : (function number, buffer generator fn)
 
         # The following define the patterns we can program in the waveform buffer
+        # reminder: byte ordering is lost after operators (>>, /, +, & etc). Use N//2 to make sure  the arange is of integer type.
         'arb':            (0, lambda data, self=None, N=BUFFER_SIZE: data),  # Arbitrary waveform stored in buffer
         'a':              (1, lambda a, self=None, N=BUFFER_SIZE: np.tile(np.uint8(a), N)),  # All bytes are Byte A
         'b':              (2, lambda b, self=None, N=BUFFER_SIZE: np.tile(np.uint8(b), N)),  # All bytes are Byte B
@@ -103,6 +104,7 @@ class FUNCGEN(MMI):
         #'crate':          (10, lambda self, N=BUFFER_SIZE: np.tile(np.array([self.get_id()[0]<<4, 0], np.uint8), N / 2)),  # Bytes alternate between crate number (in upper 4 bits) and 0. If FFT and scaler are bypassed, then the complex data has the crate number in the real part.
         'freq_test':      (10, freq_test),
         'one':            (11, one),
+        '4bit_complex_ramp': (12, lambda self=None, N=BUFFER_SIZE: (((np.arange(N // 2) & 0xf0) << 8) + ((np.arange(N // 2) & 0xf) << 4)).astype('>u2').view('u1')),  # Generates the ramp: 0x00, 0x00, 0x00, 0x10, 0x00, 0x20 ... 0xF0, 0xF0. The corner turn interpret these as (0+0j), (0+1j,) ...  (0+15j), (1+0j), ... (15+15j)
         }
 
     buffer_cache = None
