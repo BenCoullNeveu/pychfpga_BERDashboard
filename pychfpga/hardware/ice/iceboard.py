@@ -875,7 +875,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
 
             32-bit value read at specified core register address. Value is returned as an unsigned integer.
         """
-        print(f'Reading core reg via SPI at {addr:03X}')
+        # print(f'Reading core reg via SPI at {addr:03X}')
 
         assert not (addr & 3), "Core register address is not a multiple of 4 bytes"
         word = await self._tuber_fpga_spi_peek_async(addr)
@@ -885,7 +885,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         """ Write a single 32-bit word to the FPGA core register at specified byte address.
         This uses the ARM-FPGA SPI link)
         """
-        print(f'Writing core reg via SPI at {addr:03X}')
+        # print(f'Writing core reg via SPI at {addr:03X}')
 
         assert not (addr & 3), "Core register address is not a multiple of 4 bytes"
         await self._tuber_fpga_spi_poke_async(addr, value)
