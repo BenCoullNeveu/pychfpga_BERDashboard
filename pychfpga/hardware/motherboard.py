@@ -497,6 +497,14 @@ class Motherboard(HardwareMap):
         self._cached_repr = None
 
     # *************************
+    # Motherboard info
+    # *************************
+
+    async def get_platform_ip_address(self):
+        """ Return the IP address of the motherboard """
+        raise NotImplementedError('This method must be implemented by a subclass')
+
+    # *************************
     # FPGA Programming methods
     # *************************
 
