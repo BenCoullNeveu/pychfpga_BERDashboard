@@ -5067,6 +5067,7 @@ class chFPGA(FPGAFirmware):
             cb1_four_bit = True
             # Bin selectors grab data from all lanes
             cb1_lanes = [(0, 3)] * number_of_cb1_bin_sel
+
             # Set the bins selected by each bin selector
             if cb1_bin_indices:
                 cb1_bin_select_map = cb1_bin_indices
@@ -5083,6 +5084,14 @@ class chFPGA(FPGAFirmware):
                 cb1_bin_select_map = [
                     np.arange(cb1_bins) * cb1_bin_spacing + (i % cb1_bin_spacing)
                     for i in range(number_of_cb1_bin_sel)]
+
+            # Reorder cb1_bin_select_map with the knowledge of the backplane
+            # PCB links connectivity so slot 0 gets cb1_bin_select_map[0],
+            # slot 1 gets cb1_bin_select_map[1] etc.
+            cb1_bin_select_map = [
+                cb1_bin_select_map[dsmap[get_dest_slot_for_src_lane(i) - 1]]
+                for i in range(16)]
+
             cb1_combine_data_flags = 0 # we cannot combine the flags of two bins because we further bin-select them in crossbar 3
             send_flags = False  # There is not enough bandwidth on the backplane to send uncombined flags
             cb1_output_words_per_bin = 4
