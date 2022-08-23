@@ -1113,16 +1113,26 @@ class chFPGA(FPGAFirmware):
     async def fpga_core_reg_read_async(self, addr):
         """ Reads the contents of a 32-bit core regster at the specified address
         """
+        print(f'Reading core reg via MMI at {addr:03X}')
         if self.mmi:
             self.mmi.read(self.mmi._RAM_BASE_ADDR + 4 * addr, length=4) & 0xFFFFF
         else:
-            return 0
+            raise IOError('Attempted to read FPGA core registers before MMI is initialized')
+
 
     async def fpga_core_reg_write_async(self, addr, value):
+        print(f'Writing core reg via MMI at {addr:03X}')
         if self.mmi:
             self.mmi.write(self.mmi._RAM_BASE_ADDR + 4 * addr, value.to_bytes(4, 'little'))
+        else:
+            raise IOError('Attempted to write FPGA core registers before MMI is initialized')
 
 
+    async def fpga_core_reg_read_async(self, addr):
+        return await self.mb.fpga_core_reg_spi_read_async(addr)
+
+    async def fpga_core_reg_write_async(self, addr, value):
+        await self.mb.fpga_core_reg_spi_write_async(addr, value)
 
 
     # Bitstream management
