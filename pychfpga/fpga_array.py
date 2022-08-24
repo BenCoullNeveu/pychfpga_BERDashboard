@@ -1741,6 +1741,12 @@ class FPGAArray(object):
 
             where
 
+                ``crate``: crate id as returned by ``ib.get_id()``. It is
+                typically the crate number, but could be a string with the
+                crate model/serial.
+
+                ``slot``: slot id as returned by ``ib.get_id()``.
+
                 ``cb1_bins``: list of 16 lists describing the bins indices
                     that are selected by each bin selector of the 1st crossbar
 
@@ -1800,18 +1806,18 @@ class FPGAArray(object):
             #         'cb2':None,
             #         'cb3':cb3_bins}
         elif mode == 'shuffle256':
-            # start with the default bin map
+            # start with the default bin map for a single crate
             bin_map = {(crate, slot): dict(
                 cb1=np.arange(1024).reshape((16, 64), order='F'),
                 cb2=np.arange(64).repeat(2).reshape(2, 64, order='F'),
                 cb3=np.arange(64).reshape((8, 8), order='F'))
-                for crate in range(2) for slot in range(16)}
+                for crate in range(1) for slot in range(16)}
             if remap_level >= 3:
                 self.compute_cb1_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
             if remap_level >= 1:
                 self.compute_cb3_bin_map(bin_map, bad_links, bin_priority, verbose=verbose)
-            # Apply crates 0 & 1 map to all crates
-            bin_map = {(crate, slot): bin_map[(crate & 1, slot)]
+            # Apply crates 0 map to all other crates
+            bin_map = {(crate, slot): bin_map[(0, slot)]
                        for (crate, slot) in self.ib.get_id()}
         # elif mode == 'shuffle16':
         #     # use only the default bin map: we have no flexibility. All we can do is to remap the outputs.
