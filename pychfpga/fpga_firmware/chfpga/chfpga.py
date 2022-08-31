@@ -3433,7 +3433,7 @@ class chFPGA(FPGAFirmware):
         if not delay_table:
             raise ValueError('Please specify a valid delay table')
         filename = '%s.yaml' % self.get_string_id()
-        fullpath = os.path.join(os.path.dirname(__file__), '..', ADC_DELAY_TABLE_FOLDER, filename)
+        fullpath = os.path.join(os.path.dirname(__file__), ADC_DELAY_TABLE_FOLDER, filename)
         print('Loading YAML file %s' % filename)
         try:
             with open(fullpath, 'r') as yamlfile:
