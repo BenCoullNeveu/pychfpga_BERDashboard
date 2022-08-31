@@ -221,7 +221,6 @@ Method Summary (in alphabetical order)
       ~chFPGA_controller.capture_adc_eye_diagram
       ~chFPGA_controller.compute_adc_delay_offsets
       ~chFPGA_controller.compute_adc_delays
-      ~chFPGA_controller.tune_adc_delays
       ~chFPGA_controller.check_ramp_errors
       ~chFPGA_controller.get_adc_board
       ~chFPGA_controller.get_adc_delays
@@ -494,7 +493,6 @@ Channelizer and ADC data acqusition
 .. automethod:: chFPGA_controller.capture_adc_eye_diagram
 .. automethod:: chFPGA_controller.compute_adc_delay_offsets
 .. automethod:: chFPGA_controller.compute_adc_delays
-.. automethod:: chFPGA_controller.tune_adc_delays
 .. automethod:: chFPGA_controller.check_ramp_errors
 .. automethod:: chFPGA_controller.get_adc_board
 .. automethod:: chFPGA_controller.get_adc_delays
