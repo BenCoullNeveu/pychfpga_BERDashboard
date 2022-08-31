@@ -4712,9 +4712,9 @@ class FPGAArray(object):
         if not self.ib:
             print('There are no IceBoards in the array')
             return
-        info_metrics = self.ib.get_status()
-        keys = '\n'.join(info_metrics[0][0].keys())
-        data = {ib: ('\n'.join(info_metrics[i][0].values())) for i, ib in enumerate(self.ib)}
+        info = [i for (i, _) in self.ib._get_motherboard_metrics_async()]
+        keys = '\n'.join(info[0].keys())
+        data = {ib: ('\n'.join(info[i].values())) for i, ib in enumerate(self.ib)}
         self.print_iceboard_table(data, row_labels=keys)
 
     def print_rx_err_map(
