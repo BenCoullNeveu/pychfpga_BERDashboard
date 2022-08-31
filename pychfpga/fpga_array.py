@@ -2690,10 +2690,17 @@ class FPGAArray(object):
         if isinstance(master, str):
             master = self.ib.get(serial=master)
 
+        # aliases for distrimuted time
+        if method in ('irig-b', 'irigb'):
+            method = 'distributed_time'
+        if method in ('local',):
+            method = 'local_soft_trigger'
+
         self.sync_master = master
         self.sync_method = method
 
-        if method in ('distributed_time', 'irig-b', 'irigb'):
+
+        if method == 'distributed_time':
             source = source or 'bp_time'
             self.ib.set_sync_source('irigb')
             self.ib.set_irigb_source_sync(source)
@@ -2730,7 +2737,7 @@ class FPGAArray(object):
                 raise ValueError('In the centralized soft trigger mode, no master_time_source must be specified')
             self.ib.set_sync_source(source)
             master.set_user_output_source('sync')
-        elif method in ('local_soft_trigger', 'local'):
+        elif method == 'local_soft_trigger':
             if master:
                 raise ValueError('In the local soft trigger mode, a master board should NOT specified')
             if master_time_source:
