@@ -136,7 +136,7 @@ class FreqCtr(MMI):
         gpu_txclk = self.read_frequency('GPU_TXCLK', gate_time=gate_time)
 
         print('System Frequencies:')
-        print('   IceBoard Reference clock source: %s' % (fpga.get_iceboard_clock_source_sync()))
+        print('   IceBoard Reference clock source: %s' % (fpga.mb.get_iceboard_clock_source_sync()))
         print(' External clock sources')
         print('   RAW CLK (no PLL, SE):     %7.3f MHz' % (self.read_frequency('RAW_CLK', gate_time=gate_time) / 1e6))
         print('   Reference clock (via PLL):%7.3f MHz' % (self.read_frequency('CLK10', gate_time=gate_time) / 1e6))
