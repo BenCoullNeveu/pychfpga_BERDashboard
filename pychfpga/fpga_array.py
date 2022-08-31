@@ -1668,11 +1668,12 @@ class FPGAArray(object):
                     chan8_channel_map=chan8_channel_map)
                 for lane, stream_id in enumerate(stream_ids):
                     self.corner_turn_stream_ids[ib.get_id(lane)] = stream_id
+            # Sync board(s)
             self.sync()
 
         elif mode in ['shuffle256', 'shuffle512', 'shuffle16', 'shuffle128']:
             if not all(self.ib.CROSSBAR2) or not all(self.ib.CROSSBAR3):
-                raise RuntimeError('All IceBoards must have their CROSSBAR2 and CROSSBAR 3 implemented')
+                raise RuntimeError(f' Mode {mode} requires all boards to have their CROSSBAR2 and CROSSBAR 3 implemented')
             self.ib.BP_SHUFFLE.set_tx_power(13)
             self.ib.CROSSBAR3.SOF_WINDOW_STOP = 110
             self.ib.CROSSBAR3.TIMEOUT_PERIOD = 0
@@ -1689,10 +1690,11 @@ class FPGAArray(object):
             self.ib.BP_SHUFFLE.reset_stats()
             self.ib.CROSSBAR2.reset_stats()
             self.ib.CROSSBAR3.reset_stats()
+            # Sync was performed by init_corner_turn()
 
         elif mode in ('corr16', 'corr4'):
             if not all(self.ib.CORR):
-                raise RuntimeError('All IceBoards must have a firmware correlator engine')
+                raise RuntimeError(f'Mode {mode} requires all boards to have a firmware correlator engine')
             bin_map = self.get_corner_turn_bin_map(
                 mode=mode,
                 bad_links=corner_turn_bad_links,
@@ -1705,8 +1707,10 @@ class FPGAArray(object):
             self.ib.set_offset_binary_encoding(True)  # The firmware correlator engine expects offset encoding
             if integration_period:
                 self.ib.start_correlator(integration_period=integration_period, autocorr_only=autocorr_only)
+            # Sync board(s)
+            self.sync()
         else:
-            raise ValueError('Unknown operational mode')
+            raise ValueError(f'Unknown operational mode {mode}')
 
     def get_corner_turn_bin_map(self, mode, bad_links=None, bin_priority=None, remap_level=0, verbose=0):
         """
