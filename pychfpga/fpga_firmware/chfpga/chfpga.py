@@ -3248,6 +3248,19 @@ class chFPGA(FPGAFirmware):
         return self.GPIO.get_bitstream_date()
 
     def get_adc_delays(self):
+        """ Return the current SYNC and ADC delays.
+
+        Returns:
+
+            A dict containing the items:
+
+               0:delay_info, 1:delay_info, ... "sync_delays":sync_delays
+
+            where
+
+                ``delay_info`` is a dict containing the ``tap_delays``, ``sample_delay`` and ``clock_delay`` for the channels specified in the key.
+               ``sync_delays`` is a list of the tap delays applied on the ADC sync line for each mezzanine
+        """
         delay_table = self.chan.get_adc_delays()
         delay_table['sync_delays'] = self.REFCLK.get_sync_delays()
         return delay_table
@@ -3383,7 +3396,6 @@ class chFPGA(FPGAFirmware):
                 delay_table = self.compute_adc_delays(
                     channels=list(range(16)),
                     verbose=verbose,
-                    adc_sampling_freq=800e6,
                     compute_sync_delays=True,
                     check_sync_delays=check_sync_delays,
                     check_adc_delays=check_adc_delays,
@@ -3557,20 +3569,84 @@ class chFPGA(FPGAFirmware):
         self.set_adc_mode(old_adc_mode, channels=channels)
         return data
 
+    def compute_sync_delays(self,
+                            channels=list(range(16)),
+                            verbose=1):
+        """ Compute the SYNC delays for the ADC mezzanines.
+
+        The ADC chips are put in pulse mode for the computations and are then returned to their original mode.
+
+        Returns:
+
+            list of tap delays to be applied to the ADC sync line of each mezzanine.
+
+
+        """
+
+        old_adc_mode = self.get_adc_mode(channels=channels)
+        self.set_adc_mode('pulse')
+
+        adc_sampling_freq = self._sampling_frequency
+        sync_delays = self.REFCLK.compute_sync_delays(
+            adc_clock_freq=adc_sampling_freq / 2,
+            set_sync_delays=True,
+            verbose=verbose)
+
+        self.set_adc_mode(old_adc_mode, channels=channels)
+
+        return sync_delays
+
+    def check_sync_delays(self,
+                          channels=list(range(16)),
+                          trials=10,
+                          verbose=1):
+        """Checks if the ADC yields stable results with the current SYNC delays.
+
+
+        The ADC chips are put in pulse mode for the computations and are then returned to their original mode.
+
+        Returns:
+
+            int: number of errors (phase jumps)
+
+        """
+
+        old_adc_mode = self.get_adc_mode(channels=channels)
+        self.set_adc_mode('pulse')
+
+        adc_sampling_freq = self._sampling_frequency
+        sync_invalid = self.REFCLK.check_sync_delays(
+            trials=trials,
+            adc_clock_freq=adc_sampling_freq / 2,
+            verbose=verbose)
+
+        self.set_adc_mode(old_adc_mode, channels=channels)
+
+        return sync_invalid
+
     def compute_adc_delays(
             self,
             channels=list(range(16)),
             verbose=True,
-            adc_sampling_freq=800e6,
             compute_sync_delays=True,
             check_sync_delays=True,
             check_adc_delays=True,
             set_delays=True):
-        """
-        Measures the eye diagram of the ADC digital data lines and computes the optimum delays to
-        ensure reliable data acquisition.
+        """ Check, computes and set the SYNC and ADC data line delays to ensure reliable data acquisition.
 
-        This will work only if the sync delays are set properly.
+
+        The ADC SYNC delays are adjusted by sweeping the SYNC delay lines and measuring the location of the phase jumps in the ADC pulse pattern after a sync pulse.
+
+        The ADC data line delays are adjusted by sweeping the delay of each data line (bit) of the ADC in pulse mode and looking for the center of the pulse.
+        In other words, it measures the eye diagram of the ADC digital data lines and computes the optimum delays
+
+
+        Parameters:
+
+
+
+        Returns:
+
         """
 
         old_delays = self.get_adc_delays()
@@ -3578,24 +3654,24 @@ class chFPGA(FPGAFirmware):
         new_delays = {}
 
         tap_delay = 1 / 200e6 / 32 / 2
+        adc_sampling_freq = self._sampling_frequency
         pulse_period = int((1 / adc_sampling_freq) / tap_delay)  # 800 MHz period in tap delays (16 taps)
 
+
         if compute_sync_delays:
-            sync_delays = self.REFCLK.compute_sync_delays(
-                adc_clock_freq=adc_sampling_freq / 2,
-                set_sync_delays=True,
+            new_delays['sync_delays'] = self.compute_sync_delays(
+                channels=channels,
                 verbose=verbose)
         else:
-            sync_delays = self.REFCLK.get_sync_delays()
-        new_delays['sync_delays'] = sync_delays
+            new_delays['sync_delays'] = self.REFCLK.get_sync_delays()
 
         if check_sync_delays:
-            sync_invalid = self.REFCLK.check_sync_delays(
+            sync_invalid = self.check_sync_delays(
                 trials=10,
-                adc_clock_freq=adc_sampling_freq / 2,
                 verbose=verbose)
         else:
             sync_invalid = None
+
 
         data = self.capture_adc_eye_diagram(channels)  # N_chan x 32 x 11 array
 
@@ -3658,7 +3734,6 @@ class chFPGA(FPGAFirmware):
                 'sample_delay': int((offset + 3) % 11),
                 'clock_delay': 0}
 
-        self._set_adc_delays(new_delays)
 
         if check_adc_delays:
             data_invalid = self.check_ramp_errors(trials=check_adc_delays, verbose=verbose)
@@ -3666,20 +3741,26 @@ class chFPGA(FPGAFirmware):
             data_invalid = None
         new_delays['valid'] = not (sync_invalid or data_invalid)
 
-        if not set_delays:
+
+        if set_delays:
+            self._set_adc_delays(new_delays)
+        else:
             self._set_adc_delays(old_delays)
 
         return new_delays
 
     def compute_adc_delay_offsets(self, channels=list(range(16))):
         """
-        Measures the eye diagram of the ADC digital data lines and computes
+        FOR QC ONLY. Measures the eye diagram of the ADC digital data lines and computes
         the permissible offset to ensure reliable data acquisition.
 
         Returns a delay/offset table (delaytable), flags any stuck bits
         (stuckbits), provides the logic level at the chosen eye sampling point
         (bitposgood)  and in that order. Note that stuck bits should all be
         false, bitposgood should be all 1s
+
+        This method is used in testing the ADC mezzanines. Use `compute_adc_delays()` during normal operations.
+
         """
         delaytable = {}
         stuckbits = {}
