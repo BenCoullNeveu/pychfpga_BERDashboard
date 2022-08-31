@@ -379,10 +379,16 @@ class REFCLK(MMI):
             verbose=True):
         """
         Verify that the ADC clock waveforms are stable when measured after
-        syncing the ADCs ``trials`` times.
+        syncing the ADCs ``trials`` times. It is assumed that the ADCs are in pulse mode.
 
         Returns the number of detected phase jumps for all specified ADCs
         combined. A value of zero means that the SYNC alignment is adequate.
+
+
+        Returns:
+
+            int: number of observed phase jumps in the meazured data. Zero means the data is valid.
+
         """
         old_sync_delays = self.get_sync_delays()  # Save the current delay value
         tap_delay = 1 / 200e6 / 32 / 2
