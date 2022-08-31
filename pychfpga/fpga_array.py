@@ -2499,7 +2499,8 @@ class FPGAArray(object):
                         self.logger.debug(f'{self!r}: In {ib.crate!r}, {rx} has no corresponding transmitter')
 
         if mode != 'shuffle128' and mode !='shuffle16':  # ***JFC: temporary hack
-            # Get the exhaustive frequency map that is implemented by the current corner
+            # Get the exhaustive frequency map that is implemented by the current actual corner turn engine.
+            # The map is in the format (crate, slot, lane): freq_bin_list. crate and slot might not be numeric if there is no crate or crate number.
             freq_map = self.get_frequency_map(format='l:bb')
             # Retain only one bin number  for each bin
             self.corner_turn_frequency_bins = {lane_id: sorted(set(data['data']) - set([None]))
@@ -3547,10 +3548,39 @@ class FPGAArray(object):
         Return an identity map that describes the origin of each of the 1024
         samples contained in the channelizer output packets.
 
-        The map is a dict:
-            {channelizer_id: [sample_id0, ... sample_id1023]}
-        where channelizer_id is represented by the tuple (crate_number, slot_number, channel_number) and
-        each sample_id is the tuple (crate_number, slot, channel, bin_number)
+
+        Returns:
+
+            The map as a dict:
+
+                {(crate, slot, channel): [sample_id0, ... sample_id1023]}
+
+            where:
+
+                (crate, slot, lane) tuple is the key from get_channel_ids(),
+                   which derives its (crate, slot) from ib.get_id(). ``crate`
+                   and ``slot`` could therefore be non-numeric if there is no
+                   backplane or if a crate number is not assigned to a crate.
+
+                ``sample_id`` describes the channelizer output samples. It varies depending on `format`:
+
+                    "l:cscb": sample_id[bin_number] =  (crate, slot, channel, bin_number), where
+                       ``crate``, ``slot``, ``channel`` are the same as in the
+                       key, and can be non-numeric. ``bin_number`` is an integer from 0 to 1023.
+
+                    "l:cc": sample_id[:] = global_chan_number, which is an integer representing the global crate, slot
+                        and channel. It is the same for all bins. crate, slot
+                        and channel must be numeric (there must be a crate and
+                        crate number).
+
+                    "l:cb": sample_id[bin_number] = (global_chan_number, bin_number).
+                        See abive for ``global_chan_number``. ``bin_number`` is an integer from 0 to 1023. This tuple
+                        uniquely represent every sample of every output in the
+                        array.
+
+                    "l:cb": sample_id[bin_number] = bin_number.
+                        ``bin_number`` is an integer from 0 to 1023. This list is the same for every channel.
+
 
         This map can be propagated through the shuffle map (see
         `apply_shuffle_map` method) to obtain the contents of the output of
@@ -3563,8 +3593,12 @@ class FPGAArray(object):
                 if format == 'l:cscb':  # Unique (crate, slot, local_channel)
                     ch_out[(crate, slot, lane)] = [(crate, slot, lane, bin) for bin in range(1024)]
                 elif format == 'l:cc':  # Non-unique global channel numbers (repeated for each bin)
+                    if not all(isinstance(i, int) for i in (crate, slot, lane)):
+                        raise RuntimeError('get_channel_identity_map requires numeric crate and slot numbers')
                     ch_out[(crate, slot, lane)] = [crate * 256 + slot * 16 + lane for bin in range(1024)]
                 elif format == 'l:cb':  # Unique (global channel, lane) tuple
+                    if not all(isinstance(i, int) for i in (crate, slot, lane)):
+                        raise RuntimeError('get_channel_identity_map requires numeric crate and slot numbers')
                     ch_out[(crate, slot, lane)] = [(crate * 256 + slot * 16 + lane, bin) for bin in range(1024)]
                 elif format == 'l:bb':  # Non unique bin_number (repeated for each channel)
                     ch_out[(crate, slot, lane)] = [bin for bin in range(1024)]
