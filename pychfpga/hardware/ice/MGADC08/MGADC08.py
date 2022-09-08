@@ -188,7 +188,7 @@ class FMCMezzanine_MGADC08(FMCMezzanine):
         return self.iceboard.SPI.read_write(device=device, data=data, type=type, port=self.mezzanine-1, verbose=verbose)
 
     def set_spi_reset(self, state):
-        """ Resets the SPI device on *BOTH* mezzanines.
+        """ Resets the SPI device for *ALL* mezzanines.
         """
         self.iceboard.SPI.RESET = state
 

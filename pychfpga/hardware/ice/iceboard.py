@@ -41,29 +41,31 @@ from ..i2c_devices import gpio
 class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first otherwise undefined attributes try to access Tuber
     """ Provide the methods needed to operate the Iceboard hardware and its FPGA firmware.
 
-    The superclasses provides the following functionalities:
+    IceBoard is derived for the following superclasses:
 
     - Motherboard: Generic motherboard definition with hardware map management
-    - TuberIceBoardBase: provides access and allow to execute ARM method running
-      on the IceBoard's ARM processor as if they were local methods. This is
-      done over the `Tuber` protocol which provide access to the ARM
-      processor and the API provided by it to control and monitor the board's
-      hardware. `IceBoardHandler` also inherits from `Handler`, which allows
-      an `chFPGA_controller` instance to attach itself to a (volatile)
-      hardware map object and draw some of its parameters from it.
 
-    This class adds:
-        - Model, serial, slot, crate and mezzanine self discovery using Tuber
-        - Tuber-specific method to configure the FPGA
+    - TuberIceBoardBase: provides access to functions running
+      on the IceBoard's ARM processor as if they were local methods. This is done using the `Tuber` protocol.
+
+    Note: `Motherboard` has to be first in the parent class list otherwise access to undefined attributes will be passed to Tuber
+
+    The IceBoard class adds:
+        - Tuber-based Model, serial, slot, crate and mezzanine self discovery
+        - Tuber-based method to configure the FPGA
         - Access to the core memory-mapped registers in the FPGA's firmware using the ARM-FPGA SPI link. The core registers are used to check the firmware CRC,  setup FPGA networking, and provide access to the IRIG-B module.
             (see `fpga_core_reg_read/write_async()` methods.
-        - Alternate access to the board peripheral through the FPGAs I2C interface (if present in the FPGA firmware), including:
+        - Alternate access to the board I2C peripherals through the FPGA, including:
             - LED control
             - GPIO input/output
             - Temperature sensors
             - Power monitoring for every rail (voltage,current)
-            - Motherboard EEPROM
-        - Any method provided by the FPGA firmware through the FPGAFirmware subclass that is set in self.fpga when the FPGA is configured through `set_fpga_bitstream_async()`.
+            - Motherboard EEPROM read/write
+
+    The IceBoard class also exposes any method provided by the FPGA firmware
+    once it is programmed.  These methods are provided by the FPGAFirmware
+    subclass that is set in self.fpga when the FPGA is configured through
+    `set_fpga_bitstream_async()`.
 
     """
 
@@ -86,7 +88,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
 
 
     # ------------------------------------
-    # Hardware-specific constants
+    # IceBoard Hardware-specific constants
     # ------------------------------------
 
     # I2C switch addresses (visible on all buses on a specific port)
@@ -173,15 +175,16 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         One should generally use IceBoard.get_unique_instance(...) to obtain a
         unique instance of an IceBoard. Is there is an existing instance
         matching the specified hostname or serial number, that instance will
-        be returned, otherwise a new instance will be created and returned.
+        be returned, otherwise a new instance will be created (through this `init()`) and will be returned.
 
         Parameters:
 
-            hostname (str): hostname or IP address of the IceBoard ARM processor.  If `hostname` is None, methods
-                provided by the IceBoard ARM processor (over Tuber) cannot be
-                used on this instance. If `hostname` is 'None' but the
-                instance has a serial number, then the board hostname can
-                potentially be resolved using mDNS discovery.
+            hostname (str): hostname or IP address of the IceBoard ARM
+                processor.  If `hostname` is None, methods provided by the
+                IceBoard ARM processor (over Tuber) cannot be used on this
+                instance. If `hostname` is 'None' but the instance has a
+                serial number, then the board hostname can potentially be
+                resolved using mDNS discovery.
 
             serial (str or int): Serial number of the board, in the exact
                 format it is found on the IPMI info of the board. For
@@ -208,68 +211,8 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         therefore shall not initiate communication with the hardware or
         perform any complex operations; this is done later by init_async()
         once the hardware map is completed and stable.
-
         """
 
-        """
-
-        IceBoardPlus
-
-        Extends the basic IceBoard class by providing additional SPI MMI -based firmware features, direct UDP MMI
-        with the FPGA,  and methods to access to IceBoard hardware directly via the FPGA.
-
-        This class provides:
-
-        - UDP/IP/Ethernet-based direct Memory Map Interface (MMI) to the FPGA using its Ethernet port. Note
-          that this accesses an address space that is separate from the one accessed throughthe ARM SPI interface.
-          Methods to initialize the Ethernt networking parameters through the ARM SPI interface are provided.
-
-        - Alternate access to the IceBoard and Backplane hardware through the FPGA I2C interface through
-          the `hw` object. Access to the hardware is normally done through the high-level ARM-provided
-          methods, but these methods are useful for development and debugging. The exception is the the
-          IceCrate handler which uses the FPGA to access backplane resources.
-
-        - Overriden mezzanine identification methods that support non-IPMI McGill ADC mezzanine boards.
-
-        - IRIG-B subsystem operation (through the ARM SPI interface)
-
-        `IceBoardExtHandler` can be created as a standard Python object
-        initialized with a number of parameters which set corresponding attributes
-        (see below). If a `parent_getter` function is provided, the value of some
-        of these attributes will instead be fetched dynamically from the parent
-        object unless explicit values (i.e. not None) are provided here. An
-        explicittly provided parameter will always use the provided value and will
-        no longer be fetched from the parent, nor will it be set on the parent.
-
-
-        Parameters:
-
-            parent_getter (func): Function that dynamically return the parent object from which the
-                following parameters will be fetched. Is `None` if there is no parent.
-
-            hostname (str): hostname or IP address of the ICEBoard ARM processor (mandatory)
-
-            serial (str): Serial number of the board. Can be provided by the ARM.
-
-            part_number (str): Part number of the IceBoard. Can be obtained from the ARM.
-
-            crate (IceCrateHandler): = object that handle the backplane on which the board is connected.
-                `None` if the board is not connected to a backplane.
-
-            slot (int): Slot number in which the board is installed ona backplane. None if there is no
-                backplane.
-
-            mezzanine (dict): Map {mezzanine_number: Mezzanine Handler, ...} describing the installed
-                mezzanines. Can be obtained from the ARM.
-
-            tuber_objname (str): name of the set of software functions that will be provided by the ARM
-                processor through the Tuber interface.
-
-
-
-        Python-based application-specific FPGA firmware and hardware handler are meant to be derived
-        from this class.
-        """
         print(f"IceBoard.__init__(): Creating {self.__class__.__name__}(serial={serial}, hostname={hostname}, slot={slot}, subarray={subarray}, kwargs={kwargs})")
 
         # First initialize the superclasses. The MRO provides the following  __init__ call sequence:
@@ -304,7 +247,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
 
         Parameters:
 
-            timeout (float): [NOT IMPLEMENTED] How much time (in seconds) we wait for a response
+            timeout (float): [NOT IMPLEMENTED] How much time (in seconds) we shall wait for a response
 
         Returns:
 
@@ -343,6 +286,11 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         await self.check_tuber_version_async()
 
     async def close_platform_async(self):
+        """ Close communication with the IceBoard
+
+        For now we don't do anything. The TCP connection to Tuber is left intact.
+        """
+
         pass
 
     ###################################
@@ -351,12 +299,20 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
     ###################################
 
     async def discover_serial_async(self, update=True):
-        """
-        Discover the serial number of this IceBoard and
+        """ Discover the serial number of this IceBoard and
         update the hardware map accordingly if `update=True`
 
         We do this using the Tuber method get_motherboard_serial() which
-        decodes the board's IPMI EEPROM.
+        gets it from the board's IPMI EEPROM when the board booted up.
+
+
+        Parameters:
+
+            update (bool): if True, update the serial number of this IceBoard with the value that was obtained.
+
+        Returns:
+
+            str: the serial number of this board. The original serial number is returned if `update`=False.
         """
         self.logger.debug(f'{self!r}: discovering the serial number of board at {self.tuber_uri}')
         try:
@@ -381,7 +337,17 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
     async def discover_slot_async(self, update=True):
         """ Discover the slot number of this IceBoard, and update the hardware map accordingly if `update=True`
 
-        In the Iceboar dimplementation, this is done using Tuber.
+        Slot number is obtained using Tuber methods.
+
+        Parameters:
+
+            update (bool): if True, update the slot number of this IceBoard with the value that was obtained.
+
+        Returns:
+
+            int: the board's slot number. The original slot number is returned
+                if `update`=False. A slot number of 0 means the board is not
+                connected to a backplane.
         """
         actual_slot = await self.tuber_get_backplane_slot_async()
         if update:
@@ -398,13 +364,18 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         """Detect mezzanines attached to the Iceboard and update the hardware map accordingly if
         update=True.
 
-        This method uses IPMI data on the mezzanine's EEPROMs to guide itself.
-        New Mezzanine objects that match the IPMI product number are added in
+        This method uses IPMI data on the mezzanine's EEPROMs to determine its model ans serial number.
+        New Mezzanine objects that match the IPMI model (product) number are added in
         the hardware map if found.
 
-        You do NOT need to use this method if the mezzanines present in the
-        system are already explicitely specified in the YAML hardware maps.
-        """
+        Parameters:
+
+            update (bool): if True, the IceBoard is updated to point to the discovered mezzanine objects.
+
+        Returns:
+
+            dict in the format {mezz_number:mezz_class, ...} that lists the mezzanine class discovered for each mezzanine, whether or not `update`=True or not.
+         """
         mezz_class = {}
         for m in range(1, self.NUMBER_OF_FMC_SLOTS + 1):
 
@@ -504,8 +475,14 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         the backplane's EEPROM, which is obtaines through the Iceboard's ARM
         processor.
 
-        You do NOT need to use this method if the backplane is already
-        explicitely specified for this IceBoard in the YAML hardware maps.
+        Parameters:
+
+            update (bool): if True, the IceBoard is updated to point to the discovered IceCrate objects.
+
+        Returns:
+
+            class of the discovered crate object, or None if none is present. The new class is returned whether or not `update`=True or not.
+
         """
 
         icecrate_class = None
@@ -557,18 +534,24 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
     # --------------------------
 
     async def _get_motherboard_metrics_async(self):
-        """
-        (`async` method) Return status information on the board, and mezzanines, including voltages
+        """ Return status information on the board, and mezzanines, including voltages
         current, power consumption, temperatures etc.
 
-        Parameters:
-            None
+        The measurements are obtained only through the ARM processor; the FPGA does not need to be configured.
 
+        Parameters:
+
+            None
 
         Returns:
 
-            dict: An dict containing the status information in the format ``{metric:value,
-            ...}`` where both ``metric`` and ``value`` are strings.
+            A (info, metrics) tuple, where:
+
+                ``info`` is a dict containing the status information in the format ``{metric_name:value,
+                ...}`` where both ``metric_name`` and ``value`` are strings.
+
+                ``metrics`` is a Metrics object containing the same status information.
+
         """
 
         info = dict()
@@ -651,8 +634,11 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
     async def get_metrics_async(self):
         """ Get the Iceboard hardware monitoring information.
 
+        The metrics are obtained only through the ARM processor; the FPGA does not need to be configured.
+
+
         Returns:
-            a :cls:`Metrics` object.
+            a :cls:`Metrics` object containing the IceBoard monitoring information.
         """
         try:
             _, metrics = await self._get_motherboard_metrics_async()
@@ -666,10 +652,10 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         """ Return the total power used by this board.
 
         The power is measured by measuring the voltage and current on the VCC3V3, VCC5V5 and VCC12V0
-        rails.
+        rails through the ARM processor.
 
         Returns:
-            Total power, as a float.
+            Total power, in Watts, as a float.
         """
         # Get and sum power asynchronously. We have to use a list comprehension, not generator (a
         # yield inside a generator is not consistent in Python 2.7)
@@ -679,6 +665,8 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
 
     async def _get_backplane_metrics_async(self):
         """ Get the backplane hardware monitoring information, as accessed from this Iceboard.
+
+        The measurements are obtained only through the ARM processor; the FPGA does not need to be configured.
 
         Returns:
             A :cls:`Metrics` object.
@@ -745,6 +733,8 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
     async def get_backplane_metrics_async(self):
         """ Get the IceCrate hardware monitoring information.
 
+        The measurements are obtained only through the ARM processor; the FPGA does not need to be configured.
+
         Returns:
             a :cls:`Metrics` object.
         """
@@ -761,28 +751,39 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
     # ----------------------------
 
     async def is_fpga_programmed_async(self):
+        """ Indicate whether the FPGA is configured with a bitstream.
+
+        Returns:
+
+            bool: True if the FPGA is configured.
+        """
         return await self.tuber_is_fpga_programmed_async()
 
     async def set_fpga_bitstream_async(self, firmware_mode=None, force=False, bitfile_override=None):
-        '''
-        Configures the FPGA with the specified bitstream.
+        """ Configure the FPGA with the bitstream that is appropriate for specified firmware mode.
 
-        The bitstream associated with the current handler with the specifiec
-        'tag' will be loaded. However, if a buffer 'buf' is explicitely
-        provided, that bitstream will be used instead.,
 
-        The 'buf' can be  a ``bytes`` or object with .bytes or .base64 attributes
-        .BIT or .BIN file.
+        Parameters:
 
-        By default, the FPGA will not be reconfigured it already has a
-        bitstream with the same CRC signature. That behavior can be changed by
-        specifying the 'force' argument:
+            firmware_mode (str): Describes the functionnality that is required
+                from the FPGA, which is used to  lookup the PLATFORM_SUPPORT
+                table of every registered FPGAFirmware object to find which
+                bitstream file to use.
 
-            force = True: FPGA will always be configured
-            force = False: FPGA will be configured if it is not configured or
-                    if bitstream CRC differ
-            force = None: FPGA will be configured only if it is not configured
-        '''
+
+            force (bool or None): Determines when the FPGA is configured:
+
+
+                force = True: FPGA will always be configured
+                force = False: FPGA will be configured if it is not configured or
+                        if the CRC of the selected bitstream differs from the CRC in the FPGA
+                force = None: FPGA will be configured only if it is not configured
+
+            bitfile_override (str): pathname of a bitsream file to be used
+                instead of the bitstream automatically selected from the
+                firmware mode.
+
+        """
 
         t0 = time.time()
         self.logger.debug(f'{self!r}: called set_fpga_bitstream')
@@ -820,23 +821,31 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
     FPGA_FIRMWARE_CRC32_ADDR = 4 * 3
 
     async def get_fpga_bitstream_crc_async(self):
-        """ Return the signature of the firmware currently configured in the
+        """ Return the signature (CRC) of the firmware currently configured in the
         FPGA.
 
-        Returns None if the FPGA is not configured.
+        This CRC is read from the FPGA's firmware core registers, accessed through the ARM-FPGA SPI interface.
+
+        Returns:
+            int: CRC read from the FPGA
+            None if the FPGA is not configured.
         """
         is_fpga_programmed = await self.is_fpga_programmed_async()
         if not is_fpga_programmed:
             return None
         crc = await self.fpga_core_reg_spi_read_async(self.FPGA_FIRMWARE_CRC32_ADDR)
         return crc
-        # return self._bitstream_crc
 
     async def set_fpga_bitstream_crc_async(self, crc32):
-        """ Return the signature of the firmware currently configured in the
-        FPGA.
+        """ Store in the specified firmware  signature (CRC) in the FPGA.
 
-        Returns None if the FPGA is not configured.
+
+        This CRC will be used later to determine which version of the firmware is programmed in the FPGA, if any.
+
+        Parameters:
+
+            crc32 (int): 32-bit Firmware CRC value to write in the FPGA's firmware core register.
+
         """
         if (await self.is_fpga_programmed_async()):
             # self._bitstream_crc = crc32
@@ -884,6 +893,12 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
     async def fpga_core_reg_spi_write_async(self, addr, value):
         """ Write a single 32-bit word to the FPGA core register at specified byte address.
         This uses the ARM-FPGA SPI link)
+
+        Parameters:
+
+            addr (int): byte address to read from in the core register memory space. This address must be a multiple of 4.
+
+            value (int): 32-bit value to write into the specified register
         """
         # print(f'Writing core reg via SPI at {addr:03X}')
 
@@ -896,10 +911,27 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
     # ----------------------------
 
     async def open_fpga_async(self, **kwargs):
-        """ Open communication with the FPGA and initilalize Iceboard hardware handlers.
+        """ Open communication with the FPGA firmware and initialize objects that provide access to the Iceboard hardware via the FPGA.
+
+        The FPGA must be configured prior to calling this method.
+
+        For an IceBoard running a variant of the chfpga firmware, this implies
+        configuring the FPGA networking stack, establish UDP communication
+        with it, and creating (but not initializing) all the objects that
+        represent the firmware subsystems.
 
 
-        We initialize the hardware handlers here because re rely on the FPGA I2C port.
+        The hardware objects provide access to IceBoard hardware devices that
+        is not provided by the ARM firmware. Those devices are created after
+        the communication with the FPGA is established since we need the FPGA
+        firmware to access the I2C through the FPGA.
+
+
+        Parameters:
+
+            kwargs: parameters to be passed to the firmware's `open_async()`
+                method. These are typically networking parameters.
+
         """
 
         assert self.fpga, f'{self}: FPGA is not programmed. Cannot execute open_fpga()'
@@ -929,12 +961,25 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
 
 
     async def close_fpga_async(self):
+        """ Close communication with the FPGA.
+        """
         await self.close_hw_async()
         if self.fpga:
             await self.fpga.close_async()
 
     async def init_fpga_async(self, **kwargs):
         """ Initializes the FPGA firmware
+
+        This method powers up the mezzanines and configures every subsystem of the FPGA to prepare it for operations.
+
+        The communication with the FPFA must have been previously established with `open_fpga_async`.
+
+        Parameters:
+
+            kwargs: parameters to be passed to the firmware's `init_async()`
+                method. These parameters are typically related to the
+                application for which the firmware is to be used.
+
         """
         # Fully initialize the FPGA firmware
         await self.fpga.init_async(**kwargs)
@@ -950,7 +995,10 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
     ###################################
 
     async def reset_sfp(self):
-        """ Resets the SFP by temporarily disconnecting the FPGA from it"""
+        """ Resets the SFP by temporarily disconnecting the FPGA from it
+
+        This is done through the ARM procesor (via Tuber), so no FPGA firmware is needed.
+        """
 
         self.logger.warning(
             "%r: Temporarily disconnecting the SFP to reset the %s FPGA's "
@@ -958,6 +1006,10 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         await self.tuber_set_pci_switch_direction_async('SEL_ARM')
         await self.tuber_set_pci_switch_direction_async('SEL_SFP')
 
+
+    ###################################
+    # IceBoard Hardware management
+    ###################################
 
     async def open_hw_async(self):
         """ Initializing objects to access the Iceboard hardware
@@ -1497,6 +1549,18 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
 
     async def _mezzanine_eeprom_read_async(self, mezzanine):
         """ Returns the contents of the specified mezzanine's EEPROM.
+
+
+        This method reads the EEPROM through the Tuber method.
+
+        Parameters:
+
+            mezzanine (int): mezzanine number (1 or 2)
+
+        Returns:
+
+            bytes: Contents of the EEPROM
+
         """
         data = await self._tuber_mezzanine_eeprom_read_base64_async(mezzanine)  # returns a str
         return base64.decodebytes(data.encode())  # encode the str into bytes before calling base64.decodebytes()
@@ -1504,14 +1568,44 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
 
     def read_mezzanine_eeprom(self, mezzanine, addr, length, **kwargs):
         """
-        Reads the mezzanine EEPROM using the I2CInterface object.
+        Reads the mezzanine EEPROM through the FPGA.
 
-        Return: bytes
+
+        Parameters:
+
+            mezzanine (int): mezzanine number, as defined in self.FMC_MEZZ_NUMBERS
+
+            addr (int): byte address to start to read from
+
+            length (int): number of bytes to read
+
+            kwargs:  extra arguments passed to the EEPROM read method
+
+        Returns: bytes
         """
+
+        # get the I2CInterface object for this mezzanine
         eeprom_object = self._FMC_EEPROM_TABLE[mezzanine]
         return eeprom_object.read(addr, length, **kwargs)
 
     def write_mezzanine_eeprom(self, mezzanine, addr, data, **kwargs):
+        """
+        Writes the mezzanine EEPROM through the FPGA.
+
+
+        Parameters:
+
+            mezzanine (int): mezzanine number, as defined in self.FMC_MEZZ_NUMBERS
+
+            addr (int): byte address to start to write from
+
+            data (bytes): data to write
+
+            kwargs:  extra arguments passed to the EEPROM write method
+
+        Returns: bytes
+        """
+        # get the I2CInterface object for this mezzanine
         eeprom_object = self._FMC_EEPROM_TABLE[mezzanine]
         return eeprom_object.write(addr, data, **kwargs)
 

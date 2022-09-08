@@ -55,7 +55,7 @@ class ADC_chip:
             test_mode=0,
             sync_delay=0x08):
         """
-        Writes the control and test register of the ADC
+        Writes the control and test register of the ADC. A SYNC is required if the operating mode of the ADC is changed.
 
         Parameters:
 

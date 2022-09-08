@@ -19,6 +19,16 @@ class Mezzanine(HardwareMap):
 
 
     def __init__(self, serial=None, mezzanine=None, iceboard=None):
+        """ Create a generic Mezzanine object.
+
+        Parameters:
+
+            serial (str): serial number of the mezzanine (part number should be defined in a subclass so the mezzanine can be uniquely identified)
+
+            mezzanine (int): mezzanine number. This can be an arbitrary number, but is typically 1,2...
+
+            iceboard (Motherboard): Object that represent the motherboard on which the mezzannine is installed
+        """
         self.logger = logging.getLogger(__name__)
         self.serial = serial
         self.mezzanine = mezzanine  # mezzanine slot number on IceBoard
