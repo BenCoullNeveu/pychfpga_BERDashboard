@@ -1692,6 +1692,26 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
                 self._gpio_power.write(fmc, 0b00000000, mask=0b00000100)
                 await asyncio.sleep(0.100)
 
+    async def set_mezzanine_reset_async(self, mezzanine, state=True):
+        """
+        Enables or disables the reset line of the specified mezzanine through the FPGA.
+
+        Parameters:
+
+            mezzanine (int): integer representing the mezzanine number of the mezzanine for which the reset state is to be set.
+
+            state (bool): Reset state to be set
+
+        """
+        if mezzanine not in self.FMC_MEZZ_NUMBERS:
+            raise ValueError(f'{mezzanine} is nor a valid mezzanine number.')
+        # Find the hardware FMC slot number corresponding to the logical mezzanine number
+        fmc = self.FMC_SLOT_NUMBERS[self.FMC_MEZZ_NUMBERS.index(mezzanine)]
+        if fmc:
+            self.fpga.GPIO.ADC1_RESET = state
+        else:
+            self.fpga.GPIO.ADC0_RESET = state
+
     # ---------------------
     # Tuber-related methods
     # ---------------------

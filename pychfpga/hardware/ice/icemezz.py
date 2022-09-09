@@ -27,6 +27,14 @@ class FMCMezzanine(Mezzanine, FMCMezzanineBase):
         """
         await self.iceboard.set_mezzanine_power_async(self.mezzanine, state)
 
+    async def set_mezzanine_reset_async(self, state):
+        """ Sets the reset line of the mezzanine.
+
+        Parameters:
+
+            state (bool): Reste state
+        """
+        await self.iceboard.set_mezzanine_reset_async(self.mezzanine, state)
 
     async def get_mezzanine_power_async(self):
         return await self.iceboard.tuber_get_mezzanine_power_async(self.mezzanine)
