@@ -38,7 +38,7 @@ from ..i2c_devices import qsfp
 from ..i2c_devices import gpio
 
 
-class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first otherwise undefined attributes try to access Tuber
+class IceBoard(Motherboard, TuberIceBoardBase):
     """ Provide the methods needed to operate the Iceboard hardware and its FPGA firmware.
 
     IceBoard is derived for the following superclasses:
@@ -84,7 +84,6 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
     FMC_SLOT_NUMBERS = range(NUMBER_OF_FMC_SLOTS)  # Physical hardware slot numbers (0, 1)
     FMC_MEZZ_NUMBERS = (1, 2) # Logical mezzanine numbers (1, 2)
 
-    _cached_repr = None  # Stored a pre-processed string representation of the board repr() for efficiency
 
     port = 80  # port number on which to access the platform `hostname`. Tuber implicitly uses 80 due to the use of the http:// URL to access the board. But fpga_master needs that to prepare for TCP pings.
 
