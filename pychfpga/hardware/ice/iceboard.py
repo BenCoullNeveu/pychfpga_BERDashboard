@@ -1609,12 +1609,22 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
         eeprom_object = self._FMC_EEPROM_TABLE[mezzanine]
         return eeprom_object.write(addr, data, **kwargs)
 
-    async def set_mezzanine_power_async(self, fmc_number=list(range(NUMBER_OF_FMC_SLOTS)), state=[True]*NUMBER_OF_FMC_SLOTS):
+    async def set_mezzanine_power_async(self, mezzanine, state=True):
         """
-        Enables or disables power of the specified FMC slot using the I2C Interface object (via the FPGA) .
+        Enables or disables power of the specified FMC slot through the FPGA using power sequencing.
 
         This method differs from the Tuber equivalent as it does power sequencing to prevent the FMC board switchers to
         create too much of a current spike when enabled.
+
+        Power is set using the _gpio_power object, which is the IO Extender
+        that controls the FMC power lines. Is is accessed through a I2C
+        Interface object.
+
+        Parameters:
+
+            mezzanine (int): integer representing the mezzanine number of the mezzanine to power ON or OFF.
+
+            state (bool): Desired ON/OFF state of thecified FMC(s). True=ON, False=OFF.
 
         History:
             140223 JFC: Modified to use register names.
@@ -1624,58 +1634,61 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
                 the same length as 'fmc_number' Todo: 140223 JFC: used masked
                 writes to avoid side effects.
         """
-        if isinstance(fmc_number, int):
-            fmc_number = [fmc_number]
+        if isinstance(mezzanine, int):
+            mezzanine = [mezzanine]
 
         if isinstance(state, (bool, int)):
-            state = [state] * len(fmc_number)
+            state = [state] * len(mezzanine)
 
-        for (fmc, fmc_state) in zip(fmc_number, state):
-            if fmc not in list(range(self.NUMBER_OF_FMC_SLOTS)):
-                raise ValueError('FMC number %i is not a valid value' % fmc)
+        for (mezz, mezz_state) in zip(mezzanine, state):
+            if mezz not in self.FMC_MEZZ_NUMBERS:
+                raise ValueError(f'{mezz} is nor a valid mezzanine number.')
+
+            # Find the hardware FMC slot number corresponding to the logical mezzanine number
+            fmc = self.FMC_SLOT_NUMBERS[self.FMC_MEZZ_NUMBERS.index(mezz)]
+
+            # out_reg = 'OUT%i' % fmc # sets the register name to access based on the FMC number
+            # cfg_reg = 'CFG%i' % fmc
+            # Turn off all power signals before we enable the GPIO outputs
+            # self._gpio_power.write(out_reg, 0b00000000)
+            # self._gpio_power.write(cfg_reg, 0b10101000)
+
+            # Bits are:
+            #  7: SFP_LOS/SFM_ModPrsn
+            #  6: FMC_CLK_DIR
+            #  5: FMC_PRSNT
+            #  4: FMC_PG_C2M
+            #  3: FMC_PG_M2C
+            #  2: FMC_EN_VADJ
+            #  1: FMC_EN_3V3
+            #  0: FMC_EN_12V
+            if mezz_state:
+                # Turn on 12V, 3.3V and VADJ power to board
+                self._gpio_power.write(fmc, 0b00000010, mask=0b00000010)
+                # self._gpio_power.write(fmc, 0b00000110, mask=0b00000110)
+                await asyncio.sleep(0.010)
+                # Turn on 12V, 3.3V and VADJ power to board
+                self._gpio_power.write(fmc, 0b00000100, mask=0b00000100)
+                await asyncio.sleep(0.100)
+                # Turn on 12V, 3.3V and VADJ power to board
+                self._gpio_power.write(fmc, 0b00000001, mask=0b00000001)
+                await asyncio.sleep(0.050)
+                # Set Power Good (start switcher) and CLKDIR to 1
+                self._gpio_power.write(fmc, 0b01010000, mask=0b01010000)
+                await asyncio.sleep(0.050)
             else:
-                # out_reg = 'OUT%i' % fmc # sets the register name to access based on the FMC number
-                # cfg_reg = 'CFG%i' % fmc
-                # Turn off all power signals before we enable the GPIO outputs
-                # self._gpio_power.write(out_reg, 0b00000000)
-                # self._gpio_power.write(cfg_reg, 0b10101000)
-
-                # Bits are:
-                #  7: SFP_LOS/SFM_ModPrsn
-                #  6: FMC_CLK_DIR
-                #  5: FMC_PRSNT
-                #  4: FMC_PG_C2M
-                #  3: FMC_PG_M2C
-                #  2: FMC_EN_VADJ
-                #  1: FMC_EN_3V3
-                #  0: FMC_EN_12V
-                if fmc_state:
-                    # Turn on 12V, 3.3V and VADJ power to board
-                    self._gpio_power.write(fmc, 0b00000010, mask=0b00000010)
-                    # self._gpio_power.write(fmc, 0b00000110, mask=0b00000110)
-                    await asyncio.sleep(0.010)
-                    # Turn on 12V, 3.3V and VADJ power to board
-                    self._gpio_power.write(fmc, 0b00000100, mask=0b00000100)
-                    await asyncio.sleep(0.100)
-                    # Turn on 12V, 3.3V and VADJ power to board
-                    self._gpio_power.write(fmc, 0b00000001, mask=0b00000001)
-                    await asyncio.sleep(0.050)
-                    # Set Power Good (start switcher) and CLKDIR to 1
-                    self._gpio_power.write(fmc, 0b01010000, mask=0b01010000)
-                    await asyncio.sleep(0.050)
-                else:
-                    # Stop mezzanine switcher (PG=0)
-                    self._gpio_power.write(fmc, 0b00000000, mask=0b01010000)
-                    await asyncio.sleep(0.030)
-                    # Turn off 12V
-                    self._gpio_power.write(fmc, 0b00000000, mask=0b00000001)
-                    await asyncio.sleep(0.030)
-                    # Turn off rail
-                    self._gpio_power.write(fmc, 0b00000000, mask=0b00000010)
-                    await asyncio.sleep(0.030)
-                    # Turn off rail
-                    self._gpio_power.write(fmc, 0b00000000, mask=0b00000100)
-                    await asyncio.sleep(0.100)
+                # Stop mezzanine switcher (PG=0)
+                self._gpio_power.write(fmc, 0b00000000, mask=0b01010000)
+                await asyncio.sleep(0.030)
+                # Turn off 12V
+                self._gpio_power.write(fmc, 0b00000000, mask=0b00000001)
+                await asyncio.sleep(0.030)
+                # Turn off rail
+                self._gpio_power.write(fmc, 0b00000000, mask=0b00000010)
+                await asyncio.sleep(0.030)
+                # Turn off rail
+                self._gpio_power.write(fmc, 0b00000000, mask=0b00000100)
+                await asyncio.sleep(0.100)
 
     # ---------------------
     # Tuber-related methods

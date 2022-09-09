@@ -17,7 +17,16 @@ class FMCMezzanine(Mezzanine, FMCMezzanineBase):
     _ipmi_part_numbers = None  # Must match part number in IPMI data
 
     async def set_mezzanine_power_async(self, state):
-        await self.iceboard.tuber_set_mezzanine_power_async(bool(state), self.mezzanine)
+        """ Turn the mezzanine power on or off using power sequencing.
+
+        This method does not use the equivalenet Tuber method which does not perform power sequencing.
+
+        Parameters:
+
+            state (bool): True=power ON, False = power OFF
+        """
+        await self.iceboard.set_mezzanine_power_async(self.mezzanine, state)
+
 
     async def get_mezzanine_power_async(self):
         return await self.iceboard.tuber_get_mezzanine_power_async(self.mezzanine)
