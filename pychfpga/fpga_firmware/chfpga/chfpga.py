@@ -990,21 +990,24 @@ class chFPGA(FPGAFirmware):
             await mezz.set_mezzanine_power_async(False)
         await asyncio.sleep(0.2)  # *** make async
 
-        for mezz_number in (1, 2):
-            if mezz_number in self.mezzanine:
+        for mezz_number in self.mb.FMC_MEZZ_NUMBERS: # process every mezzanine, present or not
+            if mezz_number in self.mezzanine: # if mezzanine pressent
                 mezz = self.mezzanine[mezz_number]
                 self.logger.debug('%r:   Powering down FMC%i' % (self, mezz_number - 1))
-                await self.mb.set_mezzanine_power_async(mezz_number - 1, False)   #todo: add set_mezzanine_power() directly into mb
-                # mezz.set_power(False)  # For some reason, prevents the board from rebooting (!)
+                await mezz.set_mezzanine_power_async(False)   # this method uses power-sequencing
+                await mezz.set_mezzanine_reset_async(True)   # Puts the ADCs in reset
+
                 await asyncio.sleep(0.2)  # *** make async
                 self.logger.debug('%r:   Powering up FMC%i' % (self, mezz_number - 1))
-                await self.mb.set_mezzanine_power_async(mezz_number - 1, True)
+                await mezz.set_mezzanine_power_async(True)
                 # mezz.set_power(True)
                 await asyncio.sleep(0.2)  # Give it some time for the power to stabilize
                 # We need to initialize the ADC board before we initialize the channelizer
                 # (and its data acquisition) because the delay blocks need a
                 # clock
                 self.logger.debug('%r:   Initializing FMC%i' % (self, mezz_number - 1))
+                # Initializes the mezzanine
+                # will disable the reset line
                 await mezz.init(
                     sampling_frequency=sampling_frequency,
                     reference_frequency=reference_frequency,
@@ -1015,6 +1018,7 @@ class chFPGA(FPGAFirmware):
             else:
                 self.logger.debug('%r:    Skipping FMC%i initialization since no board is present in that slot' % (
                     self, mezz_number - 1))
+        self.sync()  # pulse the sync lines of the mezzanines to activate the ADC configurations
 
         # self.logger.debug('%r:   Taking channelizers out of reset after FMC enabling' % (self))
 
