@@ -990,21 +990,24 @@ class chFPGA(FPGAFirmware):
             await mezz.set_mezzanine_power_async(False)
         await asyncio.sleep(0.2)  # *** make async
 
-        for mezz_number in (1, 2):
-            if mezz_number in self.mezzanine:
+        for mezz_number in self.mb.FMC_MEZZ_NUMBERS: # process every mezzanine, present or not
+            if mezz_number in self.mezzanine: # if mezzanine pressent
                 mezz = self.mezzanine[mezz_number]
                 self.logger.debug('%r:   Powering down FMC%i' % (self, mezz_number - 1))
-                await self.mb.set_mezzanine_power_async(mezz_number - 1, False)   #todo: add set_mezzanine_power() directly into mb
-                # mezz.set_power(False)  # For some reason, prevents the board from rebooting (!)
+                await mezz.set_mezzanine_power_async(False)   # this method uses power-sequencing
+                await mezz.set_mezzanine_reset_async(True)   # Puts the ADCs in reset
+
                 await asyncio.sleep(0.2)  # *** make async
                 self.logger.debug('%r:   Powering up FMC%i' % (self, mezz_number - 1))
-                await self.mb.set_mezzanine_power_async(mezz_number - 1, True)
+                await mezz.set_mezzanine_power_async(True)
                 # mezz.set_power(True)
                 await asyncio.sleep(0.2)  # Give it some time for the power to stabilize
                 # We need to initialize the ADC board before we initialize the channelizer
                 # (and its data acquisition) because the delay blocks need a
                 # clock
                 self.logger.debug('%r:   Initializing FMC%i' % (self, mezz_number - 1))
+                # Initializes the mezzanine
+                # will disable the reset line
                 await mezz.init(
                     sampling_frequency=sampling_frequency,
                     reference_frequency=reference_frequency,
@@ -1015,6 +1018,7 @@ class chFPGA(FPGAFirmware):
             else:
                 self.logger.debug('%r:    Skipping FMC%i initialization since no board is present in that slot' % (
                     self, mezz_number - 1))
+        self.sync()  # pulse the sync lines of the mezzanines to activate the ADC configurations
 
         # self.logger.debug('%r:   Taking channelizers out of reset after FMC enabling' % (self))
 
@@ -3248,6 +3252,19 @@ class chFPGA(FPGAFirmware):
         return self.GPIO.get_bitstream_date()
 
     def get_adc_delays(self):
+        """ Return the current SYNC and ADC delays.
+
+        Returns:
+
+            A dict containing the items:
+
+               0:delay_info, 1:delay_info, ... "sync_delays":sync_delays
+
+            where
+
+                ``delay_info`` is a dict containing the ``tap_delays``, ``sample_delay`` and ``clock_delay`` for the channels specified in the key.
+               ``sync_delays`` is a list of the tap delays applied on the ADC sync line for each mezzanine
+        """
         delay_table = self.chan.get_adc_delays()
         delay_table['sync_delays'] = self.REFCLK.get_sync_delays()
         return delay_table
@@ -3383,7 +3400,6 @@ class chFPGA(FPGAFirmware):
                 delay_table = self.compute_adc_delays(
                     channels=list(range(16)),
                     verbose=verbose,
-                    adc_sampling_freq=800e6,
                     compute_sync_delays=True,
                     check_sync_delays=check_sync_delays,
                     check_adc_delays=check_adc_delays,
@@ -3433,7 +3449,7 @@ class chFPGA(FPGAFirmware):
         if not delay_table:
             raise ValueError('Please specify a valid delay table')
         filename = '%s.yaml' % self.get_string_id()
-        fullpath = os.path.join(os.path.dirname(__file__), '..', ADC_DELAY_TABLE_FOLDER, filename)
+        fullpath = os.path.join(os.path.dirname(__file__), ADC_DELAY_TABLE_FOLDER, filename)
         print('Loading YAML file %s' % filename)
         try:
             with open(fullpath, 'r') as yamlfile:
@@ -3557,20 +3573,84 @@ class chFPGA(FPGAFirmware):
         self.set_adc_mode(old_adc_mode, channels=channels)
         return data
 
+    def compute_sync_delays(self,
+                            channels=list(range(16)),
+                            verbose=1):
+        """ Compute the SYNC delays for the ADC mezzanines.
+
+        The ADC chips are put in pulse mode for the computations and are then returned to their original mode.
+
+        Returns:
+
+            list of tap delays to be applied to the ADC sync line of each mezzanine.
+
+
+        """
+
+        old_adc_mode = self.get_adc_mode(channels=channels)
+        self.set_adc_mode('pulse')
+
+        adc_sampling_freq = self._sampling_frequency
+        sync_delays = self.REFCLK.compute_sync_delays(
+            adc_clock_freq=adc_sampling_freq / 2,
+            set_sync_delays=True,
+            verbose=verbose)
+
+        self.set_adc_mode(old_adc_mode, channels=channels)
+
+        return sync_delays
+
+    def check_sync_delays(self,
+                          channels=list(range(16)),
+                          trials=10,
+                          verbose=1):
+        """Checks if the ADC yields stable results with the current SYNC delays.
+
+
+        The ADC chips are put in pulse mode for the computations and are then returned to their original mode.
+
+        Returns:
+
+            int: number of errors (phase jumps)
+
+        """
+
+        old_adc_mode = self.get_adc_mode(channels=channels)
+        self.set_adc_mode('pulse')
+
+        adc_sampling_freq = self._sampling_frequency
+        sync_invalid = self.REFCLK.check_sync_delays(
+            trials=trials,
+            adc_clock_freq=adc_sampling_freq / 2,
+            verbose=verbose)
+
+        self.set_adc_mode(old_adc_mode, channels=channels)
+
+        return sync_invalid
+
     def compute_adc_delays(
             self,
             channels=list(range(16)),
             verbose=True,
-            adc_sampling_freq=800e6,
             compute_sync_delays=True,
             check_sync_delays=True,
             check_adc_delays=True,
             set_delays=True):
-        """
-        Measures the eye diagram of the ADC digital data lines and computes the optimum delays to
-        ensure reliable data acquisition.
+        """ Check, computes and set the SYNC and ADC data line delays to ensure reliable data acquisition.
 
-        This will work only if the sync delays are set properly.
+
+        The ADC SYNC delays are adjusted by sweeping the SYNC delay lines and measuring the location of the phase jumps in the ADC pulse pattern after a sync pulse.
+
+        The ADC data line delays are adjusted by sweeping the delay of each data line (bit) of the ADC in pulse mode and looking for the center of the pulse.
+        In other words, it measures the eye diagram of the ADC digital data lines and computes the optimum delays
+
+
+        Parameters:
+
+
+
+        Returns:
+
         """
 
         old_delays = self.get_adc_delays()
@@ -3578,24 +3658,24 @@ class chFPGA(FPGAFirmware):
         new_delays = {}
 
         tap_delay = 1 / 200e6 / 32 / 2
+        adc_sampling_freq = self._sampling_frequency
         pulse_period = int((1 / adc_sampling_freq) / tap_delay)  # 800 MHz period in tap delays (16 taps)
 
+
         if compute_sync_delays:
-            sync_delays = self.REFCLK.compute_sync_delays(
-                adc_clock_freq=adc_sampling_freq / 2,
-                set_sync_delays=True,
+            new_delays['sync_delays'] = self.compute_sync_delays(
+                channels=channels,
                 verbose=verbose)
         else:
-            sync_delays = self.REFCLK.get_sync_delays()
-        new_delays['sync_delays'] = sync_delays
+            new_delays['sync_delays'] = self.REFCLK.get_sync_delays()
 
         if check_sync_delays:
-            sync_invalid = self.REFCLK.check_sync_delays(
+            sync_invalid = self.check_sync_delays(
                 trials=10,
-                adc_clock_freq=adc_sampling_freq / 2,
                 verbose=verbose)
         else:
             sync_invalid = None
+
 
         data = self.capture_adc_eye_diagram(channels)  # N_chan x 32 x 11 array
 
@@ -3658,7 +3738,6 @@ class chFPGA(FPGAFirmware):
                 'sample_delay': int((offset + 3) % 11),
                 'clock_delay': 0}
 
-        self._set_adc_delays(new_delays)
 
         if check_adc_delays:
             data_invalid = self.check_ramp_errors(trials=check_adc_delays, verbose=verbose)
@@ -3666,20 +3745,26 @@ class chFPGA(FPGAFirmware):
             data_invalid = None
         new_delays['valid'] = not (sync_invalid or data_invalid)
 
-        if not set_delays:
+
+        if set_delays:
+            self._set_adc_delays(new_delays)
+        else:
             self._set_adc_delays(old_delays)
 
         return new_delays
 
     def compute_adc_delay_offsets(self, channels=list(range(16))):
         """
-        Measures the eye diagram of the ADC digital data lines and computes
+        FOR QC ONLY. Measures the eye diagram of the ADC digital data lines and computes
         the permissible offset to ensure reliable data acquisition.
 
         Returns a delay/offset table (delaytable), flags any stuck bits
         (stuckbits), provides the logic level at the chosen eye sampling point
         (bitposgood)  and in that order. Note that stuck bits should all be
         false, bitposgood should be all 1s
+
+        This method is used in testing the ADC mezzanines. Use `compute_adc_delays()` during normal operations.
+
         """
         delaytable = {}
         stuckbits = {}
@@ -3730,93 +3815,6 @@ class chFPGA(FPGAFirmware):
 
         return delaytable, stuckbits, bitposgood, problem
 
-    def tune_adc_delays(self, loadfromdict=None, channels=list(range(16)), retries=20):
-
-        try:
-            mezz1_serial = self.mezzanine[1].serial
-        except KeyError:
-            mezz1_serial = None
-
-        try:
-            mezz2_serial = self.mezzanine[2].serial
-        except KeyError:
-            mezz2_serial = None
-
-        if loadfromdict is None:
-
-            for ch in channels:
-                if not self.ANT_FMC_IS_PRESENT[ch]:
-                    raise ValueError('Some of the requested channels are not present')
-
-            opt_sync_delay = self.REFCLK.compute_sync_delay(channels=channels)
-
-            # I have seen compute_sync_delay pick a solution in the middle of
-            # one of its groups that results in bad eye diagrams so this bit
-            # of code tries to address that
-            trycounter = 0
-            goodsolution = 0
-            ofset_sync_delay = opt_sync_delay
-            while (trycounter < retries and not goodsolution):
-
-                self.REFCLK.set_sync_delays(ofset_sync_delay)
-                check = self.read_eye_diagram(channels=channels, offset=[0]*16, noffsets=11)
-
-                goodsolution = 1
-                for ch in channels:
-                    if 255 not in check[ch]:
-                        goodsolution = 0
-                        break
-                if goodsolution == 0:
-                    increment = ([0, 1][ch < 8], [0, 1][ch > 7])
-                    if ofset_sync_delay[0] != -1:
-                        ofset_sync_delay[0] = (ofset_sync_delay[0] + increment[0]) % 32
-                    if ofset_sync_delay[1] != -1:
-                        ofset_sync_delay[1] = (ofset_sync_delay[1] + increment[1]) % 32
-                    print('Initial offset calculation resulted in bad eye diagrams - adjusting offset too {0}'.format(
-                        self.REFCLK.get_refclk_delay()))
-                trycounter += 1
-
-            # Compute delay offsets
-            #    d1 contains the delay table with offsets
-            #    d2 indicates if bits are stuck
-            #    d3 is the value measured at the center of the adc pulse waveform for each bit - should be 1
-            d1, d2, d3, problem = self.compute_adc_delay_offsets(channels=channels)
-
-            if (problem == 1):  # NaN present in delay table, or stuck bit, or inverted bit
-                raise ValueError('Delay table has problems - check for NaN, stuck bits or inverted bits')
-
-            self.set_adc_delays(d1)  # The delay table found was all good, so setting it
-
-            tunedloc = dict()
-            tunedloc['delaytable'] = d1
-            tunedloc['syncdelay'] = opt_sync_delay
-            tunedloc['boards'] = {'Mezz': [mezz1_serial, mezz2_serial], "MB": self.mb.serial}
-
-            return tunedloc
-        else:  # We have chosen to load the delay table from a dictionary
-
-            try:
-                d1 = loadfromdict['delaytable']
-                opt_sync_delay = loadfromdict['syncdelay']
-                dict_mb_serial = loadfromdict['boards']['MB']
-                dict_mezz1_serial = loadfromdict['boards']['Mezz'][0]
-                dict_mezz2_serial = loadfromdict['boards']['Mezz'][1]
-            except KeyError:
-                raise ValueError('Missing objects in adc delay dictionary')
-
-            if (self.mb.serial != dict_mb_serial) \
-               or (mezz1_serial is not None and mezz1_serial != dict_mezz1_serial) \
-               or (mezz2_serial is not None and mezz2_serial != dict_mezz2_serial):
-                raise ValueError('Cannot use this adc table - hardware is not the same')
-
-            self.REFCLK.set_sync_delays(opt_sync_delay)
-            self.set_adc_delays(d1)
-
-            measuredloc = dict()
-            measuredloc['delaytable'] = self.get_adc_delays()
-            measuredloc['syncdelay'] = self.REFCLK.get_refclk_delay()
-            measuredloc['boards'] = {'Mezz': [mezz1_serial, mezz2_serial], "MB": self.mb.serial}
-            return measuredloc
 
     def status(self):
         """

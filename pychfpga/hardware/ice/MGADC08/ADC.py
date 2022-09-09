@@ -55,7 +55,7 @@ class ADC_chip:
             test_mode=0,
             sync_delay=0x08):
         """
-        Writes the control and test register of the ADC
+        Writes the control and test register of the ADC. A SYNC is required if the operating mode of the ADC is changed.
 
         Parameters:
 
@@ -218,10 +218,10 @@ class ADC_base(object):
             print('ADC%i Temperature is %.2f C (raw data=0x%04x)' % (adc_number, temp, data))
         return temp  # 110918 JFC
 
-    # Class functions (applies to all ADCs)
-    def reset(self):
-        """ Resets both ADCs"""
-        self.adc_board.adc_reset()
+    # Low-level methods
+    def pulse_reset(self):
+        """ Pulse the reset line on this mezzanine (resets both ADC chips)"""
+        self.adc_board.pulse_adc_reset()
 
     def sync(self):
         """ Resyncs both ADCs"""
@@ -233,7 +233,8 @@ class ADC_base(object):
         """
         Resets and initialize all ADCs ion the FMC board
         """
-        self.reset()  # Send reset pulse on both ADCs
+        self.pulse_reset()  # Send reset pulse on both ADCs
+        # Reset is now disable
         for adc in self.ADC:
             adc.init(**kwargs)
             adc.channel = 0

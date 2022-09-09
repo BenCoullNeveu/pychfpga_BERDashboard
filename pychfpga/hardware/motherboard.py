@@ -39,6 +39,8 @@ class Motherboard(HardwareMap):
     part_number = None  # shall be a string in real classes
     _ipmi_part_numbers = None  # list of strings listing all models by which the board can be self-identified (via EEPROM, IPMI, mDNS etc)
 
+    # _cached_repr = None  # Stores a pre-processed string representation of the board repr() for efficiency
+
     NUMBER_OF_FMC_SLOTS = 0  # Number of supported mezzanines
 
     port = None  # port number on which to access the platform `hostname`. Must be defined by subclasses. Is used by fpga_master.
@@ -102,9 +104,12 @@ class Motherboard(HardwareMap):
 
 
         """
-        # Define repr cache early. Important to avoid infinite recursions if
-        # repr() is called directly or indirectly. Clear on updates to account
-        # for the new parameters.
+        # Initialize a cached value for the `repr()` string, which is used to
+        # improve efficiency.  `None` means the cache is invalidated and a new
+        # string shall be recomputed. We need to define this as early as
+        # possible to avoid infinite recursions if repr() is called directly
+        # or indirectly. The cached is clear on updates to account for the new
+        # parameters.
         self._cached_repr = None
 
         self.logger = logging.getLogger(__name__)

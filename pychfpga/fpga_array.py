@@ -1668,11 +1668,12 @@ class FPGAArray(object):
                     chan8_channel_map=chan8_channel_map)
                 for lane, stream_id in enumerate(stream_ids):
                     self.corner_turn_stream_ids[ib.get_id(lane)] = stream_id
+            # Sync board(s)
             self.sync()
 
         elif mode in ['shuffle256', 'shuffle512', 'shuffle16', 'shuffle128']:
             if not all(self.ib.CROSSBAR2) or not all(self.ib.CROSSBAR3):
-                raise RuntimeError('All IceBoards must have their CROSSBAR2 and CROSSBAR 3 implemented')
+                raise RuntimeError(f' Mode {mode} requires all boards to have their CROSSBAR2 and CROSSBAR 3 implemented')
             self.ib.BP_SHUFFLE.set_tx_power(13)
             self.ib.CROSSBAR3.SOF_WINDOW_STOP = 110
             self.ib.CROSSBAR3.TIMEOUT_PERIOD = 0
@@ -1689,10 +1690,11 @@ class FPGAArray(object):
             self.ib.BP_SHUFFLE.reset_stats()
             self.ib.CROSSBAR2.reset_stats()
             self.ib.CROSSBAR3.reset_stats()
+            # Sync was performed by init_corner_turn()
 
         elif mode in ('corr16', 'corr4'):
             if not all(self.ib.CORR):
-                raise RuntimeError('All IceBoards must have a firmware correlator engine')
+                raise RuntimeError(f'Mode {mode} requires all boards to have a firmware correlator engine')
             bin_map = self.get_corner_turn_bin_map(
                 mode=mode,
                 bad_links=corner_turn_bad_links,
@@ -1705,8 +1707,10 @@ class FPGAArray(object):
             self.ib.set_offset_binary_encoding(True)  # The firmware correlator engine expects offset encoding
             if integration_period:
                 self.ib.start_correlator(integration_period=integration_period, autocorr_only=autocorr_only)
+            # Sync board(s)
+            self.sync()
         else:
-            raise ValueError('Unknown operational mode')
+            raise ValueError(f'Unknown operational mode {mode}')
 
     def get_corner_turn_bin_map(self, mode, bad_links=None, bin_priority=None, remap_level=0, verbose=0):
         """
@@ -2495,7 +2499,8 @@ class FPGAArray(object):
                         self.logger.debug(f'{self!r}: In {ib.crate!r}, {rx} has no corresponding transmitter')
 
         if mode != 'shuffle128' and mode !='shuffle16':  # ***JFC: temporary hack
-            # Get the exhaustive frequency map that is implemented by the current corner
+            # Get the exhaustive frequency map that is implemented by the current actual corner turn engine.
+            # The map is in the format (crate, slot, lane): freq_bin_list. crate and slot might not be numeric if there is no crate or crate number.
             freq_map = self.get_frequency_map(format='l:bb')
             # Retain only one bin number  for each bin
             self.corner_turn_frequency_bins = {lane_id: sorted(set(data['data']) - set([None]))
@@ -2686,10 +2691,17 @@ class FPGAArray(object):
         if isinstance(master, str):
             master = self.ib.get(serial=master)
 
+        # aliases for distrimuted time
+        if method in ('irig-b', 'irigb'):
+            method = 'distributed_time'
+        if method in ('local',):
+            method = 'local_soft_trigger'
+
         self.sync_master = master
         self.sync_method = method
 
-        if method in ('distributed_time', 'irig-b', 'irigb'):
+
+        if method == 'distributed_time':
             source = source or 'bp_time'
             self.ib.set_sync_source('irigb')
             self.ib.set_irigb_source_sync(source)
@@ -2726,7 +2738,7 @@ class FPGAArray(object):
                 raise ValueError('In the centralized soft trigger mode, no master_time_source must be specified')
             self.ib.set_sync_source(source)
             master.set_user_output_source('sync')
-        elif method in ('local_soft_trigger', 'local'):
+        elif method == 'local_soft_trigger':
             if master:
                 raise ValueError('In the local soft trigger mode, a master board should NOT specified')
             if master_time_source:
@@ -3536,10 +3548,39 @@ class FPGAArray(object):
         Return an identity map that describes the origin of each of the 1024
         samples contained in the channelizer output packets.
 
-        The map is a dict:
-            {channelizer_id: [sample_id0, ... sample_id1023]}
-        where channelizer_id is represented by the tuple (crate_number, slot_number, channel_number) and
-        each sample_id is the tuple (crate_number, slot, channel, bin_number)
+
+        Returns:
+
+            The map as a dict:
+
+                {(crate, slot, channel): [sample_id0, ... sample_id1023]}
+
+            where:
+
+                (crate, slot, lane) tuple is the key from get_channel_ids(),
+                   which derives its (crate, slot) from ib.get_id(). ``crate`
+                   and ``slot`` could therefore be non-numeric if there is no
+                   backplane or if a crate number is not assigned to a crate.
+
+                ``sample_id`` describes the channelizer output samples. It varies depending on `format`:
+
+                    "l:cscb": sample_id[bin_number] =  (crate, slot, channel, bin_number), where
+                       ``crate``, ``slot``, ``channel`` are the same as in the
+                       key, and can be non-numeric. ``bin_number`` is an integer from 0 to 1023.
+
+                    "l:cc": sample_id[:] = global_chan_number, which is an integer representing the global crate, slot
+                        and channel. It is the same for all bins. crate, slot
+                        and channel must be numeric (there must be a crate and
+                        crate number).
+
+                    "l:cb": sample_id[bin_number] = (global_chan_number, bin_number).
+                        See abive for ``global_chan_number``. ``bin_number`` is an integer from 0 to 1023. This tuple
+                        uniquely represent every sample of every output in the
+                        array.
+
+                    "l:cb": sample_id[bin_number] = bin_number.
+                        ``bin_number`` is an integer from 0 to 1023. This list is the same for every channel.
+
 
         This map can be propagated through the shuffle map (see
         `apply_shuffle_map` method) to obtain the contents of the output of
@@ -3552,8 +3593,12 @@ class FPGAArray(object):
                 if format == 'l:cscb':  # Unique (crate, slot, local_channel)
                     ch_out[(crate, slot, lane)] = [(crate, slot, lane, bin) for bin in range(1024)]
                 elif format == 'l:cc':  # Non-unique global channel numbers (repeated for each bin)
+                    if not all(isinstance(i, int) for i in (crate, slot, lane)):
+                        raise RuntimeError('get_channel_identity_map requires numeric crate and slot numbers')
                     ch_out[(crate, slot, lane)] = [crate * 256 + slot * 16 + lane for bin in range(1024)]
                 elif format == 'l:cb':  # Unique (global channel, lane) tuple
+                    if not all(isinstance(i, int) for i in (crate, slot, lane)):
+                        raise RuntimeError('get_channel_identity_map requires numeric crate and slot numbers')
                     ch_out[(crate, slot, lane)] = [(crate * 256 + slot * 16 + lane, bin) for bin in range(1024)]
                 elif format == 'l:bb':  # Non unique bin_number (repeated for each channel)
                     ch_out[(crate, slot, lane)] = [bin for bin in range(1024)]
@@ -4701,9 +4746,9 @@ class FPGAArray(object):
         if not self.ib:
             print('There are no IceBoards in the array')
             return
-        info_metrics = self.ib.get_status()
-        keys = '\n'.join(info_metrics[0][0].keys())
-        data = {ib: ('\n'.join(info_metrics[i][0].values())) for i, ib in enumerate(self.ib)}
+        info = [i for (i, _) in self.ib._get_motherboard_metrics_async()]
+        keys = '\n'.join(info[0].keys())
+        data = {ib: ('\n'.join(info[i].values())) for i, ib in enumerate(self.ib)}
         self.print_iceboard_table(data, row_labels=keys)
 
     def print_rx_err_map(

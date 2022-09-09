@@ -188,7 +188,7 @@ class FMCMezzanine_MGADC08(FMCMezzanine):
         return self.iceboard.SPI.read_write(device=device, data=data, type=type, port=self.mezzanine-1, verbose=verbose)
 
     def set_spi_reset(self, state):
-        """ Resets the SPI device on *BOTH* mezzanines.
+        """ Resets the SPI device for *ALL* mezzanines.
         """
         self.iceboard.SPI.RESET = state
 
@@ -197,8 +197,13 @@ class FMCMezzanine_MGADC08(FMCMezzanine):
         """
         self.iceboard.SPI.pulse_bit('RESET')
 
-    def adc_reset(self):
+    def pulse_adc_reset(self):
         self.iceboard.GPIO.pulse_bit(('ADC0_RESET', 'ADC1_RESET')[self.mezzanine-1])
+
+    def set_adc_reset(self, state):
+        """ Sets the ADC reset line for the specified mezzanine.
+        """
+        self.iceboard.set_adc_reset(self.mezzanine, state)
 
     REFCLK_SOURCES = {
         'fmc': 0,

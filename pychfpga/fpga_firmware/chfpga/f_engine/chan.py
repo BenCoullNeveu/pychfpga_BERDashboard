@@ -250,7 +250,15 @@ class ChanArray:
 
     def get_adc_delays(self):
         """
-        Return the delays currently in use for all ADC data lines.
+        Return the delays currently in use for all ADC data lines of all channels.
+
+        Returns:
+
+            dict containing the fields:
+
+                'tap_delays': list of the 8 integer tap delays, one for each bit of the ADC sample
+                'sample_delay': number of integer samples to delay
+                'clock_delay': tap delay applied to the clock line
         """
         delay_table = {}
         for ch, chan in enumerate(self.chan):
