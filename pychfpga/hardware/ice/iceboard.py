@@ -274,10 +274,11 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
                 f'Board is considered to be absent. Error is \n{e!r}')
             return False
 
-    async def open_platform_async(self, **kwargs):
+    async def open_platform_async(self):
         """ Initialize and establish communication with the platform.
 
         For the Iceboard, this means that we initialize the Tuber communication with the Iceboard.
+
         """
         self.logger.debug(f'{self!r}: Opening Tuber connection to the IceBoard')
         # Ask Tuber to fetch the methods & properties profided by the on-board
