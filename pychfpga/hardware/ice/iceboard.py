@@ -81,6 +81,8 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
     # ------------------------------------
 
     NUMBER_OF_FMC_SLOTS = 2  # Number of FMC Mezzanines supported by this platform
+    FMC_SLOT_NUMBERS = range(NUMBER_OF_FMC_SLOTS)  # Physical hardware slot numbers (0, 1)
+    FMC_MEZZ_NUMBERS = (1, 2) # Logical mezzanine numbers (1, 2)
 
     _cached_repr = None  # Stored a pre-processed string representation of the board repr() for efficiency
 
@@ -376,8 +378,8 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
 
             dict in the format {mezz_number:mezz_class, ...} that lists the mezzanine class discovered for each mezzanine, whether or not `update`=True or not.
          """
-        mezz_class = {}
-        for m in range(1, self.NUMBER_OF_FMC_SLOTS + 1):
+        mezz_class = {}  # {mezz_number:mezz_class, ...}
+        for m in self.FMC_MEZZ_NUMBERS:
 
             # MezzClass = MissingMezzanine # Used by Graeme
             part_number = None
@@ -461,7 +463,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
                 new_mezz.iceboard = self
                 self.mezzanine[m] = new_mezz
                 self.logger.debug(f'{self!r} mezzanines on FMC {m} are {self.mezzanine[m]}')
-        return(mezz_class)
+        return mezz_class
 
     async def discover_crate_async(self, update=True):
         """ Detect the Icecrate and slot number on which this Iceboard is
@@ -607,13 +609,13 @@ class IceBoard(Motherboard, TuberIceBoardBase):  # Motherboard has to be first o
             ('Mezz %i VCC3V3'    , 'VCC3V3'    , self.RAIL.MEZZ_VCC3V3),
             ('Mezz %i VADJ'      , 'VADJ'      , self.RAIL.MEZZ_VADJ)]
 
-        for mezz in [1, 2]:
+        for mezz_number in self.FMC_MEZZ_NUMBERS:
             for display_name, sensor, sensor_name in mezz_power_sensors:
-                voltage = await self.tuber_get_mezzanine_voltage_async(sensor_name, mezz)
-                current = await self.tuber_get_mezzanine_current_async(sensor_name, mezz)
-                info[display_name % mezz] = '%0.1fV@%0.3fA' % (voltage, current)
-                metrics.add('fpga_mezzanine_voltage', value=voltage, sensor=sensor, mezzanine=mezz)
-                metrics.add('fpga_mezzanine_current', value=current, sensor=sensor, mezzanine=mezz)
+                voltage = await self.tuber_get_mezzanine_voltage_async(sensor_name, mezz_number)
+                current = await self.tuber_get_mezzanine_current_async(sensor_name, mezz_number)
+                info[display_name % mezz_number] = '%0.1fV@%0.3fA' % (voltage, current)
+                metrics.add('fpga_mezzanine_voltage', value=voltage, sensor=sensor, mezzanine=mezz_number)
+                metrics.add('fpga_mezzanine_current', value=current, sensor=sensor, mezzanine=mezz_number)
 
         info['MB Total power'] = '%0.1fW' % total_power
         metrics.add('fpga_motherboard_power', value=total_power)
