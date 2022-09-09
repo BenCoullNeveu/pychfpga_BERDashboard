@@ -282,7 +282,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
 
         self.polling_mode = mode
         if mode: # if we are not in broadcase mode, flush any data in the buffers
-            with self.socket(flush=True, flush_timeout=1):
+            with self.socket(flush=True, flush_timeout=0.1):
                 pass
 
     def set_position(self, lat, lon, alt):
