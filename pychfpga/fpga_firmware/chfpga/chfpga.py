@@ -1120,7 +1120,7 @@ class chFPGA(FPGAFirmware):
         """
         print(f'Reading core reg via MMI at {addr:03X}')
         if self.mmi:
-            self.mmi.read(self.mmi._RAM_BASE_ADDR + 4 * addr, length=4) & 0xFFFFF
+            return int(self.mmi.read(self.mmi._RAM_BASE_ADDR + 4 * addr, type='<u4')) & 0xFFFFFFFF
         else:
             raise IOError('Attempted to read FPGA core registers before MMI is initialized')
 
