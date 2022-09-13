@@ -147,7 +147,7 @@ class TuberIceBoardBase(tuber.TuberObject):
         b64_string = base64.b64encode(fru.encode())
         return self._motherboard_eeprom_write_base64(b64_string)
 
-    def _backplane_eeprom_write_ipmi(self, part_number, serial_number, product_version):
+    async def _backplane_eeprom_write_ipmi_async(self, part_number, serial_number, product_version):
         """Write IPMI-formatted EEPROM for IceCrates.
 
         These fields are read back and parsed by software, so you have
@@ -190,7 +190,7 @@ class TuberIceBoardBase(tuber.TuberObject):
             # multi=Multi(...), when it's supported by this code
         )
         b64_string = base64.b64encode(fru.encode())
-        return self._tuber_backplane_eeprom_write_base64_async(b64_string)
+        return await self._tuber_backplane_eeprom_write_base64_async(b64_string)
 
 
 

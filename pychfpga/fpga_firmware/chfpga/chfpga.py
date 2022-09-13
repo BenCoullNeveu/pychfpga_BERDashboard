@@ -303,6 +303,11 @@ class chFPGA(FPGAFirmware):
 
         self.PLATFORM_ID = None # Platform will be identified once communication is established with the FPGA. Might be called by get_metrics() before that.
 
+        # IRIG-B year and day processing. If True, target IRIGB year and day
+        # will always be written as zero binary values to be compatible with
+        # the IRIG-B generator
+        self.zero_target_irigb_year_and_day = False
+
     def get_id(self, lane=None):
         return self.mb.get_id(lane=lane)
 
@@ -597,10 +602,6 @@ class chFPGA(FPGAFirmware):
         self.fpga_control_port_number = fpga_control_port_number
         self.local_control_port_number = local_control_port_number
         self.interface_ip_addr = interface_ip_addr
-        # IRIG-B year and day processing. If True, target IRIGB year and day
-        # will always be written as zero binary values to me compatible with
-        # the IRIG-B generator
-        self.zero_target_irigb_year_and_day = False
 
         self.logger.debug(f'{self!r}: Opening communication with the FPGA with parameters '
                           f'fpga_ip_addr={fpga_ip_addr}, fpga_control_port_number={fpga_control_port_number}, '
@@ -1119,7 +1120,7 @@ class chFPGA(FPGAFirmware):
         """
         print(f'Reading core reg via MMI at {addr:03X}')
         if self.mmi:
-            self.mmi.read(self.mmi._RAM_BASE_ADDR + 4 * addr, length=4) & 0xFFFFF
+            return int(self.mmi.read(self.mmi._RAM_BASE_ADDR + 4 * addr, type='<u4')) & 0xFFFFFFFF
         else:
             raise IOError('Attempted to read FPGA core registers before MMI is initialized')
 
@@ -2135,14 +2136,25 @@ class chFPGA(FPGAFirmware):
             f'{self!r}: Setting IRIGB target time with y={y}, d={d}, h={h}, '
             f'm={m}, s={s}, ss={ss}')
 
-        t0 = (await self.fpga_core_reg_read_async(self._IRIGB_TARGET0_ADDR)) & 0xFFFFFF00
+
+        # disable time comparison to prevent false triggers during setup
+        t2 = await self.fpga_core_reg_read_async(self._IRIGB_TARGET2_ADDR)
+        t2 |= (1 << 31) | (1 << 30)  # Enable compare enable bit, but force output to be 1 (i.e. we ar ebefore trig time) to prevent false trigger. We change noting else to prevent a false trigegr.
+        await self.fpga_core_reg_write_async(self._IRIGB_TARGET2_ADDR, t2)
+
+        t0 = await self.fpga_core_reg_read_async(self._IRIGB_TARGET0_ADDR) & 0xFFFFFF00
         t0 |= (y << 0)
         t1 = (d << 20) | (h << 14) | (m << 7) | (s << 0)
-        t2 = (1 << 31) | (ss << 0)
+        t2 = (1 << 31) | (1 << 30) | (ss << 0) #  comparator is enabled, but still forcing output to 1
 
         await self.fpga_core_reg_write_async(self._IRIGB_TARGET0_ADDR, t0)
         await self.fpga_core_reg_write_async(self._IRIGB_TARGET1_ADDR, t1)
         await self.fpga_core_reg_write_async(self._IRIGB_TARGET2_ADDR, t2)
+
+        # now re-enable time comparator
+        t2 ^= (1 << 30) # Toggle force bit back to zero.
+        await self.fpga_core_reg_write_async(self._IRIGB_TARGET2_ADDR, t2)
+
 
         # return the time at which the sync event is scheduled for
         ts = self._IrigTimestamp()
@@ -2154,7 +2166,7 @@ class chFPGA(FPGAFirmware):
         """ Is true if the current IRIGB is before the target trigger time that was previously set-up.
         """
         t1 = await self.fpga_core_reg_read_async(self._IRIGB_TARGET1_ADDR)
-        return bool((t1 >> 31) & 1)
+        return bool(t1 & (1 << 31))
 
     async def capture_frame_time_async(self, trig=True, format='nano', timeout=5):
         """ Captures the IRIG-B of the first sample of the next frame coming
