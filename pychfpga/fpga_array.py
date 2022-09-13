@@ -101,6 +101,7 @@ class FPGAArray(object):
             bitfile=None,
             prog=None,
             open=None,
+            init=None,
             if_ip=None,
             udp_retries=10,
             fpga_ip_addr_fn='(a,b,3,d)',
@@ -208,61 +209,22 @@ class FPGAArray(object):
 
             ----------Category: **Configuration & initialization**----------
 
-            bitfile (str): Filename of the bitfile used to program the FPGAs
-
-            prog (int): If ``prog=1``, the FPGAs in the selected Iceboards will be
-                configured only if they are not already configured with the same
-                firmware. If ``prog=2``, they will always be reconfigured. If
-                ``prog`` is 0, None or is not specified, the FPGAs are never configured.
-
-            open (int): If ``open=1``, establish communication with the boards and
-               initialize the firmware and software. If ``open`` is `None` or is not
-               specified, the software and firmware is not initialized.
-
-            if_ip (str): string corresponding to the IP address of adapter through
-                which the connection to the FPGA will be established. If not
-                specified, the system will assume that the FPGA is reached trough
-                the same interface that reaches the ARM processor.
-
-
-            udp_retries (int): Number of retries performed when UDP command
-                packets sent to the FPGA do not receive a response.
-
-            fpga_ip_addr_fn (str): Specifies how the FPGA IP address is
-                determined. The valid modes are shown below, and should be
-                types exactly without additional spaces. In those modes,
-                ``a.b.c.d`` corresponds to the IP address of the IceBoard ARM
-                processor.
-
-                   - '(a,b,3,d)': Uses the IP address of the ARM but replaces the third byte by ``3``
-                   - '(a,b,c+1,d)': Uses the IP address of the ARM but adds 1 to the third byte
-
-
-            sync_method (str): Method used to synchronize (to sync) the data acquisition on an array of boards:
-
-                'distributed_time',
-
-            sync_source (str): Source of the signal that is used to synchronize each board
-
-                'bp_trig',
-
-            sync_master=None,
-
-            sync_master_time_source=None,
-
-            max_sync_time_difference (int): Maximum time difference, in
-                nanoseconds, between the time of frame 0 of each board in an
+            mode (str): Operational mode of required from the Motherboard
                 array.
 
+                The mode is used to select which FPGA firmware to load, unless
+                overriden by the `bitfile` parameter .
 
-            ----------Category: **Corner-turn engine parameters**----------
+                When `mode` is specified, the FPGA configuration (prog=2) and
+                full initialization level (init=2) is implied, unless specifically
+                modified by the prog and init commands.
 
-            mode (str): Operational mode of the Corner-turn engine. The following modes are supported:
 
-                - IceBoard, chFPGA bitstream
+                 The following modes are supported:
 
-                    - 'chan8': Corner-turn engine is mostly bypassed and raw 8-bit data from 8
-                      channelizers is sent directly to the 8 CT-Engine outputs.
+                - Ice hardware platform
+
+                    - 'chan8': 8-channel, 8-bit data streaming. The output of 8 F-Engine is streamed out on the 8 GPU links. Corner-turn engine is mostly bypassed.
 
                     - 'chan4': Corner-turn engine is mostly bypassed and raw 8-bit data from 16
                       channelizers is sent directly to the 8 CT-Engine outputs.
@@ -279,9 +241,6 @@ class FPGAArray(object):
                       a board, between the 16 boards within a crate using the backplane PCB links,
                       and between 2 crates using the backplane QSFP links.
 
-
-                - IceBoard, siFPGA bitstream
-
                     - 'corr16': The corner-turn engine is configured to feed the
                       internal firmware correlator (only if the firmware was
                       compiled with it).
@@ -289,6 +248,78 @@ class FPGAArray(object):
                 - ZCU111
 
                     - 'corr4'
+
+            bitfile (str): Overrides the filename of the bitfile file to used
+                to program the FPGAs. If not specified, the bitfile is
+                determined based on `mode`.
+
+            prog (int): Overrides the FPGA configuration level. If `mode` is specified, `prog` defaults to `prog=2` otherwise `prog=0`.
+
+                - prog=0 or None: The FPGAs are not configured
+                - prog=1: the FPGAs are configured only if they are not already configured with the same
+                firmware.
+                - prog=2: The FPGAs are always configured, ensuring a clean-state start.
+
+            init (int): Sets the array initialization level. Defaults to ``init=3`` if `mode` is specified, otherwise defaults to ``init=0``
+
+                - init=0: Only creates the array and establish communication with the motherboards.
+                - init=1: like init=0, but configure the FPGA using prog=2
+                  unless explicitely specified, and creates the ``fpga`` object representing the loaded firmware. `mode` or `bitfile` must be specified so
+                  the bitfile to be used can be found.
+                - init=2: like init=1, but basic communication with the FPGAs
+                  is established and the `fpga` object is populated with the
+                  objects representing the firmware modules.
+                - init=3: full initialization of the FPGA in the specified `mode` is performed
+
+            open (int): Alternate method to set the initialization level:
+
+                - open=None: Use the default init level
+                - open=0: sets init=1 (do not open communication with FPGA firmware; only connect to the platform)
+                - open=1: sets init=3 (connect with the FPGA firmware and initializes it fully)
+
+            if_ip (str): string corresponding to the IP address of adapter through
+                which the connection to the FPGA will be established. If not
+                specified, the system will assume that the FPGA is reached trough
+                the same interface that reaches the platform on-board processor.
+
+
+            udp_retries (int): Number of retries performed when UDP command
+                packets sent to the FPGA do not receive a response. Applies
+                only to platform that feature direct UDP communication with
+                the FPGA.
+
+            fpga_ip_addr_fn (str): For platforms featuring direct UDP
+                connection with the FPGA, specifies how the FPGA IP address is
+                determined. The valid modes are shown below, and should be
+                types exactly without additional spaces. In those modes,
+                ``a.b.c.d`` corresponds to the IP address of the IceBoard ARM
+                processor.
+
+                   - '(a,b,3,d)': Uses the IP address of the ARM but replaces the third byte by ``3``
+                   - '(a,b,c+1,d)': Uses the IP address of the ARM but adds 1 to the third byte
+
+
+            sync_method (str): Method used to synchronize (to sync) the data acquisition on an array of boards:
+
+                - 'local': Syhchronize each board individually by software trigger. There is no synchronicity between boards.
+                - 'irigb': uses the IRIG-B time signal to perform an array-wide synchronization. The source of the IRIG-B signal can be specified in `sync_source`.
+                - Other modes are available
+
+            sync_source (str): Source of the signal that is used to synchronize each board
+
+                'bp_trig',
+
+            sync_master=None,
+
+            sync_master_time_source=None,
+
+            max_sync_time_difference (int): Maximum time difference, in
+                nanoseconds, between the time of frame 0 of each board in an
+                array.
+
+
+            ----------Category: **Corner-turn engine parameters**----------
+
 
             frames_per_packet (int): Number of frames that are grouped in each
                 packets at the output of the corner turn engine. Default is 2.
@@ -400,6 +431,7 @@ class FPGAArray(object):
             bitfile=bitfile,
             prog=prog,
             open=open,
+            init=init,
             if_ip=if_ip,
             fpga_ip_addr_fn=fpga_ip_addr_fn,
             sync_method=sync_method,
@@ -470,9 +502,11 @@ class FPGAArray(object):
             mdns_timeout=2,
             no_mezz=False,
 
+            mode=None,
             bitfile=None,
             prog=None,
             open=None,
+            init=None,
 
             if_ip=None,
             fpga_ip_addr_fn='(a,b,3,d)',
@@ -487,7 +521,6 @@ class FPGAArray(object):
             adc_mode=0,
             adc_bandwidth=2,
 
-            mode=None,
             frames_per_packet=2,
             chan8_channel_map=list(range(8)),
             sampling_frequency=800e6,
@@ -566,6 +599,7 @@ class FPGAArray(object):
         self.logger.info(f'{self!r}:     bitfile = {bitfile}')
         self.logger.info(f'{self!r}:     prog = {prog}')
         self.logger.info(f'{self!r}:     open = {open}')
+        self.logger.info(f'{self!r}:     init = {init}')
         self.logger.info(f'{self!r}:     no_mezz = {no_mezz}')
         self.logger.info(f'{self!r}:     sampling_frequency = {sampling_frequency}')
         # self.logger.info(f'{self!r}:     reference_frequency = {reference_frequency}')
@@ -1003,23 +1037,31 @@ class FPGAArray(object):
         self.logger.info(f'{self!r}: Done creating {self!r}')
 
         # Determine if we program and initialize the FPGA based on the mode and the overrides
-        # specified by `prog` and `open`.
+        # specified by `prog` , `init` and `open`.
+
+        # translate the `open` parameter into `init`
+        if open is not None and init is None:
+            if open == 0:
+                init = 1  # program FPGA only
+            elif open == 1:
+                init = 3 # full initialization
+
         if mode:
+            # automatically fully initializes the FPGA unless we
+            # explicitely specify the init (or open) parameter
+            if init is None:
+                init = 3  # full initialization unless specified explicitely
+
             # automatically program the FPGA if `force` mode (prog=2) unless we
             # explicitely specify the prog parameter
             if prog is None:
                 prog = 2  # force FPGA programming
-            # automatically fully initializes the FPGA unless we
-            # explicitely specify the open parameter
-            if open is None:
-                open = 2 # initialize both the core firmware and the operational mode
         else:
             # No firmware operational mode specified. Do not program or initialize.
-            prog = 0
-            open = 0
+            init = 0
 
         if self.ib:
-            if prog:
+            if init >= 1:
                 ####################################
                 # Program the FPGAs and open communication link to firmware
                 ####################################
@@ -1028,7 +1070,7 @@ class FPGAArray(object):
                     self.prog_and_open_fpga(
                         ib=ib,
                         prog=prog,
-                        open=open,
+                        init=init,
                         mode=mode,
                         bitfile=bitfile,
                         udp_retries=udp_retries,
@@ -1039,7 +1081,7 @@ class FPGAArray(object):
 
 
 
-            if open >= 1:
+            if init >= 3: # initialize the FPGA subsystems
                 ################################################
                 # Initialize the FPGA firmware
                 ################################################
@@ -1063,7 +1105,11 @@ class FPGAArray(object):
                 if self.ic:
                     self.ic.init()
 
-            if open >= 1: # we could use >=2, but it breaks backwards compatibility
+            if init >= 3: # configure and initialize the selected operational mode
+
+                if not mode:
+                    raise RuntimeError(f'An operational mode must be specified for init={init}')
+
                 ########################
                 # Initializing SYNC method
                 ########################
@@ -1092,17 +1138,16 @@ class FPGAArray(object):
                 ########################
                 # Initializing operational mode
                 ########################
-                if mode:
-                    self.set_operational_mode(
-                        mode=mode,
-                        frames_per_packet=frames_per_packet,
-                        chan8_channel_map=chan8_channel_map,
-                        tx_power=tx_power,
-                        integration_period=integration_period,
-                        autocorr_only=autocorr_only,
-                        corner_turn_bad_links=corner_turn_bad_links,
-                        corner_turn_bin_priority=corner_turn_bin_priority,
-                        corner_turn_remap_level=corner_turn_remap_level)
+                self.set_operational_mode(
+                    mode=mode,
+                    frames_per_packet=frames_per_packet,
+                    chan8_channel_map=chan8_channel_map,
+                    tx_power=tx_power,
+                    integration_period=integration_period,
+                    autocorr_only=autocorr_only,
+                    corner_turn_bad_links=corner_turn_bad_links,
+                    corner_turn_bin_priority=corner_turn_bin_priority,
+                    corner_turn_remap_level=corner_turn_remap_level)
 
         self.print_flush()
 
@@ -1110,7 +1155,7 @@ class FPGAArray(object):
         # Completed array creation and initialization
         #################################
 
-    async def prog_and_open_fpga(self, ib, prog, open, mode, bitfile=None, max_trials=3, **kwargs):
+    async def prog_and_open_fpga(self, ib, prog, init, mode, bitfile=None, max_trials=3, **kwargs):
         """ Try to open communication with the FPGA and reprogram the FPGA and retry a number of
         times if this fails.
 
@@ -1118,9 +1163,17 @@ class FPGAArray(object):
 
             ib: IceBoard object to program and open
 
-            prog (int): 0=do not program FPGA, 1=program if needed, 2= Program always
 
-            open (int): 0 = do not connect to FPGA, 1= connecto to FPGA (call open_fpga_async(...))
+            init (int): Initialization level
+
+                - 1: program FPGA only (calls set_fpga_bitstream() and creates fpga object)
+                - 2: like init=1, plus connects to FPGA (call open_fpga_async(...))
+
+            prog (int): FPGA bitstream configuration level
+
+                0: do not program the FPGA
+                1: program FPGA only if needed
+                2: always program the FPGA
 
             mode (str): operational mode. Is needed to find the proper bitstream for the platform
 
@@ -1137,35 +1190,31 @@ class FPGAArray(object):
 
         """
         for trial in range(1, max_trials + 1):
-            if not mode:
-                raise ValueError('Firmware operational mode has not been specified')
+            if init >= 1 and prog:
+                await ib.set_fpga_bitstream_async(mode, force=(prog > 1) or (trial > 1), bitfile_override=bitfile)
+                self.logger.info(f'{self!r}: Done configuring FPGAs')
 
-            if not prog:
-                return
 
-            await ib.set_fpga_bitstream_async(mode, force=(prog > 1) or (trial > 1), bitfile_override=bitfile)
-            self.logger.info(f'{self!r}: Done configuring FPGAs')
+            if init >= 2:
+                try:
+                    self.logger.info(
+                        f'{self!r}: Initializing core FPGA firmware for {ib!r}: '
+                        f'Trial {trial}/{max_trials}.')
 
-            if not (open or 0) > 0:
-                return
-
-            try:
-                self.logger.info(
-                    f'{self!r}: Initializing core FPGA firmware for {ib!r}: '
-                    f'Trial {trial}/{max_trials}.')
-
-                # Initialize FPGA UDP communications. Overrides
-                # default parameters that were temporarily set when
-                # the iceboard handler object was created.
-                await ib.open_fpga_async(**kwargs)
-                return
-            except IOError as e:
-                self.logger.warning(f'{self!r}: Error while initializing core firmware on trial {trial}/{max_trials}. '
-                                    f'Error is: \n{e!r}')
-                if trial == max_trials:
-                    raise IOError(f'{self!r}: Unable to initializing FPGA core firmware after {trial} trials. Giving up.')
-                else:
-                    self.logger.warning(f'{self!r}: Reprogramming FPGA and trying again.')
+                    # Initialize FPGA UDP communications. Overrides
+                    # default parameters that were temporarily set when
+                    # the iceboard handler object was created.
+                    await ib.open_fpga_async(**kwargs)
+                    break
+                except IOError as e:
+                    self.logger.warning(f'{self!r}: Error while initializing core firmware on trial {trial}/{max_trials}. '
+                                        f'Error is: \n{e!r}')
+                    if trial == max_trials:
+                        raise IOError(f'{self!r}: Unable to initializing FPGA core firmware after {trial} trials. Giving up.')
+                    else:
+                        self.logger.warning(f'{self!r}: Reprogramming FPGA and trying again.')
+            else:
+                break
 
     @staticmethod
     def _to_integer(x):
@@ -2821,9 +2870,13 @@ class FPGAArray(object):
                     self.sync_start_time = sync_time = self.ib.set_irigb_trigger_time_sync(dt, delay=setting_time)
                     self.logger.info(f'{self!r}: It took {time.time() - t0} seconds to set the final trigger time')
                     t0 = time.time()
-                    while any(self.ib.is_irigb_before_trigger_time_sync()):
+                    # for _ in range(30):
+                    while any(self.ib.is_irigb_before_trigger_time_async()):
+                        #     print(f'trig={any(self.ib.is_irigb_before_trigger_time_async())}, sync={self.ib.REFCLK.SYNC_CTR}')
                         if time.time() - t0 > setting_time + 1:
                             raise RuntimeError('Timout while waiting for the IRIG-B-based SYNC to complete')
+                        time.sleep(0.1)
+                    time.sleep(0.1) # make sure the sync sequence has time to finish
                 elif self.sync_method in ('local', 'local_soft_trigger'):
                     self.ib.sync()
                 elif self.sync_method == 'external':
@@ -5010,15 +5063,22 @@ def add_fpga_array_arguments(parser):
                         '--prog or prog 1: programs the FPGA only if not already programmed (requires --mode). '
                         '--prog 2: always program the FPGA (requires --mode).')
     parser.add_argument('-b', '--bitfile',   type=str, help='Filename of the bitfile used to to program the FPGAs')
-    parser.add_argument('-o', '--open',      type=int, nargs='?', const=1,
-                        help='Overrides FPGA initialization (open communication with the FPGAs, create the Python objects representing the firmware, and initialize the firmware'
-                        '--open 0: do not communicate with the FPGA or initialize firmware even if --mode is specified'
-                        '--open 1: initialize normally')
+    parser.add_argument('-m', '--mode',      type=str, help="Operational mode ('shuffle16', 'shuffle256', etc.). When specified, the FPGA is programmed with the proper firmware bitstream (unless blocked with --prog 0) and the mode is initialized (unless blocked with -open 0). If not specified, only a connection to the platform is established")
+    parser.add_argument('--init',      type=int, nargs='?', const=None,
+                        help='Overrides FPGA initialization level'
+                        '--init 0: only connect to platform'
+                        '--init 1: program FPGA (requires --mode or --bitfile)'
+                        '--init 2: establish connection with FPGA firmware and create firmware objects'
+                        '--init 3: initialize the desired operational mode (requires --mode)')
+
+    parser.add_argument('-o', '--open',      type=int, nargs='?', const=None,
+                        help='Alternate way of overriding the array initialization level'
+                        '--open 0: equivalent to --init 0'
+                        '--open 1: equivalent to --init 3')
     parser.add_argument('--sync_method',     type=str, help="Sets the global syncing method ('distributed_time', 'centralized_time_trigger', 'centralized_soft_trigger', 'local_soft_trigger')")
     parser.add_argument('--sync_source',     type=str, help="Sets the global syncing source ('bp_gpio_int', 'bp_time', 'bp_trig')")
     parser.add_argument('--sync_master',     type=str, help="Serial number of the IceBoard that generates the time or trig signal")
     parser.add_argument('--sync_master_time_source', type=str, help="Source of the time signal used by the master board to generate the time or trigger signal ('bp_gpio_int', 'bp_time', 'bp_trig')")
-    parser.add_argument('-m', '--mode',      type=str, help="Operational mode ('shuffle16', 'shuffle256', etc.). When specified, the FPGA is programmed with the proper firmware bitstream (unless blocked with --prog 0) and the mode is initialized (unless blocked with -open 0). If not specified, only a connection to the platform is established")
     parser.add_argument('-f', '--frames_per_packet', '--fpp',     type=int, help="Number of frames per packeet. Default=2.")
     parser.add_argument('-s', '--sampling_frequency', type=float, help="Sampling frequency of the ADC in Hz. Default=800e6.")
     parser.add_argument('--integration_period', type=int, help="Integration period (in frames) of the firmware correlator (if present). Defaults to 65536. ")
@@ -5176,11 +5236,11 @@ def create_fpga_array(args=None):
 
         bitfile: pathname of the file containing the CHIME FPGA bitstream
 
-        prog: Configures all the FPGAs in the array. If ``prog 1`` is given,
-            forces programming even if the firmware is already loaded.
+        prog: Overrides the default FPGA bitstream configuration level. 0=Do not program, 1=program if needed, 2=always program.
 
-        open: Establish communication with the FPGA and Initializes the FPGA
-            firmware and the corresponding Python modules.
+        init: Overrides the array initialization level. 0=just connect to platform, 1= program FPGA, 2= connect to firmware and configure firmware object, 3=initialize firmware indesired mode.
+
+        open: Alternate way of specified init. 0: just connect to platform, 1: program FPGA, connect to firmware and configure objects and initialize operational mode.
 
         if_ip: address of the interface used to communicate with the FPGA. If
             not specified, the same interface as the one used for communicate
@@ -5195,10 +5255,6 @@ def create_fpga_array(args=None):
         sync_method: string describing the method used to synchronize all the boards in the array
 
         sync_source: string describing the source of the synchronization signal.
-
-    GPU Array parameters (``gpu_array`` sub_dict)
-    --------------------
-        gpu_nodes: list of GPU nodes (IP addresses or hostnames) for which GPU node objects are to be created.
 
 
     Power Supply Array parameters (``ps_array`` sub_dict)
