@@ -3488,11 +3488,23 @@ class chFPGA(FPGAFirmware):
         with open(fullpath, 'w') as yamlfile:
             yamlfile.write(s)
 
+
+    def set_sync_delays(self, sync_delays):
+        """ Sets the sync delay for both mezzanines.
+
+        Paramters:
+
+            delays (list or tuple): 2-element list or tuple describin the delays to be applied to the SYNC line of each mezzanine. Each element ranges from 0 to 31.
+
+        """
+        self.REFCLK.set_sync_delays(sync_delays)
+         
+
     def _set_adc_delays(self, delay_table):
         """
         """
         sync_delays = delay_table.get('sync_delays', None)
-        self.REFCLK.set_sync_delays(sync_delays)
+        self.set_sync_delays(sync_delays)
         self.chan.set_adc_delays(delay_table)
 
     def check_ramp_errors(self, delay=0.1, trials=10, verbose=1):
