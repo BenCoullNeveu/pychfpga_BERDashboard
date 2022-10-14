@@ -74,12 +74,12 @@ class ADC_PLL_base(object):
         RF_div = int(np.log2(fdiv))  # Output divider: 0=/1, 1=/2, 2=/4, 3=/8, 4=/16
         band_sel_div = int(fref * 8)  # 1-255. R counter output / band_sel_div < 125 kHz.
         vco_power_down = 0  # 0-1
-        mute_until_lock_detect = 0  # 0-1
+        mute_until_lock_detect = 1  # 0-1
         AUX_sel = 0  # 0=use output divider output, 1=use VCO output directly,
         AUX_enable = 1  # 0-1
-        AUX_power = 2  # 0=-4 dBm, 1=-1 dBm, 2=2 dBm, 3=5 dBm
+        AUX_power = 3  # 0=-4 dBm, 1=-1 dBm, 2=2 dBm, 3=5 dBm
         RF_enable = 1  # 0-1
-        RF_power = 2  # 0=-4 dBm, 1=-1 dBm, 2=2 dBm, 3=5 dBm
+        RF_power = 3  # 0=-4 dBm, 1=-1 dBm, 2=2 dBm, 3=5 dBm
 
         # REGISTER 3
         cycle_slip_reduction = 0  # 0-1. Needs 50% duty cycle and lowest CP current
@@ -95,22 +95,22 @@ class ADC_PLL_base(object):
         noise_mode = 0  # 0=low noise, 1-2: reserved, 3=low spur
         # Mux output
         # Warning: Using 4 interferes with the locking process!
-        #   0=Hi-Z,
-        #   1=Vdd,
-        #   2=GND,
-        #   3=R Divider out,
+        #   0= Hi-Z,
+        #   1= Vdd,
+        #   2= GND,
+        #   3= R Divider out,
         #   4= N divider out,
-        #   5=Analog lock detect,
+        #   5= Analog lock detect,
         #   6= Digital lock detect,
-        #   7=reserved
-        muxout = 0
+        #   7= reserved
+        muxout = 5
         ref_doubler = 0  # Reference clock doubler: 0=disabled, 1=enabled
         rdiv2 = 1  # Reference clock divide-by-2: 0=disabled, 1=enabled
         R_counter = 1  # Reference clock divider: 1-1023
         double_buf = 0  # 0=disabled, 1=enabled
         CP_current = 0  # 0-15
         LDF = 1  # 0 = Lock Detect Fractional: frac-N, 1=INT-N #111018 JFC: set to 1 to enable phase shift
-        LDP = 1  # 0=10 ns, 1 = 6ns
+        LDP = 0  # 0=10 ns, 1 = 6ns
         PD_polarity = 1  # 0=negative, 1=positive
         power_down = 0  # 0=disabled, 1=enabled
         CP_three_state = 0  # 0=disabled, 1=enabled
@@ -152,6 +152,8 @@ class ADC_PLL_base(object):
             self.logger.debug('%r:  Programmed output frequency: %.3f' % (self.adc_board, fvco / fdiv))
 
         # Override variable names if any is specified in the function call
+        if args:
+            raise ValueError('Overriding PLL parameters is no longer possible in Python 3. Code structure will have to be changed.')
         for (varname, value) in list(args.items()):
             if varname in locals():
                 if verbose:
@@ -203,6 +205,10 @@ class ADC_PLL_base(object):
 
     def is_locked(self):
         return self.adc_board.IOExpander.PLL1_LOCK
+
+    def get_muxout(self):
+                return self.adc_board.IOExpander.PLL1_MUXOUT
+
 
     def status(self):
         self.logger.info('%r: --- ADC PLL' % self.adc_board)
