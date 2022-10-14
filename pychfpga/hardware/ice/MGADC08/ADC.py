@@ -40,9 +40,9 @@ class ADC_chip:
         """ Reads a register of the ADC chip """
         return self.adc.read(self.adc_number, addr)
 
-    def write(self, addr, value):
+    def write(self, addr, value, check=True):
         """ Writes a register of the ADC chip """
-        return self.adc.write(self.adc_number, addr, value)
+        return self.adc.write(self.adc_number, addr, value, check=check)
 
     def init(
             self,
@@ -114,6 +114,7 @@ class ADC_chip:
         REG_TEST_Value = (0, 0, 1)[test_mode]
         REG_SYNC_Value = sync_delay  # 0-15
 
+        self.soft_reset()
         self.write(self.REG_CONTROL, REG_CONTROL_Value)
         self.write(self.REG_TEST, REG_TEST_Value)
         self.write(self.REG_SYNC, REG_SYNC_Value)
@@ -121,6 +122,11 @@ class ADC_chip:
     channel = property(lambda s: s.read(s.REG_CHANNEL_SELECT), lambda s, value: s.write(s.REG_CHANNEL_SELECT, value))
     chip_id = property(lambda s: s.read(s.REG_CHIP_ID), lambda s, value: s.write(s.REG_CHIP_ID, value))
     temperature = property(lambda s: s.adc.temperature(s.adc_number))
+
+    def soft_reset(self):
+        """ Performs a software reset of the ADC chip by writing to the reset register.
+        """
+        self.write(self.REG_SWRESET, 1, check=False)  # Cannot readback the reset register
 
     def get_test_mode(self):
         """
@@ -197,15 +203,42 @@ class ADC_base(object):
     # Low-level access functions
 
     def read(self, adc_number, addr):
-        """ reads a word from the register of the specified ADC"""
+        """ Reads a 16-bit word from the register of the specified ADC
+
+        Parameters:
+
+           adc_number (int): index numbr (0,1) of the target ADC chip on the mezzanine
+
+           addr (int): address of the register to read
+
+        Returns:
+
+           int: 16-bit value of the register
+        """
         brd = self.adc_board  # use a shorter variable name to access the FPGA instance attributes
         data = brd.spi_read_write(brd.SPI_ADC0_ADDR + adc_number, data=[0x00+addr, 0x00, 0x00], type=np.dtype('>u2'))
         return data
 
-    def write(self, adc_number, addr=0, data=0):
-        """ Writes a word to the register of the specified ADC"""
+    def write(self, adc_number, addr=0, data=0, check=True):
+        """ Writes a 16-bit word to the register of the specified ADC
+
+        Parameters:
+
+           adc_number (int): index numbr (0,1) of the target ADC chip on the mezzanine
+
+           addr (int): address of the register to write
+
+           data (int): 16-bit value to write
+
+           check (bool): Check that the write succeded by re-reading the value written
+                                          """
         brd = self.adc_board  # use a shorter variable name to access the FPGA instance attributes
         brd.spi_read_write(brd.SPI_ADC0_ADDR + adc_number, data=[0x80 + addr, data >> 8, data & 0xFF])
+
+        if check:
+            d = self.read(adc_number, addr)
+            if d != data:
+                raise RuntimeError(f'Error writing ADC register {addr}: wrote {data:0X4} but read back {d:0X4}')
 
     # High level functions
     def get_temperature(self, adc_number, verbose=False):
@@ -231,7 +264,11 @@ class ADC_base(object):
 
     def init(self, **kwargs):
         """
-        Resets and initialize all ADCs ion the FMC board
+        Resets and initialize all ADCs on the FMC board
+
+        Parameters:
+
+            kwargs (dict): arguments passed to the init() method of each ADC chip.
         """
         self.pulse_reset()  # Send reset pulse on both ADCs
         # Reset is now disable
