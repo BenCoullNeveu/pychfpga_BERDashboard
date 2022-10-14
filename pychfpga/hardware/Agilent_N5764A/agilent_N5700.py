@@ -158,7 +158,9 @@ class agilent_N5700(GPIB.GPIB):
         Sets/gets the current limit - Valid range is 0 to 76A - default is 0,
         readonly must be set to False
 
-        Returns the power supply setpoint current limit
+        Returns:
+
+             the power supply setpoint current limit
         """
 
         self.flush_interface(timeout=0.01)
@@ -176,6 +178,45 @@ class agilent_N5700(GPIB.GPIB):
         setpoint = self.query_float('CURR?')
         return setpoint
 
+    def set_power_on_state(self, state, voltage=None, current=None):
+        """ Sets the power-on state of the power supply, either in reset (RST) or last stored value (AUTO), 
+        and can optionally set the voltage and current limits as a convenience.
+
+        Parameters:
+
+            state (str): Either:
+
+               'RST': all voltage and current settings are reset to zero
+               'AUTO': previous voltage and current settings are restored.
+
+            voltage (float): If not None, voltage to set
+
+            current (float): If not None, current limit to set
+
+            ocp (bool
+        """
+
+        state = state.upper()
+        if state not in ('RST', 'AUTO'):
+            raise ValueError('Power un state shall be either RST or AUTO')
+
+        self.command(f'OUTP:PON:STAT {state}')
+
+        if voltage is not None:
+            self.set_voltage(voltage)
+
+        if current is not None:
+            self.set_current_limit(current)
+
+    def get_power_on_state(self):
+        """Returns the power-on state of the power supply.
+
+        Returns:
+
+        string: "RST" or "AUTO.
+        """
+        return query('OUTP:PON:STAT?')
+
     def set_voltage(self, voltage=None):
         """
         Sets the output voltage - Valid range is 0 to 21V - default is None
@@ -189,6 +230,12 @@ class agilent_N5700(GPIB.GPIB):
         to 76A - by default current is None and ocp is None
 
         Returns the power supply current limit
+
+        Parameters:
+
+            current (float): current limit to set, in Amps
+
+            ocp (bool): If not None, sets the Over-Current Protection to the specified state 
         """
 
         if ocp is not None:
@@ -222,6 +269,11 @@ class agilent_N5700(GPIB.GPIB):
         Adjusts power supply protection settings
         Returns two dictionaries the first with the current protection settings, the second with the fail modes
         Warning - when clearing - return status is 'dont trust anything' - run protection another time
+
+
+        Parameters:
+
+            ocp (bool): enables over current protection
         """
         self.flush_interface(timeout=0.01)
         if readonly == False:
@@ -235,7 +287,7 @@ class agilent_N5700(GPIB.GPIB):
             if ovp != None:
                 self.command('VOLT:PROT %s' % ovp)
             if ocp != None:
-                self.command('CURR:PROT:STAT %s' % ocp)
+                self.command('CURR:PROT:STAT %s' % int(bool(ocp)))
                 #Note that OCP is not the current limit, only behaviour on current limit (can be 0 or 1)
                 #With OCP active current switches to triggered current (by default and not changed by this program so far 0A)
             if ilim != None:
