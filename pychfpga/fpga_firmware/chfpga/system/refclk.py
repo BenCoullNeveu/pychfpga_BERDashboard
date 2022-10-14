@@ -174,7 +174,7 @@ class REFCLK(MMI):
         are used to scan the ADC clock waveform and to set the ADC SYNC
         timing.
         """
-        print(f'Setting REFCLK delays to {delay}')
+        # print(f'Setting REFCLK delays to {delay}')
         try:
             d0, d1 = delay
         except TypeError:
