@@ -229,7 +229,6 @@ class IceBoard(Motherboard, TuberIceBoardBase):
         super().__init__(hostname=hostname, serial=serial, slot=slot, subarray=subarray, **kwargs)
 
         # Initialize key objects
-        self.mmi = None # Memory-mapped interface object to access the FPGA registers
         self.i2c = None # I2C interface object
 
         self._mezzanine_ipmi_cache = {1: None, 2: None}
