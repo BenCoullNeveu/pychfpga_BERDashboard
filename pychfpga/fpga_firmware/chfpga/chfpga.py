@@ -1117,18 +1117,38 @@ class chFPGA(FPGAFirmware):
 
     async def fpga_core_reg_read_async(self, addr):
         """ Reads the contents of a 32-bit core regster at the specified address
+
+        The core registers are read using the MMI interface.
+
+        Parameters:
+
+           addr (int): address of the 32-bit core register. Must be a multiple of 4.
+
+        Returns:
+
+           int: 32-bit unsigned value of the register
         """
         # print(f'Reading core reg via MMI at {addr:03X}')
         if self.mmi:
-            return int(self.mmi.read(self.mmi._RAM_BASE_ADDR + 4 * addr, type='<u4')) & 0xFFFFFFFF
+            return int(self.mmi.read(self.mmi._RAM_BASE_ADDR + addr, type='<u4')) & 0xFFFFFFFF
         else:
             raise IOError('Attempted to read FPGA core registers before MMI is initialized')
 
 
     async def fpga_core_reg_write_async(self, addr, value):
+        """ Reads the contents of a 32-bit core regster at the specified address
+
+        The core registers are read using the MMI interface.
+
+        Parameters:
+
+            addr (int): address of the 32-bit core register. Must be a multiple of 4.
+
+            value (int): 32-bit value to write in the register
+        """
         # print(f'Writing core reg via MMI at {addr:03X}')
         if self.mmi:
-            self.mmi.write(self.mmi._RAM_BASE_ADDR + 4 * addr, value.to_bytes(4, 'little'))
+            self.mmi.write(self.mmi._RAM_BASE_ADDR + addr, value.to_bytes(4, 'little'))
         else:
             raise IOError('Attempted to write FPGA core registers before MMI is initialized')
 
