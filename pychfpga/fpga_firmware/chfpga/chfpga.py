@@ -3599,8 +3599,9 @@ class chFPGA(FPGAFirmware):
 
     def compute_sync_delays(self,
                             channels=list(range(16)),
+                            set_sync_delays=True,
                             verbose=1):
-        """ Compute the SYNC delays for the ADC mezzanines.
+        """ Compute and set the SYNC delays for the ADC mezzanines.
 
         The ADC chips are put in pulse mode for the computations and are then returned to their original mode.
 
@@ -3617,7 +3618,7 @@ class chFPGA(FPGAFirmware):
         adc_sampling_freq = self._sampling_frequency
         sync_delays = self.REFCLK.compute_sync_delays(
             adc_clock_freq=adc_sampling_freq / 2,
-            set_sync_delays=True,
+            set_sync_delays=set_sync_delays,
             verbose=verbose)
 
         self.set_adc_mode(old_adc_mode, channels=channels)
@@ -3660,17 +3661,33 @@ class chFPGA(FPGAFirmware):
             check_sync_delays=True,
             check_adc_delays=True,
             set_delays=True):
-        """ Check, computes and set the SYNC and ADC data line delays to ensure reliable data acquisition.
+        """ Check, computes and set the SYNC and ADC data line delays to
+        ensure reliable data acquisition.
 
 
-        The ADC SYNC delays are adjusted by sweeping the SYNC delay lines and measuring the location of the phase jumps in the ADC pulse pattern after a sync pulse.
+        The ADC SYNC delays are adjusted by sweeping the SYNC delay lines and
+        measuring the location of the phase jumps in the ADC pulse pattern
+        after a sync pulse.
 
-        The ADC data line delays are adjusted by sweeping the delay of each data line (bit) of the ADC in pulse mode and looking for the center of the pulse.
-        In other words, it measures the eye diagram of the ADC digital data lines and computes the optimum delays
+        The ADC data line delays are adjusted by sweeping the delay of each
+        data line (bit) of the ADC in pulse mode and looking for the center of
+        the pulse. In other words, it measures the eye diagram of the ADC
+        digital data lines and computes the optimum delays
 
 
         Parameters:
 
+            channels (list): List of channels for which ADC delays are to be computed
+
+            verbose (bool):
+
+            compute_sync_delays (bool):
+
+            check_sync_delays (bool):
+
+            check_adc_delays (bool):
+
+            set_delays (bool):
 
 
         Returns:
@@ -3689,6 +3706,7 @@ class chFPGA(FPGAFirmware):
         if compute_sync_delays:
             new_delays['sync_delays'] = self.compute_sync_delays(
                 channels=channels,
+                set_sync_delays=True,
                 verbose=verbose)
         else:
             new_delays['sync_delays'] = self.REFCLK.get_sync_delays()

@@ -135,10 +135,18 @@ class REFCLK(MMI):
 
     def set_sync_delays(self, delay):
         """
-        Sets the delay of the SYNC pulse relative to the Reference Clock. Valid range is 0-31.
-        The delay is stored in an internal variable and is used to set the REFCLK delay prior to generate SYNC events.
+        Sets the delay of the ADC SYNC pulse relative to the Reference Clock.
 
-        If delay is None, the REFCLK delay is set to the stored sync_delay.
+
+        The delay is stored in an internal variable (self.sync_delays) which is used to set the
+        REFCLK delay prior to generate SYNC events.
+
+        Parameters:
+
+        delay (tuple): (mez0_delay, mezz1_delay) tuple specifying the SYNC
+            delay for each mezzanine. Valid range for delay values is 0-31.
+            If delay is None, the SYNC delays are set to the stored
+            sync_delay.
         """
         if delay is None:
             self.set_refclk_delay(self.sync_delay)
@@ -166,6 +174,7 @@ class REFCLK(MMI):
         are used to scan the ADC clock waveform and to set the ADC SYNC
         timing.
         """
+        print(f'Setting REFCLK delays to {delay}')
         try:
             d0, d1 = delay
         except TypeError:
@@ -377,17 +386,38 @@ class REFCLK(MMI):
             adc_clock_freq=400e6,
             sync_sleep=0.010,
             verbose=True):
-        """
-        Verify that the ADC clock waveforms are stable when measured after
-        syncing the ADCs ``trials`` times. It is assumed that the ADCs are in pulse mode.
+        """Verify that the ADC clock waveforms are stable when measured after
+        syncing the ADCs ``trials`` times. It is assumed that the ADCs are in
+        pulse mode.
 
         Returns the number of detected phase jumps for all specified ADCs
         combined. A value of zero means that the SYNC alignment is adequate.
 
 
+        Parameters:
+
+            sync_delay (tuple): (delay_mezz0, delay_mezz1) tuple providing the
+                sync delays for each of the mezzanine. Delays are integer
+                between 0 and 31.
+
+            channels (tuple): channels for which the sync delays are checked.
+                It is sufficient to check one channel per ADC chip.
+
+            trials (int): numbe of times we check the ADC clock waveform at
+                the specified delays
+
+            adc_clock_freq (float); frequency of the data clock coming out of
+                the ADC
+
+            sync_sleep (float): delay in seconds.
+
+            verbose (bool): If True, messages on the progress of the tests
+                will be printed
+
         Returns:
 
-            int: number of observed phase jumps in the meazured data. Zero means the data is valid.
+            int: number of observed phase jumps in the meazured data. Zero
+                means the data is valid.
 
         """
         old_sync_delays = self.get_sync_delays()  # Save the current delay value
@@ -396,7 +426,8 @@ class REFCLK(MMI):
         adc_input_clock_period = int((1 / 1600e6) / tap_delay)  # 1600 MHz period in tap delays
 
         errors = 0
-        self.set_sync_delays(sync_delay)
+        if sync_delay is not None:
+            self.set_sync_delays(sync_delay)
         last_rising_edges = None
         if verbose:
             print('Sync delay checks for %r' % (self.fpga))
