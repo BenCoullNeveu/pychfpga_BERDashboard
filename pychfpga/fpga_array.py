@@ -5015,12 +5015,27 @@ log_levels = {'info': logging.INFO,
 
 
 def setup_logging(stderr_log_level='debug', syslog_log_level=None):
+    """Configure logging levels when using interactive iPython sessions.
+
+    Parameters:
+        std_err_log_level (str or int): Sets the logging level for the log messages displayed on the screen (on the stderr pipe)
+
+        syslog_log_level (str or int): Sets the logging level for the log messages sent to syslog
+
+    Returns:
+
+        root logger object
+
+    """
     # logging.getLogger('parso.python.diff').disabled = True  # disable ipython logging in interactive sessions
     # logging.getLogger('parso.cache').disabled = True  # disable ipython logging in interactive sessions
-    logging.getLogger('parso').disabled = True  # disable ipython logging in interactive sessions
+    logging.getLogger('parso').setLevel(logging.WARNING) # disable ipython logging in interactive sessions
     logging.getLogger('asyncio').setLevel(logging.WARNING)
 
     formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s:  %(message)s')
+
+
+
 
     # Set-up main logger
     logger = logging.getLogger('')
