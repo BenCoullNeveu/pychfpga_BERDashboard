@@ -2606,7 +2606,7 @@ class FPGAArray(object):
         if isinstance(default_power, int):
             default_power = (default_power, )
 
-        exceptions = {tuple(node_id): power_tuple for node_id, power_tuple in exceptions}
+        exceptions = {tuple(node_id): power_tuple for node_id, power_tuple in (exceptions or [])}
         self.logger.info(f'{self!r}: Setting GTX power for lane group {lane_group} to power index {index}')
         self.logger.debug(f'{self!r}:    Default power is {default_power}')
         self.logger.debug(f'{self!r}:    Power exceptions are {exceptions}')
