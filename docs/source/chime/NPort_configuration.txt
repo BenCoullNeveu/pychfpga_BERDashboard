@@ -36,7 +36,7 @@ click "Search" in the upper left of the screen, and it should be able to find yo
 
 ------------------------------------------------------------------------------------------
 
-4) Once it has found your device, you'll see that it's IP address is listed as the 
+4) Once it has found your device, you'll see that its IP address is listed as the
 default IP address assigned by the manufacturer. To get it on your own network,
 right click on your device, and select "Unlock". This will prompt you to enter
 the password that should be provided by the manufacturer somwhere in the device 
