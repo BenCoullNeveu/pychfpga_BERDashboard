@@ -176,16 +176,16 @@ class chFPGA(FPGAFirmware):
     # Core FPGA firmware registers
     ################################################################################################
 
-    FPGA_CORE_FIRMWARE_COOKIE_ADDR        = 4 * 0
-    FPGA_APPLICATION_FIRMWARE_COOKIE_ADDR = 4 * 1
+    FPGA_CORE_FIRMWARE_COOKIE_ADDR        = 4 * 0 # (read only) 0xbeefface
+    FPGA_APPLICATION_FIRMWARE_COOKIE_ADDR = 4 * 1 # (read-only) 0x42
     FPGA_APPLICATION_FLAGS_ADDR           = 4 * 2
     FPGA_FIRMWARE_CRC32_ADDR              = 4 * 3
     FPGA_FIRMWARE_TIMESTAMP_ADDR          = 4 * 4
     FPGA_SERIAL_NUMBER_LSW_ADDR           = 4 * 5
     FPGA_SERIAL_NUMBER_MSW_ADDR           = 4 * 6
-    _FPGA_MAC_ADDR_LSW_ADDR         = 4 * 7
-    _FPGA_MAC_ADDR_MSW_IP_PORT_ADDR = 4 * 8
-    _FPGA_IP_ADDR_ADDR              = 4 * 9
+    _FPGA_MAC_ADDR_LSW_ADDR         = 4 * 7 # FPGA listening MAC address
+    _FPGA_MAC_ADDR_MSW_CMD_LISTENING_PORT_ADDR = 4 * 8 # FPGA listening MAC address and command listening port
+    _FPGA_IP_ADDR_ADDR              = 4 * 9 # FPGA listening IP address
     _IRIGB_SAMPLE0_ADDR             = 4 * 10
     _IRIGB_SAMPLE1_ADDR             = 4 * 11
     _IRIGB_SAMPLE2_ADDR             = 4 * 12
@@ -195,11 +195,14 @@ class chFPGA(FPGAFirmware):
     _IRIGB_TARGET2_ADDR             = 4 * 15
     _IRIGB_EVENT_CTR_ADDR           = 4 * 16
     _IRIGB_EVENT_CTR_ADDR2          = 4 * 17
-    _BP_BUCK_SYNC_ADDR              = 4 * 18
+    _SFP_CONFIG_ADDR                = 4 * 18
     _SFP_STATUS_ADDR                = 4 * 19
-    _REMOTE_IP_PORT_ADDR            = 4 * 20
-    _IRIGB_REFCLK_SAMPLE            = 4 * 21
-
+    _CMD_REPLY_DEST_PORT_ADDR       = 4 * 20 # command reply destination port
+    _IRIGB_REFCLK_SAMPLE            = 4 * 21 # lower word of REFCLK counter
+    _IRIGB_REFCLK_SAMPLE2           = 4 * 22 # upper word of REFCLK counter
+    _FPGA_DATA_DEST_MAC_ADDR_LSW_ADDR         = 4 * 23 # Data packet destination MAC address
+    _FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR = 4 * 24 # Data packet destination MAC address and port
+    _FPGA_DATA_DEST_IP_ADDR_ADDR              = 4 * 25 # Data packet destination IP address
 
 
     ################################################################################################
@@ -208,7 +211,7 @@ class chFPGA(FPGAFirmware):
 
     _PLATFORM_ID_ML605 = 0  #: ID number for the Virtex-6-based Xilinx ML606 Evaluation board
     _PLATFORM_ID_KC705 = 1  #: ID number for the Kintex-7-based Xilinx KC705 Evaluation board
-    _PLATFORM_ID_MGK7MB_REV0 = 2  #: ID number for the McGill MGK7MB Rev 2 motherboard (a.k.a Iceboard Rev 2). Works for All subsequent revs.
+    _PLATFORM_ID_MGK7MB_REV0 = 2  #: ID number for the McGill MGK7MB Rev 0 motherboard (a.k.a Iceboard Rev 0). Works for All subsequent revs.
     _PLATFORM_ID_MGK7MB_REV2 = 3  #: ID number for the McGill MGK7MB Rev 2 motherboard (a.k.a Iceboard Rev 2). Works for All subsequent revs.
     _PLATFORM_ID_ZCU111 = 4  #: ID number for Xilinx ZCU111 evaluation board.
 
@@ -414,7 +417,7 @@ class chFPGA(FPGAFirmware):
     async def open_udp_mmi_async(self):
         """ Setup the FPGA UDP communication and return a mmi object.
 
-        IceBoard only.
+        This method is IceBoard-specific.
         """
 
         self.logger.debug(f'{self!r}: Opening UDP connection to the FPGA')
@@ -1452,7 +1455,7 @@ class chFPGA(FPGAFirmware):
         if an_trig:
             # await self.fpga_core_reg_write_async(18 * 4, val | (1 << 30))
             val |= 1 << 30
-        await self.mb.fpga_core_reg_spi_write_async(18 * 4, val)
+        await self.mb.fpga_core_reg_spi_write_async(self._SFP_CONFIG_ADDR, val)
         return val
 
     async def get_sgmii_status_vector(self):
@@ -1463,7 +1466,7 @@ class chFPGA(FPGAFirmware):
         This is called before the UDP MMI interface exists and therefore uses the ARM-FPGA SPI link.
 
         """
-        val = await self.mb.fpga_core_reg_spi_read_async(19 * 4)
+        val = await self.mb.fpga_core_reg_spi_read_async(self._SFP_STATUS_ADDR)
         print(f'link={bool(val&1)}, sync={bool(val&(1<<1))}, RUDI={(val>>2)&(0b11111):05b}, PHY={(val>>7)&1}, ERR={(val>>13)&1} ERRCODE={(val>>8)&3:02b},speed={(val>>10)&3:02b}, duplex={(val>>12)&1}, pause={(val>>14)&3:02b}')
         return val
 
@@ -1472,18 +1475,13 @@ class chFPGA(FPGAFirmware):
             self,
             fpga_mac_addr=None,
             fpga_ip_addr=None,
-            fpga_port_number=_FPGA_CONTROL_BASE_PORT):
+            fpga_port_number=_FPGA_CONTROL_BASE_PORT,
+            fpga_command_reply_dest_port=0):
         """
-        Set the FPGA listening UDP networking parameters for the FPGA's *incoming* control packets
-        using the ARM SPI MMI link. Reply packets will be sent back over UDP transmit channel 0, i.e.
-        back to the address and port from which the command originated..
+        Set the FPGA MAC and IP addresses, and sets the UDP listening and reply destination ports of the command channel.
 
-        This method sets the FPGA's listening addresses while assuming that the FPGA's is in
-        addressing mode "00" (the default addressing mode),  which means that the channel 0
-        IP/PORT/MAC will be set through the ARM-FPGA SPI registers [Note1].
-
-        This method is IceBoard-specific and uses the SPI link between its ARM
-        and the FPGA to write the core registers. This method can therefore be
+        This method uses the SPI interface to the FPGA provided by motherboard
+        to access the relevant core registers. This method can therefore be
         called before the UDP MMI interface is initialized.
 
         Parameters:
@@ -1496,30 +1494,23 @@ class chFPGA(FPGAFirmware):
                 the format of 'a.b.c.d', where a,b,c and d are decimal numbers.
 
             fpga_port_number (int): Port on which the FPGA listens for commands. This port is 41000
-                by default. It is independent from the port from which the host computer sends and
-                receives packets, which can be any port.
+                by default.
+
+            fpga_command_reply_dest_port (int): port to which the command replies will be sent back towards the host. If 0,
+                the destination port for the reply will be the source port of the previous command packet. This is typically used.
 
         Returns:
 
             str: MAC address that was used/computed, in the form 'xx:xx:xx:xx:xx'
 
-        This method sets up the FPGA's *incoming* traffic network parameters (in other words, the
-        FPGA listening address). The  *outgoing* command reply packets are sent through either UDP
-        transmit channels 0 or 1. The channel on which the *commands* are returned is set by the
-        FPGA GPIO field CTRL_RPLY_IP_PORT_OFFSET. This is set to channel '0' by default, and should
-        not be changed.
 
-        UDP channel 0 sends packets with the following destination:
+        The command reply packets are sent to the following destination:
 
-            * target mac address: Is hardwired to use the source MAC address of the last valid
+            * command reply MAC address: Is hardwired to use the source MAC address of the last valid
               packet received
-            * target ip address: Is hardwired to use the source IP of the last valid IP packet
+            * command reply IP address: Is hardwired to use the source IP of the last valid IP packet
               received
-            * target port number: Is set in the in the lower 16-bits of the SPI register
-              _REMOTE_IP_PORT_ADDR. The default is a value of 0, meaning that the target port will
-              be the source port number of the last valid received packet. This default should
-              normally not be changed. There is no direct method provided in this class to override
-              the default. This method does not affect this parameter.
+            * command reply  port number: Is set by the `fpga_command_reply_dest_port` parameter.
 
         With the default configuration, the user can bind a UDP socket to any port (or let the
         system choose by specifying port 0 to the bind() method).  The outgoing command packets will
@@ -1530,18 +1521,10 @@ class chFPGA(FPGAFirmware):
         specific interface address in case there are multiple interfaces in the system.
 
 
-        UDP Channel 1 is generally used to send back data to the host computer. See
-        `set_data_target_address` for a decription of that channel.
-
-
-
-        [Note1] '00' is the default FPGA addressing mode. Other modes are designed to allow setting
-        the FPGA networking address without the help of the ARM processor and are not used. The
-        addressing mode is changed by causing a rising edge on the GPIO registers TARGET_LOAD while
-        TARGET_FPGA_SERIAL_NUMBER matches the serial number of the FPGA. This is a feature meant to
-        allow ARM-less configuring of the FPGA through broadcasting, but we don't use it here since
-        it's much easier and reliable to go through the ARM, which can get its networking parameters
-        automatically through DHCP.
+        [Note1] The FPGA firmware allows for the UDP networking parameters can
+        be set without the help of a SPI link to the FPGA core registers. This
+        is done by using UDP broadcasts that select specific target FPGAs by
+        their serial number.
 
 
         """
@@ -1564,15 +1547,18 @@ class chFPGA(FPGAFirmware):
         # Set the FPGA Networking parameters over the ARM-FPGA SPI interface
         await self.mb.fpga_core_reg_spi_write_async(self._FPGA_MAC_ADDR_LSW_ADDR, struct.unpack('>I', mac_packed[2:6])[0])
         await self.mb.fpga_core_reg_spi_write_async(
-            self._FPGA_MAC_ADDR_MSW_IP_PORT_ADDR,
+            self._FPGA_MAC_ADDR_MSW_CMD_LISTENING_PORT_ADDR,
             (struct.unpack('>H', mac_packed[0:2])[0] << 16) | fpga_port_number)
         await self.mb.fpga_core_reg_spi_write_async(self._FPGA_IP_ADDR_ADDR, struct.unpack('>I', ip_packed)[0])
+
+        word = await self.fpga_core_reg_read_async(self._CMD_REPLY_DEST_PORT_ADDR)
+        await self.fpga_core_reg_write_async(self._CMD_REPLY_DEST_PORT_ADDR, (word & 0xFF00) | (fpga_command_reply_dest_port & 0x00FF))
 
         return fpga_mac_addr
 
     async def set_local_data_port_number_async(self, port):
         """
-        Sets the port number to which the FPGA is sending the data for UDP channel 1. Use
+        Sets the port number to which the FPGA is sending data channel packets to the host. Use
         `set_data_target_address` instead.
 
         Parameters:
@@ -1586,8 +1572,8 @@ class chFPGA(FPGAFirmware):
             if port != self._ZCU111_LOCAL_DATA_PORT_NUMBER:
                 raise ValueError(f'Cannot current set data port number to {port} on this platform.')
             return
-        word = await self.fpga_core_reg_read_async(self._REMOTE_IP_PORT_ADDR)
-        await self.fpga_core_reg_write_async(self._REMOTE_IP_PORT_ADDR, (word & 0xFFFF) | (port << 16))
+        word = await self.fpga_core_reg_read_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR)
+        await self.fpga_core_reg_write_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR, (word & 0xFF00) | (port & 0x00FF))
 
     async def get_local_data_port_number_async(self):
         """ Return the port number to which the FPGA is sending its captured data stream on the control network.
@@ -1595,26 +1581,23 @@ class chFPGA(FPGAFirmware):
         if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
             return self._ZCU111_LOCAL_DATA_PORT_NUMBER
         else:
-            return (await self.fpga_core_reg_read_async(self._REMOTE_IP_PORT_ADDR)) >> 16
+            return (await self.fpga_core_reg_read_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR)) & 0xFF
 
     async def set_data_target_address_async(self, ip_addr=None, port=None, mac_addr=None):
         """
         Sets the IP address, port number and MAC address to which data is sent back to the host comptuter.
 
         This method sets the target address for data sent back to the host computer through the UDP
-        channel 1.
+        data channel (UDP Channel 1). This is a unidirectiol UDP-to-HOST channel.
 
-        UDP Channel 1 (a.k.a the data channel) is generally used to send data back to the host
-        computer through the control Ethernet interface but on a different port. This channel is
-        usually used to send low-bandwidth data, and is not to be confussed with dedicated data
-        channels such as the 10G Ethernet links to GPU nodes.
+        The UDP data channel is usually used to send low-bandwidth data and is
+        not to be confussed with dedicated data channels such as the 10G
+        Ethernet links to GPU nodes. The UDP data channel is used by:
 
-        The GPIO fields `DATA_IP_PORT_OFFSET` and `CORR_IP_PORT_OFFSET` set on which UDP channels is
-        sent the data generated by the raw data capture (PROBER) or correlator (CORR44) subsystems,
-        respectively. Both are set to UDP Channel 1 by default.
+         - Raw data capture module (PROBER) to capture periodic rad data form the ADC or SCALER output
+         - Correlator (CORR44) to stream integrated correlator products
 
-        UDP Channe1 1 target address is set and behaves differnetly than UDP channel 0, and is
-        networking parameters are set by the method parameters `ip_addr`, `port` and `eth_addr`.
+        UDP Data Channe1 networking parameters are set by the method parameters `ip_addr`, `port` and `eth_addr`.
 
         Parameters:
 
@@ -1632,18 +1615,12 @@ class chFPGA(FPGAFirmware):
                 fpga_mac_addr is None or '00:00:00:00:00:00', the packets will be sent to the the
                 source MAC address of the last valid received control packet.
 
-        After initializarion, all three parameters are set to zero, meaning that if the FPGA
-        receives control packets from port x, data will be sent back to the same host on port x+1.
-        This implies that the host was able to allocate two consecutive UDP port addresses for
-        control and data sockets. It is usually easier to let the operating system assign a random
-        port and set that pot number explicitely with a non-zero value.
-
-
-        The Channel 1 addressing described above is valid for addressing mode '00' (the only mode
-        available to this module, see [#f1]) In this mode, the IP address and MAC address are set by
-        the GPIO registers TARGET_MAC_ADDR and TARGET_IP_ADDR. The port number is set by the lower
-        16 bits of the SPI register _REMOTE_IP_PORT_ADDR  (GPIO's TARGET_IP_PORT is *not* used). The
-        Channel 1 destination addresses are set differently in other addressing modes.
+        After initializarion, all three parameters are set to zero, meaning
+        that if the FPGA receives control packets from port x, data will be
+        sent back to the same host on port x+1. Only setting the port number
+        ensures that the data will come back to the controlling host at the
+        specified port. It is usually easier to let the operating system
+        assign a random port and set that port number on the FPGA.
 
         """
         if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
@@ -1671,8 +1648,11 @@ class chFPGA(FPGAFirmware):
         self.GPIO.TARGET_MAC_ADDR = mac_addr_int
         self.GPIO.TARGET_IP_ADDR = ip_addr_int
 
-        # Set the UDP  Channel 1 outgoing packet destination port number, on the ARM-FPGA SPI registers
-        await self.set_local_data_port_number_async(port)
+        # Set the FPGA Networking parameters over the ARM-FPGA SPI interface
+        await self.mb.fpga_core_reg_spi_write_async(self._FPGA_DATA_DEST_IP_ADDR_ADDR, mac_addr_int & 0xFFFFFFFF)
+        await self.mb.fpga_core_reg_spi_write_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR, (mac_addr_int>>16) & 0xFF00 | (port & 0xFF))
+        await self.mb.fpga_core_reg_spi_write_async(self._FPGA_DATA_DEST_IP_ADDR_ADDR, ip_addr_int)
+
 
     async def get_fpga_firmware_cookie(self, resync=False):
         """
