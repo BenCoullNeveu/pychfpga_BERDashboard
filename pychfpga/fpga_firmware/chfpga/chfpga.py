@@ -1480,14 +1480,14 @@ class chFPGA(FPGAFirmware):
         """
         Set the FPGA MAC and IP addresses, and sets the UDP listening and reply destination ports of the command channel.
 
-        This method uses the SPI interface to the FPGA provided by motherboard
-        to access the relevant core registers. This method can therefore be
+        This method **uses the SPI interface** to the FPGA provided by motherboard
+        to access the relevant networking core registers. This method can therefore be
         called before the UDP MMI interface is initialized.
 
         Parameters:
 
             fpga_mac_addr (str): MAC address of the FPGA in the format
-                'xx:xx:xx:xx:xx:xx, where 'xx' is a hex number'. If fpga_mac_addr is None, an
+                'xx:xx:xx:xx:xx:xx, where 'xx' is a hex number'. If `fpga_mac_addr` is `None`, an
                 arbitrary MAC address is created using the IP address to ensure its uniqueness.
 
             fpga_ip_addr (str):  Address at which the FPGA listens for commands. The address is in
@@ -1521,7 +1521,7 @@ class chFPGA(FPGAFirmware):
         specific interface address in case there are multiple interfaces in the system.
 
 
-        [Note1] The FPGA firmware allows for the UDP networking parameters can
+        [Note1] The FPGA firmware allows for the UDP networking parameters to
         be set without the help of a SPI link to the FPGA core registers. This
         is done by using UDP broadcasts that select specific target FPGAs by
         their serial number.
@@ -1552,7 +1552,7 @@ class chFPGA(FPGAFirmware):
         await self.mb.fpga_core_reg_spi_write_async(self._FPGA_IP_ADDR_ADDR, struct.unpack('>I', ip_packed)[0])
 
         word = await self.fpga_core_reg_read_async(self._CMD_REPLY_DEST_PORT_ADDR)
-        await self.fpga_core_reg_write_async(self._CMD_REPLY_DEST_PORT_ADDR, (word & 0xFF00) | (fpga_command_reply_dest_port & 0x00FF))
+        await self.fpga_core_reg_spi_write_async(self._CMD_REPLY_DEST_PORT_ADDR, (word & 0xFF00) | (fpga_command_reply_dest_port & 0x00FF))
 
         return fpga_mac_addr
 
@@ -1560,6 +1560,8 @@ class chFPGA(FPGAFirmware):
         """
         Sets the port number to which the FPGA is sending data channel packets to the host. Use
         `set_data_target_address` instead.
+
+        This method uses MMI interface to access the FPGA core registers.
 
         Parameters:
 
@@ -1577,6 +1579,9 @@ class chFPGA(FPGAFirmware):
 
     async def get_local_data_port_number_async(self):
         """ Return the port number to which the FPGA is sending its captured data stream on the control network.
+
+        This method uses MMI interface to access the FPGA core registers.
+
         """
         if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
             return self._ZCU111_LOCAL_DATA_PORT_NUMBER
@@ -1597,7 +1602,7 @@ class chFPGA(FPGAFirmware):
          - Raw data capture module (PROBER) to capture periodic rad data form the ADC or SCALER output
          - Correlator (CORR44) to stream integrated correlator products
 
-        UDP Data Channe1 networking parameters are set by the method parameters `ip_addr`, `port` and `eth_addr`.
+        This method uses MMI interface to access the FPGA core registers. It must be used once the MMI interface is initialized.
 
         Parameters:
 
