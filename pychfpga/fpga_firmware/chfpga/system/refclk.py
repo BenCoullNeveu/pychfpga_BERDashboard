@@ -372,6 +372,9 @@ class REFCLK(MMI):
                 print()
             print('   ADC boards average sync delays:', adc_board_average_sync_delays)
 
+        if any(d is None for d in adc_board_average_sync_delays):
+            raise RuntimeError('Unable to compute SYNC delays.')
+
         if set_sync_delays:
             self.set_sync_delays(adc_board_average_sync_delays)
         else:
