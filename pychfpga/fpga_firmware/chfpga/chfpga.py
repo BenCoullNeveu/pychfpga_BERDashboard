@@ -3353,7 +3353,7 @@ class chFPGA(FPGAFirmware):
 
             save_delays (bool): If True, newly computed delay will be saved in the delay table file
 
-            check_sync_delays (bool): If True, loaded sync delays will be checked by pulsing the ADC
+            check_sync_delays (int): Number of times the sync delays will be checked by pulsing the ADC
                 ``sync`` line and verifying that the phase of the ADC clock stays constant relative
                 to the system clock. If the test fails and if `compute_delays` allows it, a new
                 delay for the sync pulse will be computed.
@@ -3361,7 +3361,6 @@ class chFPGA(FPGAFirmware):
             check_adc_delays (int): Number of times the ADC is sync'ed and ramp data is read to
                 check the integrity of the data acquisition. If the test fails and if
                 `compute_delays` allows it, new data line delays will be computed.
-
 
             verbose (bool): If True, print the progress and results of the delay calculation and tests
 
@@ -3407,36 +3406,90 @@ class chFPGA(FPGAFirmware):
                 delay_table = source
             else:
                 raise TypeError('Source must be either a tag from the delay file or a dict')
+
             if delay_table:
                 self._set_adc_delays(delay_table)
-            if delay_table and check_sync_delays and self.REFCLK.check_sync_delays(
-                    trials=check_sync_delays,
-                    verbose=verbose):
-                delay_table = None  # invalidate the delay table if we asked to check it and found errors
-            if delay_table and check_adc_delays and self.check_ramp_errors(trials=check_adc_delays, verbose=verbose):
-                delay_table = None  # invalidate the delay table if we asked to check it and found errors
-            if delay_table is None:
-                self.logger.warning('%r: Provided delay table failed checks' % self)
-        if compute_delays >= 2 or (compute_delays >= 1 and not delay_table):
-            for trial in range(retry):
-                delay_table = self.compute_adc_delays(
-                    channels=list(range(16)),
-                    verbose=verbose,
-                    compute_sync_delays=True,
-                    check_sync_delays=check_sync_delays,
-                    check_adc_delays=check_adc_delays,
-                    set_delays=False)
-                delay_table_updated = True
-                if delay_table and delay_table.get('valid', True):
-                    break
-                self.logger.warning('%r: Computed delay table failed checks. Retrying...' % self)
 
-        if delay_table and delay_table.get('valid', True):
-            self._set_adc_delays(delay_table)
-            if delay_table_updated and save_delays:
-                self._save_adc_delays(delay_table, tag=source or 'default')
-        else:
-            raise RuntimeError('Did not obtain a valid delay table.')
+                # Check sync delays
+                if check_sync_delays:
+                    sync_errors = self.REFCLK.check_sync_delays(trials=check_sync_delays, verbose=verbose)
+                else:
+                    sync_errors = None
+
+                if check_adc_delays:
+                    ramp_errors = self.check_ramp_errors(trials=check_adc_delays, verbose=verbose)
+                else:
+                    ramp_errors = None
+
+                if sync_errors:
+                    self.logger.warning(f'{self!r}: Provided delay table failed sync checks. There were {sync_errors} sync errors.')
+
+                if ramp_errors:
+                    self.logger.warning(f'{self!r}: Provided delay table failed adc ramp checks. There were {ramp_errors} ramp errors.')
+
+                if sync_errors or ramp_errors:
+                    if compute_delays:
+                            self.logger.info(f'{self!r}: The provided delay table failed the sync or ramp checks. Proceeding to compute new tables.')
+                    else:
+                        raise RuntimeError(f'The provided delay table failed the sync and ramp checks and '
+                                           f'we are not allowed to compute new delays.')
+                else:
+                    # If the provided delay table has no errors and we don't want to compute new delays, then we are done since the delays were already set.
+                    return
+
+            else:
+                if compute_delays:
+                    self.logger.warning(f'{self!r}: Delay tables were neither provided nor found. Proceeding to compute new delays.')
+                else:
+                    raise RuntimeError(f'Delay tables were neither provided nor found, and we are not allowed to compute new delays')
+
+        # We get here if compute_delays >0
+        self.logger.debug(f'{self!r}: Computing new sync and/or ADC delays')
+
+        for trial in range(retry):
+
+
+            sync_delays = self.compute_sync_delays(
+                channels=channels,
+                set_sync_delays=True,
+                verbose=verbose)
+
+            if check_sync_delays:
+                sync_errors = self.check_sync_delays(
+                    trials=check_sync_delays,
+                    verbose=verbose)
+            else:
+                sync_errors = None
+
+            if sync_errors:
+                self.logger.warning(f'{self!r}: Provided delay table failed sync checks. There were {sync_errors} sync errors.')
+
+
+            new_delays = self.compute_adc_delays(
+                channels=list(range(16)),
+                verbose=verbose,
+                set_delays=True)
+
+            if check_adc_delays:
+                ramp_errors = self.check_ramp_errors(trials=check_adc_delays, verbose=verbose)
+            else:
+                ramp_errors = None
+
+            if ramp_errors:
+                self.logger.warning(f'{self!r}: Provided delay table failed adc ramp checks. There were {ramp_errors} ramp errors.')
+
+            new_delays['sync_delays'] = sync_delays
+            new_delays['valid'] = not bool(sync_errors or ramp_errors)
+
+            if sync_errors or ramp_errors:
+                if trial == retry - 1:
+                    raise RuntimeError(f'{self!r}: Could not compute valid delay tables after {retry} trials. Giving up.')
+                else:
+                    self.logger.warning(f'{self!r}: Computed delay table failed checks on trial {trial+1}. Retrying...')
+            else:
+                if save_delays:
+                    self._save_adc_delays(new_delays, tag=source or 'default')
+                return
 
     def _load_adc_delays(self, tag='default'):
         filename = '%s.yaml' % self.get_string_id()
@@ -3603,7 +3656,7 @@ class chFPGA(FPGAFirmware):
                 # Set delay, don't change sample delay. No need to sync because sample delay not changed.
                 adcdaq.set_delays(([dly] * 8, None, None))
                 data[i, dly, :] = adcdaq.capture_pattern(period=11)
-        self._set_adc_delays(old_delays)  # restore original delays before the function was called
+        self._set_adc_delays(old_delays)  # restore original SYNC and ADC delays before the function was called
         self.set_adc_mode(old_adc_mode, channels=channels)
         return data
 
@@ -3612,6 +3665,10 @@ class chFPGA(FPGAFirmware):
                             set_sync_delays=True,
                             verbose=1):
         """ Compute and set the SYNC delays for the ADC mezzanines.
+
+        The ADC SYNC delays are adjusted by sweeping the SYNC delay lines and
+        measuring the location of the phase jumps in the ADC pulse pattern
+        after a sync pulse. We select the delay that is as far as possible from such jumps.
 
         The ADC chips are put in pulse mode for the computations and are then returned to their original mode.
 
@@ -3654,30 +3711,23 @@ class chFPGA(FPGAFirmware):
         self.set_adc_mode('pulse')
 
         adc_sampling_freq = self._sampling_frequency
-        sync_invalid = self.REFCLK.check_sync_delays(
+        sync_errors = self.REFCLK.check_sync_delays(
             trials=trials,
             adc_clock_freq=adc_sampling_freq / 2,
             verbose=verbose)
 
         self.set_adc_mode(old_adc_mode, channels=channels)
 
-        return sync_invalid
+        return sync_errors
 
     def compute_adc_delays(
             self,
             channels=list(range(16)),
             verbose=True,
-            compute_sync_delays=True,
-            check_sync_delays=True,
-            check_adc_delays=True,
             set_delays=True):
-        """ Check, computes and set the SYNC and ADC data line delays to
-        ensure reliable data acquisition.
+        """ Computes the ADC data line delays to ensure reliable data acquisition.
 
 
-        The ADC SYNC delays are adjusted by sweeping the SYNC delay lines and
-        measuring the location of the phase jumps in the ADC pulse pattern
-        after a sync pulse.
 
         The ADC data line delays are adjusted by sweeping the delay of each
         data line (bit) of the ADC in pulse mode and looking for the center of
@@ -3704,8 +3754,6 @@ class chFPGA(FPGAFirmware):
 
         """
 
-        old_delays = self.get_adc_delays()
-        # n = np.zeros((16, 11), dtype=np.uint8)
         new_delays = {}
 
         tap_delay = 1 / 200e6 / 32 / 2
@@ -3713,20 +3761,6 @@ class chFPGA(FPGAFirmware):
         pulse_period = int((1 / adc_sampling_freq) / tap_delay)  # 800 MHz period in tap delays (16 taps)
 
 
-        if compute_sync_delays:
-            new_delays['sync_delays'] = self.compute_sync_delays(
-                channels=channels,
-                set_sync_delays=True,
-                verbose=verbose)
-        else:
-            new_delays['sync_delays'] = self.REFCLK.get_sync_delays()
-
-        if check_sync_delays:
-            sync_invalid = self.check_sync_delays(
-                trials=10,
-                verbose=verbose)
-        else:
-            sync_invalid = None
 
 
         data = self.capture_adc_eye_diagram(channels)  # N_chan x 32 x 11 array
@@ -3790,19 +3824,8 @@ class chFPGA(FPGAFirmware):
                 'sample_delay': int((offset + 3) % 11),
                 'clock_delay': 0}
 
-
-
         if set_delays:
             self._set_adc_delays(new_delays)
-        else:
-            self._set_adc_delays(old_delays)
-
-        if check_adc_delays:
-            data_invalid = self.check_ramp_errors(trials=check_adc_delays, verbose=verbose)
-        else:
-            data_invalid = None
-        new_delays['valid'] = not (sync_invalid or data_invalid)
-
 
         return new_delays
 
