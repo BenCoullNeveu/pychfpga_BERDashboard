@@ -1529,30 +1529,31 @@ class chFPGA(FPGAFirmware):
 
         """
 
-        ip_packed = socket.inet_aton(fpga_ip_addr)  #
+        fpga_ip_addr_bytes = socket.inet_aton(fpga_ip_addr)  #
 
         # Compute a MAC address for the FPGA
         # mac = socket.inet_aton(self._get_arm_mac())  #
         if fpga_mac_addr is None:
-            mac_packed = struct.pack('>H4s', 0x1234, ip_packed)
-            fpga_mac_addr = ':'.join(['%02X' % c for c in mac_packed])
+            fpga_mac_addr_bytes = bytes((0x12, 0x34)) + fpga_ip_addr_bytes
+            fpga_mac_addr = ':'.join([f'{c:02X}' for c in fpga_mac_addr_bytes])
         else:
-            mac_packed = bytes([int(s, 16) for s in fpga_mac_addr.split(':')])
+            fpga_mac_addr_bytes = bytes.fromhex(fpga_mac_addr.replace(':',''))
 
+        fpga_mac_addr_int = int.from_bytes(fpga_mac_addr_bytes, 'big')
+        fpga_ip_addr_int = int.from_bytes(fpga_ip_addr_bytes, 'big')
         # self.fpga_mac_addr = fpga_mac_addr
         # self.fpga_control_port_number = fpga_port_number
         # self.fpga_ip_addr = fpga_ip_addr
 
 
         # Set the FPGA Networking parameters over the ARM-FPGA SPI interface
-        await self.mb.fpga_core_reg_spi_write_async(self._FPGA_MAC_ADDR_LSW_ADDR, struct.unpack('>I', mac_packed[2:6])[0])
-        await self.mb.fpga_core_reg_spi_write_async(
-            self._FPGA_MAC_ADDR_MSW_CMD_LISTENING_PORT_ADDR,
-            (struct.unpack('>H', mac_packed[0:2])[0] << 16) | fpga_port_number)
-        await self.mb.fpga_core_reg_spi_write_async(self._FPGA_IP_ADDR_ADDR, struct.unpack('>I', ip_packed)[0])
+        await self.mb.fpga_core_reg_spi_write_async(self._FPGA_MAC_ADDR_LSW_ADDR, fpga_mac_addr_int & 0xFFFFFFFF)
+        await self.mb.fpga_core_reg_spi_write_async(self._FPGA_MAC_ADDR_MSW_CMD_LISTENING_PORT_ADDR,
+            ((fpga_mac_addr_int >> 16) & 0xFFFF0000) | (fpga_port_number & 0xFFFF))
+        await self.mb.fpga_core_reg_spi_write_async(self._FPGA_IP_ADDR_ADDR, fpga_ip_addr_int)
 
-        word = await self.fpga_core_reg_spi_read_async(self._CMD_REPLY_DEST_PORT_ADDR)
-        await self.fpga_core_reg_spi_write_async(self._CMD_REPLY_DEST_PORT_ADDR, (word & 0xFF00) | (fpga_command_reply_dest_port & 0x00FF))
+        word = await self.mb.fpga_core_reg_spi_read_async(self._CMD_REPLY_DEST_PORT_ADDR)
+        await self.mb.fpga_core_reg_spi_write_async(self._CMD_REPLY_DEST_PORT_ADDR, (word & 0xFFFF0000) | (fpga_command_reply_dest_port & 0xFFFF))
 
         return fpga_mac_addr
 
@@ -1575,7 +1576,7 @@ class chFPGA(FPGAFirmware):
                 raise ValueError(f'Cannot current set data port number to {port} on this platform.')
             return
         word = await self.fpga_core_reg_read_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR)
-        await self.fpga_core_reg_write_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR, (word & 0xFF00) | (port & 0x00FF))
+        await self.fpga_core_reg_write_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR, (word & 0xFFFF0000) | (port & 0xFFFF))
 
     async def get_local_data_port_number_async(self):
         """ Return the port number to which the FPGA is sending its captured data stream on the control network.
@@ -1586,7 +1587,7 @@ class chFPGA(FPGAFirmware):
         if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
             return self._ZCU111_LOCAL_DATA_PORT_NUMBER
         else:
-            return (await self.fpga_core_reg_read_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR)) & 0xFF
+            return (await self.fpga_core_reg_read_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR)) & 0xFFFF
 
     async def set_data_target_address_async(self, ip_addr=None, port=None, mac_addr=None):
         """
@@ -1638,12 +1639,12 @@ class chFPGA(FPGAFirmware):
         if not ip_addr:
             ip_addr_int = 0
         else:
-            ip_addr_int = struct.unpack('>L', socket.inet_aton(ip_addr))[0]
+            ip_addr_int = int.from_bytes(socket.inet_aton(ip_addr), 'big')
 
         if not mac_addr:
             mac_addr_int = 0
         else:
-            mac_addr_int = sum(int(s, 16) << (8 * i) for i, s in enumerate(reversed(mac_addr.split(':'))))
+            mac_addr_int = int.from_bytes(bytes.fromhex(mac_addr.replace(':','')), 'big')
 
         self.logger.debug(
             f'{self!r}: setting data target address to '
@@ -1655,7 +1656,7 @@ class chFPGA(FPGAFirmware):
 
         # Set the FPGA Networking parameters over the ARM-FPGA SPI interface
         await self.mb.fpga_core_reg_spi_write_async(self._FPGA_DATA_DEST_IP_ADDR_ADDR, mac_addr_int & 0xFFFFFFFF)
-        await self.mb.fpga_core_reg_spi_write_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR, (mac_addr_int>>16) & 0xFF00 | (port & 0xFF))
+        await self.mb.fpga_core_reg_spi_write_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR, (mac_addr_int>>16) & 0xFFFF0000 | (port & 0xFFFF))
         await self.mb.fpga_core_reg_spi_write_async(self._FPGA_DATA_DEST_IP_ADDR_ADDR, ip_addr_int)
 
 
@@ -3561,7 +3562,7 @@ class chFPGA(FPGAFirmware):
                 # chan.ADCDAQ.RAMP_ERR_CLEAR = 0
                 # chan.ADCDAQ.RAMP_ERR_CLEAR = 1
                 if verbose:
-                    s += f'{e:2d} ({be:08X}) '
+                    s += f'CH{i:02d}:{e:2d} ({be:08X}) '
             self.logger.debug(f'{self!r}: {s}')
         self.set_adc_mode(old_adc_mode)
         return sum(word_errors)
@@ -3790,17 +3791,18 @@ class chFPGA(FPGAFirmware):
                 'clock_delay': 0}
 
 
+
+        if set_delays:
+            self._set_adc_delays(new_delays)
+        else:
+            self._set_adc_delays(old_delays)
+
         if check_adc_delays:
             data_invalid = self.check_ramp_errors(trials=check_adc_delays, verbose=verbose)
         else:
             data_invalid = None
         new_delays['valid'] = not (sync_invalid or data_invalid)
 
-
-        if set_delays:
-            self._set_adc_delays(new_delays)
-        else:
-            self._set_adc_delays(old_delays)
 
         return new_delays
 
