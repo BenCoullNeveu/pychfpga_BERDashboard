@@ -1551,7 +1551,7 @@ class chFPGA(FPGAFirmware):
             (struct.unpack('>H', mac_packed[0:2])[0] << 16) | fpga_port_number)
         await self.mb.fpga_core_reg_spi_write_async(self._FPGA_IP_ADDR_ADDR, struct.unpack('>I', ip_packed)[0])
 
-        word = await self.fpga_core_reg_read_async(self._CMD_REPLY_DEST_PORT_ADDR)
+        word = await self.fpga_core_reg_spi_read_async(self._CMD_REPLY_DEST_PORT_ADDR)
         await self.fpga_core_reg_spi_write_async(self._CMD_REPLY_DEST_PORT_ADDR, (word & 0xFF00) | (fpga_command_reply_dest_port & 0x00FF))
 
         return fpga_mac_addr
