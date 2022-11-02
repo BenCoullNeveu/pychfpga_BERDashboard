@@ -603,8 +603,8 @@ class chFPGA(FPGAFirmware):
 
         self.fpga_ip_addr = fpga_ip_addr
         self.fpga_ip_addr_fn = fpga_ip_addr_fn
-        if fpga_ip_addr_fn is not None:
-            self.logger.warning('fpga_ip_addr_fn will be deprecated. Instead specify fpga_ip_addr in the hardware map')
+        # if fpga_ip_addr_fn is not None:
+        #     self.logger.warning('fpga_ip_addr_fn will be deprecated. Instead specify fpga_ip_addr in the hardware map')
         self.udp_retries = udp_retries
         self.fpga_control_port_number = fpga_control_port_number
         self.local_control_port_number = local_control_port_number
