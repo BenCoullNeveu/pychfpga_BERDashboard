@@ -5006,6 +5006,14 @@ class FPGAArray(object):
             else:
                 self.logger.warning(f"{self!r}: Communication with FPGA is not initialized. Cannot set ADC delays")
 
+    def print_adc_frequencies(self):
+        """ Displays the frequency of the clocks coming out of each AC chip.
+        """
+
+        for ib in self.ib:
+            freqs = ', '.join('{:7.3f}'.format(ib.FreqCtr.read_frequency(f'ADC_CLK{c}', gate_time=1e-3)/1e6) for c in (0,4,8,12))
+            print(f'{ib!r}: {freqs}')
+
 
 log_levels = {'info': logging.INFO,
               'debug': logging.DEBUG,
