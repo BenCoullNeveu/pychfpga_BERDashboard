@@ -255,7 +255,8 @@ class FMCMezzanine_MGADC08(FMCMezzanine):
             verbose=0,
             adc_mode=0,
             adc_bandwidth=2):
-        """ Initializes the FMC board modules"""
+        """ Initializes the FMC board modules (IOExpander, ADC PLL, ADC chips Temp Sensors)
+        """
 
         if not isinstance(self.iceboard.fpga, chFPGA):
             raise RuntimeError('%r: This %s mezzanine require a motherboard with the chFPGA firmware' % (self, self.__class__))

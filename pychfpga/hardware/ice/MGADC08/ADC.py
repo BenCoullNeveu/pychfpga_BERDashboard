@@ -53,7 +53,7 @@ class ADC_chip:
             bandwidth=2,
             full_scale=0,
             test_mode=0,
-            sync_delay=0x08):
+            sync_delay=8):
         """
         Writes the control and test register of the ADC. A SYNC is required if the operating mode of the ADC is changed.
 
@@ -97,7 +97,7 @@ class ADC_chip:
                 data clock after a SYNC event
         """
 
-        self.logger.debug('%r: initializing ADC chip with ADC mode %i' % (self, adc_mode))
+        self.logger.debug(f'{self.adc!r}: Initializing ADC chip {self.adc_number} with ADC mode {adc_mode}')
 
         ADC_MODE = adc_mode  # 0-15, 0=4-channel mode
         STDBY = standby_mode  # 0-3, 0=Full active, 3=Full standby
@@ -118,6 +118,18 @@ class ADC_chip:
         self.write(self.REG_CONTROL, REG_CONTROL_Value)
         self.write(self.REG_TEST, REG_TEST_Value)
         self.write(self.REG_SYNC, REG_SYNC_Value)
+
+
+        # debug below
+        # import time
+        # for _ in range(3):
+        #     self.logger.debug(f'{self!r}: multiple initializing ADC chip with ADC mode {adc_mode}')
+        #     self.soft_reset()
+        #     time.sleep(0.3)
+        #     self.write(self.REG_SYNC, REG_SYNC_Value)
+        #     self.write(self.REG_TEST, REG_TEST_Value)
+        #     self.write(self.REG_CONTROL, REG_CONTROL_Value)
+        #     time.sleep(0.3)
 
     channel = property(lambda s: s.read(s.REG_CHANNEL_SELECT), lambda s, value: s.write(s.REG_CHANNEL_SELECT, value))
     chip_id = property(lambda s: s.read(s.REG_CHIP_ID), lambda s, value: s.write(s.REG_CHIP_ID, value))
