@@ -1697,7 +1697,7 @@ class FPGAArray(object):
 
         if bad_clock_source_with_crate:
             msg = ', '.join(f'{self.ib[i]!r}=>{clock_sources[i]}' for i in bad_clock_source_with_crate)
-            raise RuntimeError('The following IceBoards are in crates but are not configured to use the backplane clock: {msg}')
+            raise RuntimeError(f'The following IceBoards are in crates but are not configured to use the backplane clock: {msg}')
 
         if mode == 'chan8':
             self.ib.set_fft_bypass(True)
