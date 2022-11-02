@@ -1650,14 +1650,11 @@ class chFPGA(FPGAFirmware):
             f'{self!r}: setting data target address to '
             f'ip={ip_addr}({ip_addr_int}), port={port}({port}), '
             f'mac={mac_addr}({mac_addr_int})')
-        # Set the UDP transmit channel 1 IP and MAC addresses
-        self.GPIO.TARGET_MAC_ADDR = mac_addr_int
-        self.GPIO.TARGET_IP_ADDR = ip_addr_int
 
-        # Set the FPGA Networking parameters over the ARM-FPGA SPI interface
-        await self.mb.fpga_core_reg_spi_write_async(self._FPGA_DATA_DEST_IP_ADDR_ADDR, mac_addr_int & 0xFFFFFFFF)
-        await self.mb.fpga_core_reg_spi_write_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR, (mac_addr_int>>16) & 0xFFFF0000 | (port & 0xFFFF))
-        await self.mb.fpga_core_reg_spi_write_async(self._FPGA_DATA_DEST_IP_ADDR_ADDR, ip_addr_int)
+        # Set the UDP data channel networking parameters (MAC, IP & PORT) over the MMI interface
+        await self.mb.fpga_core_reg_write_async(self._FPGA_DATA_DEST_IP_ADDR_ADDR, mac_addr_int & 0xFFFFFFFF)
+        await self.mb.fpga_core_reg_write_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR, (mac_addr_int>>16) & 0xFFFF0000 | (port & 0xFFFF))
+        await self.mb.fpga_core_reg_write_async(self._FPGA_DATA_DEST_IP_ADDR_ADDR, ip_addr_int)
 
 
     async def get_fpga_firmware_cookie(self, resync=False):
@@ -2409,7 +2406,7 @@ class chFPGA(FPGAFirmware):
         config.system_fpga_port_number = self.fpga_control_port_number
         config.system_local_command_port_number = self.local_control_port_number
         config.system_local_data_port_number = await self.get_local_data_port_number_async()
-        config.system_local_corr_port_number = self.local_control_port_number + self.GPIO.CORR_IP_PORT_OFFSET if self.local_control_port_number is not None else None
+        config.system_local_corr_port_number = self.local_control_port_number
 
         config.number_of_channelizers = self.NUMBER_OF_CHANNELIZERS
         config.system_list_of_antennas_with_channelizers = self.LIST_OF_ANTENNAS_WITH_FFT
