@@ -3477,7 +3477,6 @@ class chFPGA(FPGAFirmware):
 
 
             sync_delays = self.compute_sync_delays(
-                channels=channels,
                 set_sync_delays=True,
                 verbose=verbose)
 
@@ -3673,6 +3672,7 @@ class chFPGA(FPGAFirmware):
         period = 11  # The pulse waveform repeats every 11 samples
         for i in range(1):
             self.sync()
+            time.sleep(0.01)
         data = np.zeros((len(channels), 32, period), np.uint8)
 
         for i, ch in enumerate(channels):
