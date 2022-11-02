@@ -75,11 +75,13 @@ class ADC_PLL_base(object):
         band_sel_div = int(fref * 8)  # 1-255. R counter output / band_sel_div < 125 kHz.
         vco_power_down = 0  # 0-1
         mute_until_lock_detect = 1  # 0-1
-        AUX_sel = 0  # 0=use output divider output, 1=use VCO output directly,
-        AUX_enable = 1  # 0-1
-        AUX_power = 3  # 0=-4 dBm, 1=-1 dBm, 2=2 dBm, 3=5 dBm
+        # Output buffer settings for ADC0
         RF_enable = 1  # 0-1
         RF_power = 3  # 0=-4 dBm, 1=-1 dBm, 2=2 dBm, 3=5 dBm
+        # Output buffer settings for ADC1
+        AUX_sel = 0  # 0=use output divider output, 1=use VCO output directly,
+        AUX_enable = 1  # 0-1
+        AUX_power = RF_power  # 0=-4 dBm, 1=-1 dBm, 2=2 dBm, 3=5 dBm
 
         # REGISTER 3
         cycle_slip_reduction = 0  # 0-1. Needs 50% duty cycle and lowest CP current
