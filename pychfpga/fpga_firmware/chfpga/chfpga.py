@@ -1026,7 +1026,12 @@ class chFPGA(FPGAFirmware):
             else:
                 self.logger.debug('%r:    Skipping FMC%i initialization since no board is present in that slot' % (
                     self, mezz_number - 1))
+        # self.set_sync_delays((0,0))  # debug
         self.sync()  # pulse the sync lines of the mezzanines to activate the ADC configurations
+        #self.set_sync_delays((4,4))  # debug
+        #self.sync()  # debug
+        self.check_adc_frequencies('after 1st post-mezz-init SYNC (chan reset active) ')
+
 
         # self.logger.debug('%r:   Taking channelizers out of reset after FMC enabling' % (self))
 
@@ -1035,11 +1040,15 @@ class chFPGA(FPGAFirmware):
         self.logger.debug('%r:   Sending sync()' % (self))
         await asyncio.sleep(0)
         self.sync()  # might be needed  to make sure that the clock is running to set delays
+        self.check_adc_frequencies('after 1st channelizer reset SYNC')
 
         # self.logger.info('%r: --- Initializing FPGA subsystems' % self)
         self.logger.debug('%r: === Initializing Channelizers' % self)
         self.chan.init(delay_table=adc_delay_table, fmc_present=self.ANT_FMC_IS_PRESENT)
         # self.chan.status()
+
+        self.check_adc_frequencies('after channelizer init')
+
 
         self.logger.debug('%r: === Initializing Corner-Turn engine' % self)
         self.logger.debug('%r: === Initializing 1st Crossbar' % self)
@@ -1051,6 +1060,7 @@ class chFPGA(FPGAFirmware):
         else:
             self.logger.warning("%r: There is no 1st CROSSBAR module in this firmware build "
                                  "(so there can't be data streamed to the correlators or GPU links!)" % self)
+
 
         if self.BP_SHUFFLE:
             await asyncio.sleep(0)
@@ -1070,6 +1080,8 @@ class chFPGA(FPGAFirmware):
             self.CROSSBAR3.init()
         else:
             self.logger.warning("%r: There is no 3rd CROSSBAR module in this firmware build" % self)
+
+        self.check_adc_frequencies('after CROSSBAR init')
 
         if self.CORR:
             self.logger.debug('%r: === Initializing FPGA-based correlator (X-Engine)' % self)
@@ -1101,12 +1113,30 @@ class chFPGA(FPGAFirmware):
         await asyncio.sleep(0)
         self.set_ant_reset(0)  # Disable channelizer reset
 
+        self.check_adc_frequencies('after final channelizer reset release')
+
+
         self._last_init_time = time.time()
 
         # Create a data receiver
         if create_receiver:
             self.get_data_receiver()
 
+    def check_adc_frequencies(self, stage):
+        for trial in range(10):
+            freqs = [self.FreqCtr.read_frequency(f'ADC_CLK{i}', gate_time=0.001) for i in (0,4,8,12)] # ***JFC debug
+            err = any(abs(f-self._sampling_frequency/4) > 2.1e3 for f in freqs)
+            msg = f'{self!r}: ADC output frequencies at stage {stage} are {[f/1e6 for f in freqs]} (check #{trial+1}) {"ERROR!" if err else ""}'
+            if err:
+                self.logger.warn(msg)
+            else:
+                self.logger.info(msg)
+                break
+        if err:
+            msg = f'{self!r}: some ADCs are not generating a proper clock at stage "{stage}". Frequencies are {freqs} MHz. Expected frequency is {self._sampling_frequency/4/1e6}. Deltas = {[f-self._sampling_frequency/4/1e16 for f in freqs]}'
+            self.logger.error(msg)
+            pass
+        return err
 
     ###################################
     # Core registers access methods
