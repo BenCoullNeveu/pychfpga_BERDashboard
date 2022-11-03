@@ -68,7 +68,7 @@ class CORR_core(MMI):
     def init(self):
         """ Inisializes all modules of a correlator block."""
         self.INTEGRATION_PERIOD = 16384-1
-        self.USER_ID = self.fpga.slot or 0
+        self.USER_ID = self.fpga.slot - 1 if self.fpga.slot else 0
 
 
     def status(self):
