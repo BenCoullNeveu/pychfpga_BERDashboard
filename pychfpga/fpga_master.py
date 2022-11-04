@@ -849,9 +849,9 @@ class FPGAMaster(object):
             'corr_name': self.corr_name,
             'data_folder': self.data_folder,
             'run_name': self.run_name,
-            'run_folder': self.run_folder
+            'run_folder': self.run_folder,
+            **extra_fields
             }
-        fields.update(extra_fields)
         return os.path.expanduser(pattern.format(**fields) % fields)
 
         # Register configuration with the Comet server
@@ -986,7 +986,7 @@ class FPGAMaster(object):
                     f"{self!r}: Could not remove current "
                     f"symlink '{self.current_folder}'. The error is:\n{e!s}")
             try:
-                os.symlink(self.run_folder, self.current_folder)
+                os.symlink(os.path.relpath(self.run_folder, os.path.dirname(self.current_folder)), self.current_folder)
             except OSError as e:
                 self.log.warning(
                     f"{self!r}: Could not create a symlink '{self.current_folder}' "
@@ -1053,14 +1053,33 @@ class FPGAMaster(object):
                     'No IceBoard could be found. Are the boards powered up? '
                     'Is the network connection functional?')
 
-        if not fpga_array_params.open:
+        if fpga_array_params.get('open', None) == 0:
             self.log.warning(
                 "fpga_array is initialized with open=0. "
                 "Aborting the rest of the FPGA array initialization.")
             return
+
+
         # Set ADC delays from delay files. Recompute and save new delays if the files do not exist or if
         # the delays loaded from them do not work.
-        await ca.set_adc_delays_async(**conf.fpga.adc_delay_params)
+        # If the adc_delay_params section is not present, the defaults in set_adc_delays() will be used.
+        # if specified, the adc_delay_folder name fields (~, {}) will be expanded and the folder will be created if required
+
+        adc_delay_params = conf.fpga.get('adc_delay_params', {}).copy()
+        self.log.info(f'{self!r}: adc_delay_params={adc_delay_params}')
+        if 'delay_table_folder' in adc_delay_params:
+            delay_table_folder = self.expand_path(adc_delay_params['delay_table_folder'])
+            adc_delay_params['delay_table_folder'] = delay_table_folder
+            self.log.info(f'{self!r}: expanded delay_table_folder is {delay_table_folder}')
+            try:
+                os.makedirs(delay_table_folder, exist_ok=True)
+            except OSError:
+                errmsg = f"Could not create adc delay folder '{delay_table_folder}'!"
+                self.log.critical(errmsg)
+                raise RuntimeError(errmsg)
+        else:
+            self.log.warning(f'ADC delay table folder (adc_delay_params.delay_table_folder) is not set. Delays will be saved in the default folder specified in set_adc_delays()')
+        await ca.set_adc_delays_async(**adc_delay_params)
 
         # Reset the correlator. Not sure if this is necesssary?
         # ca.ib.set_corr_reset(1)

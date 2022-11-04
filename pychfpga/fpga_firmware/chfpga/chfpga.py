@@ -86,7 +86,7 @@ ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = {
 
 # Select the default delay table
 ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2
-ADC_DELAY_TABLE_FOLDER = '../../adc_delay_tables'  # relative to this module location
+ADC_DELAY_TABLE_FOLDER = os.path.join(os.path.dirname(__file__), '../../adc_delay_tables')  # relative to this module location
 
 class chFPGA_config(object):
     """
@@ -3325,6 +3325,7 @@ class chFPGA(FPGAFirmware):
             save_delays=True,
             check_sync_delays=False,
             check_adc_delays=20,
+            delay_table_folder=ADC_DELAY_TABLE_FOLDER, 
             verbose=1,
             retry=5):
         """
@@ -3389,6 +3390,9 @@ class chFPGA(FPGAFirmware):
                 check the integrity of the data acquisition. If the test fails and if
                 `compute_delays` allows it, new data line delays will be computed.
 
+
+            delay_table_folder (str): folder in which the delay table should be loaded from or save to.
+
             verbose (bool): If True, print the progress and results of the delay calculation and tests
 
         Returns:
@@ -3428,7 +3432,7 @@ class chFPGA(FPGAFirmware):
         # Don't bother getting delays from the specified source if we are going to recompute the delay table anyways
         if compute_delays < 2:
             if isinstance(source, str):
-                delay_table = self._load_adc_delays(source)
+                delay_table = self._load_adc_delays(source, delay_table_folder=delay_table_folder)
             elif isinstance(source, dict):
                 delay_table = source
             else:
@@ -3514,12 +3518,12 @@ class chFPGA(FPGAFirmware):
                     self.logger.warning(f'{self!r}: Computed delay table failed checks on trial {trial+1}. Retrying...')
             else:
                 if save_delays:
-                    self._save_adc_delays(new_delays, tag=source or 'default')
+                    self._save_adc_delays(new_delays, tag=source or 'default', delay_table_folder=delay_table_folder)
                 return
 
-    def _load_adc_delays(self, tag='default'):
+    def _load_adc_delays(self, tag='default', delay_table_folder=ADC_DELAY_TABLE_FOLDER):
         filename = '%s.yaml' % self.get_string_id()
-        fullpath = os.path.join(os.path.dirname(__file__), ADC_DELAY_TABLE_FOLDER, filename)
+        fullpath = os.path.join(delay_table_folder, filename)
 
         # print 'Loading YAML file %s' % filename
         try:
@@ -3546,11 +3550,11 @@ class chFPGA(FPGAFirmware):
                     latest_delay_table = entry['delay_table']
         return latest_delay_table
 
-    def _save_adc_delays(self, delay_table, tag='default'):
+    def _save_adc_delays(self, delay_table, tag='default', delay_table_folder=ADC_DELAY_TABLE_FOLDER):
         if not delay_table:
             raise ValueError('Please specify a valid delay table')
         filename = '%s.yaml' % self.get_string_id()
-        fullpath = os.path.join(os.path.dirname(__file__), ADC_DELAY_TABLE_FOLDER, filename)
+        fullpath = os.path.join(delay_table_folder, filename)
         print('Loading YAML file %s' % filename)
         try:
             with open(fullpath, 'r') as yamlfile:
