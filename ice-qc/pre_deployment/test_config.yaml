@@ -1,0 +1,66 @@
+# model_number required to run the tests (generate data folder name, configure EEPROM etc.). Not sure if this is the correct one
+# to use for the F-Engine tests, but using it for now.
+model_number: 'MGK7BP16'
+
+fpga_bit_file: '../../pychfpga/fpga_firmware/bitstreams/chFPGA_MGK7MB_Rev2.bit'
+
+instruments:
+  ps:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '10.10.10.151', gpib_addr: 5}  # Agilent N5764A power supply
+
+?: &default_fpga_array # Shouldn't really be used
+    iceboards: 0047
+    mdns_delay: 1
+
+test_list:
+    # This list all the tests that will be done by the test software, in the proper order
+    # path is the argument given to nose to find the test fucntion, in the form of module_path:function or module_path:class.method
+    # This path is also the path used by XReport to identify tests results, with the exception that the semicolon ':' is replaced by a dot '.'
+    init:   {description: 'Crate initialization test',  path: 'f_engine_tests.py::TestPreDeploymentCrate::test_init',         required: yes, require_serial_number: yes, dependencies: null}
+    bperr:  {description: 'Backplane error test',       path: 'f_engine_tests.py::TestPreDeploymentCrate::test_bperr',        required: yes, require_serial_number: yes, dependencies: null}
+    sync:   {description: 'Sync test',                  path: 'f_engine_tests.py::TestPreDeploymentCrate::test_sync',         required: yes, require_serial_number: yes, dependencies: null}
+    delay:  {description: 'ADC delays test',            path: 'f_engine_tests.py::TestPreDeploymentCrate::test_adc_delays',   required: yes, require_serial_number: yes, dependencies: null}
+
+menu:
+    # The menu item will match the user input to either the 'key' field or to the regular expression 'regex'. The matching dictionary is returned.
+    # If a regular expression is given, string parameters are replaced by string_param.format(regex_matched_group_list), i.e. '{0}' is replaced by the first matched group etc. The 'key' and 'regex' fields are excluded from this conversion.
+    # Entry types are:
+    #  test: a test to run. test_tag refers to the test to run in test_list (defined above). A regex entry will be added to match the tets tag and tets path. The description will be taken from the test description if none is provided here.
+    #  exit: exit the menu
+    #  text: do nothing. The description is shown in the menu if there is one.
+    #  board_info: Sets the current board model and serial number. The serial number can be extracted from string parsed by the regex
+    #
+    - { description: "Start by entering the BP's serial number, then select a test or range of tests (e.g. 2-4).",     type: text}
+    - { key: '0',                    action: run_test, test_tag: init}
+    - { key: '1',                    action: run_test, test_tag: bperr}
+    - { key: '2',                    action: run_test, test_tag: sync}
+    - { key: '3',                    action: run_test, test_tag: delay}
+    - { key: 'S',                    action: push,    description: 'Send all new test results data to McGill'}
+    - { key: 'R',                    action: summary, description: 'Generate summary of all tests'           }
+    - { key: 'Q',                    action: exit,    description: 'Exit'                                    }
+    - { regex: '(0\d{2})', model: 'MGK7BP16', serial: '{0}', next_key: '0'}  # 0nn are MGK7BP16 Serial number
+    - { regex: '\d+\-\d+', action: run_range, input: '{0}'} # regex to select a range of options
+
+##################################
+# Test-specific parameters
+##################################
+
+f_engine_tests:
+  global_settings:
+    eth_interface: 'eno1' # Check if correct. Name of ethernet interface on which the crate is connected. Used to check jumbo frames.
+    ps_voltage: 20  # Volts. Voltage to set on the F-Engine power supply
+    ps_current: 76   # Amps. Maximum current limit to set on the F-Engine power supply
+    fpga_array_params:
+      hwm: 'bp16 25:0'
+      stderr_log_level: 'warning'
+      prog: 1 # or should we always force FPGA reprogram?
+      mode: 'shuffle256'
+      sync_method: 'irigb'
+      mdns_timeout: 60
+
+  crate_init:
+
+  backplane_err:
+
+  sync_test:
+
+  delay_test:

@@ -31,7 +31,7 @@ test_list:
     ctt: {description: 'Clock/Time/Trig Test',        path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_clk_time_trig',required: yes, require_serial_number: yes, dependencies: null}
     snc: {description: 'Sync Test',                   path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_sync',         required: yes, require_serial_number: yes, dependencies: null}
     clk: {description: 'Clock Output Test',           path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_clock_output', required: yes, require_serial_number: yes, dependencies: null}
-    led: {description: 'Reset LEDs Test',             path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_reset_LEDs',  required: yes, require_serial_number: yes, dependencies: null}
+    led: {description: 'Reset LEDs Test',             path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_reset_LEDs',   required: yes, require_serial_number: yes, dependencies: null}
     sen: {description: 'BP Sensor test',              path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_sensor',       required: no,  require_serial_number: yes, dependencies: null}
     qsf: {description: 'QSFP Connector test',         path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_qsfp',         required: yes, require_serial_number: yes, dependencies: null}
     res: {description: 'Board Reset test',            path: 'mgk7bp16_tests.py::TestMGK7BP16Crate::test_reset',        required: yes, require_serial_number: yes, dependencies: null}

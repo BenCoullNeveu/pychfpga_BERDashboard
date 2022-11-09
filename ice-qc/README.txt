@@ -3,6 +3,7 @@ This folder contains the code used to perform hardware Quality Control (QC) on t
 - Motherboard: IceBoard (Model MGK7MB) 
 - CHIME ADC Mezzanine (Model MGADC08)
 - 16-slot backplane (Model MGK7BP16)
+- Single-crate F-Engine for pre-deployment
 
 
 This code is used on the Quality control test setup at the board manufacturer for acceptance tests, and is further used at McGill for in depth system tests.
