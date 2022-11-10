@@ -90,7 +90,7 @@ RUN set -ex \
     && apt-get update -yqq \
     && apt-get install -yqq --no-install-recommends \
         # include curl for health checks of REST servers
-        curl \
+        curl
 
 # Setup the path to point to the virtual environment that we will copy in the next step
 ENV VIRTUAL_ENV=/pychfpga/.venv
