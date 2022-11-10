@@ -86,6 +86,12 @@ RUN --mount=type=ssh set -ex \
 FROM python:3.8-slim as deploy
 WORKDIR /pychfpga
 
+RUN set -ex \
+    && apt-get update -yqq \
+    && apt-get install -yqq --no-install-recommends \
+        # include curl for health checks of REST servers
+        curl \
+
 # Setup the path to point to the virtual environment that we will copy in the next step
 ENV VIRTUAL_ENV=/pychfpga/.venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
