@@ -24,7 +24,8 @@ FROM python:3.8-slim as base
 RUN set -ex \
     && apt-get update -yqq \
     && apt-get install -yqq --no-install-recommends \
-        # curl \
+        # include curl for health checks of REST servers
+        curl \
         # Include openssh for ssh-keyscan
         openssh-client \
         git \
