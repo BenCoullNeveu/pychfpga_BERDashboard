@@ -5,7 +5,7 @@ model_number: 'MGK7BP16'
 fpga_bit_file: '../../pychfpga/fpga_firmware/bitstreams/chFPGA_MGK7MB_Rev2.bit'
 
 instruments:
-  ps:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '10.10.10.151', gpib_addr: 5}  # Agilent N5764A power supply
+  ps:     {labpy_object: 'agilent_N5700', adapter: 'TCP::10.10.10.151'} #, interface: 'lan' ip_addr: '10.10.10.151', gpib_addr: 5}  # Agilent N5764A power supply
 
 ?: &default_fpga_array # Shouldn't really be used
     iceboards: 0047
@@ -15,10 +15,12 @@ test_list:
     # This list all the tests that will be done by the test software, in the proper order
     # path is the argument given to nose to find the test fucntion, in the form of module_path:function or module_path:class.method
     # This path is also the path used by XReport to identify tests results, with the exception that the semicolon ':' is replaced by a dot '.'
-    init:   {description: 'Crate initialization test',  path: 'f_engine_tests.py::TestPreDeploymentCrate::test_init',         required: yes, require_serial_number: yes, dependencies: null}
-    bperr:  {description: 'Backplane error test',       path: 'f_engine_tests.py::TestPreDeploymentCrate::test_bperr',        required: yes, require_serial_number: yes, dependencies: null}
-    sync:   {description: 'Sync test',                  path: 'f_engine_tests.py::TestPreDeploymentCrate::test_sync',         required: yes, require_serial_number: yes, dependencies: null}
-    delay:  {description: 'ADC delays test',            path: 'f_engine_tests.py::TestPreDeploymentCrate::test_adc_delays',   required: yes, require_serial_number: yes, dependencies: null}
+    init:    {description: 'Crate initialization test',  path: 'f_engine_tests.py::TestPreDeploymentCrate::test_init',         required: yes, require_serial_number: yes, dependencies: null}
+    bperr:   {description: 'Backplane error test',       path: 'f_engine_tests.py::TestPreDeploymentCrate::test_bperr',        required: yes, require_serial_number: yes, dependencies: null}
+    sync:    {description: 'Sync test',                  path: 'f_engine_tests.py::TestPreDeploymentCrate::test_sync',         required: yes, require_serial_number: yes, dependencies: null}
+    clock:   {description: 'ADC clock test',             path: 'f_engine_tests.py::TestPreDeploymentCrate::test_adc_clocks',   required: yes, require_serial_number: yes, dependencies: null}
+    syncdel: {description: 'ADC sync delays test',       path: 'f_engine_tests.py::TestPreDeploymentCrate::test_sync_delays',  required: yes, require_serial_number: yes, dependencies: null}
+    eye:     {description: 'ADC eye test',               path: 'f_engine_tests.py::TestPreDeploymentCrate::test_adc_eye',      required: yes, require_serial_number: yes, dependencies: null}
 
 menu:
     # The menu item will match the user input to either the 'key' field or to the regular expression 'regex'. The matching dictionary is returned.
@@ -33,7 +35,9 @@ menu:
     - { key: '0',                    action: run_test, test_tag: init}
     - { key: '1',                    action: run_test, test_tag: bperr}
     - { key: '2',                    action: run_test, test_tag: sync}
-    - { key: '3',                    action: run_test, test_tag: delay}
+    - { key: '3',                    action: run_test, test_tag: clock}
+    - { key: '4',                    action: run_test, test_tag: syncdel}
+    - { key: '5',                    action: run_test, test_tag: eye}
     - { key: 'S',                    action: push,    description: 'Send all new test results data to McGill'}
     - { key: 'R',                    action: summary, description: 'Generate summary of all tests'           }
     - { key: 'Q',                    action: exit,    description: 'Exit'                                    }
@@ -62,5 +66,15 @@ f_engine_tests:
   backplane_err:
 
   sync_test:
+    n_syncs: 100
 
-  delay_test:
+  clock_test:
+    integration_period: 0.001
+    n_clock_checks: 1000
+
+  sync_delay_test:
+
+  adc_eye_test:
+    n_checks: 5
+    n_refs: 25
+    n_fails_accept: 5

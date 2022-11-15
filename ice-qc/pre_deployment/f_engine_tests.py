@@ -33,19 +33,18 @@ class TestUtils:
         """ Opens a power supply and configures it
 
         The `voltage` and `current` to be programmed can be specified. If `None`, the global values from
-        the config file in ``motherboard_tests.global_settings`` will be
-        used.
+        the config file in ``f_engine_tests.global_settings`` will be used.
         """
         # open power supply instrument if it is in the list of instruments and if we don't force manual operation
         if 'ps' in self.cfg.instruments and not self.cfg.get('manual_ps', False):
-            self.ps = self.open_instruments(name)
+            self.ps = self.open_instrument(name)
         else:
             self.ps = None
 
         # initialize power supply if we have one
         if self.ps:
-            voltage = voltage if voltage is not None else self.cfg.motherboard_tests.global_settings.ps_voltage
-            current = current if current is not None else self.cfg.motherboard_tests.global_settings.ps_current
+            voltage = voltage if voltage is not None else self.cfg.f_engine_tests.global_settings.ps_voltage
+            current = current if current is not None else self.cfg.f_engine_tests.global_settings.ps_current
             self.ps.set_output(state=False) #Ensuring power on N5764A is off
             self.ps.clear() #Clearing any previous protection
             self.ps.set_voltage(voltage=voltage) #Setting voltage, power still off
@@ -63,7 +62,7 @@ class TestUtils:
 
         #     # Turn power supply back on:
         #     instr_params = self.cfg.instruments['ps'].copy()
-        #     ip_addr = instr_params.pop('ip_addr')
+        #     ip_addr = instr_params.pop('adapter')[5:]
         #     print(f'Turning on power supply at {ip_addr}...')
         #     self.ps = self.open_ps()
 
@@ -76,12 +75,10 @@ class TestUtils:
                 sync_method = fpga_array_params.sync_method,
                 mdns_timeout = fpga_array_params.mdns_timeout)
 
+            assert len(ca) == 16 # need a better assertion
+
+        finally:
             return ca
-
-        except Exception as e:
-            print('Error initializing crate. Error message is:')
-            print(e)
-
 
 class TestPreDeploymentCrate(TestUtils):
     """
@@ -100,11 +97,16 @@ class TestPreDeploymentCrate(TestUtils):
     3) Force IRIG-B syncs
         - initialize crate
         - config-defined number of sync tries
-    4) Force ADC delay calculations
+    4) Check ADC clocks
+        - initialize crate
+        - iterate through all motherboards and mezzanines, check that
+          clocks are 200 MHz +/- tolerance (set by integration time)
+    5) Force ADC sync delay calculations
         - intialize crate
-        - will need to think about how best to test this since the output is more visual...
-          maybe just print each output and force user to answer an input asking if it passed?
-    5) ...? will fill in later, moving on to start writing functions
+        - visual inspection
+    6) Check ADC eye diagrams
+        - initialize crate
+        - visual inspection
     """
 
     @pytest.fixture(autouse=True)
@@ -144,7 +146,7 @@ class TestPreDeploymentCrate(TestUtils):
         # Initialize the crate:
         passed = False
         try:
-            input('Turn on the power supply. Press ENTER to continue. (Q:Exit) ')
+            # input('Turn on the power supply. Press ENTER to continue. (Q:Exit) ')
             self.ca = self.crate_init()
             # If we made it to this point, FPGAs programmed, all boards present in hwm
             # and crate has synced (see test_config.yaml - parameters passed to FPGAArray
@@ -171,7 +173,7 @@ class TestPreDeploymentCrate(TestUtils):
 
         """
 
-        xr.header('Crate Initialization Test')
+        xr.header('Backplane Error Test')
         cfg = self.cfg.f_engine_tests.backplane_err # not needed
         test_results = NameSpace()
 
@@ -224,30 +226,30 @@ class TestPreDeploymentCrate(TestUtils):
 
         """
 
-        xr.header('Crate Initialization Test')
+        xr.header('Crate Sync Test')
         cfg = self.cfg.f_engine_tests.sync_test # not needed
         test_results = NameSpace()
 
         passed = False
-        N = 100 # make this part of test_config.yaml
+        n_syncs = cfg.n_syncs
 
         # Initialize the crate
         try:
-            xr.input('Turn on the power supply. Press ENTER to continue. (Q:Exit) ')
+            # xr.input('Turn on the power supply. Press ENTER to continue. (Q:Exit) ')
             self.ca = self.crate_init()
             counter = 0
-            for n in range(N):
+            for n in range(n_syncs):
                 print(f'Sync #{n+1}')
                 self.ca.sync()
                 counter += 1
-            if counter == N:
-                passed = True
+            assert not counter == n_syncs
+            passed = True
         finally:
             test_results.passed = passed
             xr.save_data(test_results)
 
 
-    def test_adc_clock(self, xr):
+    def test_adc_clocks(self, xr):
         """
         QC004: ADC clock test: ensure all ADCs get the correct clocks on every channel.
 
@@ -255,41 +257,166 @@ class TestPreDeploymentCrate(TestUtils):
 
           - Start the ADC clock test on the computer
           - Power up crate
-          - Iterate through each motherboard, and visually inspect the ADC delays.
+          - Iterate through all clocks on all mezzanines on all motherboards, check that they
+            are 200 MHz +/- some tolerance set in the config.
 
         """
 
-        # xr.header('Crate Initialization Test')
-        # cfg = self.cfg.f_engine_tests.delay_test # not used
-        # test_results = NameSpace()
+        xr.header('ADC Clocks Test')
+        cfg = self.cfg.f_engine_tests.clock_test
+        test_results = NameSpace()
 
-        # # Initialize the crate:
-        # passed = False
-        # try:
-        #     input('Turn on the power supply. Press ENTER to continue. (Q:Exit) ')
-        #     self.ca = self.crate_init()
+        integration_period = cfg.integration_period
+        n_clock_checks = cfg.n_clock_checks
 
-    def test_adc_delays(self, xr):
+        # The FreqCtr reports values as e.g. 200.000 MHz. If count_time = 0.001 for example, 200e6/0.001 = 200,000
+        expected_diffs = {-2/integration_period, 0.0, 2/integration_period} # fix this
+        failed_clocks = []
+
+        passed = False
+        try:
+            # Initialize the crate:
+            self.ca = self.crate_init()
+
+            # Iterate through each motherboard. Form a set of unique values of the
+            # difference between the measured clock and the expected 200 MHz. To pass,
+            # there should only be two values in the set: 0 and 200 MHz/count_time (which
+            # is the maximum error, resulting from a missed rising edge) --> is this correct?
+
+            for i in self.ca.ib:
+                for clock in range(15):
+                    print(f'{i}, ADC_CLK{clock}')
+                    diffs = set(i.FreqCtr.read_frequency(f'ADC_CLK{clock}', integration_period) - 200e6 for _ in range(n_clock_checks))
+                    # If diffs is not a subset of expected_diffs, i.e. it contains an unexpected value, then append to failed_clocks
+                    if not diffs.issubset(expected_diffs):
+                        failed_clocks.append([f'{i}', f'ADC_CLK{clock}', diffs])
+
+            assert not failed_clocks, f'ADC clock errors present on: {failed_clocks}'
+            passed = True
+
+        finally:
+            test_results.passed = passed
+            xr.save_data(test_results)
+
+    def test_sync_delays(self, xr):
         """
-        QC005: ADC delays test: ensure ADC delays have no errors or issues
+        QC005: Sync delays test: ensure ADC sync delays have no errors or issues
 
         Procedure:
 
-          - Start the ADC delays test on the computer
+          - Start the sync delays test on the computer
           - Power up crate
-          - Iterate through each motherboard, and visually inspect the ADC delays.
+          - Iterate through each motherboard, and visually inspect the sync delays.
 
         """
 
-        # xr.header('Crate Initialization Test')
-        # cfg = self.cfg.f_engine_tests.delay_test # not used
-        # test_results = NameSpace()
+        xr.header('Sync Delays Test')
+        cfg = self.cfg.f_engine_tests.sync_delay_test
+        test_results = NameSpace()
 
-        # # Initialize the crate:
-        # passed = False
-        # try:
-        #     input('Turn on the power supply. Press ENTER to continue. (Q:Exit) ')
-        #     self.ca = self.crate_init()
+        sync_delay_errors = []
+
+        # Initialize the crate:
+        passed = False
+        try:
+            # input('Turn on the power supply. Press ENTER to continue. (Q:Exit) ')
+            self.ca = self.crate_init()
+
+            for i in self.ca.ib:
+                while True:
+                    xr.input(f'Press ENTER to compute sync delays for {i}. (Q:Exit) ')
+                    i.compute_sync_delays()
+                    errs_present = xr.input('Are there any sync delay errors? Answer Y/N. (Q:Exit) ')
+
+                    if errs_present == 'y':
+                        sync_delay_errors.append(i)
+
+                    print_again = xr.input('Would you like to see the sync delays again? Answer Y/N. (Q:Exit) ')
+
+                    if print_again == 'n':
+                        break
+
+            assert not sync_delay_errors, f'Sync delay errors present on: {sync_delay_errors}'
+            passed = True
+
+        finally:
+            test_results.passed = passed
+            xr.save_data(test_results)
+
+    def test_adc_eye(self, xr):
+        """
+        QC006: ADC eye test: check ADC eye diagrams to ensure stability.
+
+        Procedure:
+
+          - Start the adc eye test on the computer
+          - Power up crate
+          - Inspect the adc eye diagrams.
+
+        """
+
+        xr.header('ADC Eye Test')
+        cfg = self.cfg.f_engine_tests.adc_eye_test
+        n_checks = cfg.n_checks
+        n_refs = cfg.n_refs
+        n_fails_accept = cfg.n_fails_accept # number of allowable fails. if exceeded, board/channel pair fails.
+        test_results = NameSpace()
+
+        unstable_channels = []
+
+        # Initialize the crate:
+        passed = False
+        try:
+            # input('Turn on the power supply. Press ENTER to continue. (Q:Exit) ')
+            self.ca = self.crate_init()
+
+            for i in self.ca.ib:
+                for channel in range(16):
+                    print('==========================================================')
+                    print(f'Checking ADC eye diagrams for {i}, ADC channel {channel}')
+
+                    ref_nz_idx = [] # 'reference non-zero indices', checks where non-zero values are in eye diagram
+
+                    # Gather non-zero indices for a few reference eye diagrams. n_refs should be large enough
+                    # to capture any small jitters. If there really are weird, large jitters, they should move
+                    # around enough that they're not capture by the reference diagrams. If it's just small jitters,
+                    # they should be captured by the reference diagrams.
+
+                    for n in range(n_refs):
+                        ref_d = i.capture_adc_eye_diagram(channels=[channel])[0] # sample reference diagram
+                        nz_idx = np.where(ref_d != 0) # non-zero indices
+                        for j in range(len(nz_idx[0])):
+                            pair = [nz_idx[0][j], nz_idx[1][j]] # generates index pairs
+                            if pair not in ref_nz_idx:
+                                ref_nz_idx.append(pair) # if pair not already in ref_nz_idx, add it
+
+                    ref_nz_idx = set(tuple(x) for x in ref_nz_idx) # change ref_nz_idx to a set so we can use issubset
+
+                    # Now iterate through n_checks more diagrams to check stability
+                    fails_counter = 0
+                    for n in range(n_checks):
+                        d = i.capture_adc_eye_diagram(channels=[channel])[0] # grab a diagram
+                        nz_idx = np.where(d != 0)
+                        pairs = []
+                        for j in range(len(nz_idx[0])):
+                            pairs.append([nz_idx[0][j], nz_idx[1][j]]) # add every pair to pairs
+                        pairs = set(tuple(x) for x in pairs) # change pairs to set
+
+                        # If pairs is not a subset of ref_nz_idx, i.e. the channel is unstable,
+                        # add the motherboard index and channel number to unstable_channels if not already present
+                        if not pairs.issubset(ref_nz_idx):
+                            print(f'Fail on diagram {n+1}')
+                            fails_counter += 1
+                            if fails_counter > n_fails_accept and if not [f'{i}', f'Channel {channel}'] in unstable_channels:
+                                # If accetpable fails is exceeded, and board/channel pair not already in unstable checks, append it.
+                                unstable_channels.append([f'{i}', f'Channel {channel}'])
+
+            assert not unstable_channels, f'Unstable channels: {unstable_channels}'
+            passed = True
+
+        finally:
+            test_results.passed = passed
+            xr.save_data(test_results)
 
 
 
