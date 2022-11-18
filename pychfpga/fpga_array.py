@@ -799,9 +799,9 @@ class FPGAArray(object):
         # serial/slot/crate information.
 
 
-        self.logger.info(f'{self!r}: Hardware map so far:')
+        self.logger.debug(f'{self!r}: Hardware map so far:')
         for ib in self.hwm:
-            print(f'    {ib}(hostname={ib.hostname}, serial={ib.serial}, slot={ib.slot})')
+            self.logger.debug(f'    {ib}(hostname={ib.hostname}, serial={ib.serial}, slot={ib.slot})')
 
         if self.hwm:
             self.logger.info(f'{self!r}: Establishing communication with the motherboards')
@@ -842,9 +842,9 @@ class FPGAArray(object):
                 self.logger.info(f'{self!r}: Finished Auto-Discovering slot numbers for IceBoards. '
                                  f'Took {time.time() - t0} seconds.')
 
-        self.logger.info(f'{self!r}: Hardware map so far:')
+        self.logger.debug(f'{self!r}: Hardware map so far:')
         for ib in self.hwm:
-            print(f'    {ib}(hostname={ib.hostname}, serial={ib.serial}, slot={ib.slot})')
+            self.logger.debug(f'    {ib}(hostname={ib.hostname}, serial={ib.serial}, slot={ib.slot})')
 
         if discover_crate:
             # select boards that do not have a crate, or ones that have a generic crate (no part number)
@@ -1192,7 +1192,7 @@ class FPGAArray(object):
         for trial in range(1, max_trials + 1):
             if init >= 1 and prog:
                 await ib.set_fpga_bitstream_async(mode, force=(prog > 1) or (trial > 1), bitfile_override=bitfile)
-                self.logger.info(f'{self!r}: Done configuring FPGAs')
+                self.logger.debug(f'{self!r}: Done configuring FPGAs on {ib!r}')
 
 
             if init >= 2:
@@ -2857,18 +2857,18 @@ class FPGAArray(object):
                     # set the trigger far enough in time it should not happen before we reprogram another delay
                     self.ib.set_irigb_trigger_time_sync(dt, delay=300)
                     setting_time = (time.time() - t0)
-                    self.logger.info(f'{self!r}: It takes {setting_time} seconds to set the trigger time across the array')
+                    self.logger.info(f'{self!r}: It takes {setting_time:0.3f} seconds to set the trigger time across the array')
                     setting_time = round(2 * setting_time) + delay
                     # Now set the trigger time using that delay
                     dt = self.ib[0].get_irigb_time_sync()
                     if align_to_seconds:
                         self.logger.info(f'{self!r}: Rounding trigger time to the second')
                         dt = dt.replace(microsecond=0)
-                    self.logger.info(f'{self!r}: Triggering SYNC {setting_time} seconds after {dt.isoformat()}')
+                    self.logger.info(f'{self!r}: Triggering SYNC {setting_time:0.6f} seconds after {dt.isoformat()}')
                     self.print_flush()
                     t0 = time.time()
                     self.sync_start_time = sync_time = self.ib.set_irigb_trigger_time_sync(dt, delay=setting_time)
-                    self.logger.info(f'{self!r}: It took {time.time() - t0} seconds to set the final trigger time')
+                    self.logger.info(f'{self!r}: It took {time.time() - t0:0.3f} seconds to set the final trigger time')
                     t0 = time.time()
                     # for _ in range(30):
                     while any(self.ib.is_irigb_before_trigger_time_async()):
@@ -4458,82 +4458,199 @@ class FPGAArray(object):
 
     #     return status
 
-    async def print_shuffle_status(self, reset_stats=False, verbose=1, grid=False):
+    async def get_corner_turn_engine_status_async(self, reset_stats=False):
+        """ Gather info on the status of the corner-turn engine for all boards of the array installed in crates.
 
-        for crate in self.ic:
-            slots = crate.slot  # Get iceboards indexed by slot number
+        The information includes status info on every lane of  the following corner turn subsystems:
+            - Every lane (16) of the backplane PCB shuffle (shuffle between boards in a crate)
+            - Every lane (8)  of the backplane QSFP shuffle (shuffle between crates)
+            - Every lane (16) of crossbar 2
+            - Every lane (8) of crossbar 3
 
-            slot_range = list(range(1, crate.NUMBER_OF_SLOTS + 1)) or [None]
+        Parameters:
 
-            info = {}
-            for (slot, ib) in crate.slot.items():
-                col_data = []
-                errs = []
+            reset_stats (bool): if True, the statistics on the corner turn subsystems will be reset before being measured.
+
+        Returns:
+
+            A list of dict containing the corner-turn engine status flags for each crate, each dist following the schema:
+
+                "ic": <crate_object>: # Crate object
+                "slots":
+                    slot_number1: # Slot number as found in Motherboard.slot (int)
+                        "ib": <ib_object> # Motherbpard object
+                        "serial": <serial_number>  # Motherboard Serial number, as found in Motherboard.serial (str)
+                        "subsystems":
+                            subsystem1: # Subsystem name (str)
+                                "status": <subsystem_status>  # Subsystem aggregate status for all lanes (bool)
+                                "lanes":
+                                    lane_number1:  # Lane number (int)
+                                        "status": Lane status (True if there are any flags) (bool)
+                                        "label": Full length label for the lane (subsystem & lane) (str)
+                                        "fields":
+                                            "Tx": # Tuple identifying the transmitter (tuple)
+                                            "Rx": # Tuple identifying the receiver (tuple)
+                                            field1_name: <field1_value> # field status. Field name is a str. Field value can be anything
+                                            field2_name: <field2_value>
+                                        ...
+                                    lane_number2:
+                                    ...
+                            subsystem2:
+                        ...
+                    slot_number2:
+                    ...
+
+        Example:
+
+            info[0]['slots'][2]['subsystems']['BP PCB']['status']
+            info[0]['slots'][2]['subsystems']['BP PCB']['lanes'][3]['status']
+
+            Print the summary of every lanes of every subsystem for every slot:
+
+                info = await ca.get_corner_turn_engine_status_async(reset_stats=True)
+                [f"Crate {c} Slot {slot_number} {sub_name} { [lane['status'] for lane in sub['lanes'].values()]}"
+                   for c in info
+                   for slot_number, slot in c['slots'].items()
+                   for sub_name, sub in slot['subsystems'].items()]
+
+            Get the status of the first crate as a dict ``{slot_number:{subsystem:status, ...}, ...}``:
+
+                status =  {slot_number:{sub_name:sub['status'] for sub_name, sub in slot['subsystems'].items()}
+                           for c in info[0] for slot_number, slot in c['slots'].items()}
+        """
+        info = []
+
+        for crate_obj in self.ic:
+            # initialize the dictionary the will contain the infor for each slot in the current crate
+            crate = {}  # {crate_object: slot_dict}
+            info.append(crate)
+            slot_range = list(range(1, crate_obj.NUMBER_OF_SLOTS + 1)) or [None]
+
+            crate['ic'] = crate_obj
+            # gather info for each currently populated slot
+            crate['slots'] = {}
+            for slot_number in slot_range:
+                crate['slots'][slot_number] = slot = {}
+                slot['ib'] = None
+                slot['serial'] = None
+                slot['subsystems'] = {}
+                if slot_number not in crate_obj.slot:
+                    continue
+                # initialize the dict for each lane
+                ib = crate_obj.slot[slot_number]
+                slot['ib'] = ib  # motherboard object in this slot
+                slot['serial'] = ib.serial  # motherboard object in this slot
                 # Gather status from the backplane PCB and QSFP links
                 for lane_group in ib.BP_SHUFFLE.lane_group_names:
+                    subsystem_name = f'BP {lane_group.upper()}'
+                    slot['subsystems'][subsystem_name] = subsystem = {}  # {lane:status_dict, ...}
+                    subsystem['lanes'] = {}
                     if reset_stats:
                         ib.BP_SHUFFLE.reset_stats()
                     # ee: list of N error status dicts  [lane0_errors, lane1 errors, ...]
-                    ee = await ib.BP_SHUFFLE.get_bp_rx_status(lane_group)
-                    if verbose > 1:  # if verbise, add the matching TX (slot,lane) for each rx lane on that slot
-                        eh = []
-                        for lane, e in enumerate(ee):
-                            if lane_group == 'pcb':
-                                h = {'Tx': f'{ib.crate.get_matching_tx((slot, lane))}', 'Rx': f'{(slot, lane)}'}
-                            else:
-                                h = {}
-                            eh.append({**h, **e})
-                        errs.append(eh)
-                    else:
-                        errs.append(ee)
+                    status_dicts = await ib.BP_SHUFFLE.get_bp_rx_status(lane_group)
+                    for lane_number, status_dict in enumerate(status_dicts):
+                        subsystem['lanes'][lane_number] = lane = {}
+                        lane['status'] = bool(status_dict) # True if there were any error flags returned for this lane
+                        lane['label'] = f'{subsystem_name} L{lane_number:02d}'
+                        if lane_group == 'pcb':  # if verbose, add the matching TX (slot,lane) for each rx lane on that slot
+                            status_dict['Tx'] = f'{ib.crate.get_matching_tx((slot_number, lane_number))}'
+                            status_dict['Rx'] = f'{(slot_number, lane_number)}'
+                        lane['fields'] = status_dict
+                        # print(f'added {subsystem_name} {lane_number} = {status_dict}')
+                    # generate a subsystem status summary
+                    subsystem['status'] = any(status_dict['status'] for status_dict in subsystem['lanes'].values())
+
+                    # errs.append(ee)
+
                 # Gather status from the crossbars
-                for cb in [ib.CROSSBAR2, ib.CROSSBAR3]:
+                for subsystem_prefix, cb in (('CB2', ib.CROSSBAR2), ('CB3', ib.CROSSBAR3)):
                     if reset_stats:
                         cb.reset_stats()
-                    errs.append(await cb.get_align_status())
-                    errs.append(await cb.get_frame_alignment_status())
-                    errs.append(await cb.get_bin_sel_status())
 
-                for err in errs:
-                    if err is None:
-                        col_data.append('?')
-                    elif not verbose:
-                        col_data.append(('-', 'ERR')[bool(any(err))])
-                    elif verbose == 1:
-                        col_data.extend(('-', 'ERR')[bool(e)] for e in err)
-                    else:
-                        col_data.extend(
-                            ('\n'.join(['%s=%s' % (k, v) for (k, v) in e.items()]) or '-')
-                            for e in err)
-                info[slot] = col_data
-            info = dict(sorted(info.items()))  # sort the info dict by key
-            print('Crate %s Crossbar and Shuffle status' % crate.get_string_id())
+                    # Get the status flags. These are returned as a list of dict, one dict per lane.
+                    align_status_dicts = await cb.get_align_status()
+                    frame_status_dicts = await cb.get_frame_alignment_status()
+                    bin_sel_status_dicts = await cb.get_bin_sel_status()
+                    for subsystem_suffix, status_dicts in (('ALIGN', align_status_dicts),
+                                                           ('FRAME #', frame_status_dicts),
+                                                           ('BIN_SEL', bin_sel_status_dicts)):
+                        subsystem_name = f'{subsystem_prefix} {subsystem_suffix}'
+                        slot['subsystems'][subsystem_name] = subsystem = {}  # {lane:status_dict, ...}
+                        subsystem['lanes'] = {}
+                        for lane_number, status_dict in enumerate(status_dicts):
+                            subsystem['lanes'][lane_number] = lane = {}
+                            lane['status'] = bool(status_dict) # True if there were any error flags returned for this lane
+                            lane['label'] = f'{subsystem_name} L{lane_number:02d}'
+                            lane['fields'] = status_dict
+                        # generate a subsystem status summary
+                        subsystem['status'] = any(status_dict['status'] for status_dict in subsystem['lanes'].values())
+        return info
 
-            # Fill in columns for any missing board in the crate
-            number_of_rows = max(len(e) for e in info.values())
-            for slot in slot_range:
-                if slot not in info.keys():
-                    info[slot] = [''] * number_of_rows
+    async def print_shuffle_status(self, reset_stats=False, verbose=1, grid=False):
+        """ Prints status information of the corner-turn engine
 
+
+        Parameters:
+
+            reset_stats (bool): if True, the statistics on the corner turn subsystems will be reset before being measured.
+
+            verbose (int): Determine how much status information is returned
+
+                verbose=0: Will provide the '-' or 'ERR' for each subsystem  depending on whether there are any errors on any lane in the subsystem
+
+                verbose=1: Will provide '-' or 'ERR' for each lane of the sybsystem depending on whether there are any errors on for each lane in the subsystem
+
+                verbose=2: Will provide detailed status info on each lane of the subsystem in the form of a dict. Will also add the coordinates of the Tx/Rx pairs involved in backplane links.
+
+            grid (bool): If true, line separators will be used
+
+        """
+
+        info = await self.get_corner_turn_engine_status_async(reset_stats=reset_stats)
+        for crate in info:
             # Print the table
             corner_label = 'Slot->\nS/N ->\n\\|/Lane'
-            slot_labels = ['SN%s' % slots[s].serial if s in slots.keys() else 'N/A' for s in slot_range]
-            col_labels = ['%s\n%s' % (slot_range[i], slot_labels[i]) for i in range(len(slot_range))]
+            # slot_labels = ['SN%s' % slot_dict['ib'].serial if slot_dict['ib'] else 'N/A' for slot_dicts in info[crate].values()]
+            col_labels = [f"SN{slot['serial']}\n{slot_number}" for slot_number, slot in crate['slots'].items()]
             # row_labels = ['BP PCB Rx\nBP QSFP Rx\nCB2 FIFO\nCB2 ALIGN\nCB2 FRAMEnCB3 FIFO\nCB3 ALIGN\nCB3 FRAME\n']
             row_labels = []
-            for label, lanes in [('BP PCB Rx', 16), ('BP QSFP Rx', 8), ('CB2 ALIGN', 16),
-                                 ('CB2 FRAME #', 16), ('CB2 BIN_SELs', 2), ('CB3 ALIGN', 8),
-                                 ('CB3 FRAME #', 8), ('CB3 BIN SELs', 8)]:
-                if verbose and lanes:
-                    row_labels += ['%s L%02i' % (label, lane) for lane in range(lanes)]
-                else:
-                    row_labels += [label]
+
+            slots = list(crate['slots'].values())
+            first_slot = [slot for slot in slots if slot['ib']][0]
+            if not verbose:
+                # verbose = 0. We print summary status info only for each subsystem
+                row_labels = list(first_slot['subsystems'].keys())
+                data = [[('-', 'ERR')[subsystem['status']] for subsystem in slot['subsystems'].values()] for slot in slots]
+            else:
+                # verbose != 0 : We print info on each lane
+                row_labels = [lane['label'] for subsystem in first_slot['subsystems'].values() for lane in subsystem['lanes'].values()]
+                # create an 2-dimensional array of lane dicts
+                all_lanes = [[lane for subsystem in slot['subsystems'].values()
+                                   for lane in subsystem['lanes'].values()
+                            ] for slot in slots]
+                if verbose == 1:
+                    # verbose = 1: we print summary info for each lane
+                    data = [[('-', 'ERR')[lane['status']] for lane in lanes]
+                            for lanes in all_lanes]
+                elif verbose > 1:
+                    # verbose > 1: we print all status info for each lane
+                    data = [['\n'.join(f'{key}={value}' for key, value in lane['fields'].items())
+                             for lane in lanes] for lanes in all_lanes]
+
+            # for label, lanes in [('BP PCB Rx', 16), ('BP QSFP Rx', 8), ('CB2 ALIGN', 16),
+            #                      ('CB2 FRAME #', 16), ('CB2 BIN_SELs', 2), ('CB3 ALIGN', 8),
+            #                      ('CB3 FRAME #', 8), ('CB3 BIN SELs', 8)]:
+            #     if verbose and lanes:
+            #         row_labels += ['%s L%02i' % (label, lane) for lane in range(lanes)]
+            #     else:
+            #         row_labels += [label]
             # return info
             # print 'row_labels=', row_labels
             # print 'col_labels=', col_labels
             # print 'data=', info
             self.print_table(
-                info, row_labels=row_labels, col_labels=col_labels,
+                data, row_labels=row_labels, col_labels=col_labels,
                 corner_label=corner_label, line_sep=grid)
 
     def print_table(self, data=None,
@@ -4630,6 +4747,8 @@ class FPGAArray(object):
 
             if not line_sep:  # Make sure we have a bottom line if we didn't already printed one
                 print(line_sep_str)
+
+            print() # make sure we have a blank line between tables
 
     def print_iceboard_table(self, func=None, row_labels=None, grid=False, add_serial=True):
         """
