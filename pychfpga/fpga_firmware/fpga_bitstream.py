@@ -46,11 +46,11 @@ class FPGABitstream(object):
         filename = os.path.join(os.path.dirname(__file__), bitstream_folder, url)
 
         mtime = os.path.getmtime(filename)
-        logger.debug(f'{cls!r}: Bitstream file timestamp at {filename} is {mtime}')
+        logger.debug(f'{cls.__name__}: Bitstream file timestamp at {filename} is {mtime}')
 
         if (filename, mtime) in cls.bitstream_cache:
             b = cls.bitstream_cache[(filename, mtime)]
-            logger.info(f'{cls!r}: Reusing existing FPGABitstream object for file {filename} ...')
+            logger.debug(f'{cls.__name__}: Reusing existing FPGABitstream object for file {filename} ...')
         else:
             b = cls.bitstream_cache[(filename, mtime)] = cls(url=filename)
         return b
