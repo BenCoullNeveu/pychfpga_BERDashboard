@@ -512,7 +512,7 @@ class chFPGA(FPGAFirmware):
             await asyncio.sleep(0.150)  # wait for autonegotiation to complete
             status = await self.get_sgmii_status_vector()
             if status & 1:
-                self.logger.debug(f"{self!r}: SFP successfully established link with autonegociation")
+                self.logger.info(f"{self!r}: SFP successfully established link with autonegociation (1000BASE-X mode)")
                 break
             else:
                 self.logger.debug(f"{self!r}: SFP did not respond to autonegociation on trial {trial+1}. It might not support it. Retrying without autonegociation.")
@@ -521,7 +521,7 @@ class chFPGA(FPGAFirmware):
                 await asyncio.sleep(0.150)  # wait for autonegotiation to complete
                 status = await self.get_sgmii_status_vector()
                 if status & 1:
-                    self.logger.debug(f"{self!r}: SFP successfully established link without autonegociation")
+                    self.logger.info(f"{self!r}: SFP successfully established link without autonegociation (SGMII mode)")
                     break
                 raise IOError(f"{self!r}: Cannot get the SFP module to establish a link")
 
@@ -1130,7 +1130,7 @@ class chFPGA(FPGAFirmware):
             if err:
                 self.logger.warn(msg)
             else:
-                self.logger.info(msg)
+                self.logger.debug(msg)
                 break
         if err:
             msg = f'{self!r}: some ADCs are not generating a proper clock at stage "{stage}". Frequencies are {freqs} MHz. Expected frequency is {self._sampling_frequency/4/1e6}. Deltas = {[f-self._sampling_frequency/4/1e16 for f in freqs]}'
@@ -1497,7 +1497,12 @@ class chFPGA(FPGAFirmware):
 
         """
         val = await self.mb.fpga_core_reg_spi_read_async(self._SFP_STATUS_ADDR)
-        print(f'link={bool(val&1)}, sync={bool(val&(1<<1))}, RUDI={(val>>2)&(0b11111):05b}, PHY={(val>>7)&1}, ERR={(val>>13)&1} ERRCODE={(val>>8)&3:02b},speed={(val>>10)&3:02b}, duplex={(val>>12)&1}, pause={(val>>14)&3:02b}')
+        self.logger.debug(f'{self!r}: SGMII/1000BASE-X status: '
+                          f'link={bool(val&1)}, sync={bool(val&(1<<1))}, '
+                          f'RUDI={(val>>2)&(0b11111):05b}, PHY={(val>>7)&1}, '
+                          f'ERR={(val>>13)&1} ERRCODE={(val>>8)&3:02b}, '
+                          f'speed={(val>>10)&3:02b}, duplex={(val>>12)&1}, '
+                          f'pause={(val>>14)&3:02b}')
         return val
 
 
@@ -5975,7 +5980,9 @@ class chFPGA(FPGAFirmware):
             packet_rate = 800e6 / 2048 / frames_per_packet
             ethernet_data_rate = (packet_rate * ethernet_packet_size) * 8
             self.logger.info(
-                f'{self!r}: {crossbar_name}\n'
+                f'{self!r}: {crossbar_name}, Eth packet size {ethernet_packet_size} bytes, Eth data rate {ethernet_data_rate/1e9:0.1f} Gbit/s')
+            self.logger.debug(
+                f'{self!r}: {crossbar_name}:'
                 f'   UDP payload size: {payload_size} bytes\n'
                 f'   Ethernet packet size: {ethernet_packet_size} bytes\n'
                 f'   Ethernet data rate: {ethernet_data_rate/1e9:0.1f} Gbit/s\n'
