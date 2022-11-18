@@ -45,6 +45,8 @@ class Motherboard(HardwareMap):
 
     port = None  # port number on which to access the platform `hostname`. Must be defined by subclasses. Is used by fpga_master.
 
+    cls_logger = logging.getLogger(__name__)
+
     def __init__(self, hostname=None, serial=None, slot=None, subarray=None, **kwargs):
         """ Create a Motherboard object.
 
@@ -122,7 +124,7 @@ class Motherboard(HardwareMap):
             serial = f'{serial:04d}'  # Motherboard serials have 4 digits
 
 
-        print(f"Motherboard: Creating {self.__class__.__name__}(serial={serial}, hostname={hostname}, slot={slot}, subarray={subarray}, kwargs={kwargs})")
+        self.logger.debug(f"Motherboard: Creating {self.__class__.__name__}(serial={serial}, hostname={hostname}, slot={slot}, subarray={subarray}, kwargs={kwargs})")
 
         self.hostname = hostname
         self.serial = serial
@@ -240,15 +242,15 @@ class Motherboard(HardwareMap):
 
         # print(f"Matches: {matching_boards}")
         if not len(matching_boards):  # no matching crate, create one
-            print( # cannot use logger?
+            cls.cls_logger.debug( # cannot use logger?
                 f"get_unique_instance: No matching instance: creating new class {(new_class or cls).__name__}(serial={serial}, hostname={hostname}, "
                 f"slot={slot}, subarray={subarray}, kwargs={kwargs})")
             ib = (new_class or cls)(serial=serial, hostname=hostname, slot=slot, subarray=subarray, **kwargs)
-            print(f"get_unique_instance: New instance created. Now updating Motherboard with crate_number={crate_number}")
+            cls.cls_logger.debug(f"get_unique_instance: New instance created. Now updating Motherboard with crate_number={crate_number}")
             return ib.update_instance(crate_number=crate_number)
 
         elif len(matching_boards) == 1:  # one match, update existing one
-            print(f"get_unique_instance: Found matching instance. Updating it with new parameters")
+            cls.cls_logger.debug(f"get_unique_instance: Found matching instance. Updating it with new parameters")
             return matching_boards[0].update_instance(
                 new_class=new_class,
                 serial=serial,
