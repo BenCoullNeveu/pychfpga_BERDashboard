@@ -6,6 +6,7 @@ a fully-populated crate, switch, power supply, GPS, etc.
 """
 
 import asyncio
+import time
 
 # Pypi packages
 import pytest
@@ -55,29 +56,34 @@ class TestUtils:
         """
         Run fpga_array, initializing the crate. Recover ca object. Power is reset by default.
         """
-        # if reset_power:
-        #     # Check if power supply on:
-        #     if self.ps:
-        #         self.ps.set_output(state=False) #Ensuring power on N5764A is off
+        if reset_power:
+             # Check if self.ps already exists (i.e. ps on from previous test) 
+             if not self.ps:
+                 self.ps = self.open_ps()
+             # Check status of power supply:
+             ps_status = self.ps.status()['status']
+             if ps_status == 'ON':
+                print(f'Power supply is {ps_status}') 
+                # Turning off power supply
+                print('Turning off power supply...')
+                self.ps.set_output(state=False) # Force power cycle if power supply is on
+                time.sleep(5) # Give it a few seconds before turning back on
+             else:
+                 print(f'Power supply is {ps_status}')
+             # Turn power supply back on:
+             print(f'Turning on power supply...')
+             self.ps.set_output(state=True) 
+             time.sleep(self.cfg.f_engine_tests.global_settings.ps_t_sleep) # Sleep to let the crate boot
 
-        #     # Turn power supply back on:
-        #     instr_params = self.cfg.instruments['ps'].copy()
-        #     ip_addr = instr_params.pop('adapter')[5:]
-        #     print(f'Turning on power supply at {ip_addr}...')
-        #     self.ps = self.open_ps()
-
-        try:
-            fpga_array_params = self.cfg.f_engine_tests.global_settings.fpga_array_params
-            ca = fpga_array.FPGAArray(hwm = fpga_array_params.hwm,
+        fpga_array_params = self.cfg.f_engine_tests.global_settings.fpga_array_params
+        ca = fpga_array.FPGAArray(hwm = fpga_array_params.hwm,
                 stderr_log_level = fpga_array_params.stderr_log_level,
                 prog = fpga_array_params.prog,
                 mode = fpga_array_params.mode,
                 sync_method = fpga_array_params.sync_method,
                 mdns_timeout = fpga_array_params.mdns_timeout)
 
-            assert len(ca) == 16 # need a better assertion
-
-        finally:
+        if ca.ib:
             return ca
 
 class TestPreDeploymentCrate(TestUtils):
@@ -151,10 +157,7 @@ class TestPreDeploymentCrate(TestUtils):
             # If we made it to this point, FPGAs programmed, all boards present in hwm
             # and crate has synced (see test_config.yaml - parameters passed to FPGAArray
             # force all these to be present to return self.ca
-            passed = True
-        except Exception as e:
-            print(f'Crate did not properly initialize. Error message is:')
-            print(e)
+            assert self.ca.ib, f'ib object is {self.ca.ib}'
         finally:
             test_results.passed = passed
             xr.save_data(test_results)
@@ -183,12 +186,12 @@ class TestPreDeploymentCrate(TestUtils):
         try:
             test_results.bp_errs = NameSpace() # How do I make sure the bp_errs list gets saved?
             # Initialize the crate
-            xr.input('Turn on the power supply. Press ENTER to continue. (Q:Exit) ')
+            # xr.input('Turn on the power supply. Press ENTER to continue. (Q:Exit) ')
             self.ca = self.crate_init()
 
             while True:
                 xr.input('Press ENTER to print shuffle status results. (Q:Exit) ')
-                asyncio.run(self.ca.print_shuffle_status())
+                asyncio.run(self.ca.print_shuffle_status(reset_stats=True)) # Reset stats when reprinting table to see if errors go away  
                 errs_present = xr.input('Are there any backplane errors?. Note that QSFP errors are expected if not connected to X-Engine. Answer Y/N. (Q:Exit) ')
 
                 if errs_present == 'y':
@@ -211,8 +214,8 @@ class TestPreDeploymentCrate(TestUtils):
         finally:
             test_results.passed = passed
             xr.save_data(test_results)
-
-
+            self.ps.set_output(state=False) # Turn off power supply
+                    
     def test_sync(self, xr):
         """
         QC003: Sync/IRIG-B test: stress test of crate sync using IRIG-B
@@ -239,15 +242,16 @@ class TestPreDeploymentCrate(TestUtils):
             self.ca = self.crate_init()
             counter = 0
             for n in range(n_syncs):
-                print(f'Sync #{n+1}')
+                print(f'Sync {n+1}')
                 self.ca.sync()
                 counter += 1
-            assert not counter == n_syncs
+        
+            assert counter == n_syncs
             passed = True
         finally:
             test_results.passed = passed
             xr.save_data(test_results)
-
+            self.ps.set_output(state=False) # Turn off power supply
 
     def test_adc_clocks(self, xr):
         """
@@ -297,6 +301,7 @@ class TestPreDeploymentCrate(TestUtils):
         finally:
             test_results.passed = passed
             xr.save_data(test_results)
+            self.ps.set_output(state=False) # Turn off power supply
 
     def test_sync_delays(self, xr):
         """
@@ -342,6 +347,7 @@ class TestPreDeploymentCrate(TestUtils):
         finally:
             test_results.passed = passed
             xr.save_data(test_results)
+            self.ps.set_output(state=False) # Turn off power supply
 
     def test_adc_eye(self, xr):
         """
@@ -372,7 +378,7 @@ class TestPreDeploymentCrate(TestUtils):
 
             for i in self.ca.ib:
                 for channel in range(16):
-                    print('==========================================================')
+                    print('=============================================================')
                     print(f'Checking ADC eye diagrams for {i}, ADC channel {channel}')
 
                     ref_nz_idx = [] # 'reference non-zero indices', checks where non-zero values are in eye diagram
@@ -407,9 +413,9 @@ class TestPreDeploymentCrate(TestUtils):
                         if not pairs.issubset(ref_nz_idx):
                             print(f'Fail on diagram {n+1}')
                             fails_counter += 1
-                            if fails_counter > n_fails_accept and if not [f'{i}', f'Channel {channel}'] in unstable_channels:
-                                # If accetpable fails is exceeded, and board/channel pair not already in unstable checks, append it.
-                                unstable_channels.append([f'{i}', f'Channel {channel}'])
+                            if (fails_counter > n_fails_accept and n == n_checks-1):
+                                # If accetpable fails is exceeded, and we've reached the last diagram check, append the channel:
+                                unstable_channels.append([f'{i}', f'Channel {channel}', f'{fails_counter} fails'])
 
             assert not unstable_channels, f'Unstable channels: {unstable_channels}'
             passed = True
@@ -417,8 +423,7 @@ class TestPreDeploymentCrate(TestUtils):
         finally:
             test_results.passed = passed
             xr.save_data(test_results)
-
-
+            self.ps.set_output(state=False) # Turn off power supply
 
 if __name__ == '__main__':
     """ Run the test in this file."""
