@@ -178,35 +178,50 @@ class TestPreDeploymentCrate(TestUtils):
 
         xr.header('Backplane Error Test')
         cfg = self.cfg.f_engine_tests.backplane_err # not needed
+        n_checks = cfg.n_checks
         test_results = NameSpace()
 
         passed = False
         bp_errs = []
 
         try:
-            test_results.bp_errs = NameSpace() # How do I make sure the bp_errs list gets saved?
             # Initialize the crate
-            # xr.input('Turn on the power supply. Press ENTER to continue. (Q:Exit) ')
             self.ca = self.crate_init()
+            asyncio.run(self.ca.print_shuffle_status(reset_stats=True))
 
-            while True:
-                xr.input('Press ENTER to print shuffle status results. (Q:Exit) ')
-                asyncio.run(self.ca.print_shuffle_status(reset_stats=True)) # Reset stats when reprinting table to see if errors go away  
-                errs_present = xr.input('Are there any backplane errors?. Note that QSFP errors are expected if not connected to X-Engine. Answer Y/N. (Q:Exit) ')
+            for _ in range(n_checks):
 
-                if errs_present == 'y':
-                    while True:
-                        finished = xr.input('Press ENTER to write the error. If finished, answer F. (Q:Exit) ')
-                        if finished == 'f':
-                            break
-                        lane = xr.input('Enter the location of the error, e.g. BP PCB Rx L11. (Q:Exit) ') # i.e. left-most column of print_shuffle_status
-                        slot_serial = xr.input('Enter the slot and serial number of the error, e.g. Slot 6, SN0332. (Q:Exit) ') # slot + serial
-                        bp_errs.append((lane, slot_serial))
+                info = asyncio.run(self.ca.get_corner_turn_engine_status_async(reset_stats=True)) # reset stats for each check
 
-                print_again = xr.input('Would you like to reprint the shuffle status results? Answer Y/N. (Q:Exit) ')
+                for slot in np.arange(16)+1:
+                    subsystems = info[0]['slots'][slot]['subsystems']
+                    for ss in subsystems:
+                        for lane in np.arange(16)+1:
+                            status = ss[lane]['status']
+                            label = ss[lane]['label']
+                            fields = ss[lane]['fields']
+                            if status:
+                                # if status == True, append info (True --> error)
+                                bp_errs.append([slot, ss, lane, status, label ,fields])
 
-                if print_again == 'n':
-                    break
+            # while True:
+            #     xr.input('Press ENTER to print shuffle status results. (Q:Exit) ')
+            #     asyncio.run(self.ca.print_shuffle_status(reset_stats=True)) # Reset stats when reprinting table to see if errors go away
+            #     errs_present = xr.input('Are there any backplane errors?. Note that QSFP errors are expected if not connected to X-Engine. Answer Y/N. (Q:Exit) ')
+
+            #     if errs_present == 'y':
+            #         while True:
+            #             finished = xr.input('Press ENTER to write the error. If finished, answer F. (Q:Exit) ')
+            #             if finished == 'f':
+            #                 break
+            #             lane = xr.input('Enter the location of the error, e.g. BP PCB Rx L11. (Q:Exit) ') # i.e. left-most column of print_shuffle_status
+            #             slot_serial = xr.input('Enter the slot and serial number of the error, e.g. Slot 6, SN0332. (Q:Exit) ') # slot + serial
+            #             bp_errs.append((lane, slot_serial))
+
+            #     print_again = xr.input('Would you like to reprint the shuffle status results? Answer Y/N. (Q:Exit) ')
+
+            #     if print_again == 'n':
+            #         break
 
             assert not bp_errs, f'Backplane errors present on: {bp_errs}'
             passed = True
@@ -215,7 +230,7 @@ class TestPreDeploymentCrate(TestUtils):
             test_results.passed = passed
             xr.save_data(test_results)
             self.ps.set_output(state=False) # Turn off power supply
-                    
+
     def test_sync(self, xr):
         """
         QC003: Sync/IRIG-B test: stress test of crate sync using IRIG-B
@@ -245,7 +260,7 @@ class TestPreDeploymentCrate(TestUtils):
                 print(f'Sync {n+1}')
                 self.ca.sync()
                 counter += 1
-        
+
             assert counter == n_syncs
             passed = True
         finally:
@@ -273,7 +288,9 @@ class TestPreDeploymentCrate(TestUtils):
         integration_period = cfg.integration_period
         n_clock_checks = cfg.n_clock_checks
 
-        # The FreqCtr reports values as e.g. 200.000 MHz. If count_time = 0.001 for example, 200e6/0.001 = 200,000
+        # The FreqCtr counts rising clock edges; the most it could miss over a given integration period
+        # is 1 edge. Also, FreqCtr measures at 1/2 the rate of the 400 MHz clock coming from the ADC,
+        # so it could miss, at most, 2 rising edges.
         expected_diffs = {-2/integration_period, 0.0, 2/integration_period} # fix this
         failed_clocks = []
 

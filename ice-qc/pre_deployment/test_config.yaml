@@ -5,7 +5,7 @@ model_number: 'MGK7BP16'
 fpga_bit_file: '../../pychfpga/fpga_firmware/bitstreams/chFPGA_MGK7MB_Rev2.bit'
 
 instruments:
-  ps:     {labpy_object: 'agilent_N5700', adapter: 'TCPIP::10.42.200.2'} #, interface: 'lan' ip_addr: '10.10.10.151', gpib_addr: 5}  # Agilent N5764A power supply
+  ps:     {labpy_object: 'agilent_N5700', adapter: 'TCPIP::10.10.10.151'} #, interface: 'lan' ip_addr: '10.10.10.151', gpib_addr: 5}  # Agilent N5764A power supply
 
 ?: &default_fpga_array # Shouldn't really be used
     iceboards: 0047
@@ -55,7 +55,7 @@ f_engine_tests:
     ps_current: 76   # Amps. Maximum current limit to set on the F-Engine power supply
     ps_t_sleep: 90 # Time in seconds to let the power supply sleep upon power cycle to allow crate to boot
     fpga_array_params:
-      hwm: 'bp16 33:0'
+      hwm: 'bp16 25:0'
       stderr_log_level: 'warning'
       prog: 1 # or should we always force FPGA reprogram?
       mode: 'shuffle256'
@@ -65,6 +65,7 @@ f_engine_tests:
   crate_init:
 
   backplane_err:
+    n_checks: 10
 
   sync_test:
     n_syncs: 100
