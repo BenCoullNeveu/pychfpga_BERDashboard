@@ -187,8 +187,7 @@ class TestPreDeploymentCrate(TestUtils):
         try:
             # Initialize the crate
             self.ca = self.crate_init()
-            asyncio.run(self.ca.print_shuffle_status(reset_stats=True))
-
+            
             for _ in range(n_checks):
 
                 info = asyncio.run(self.ca.get_corner_turn_engine_status_async(reset_stats=True)) # reset stats for each check
@@ -196,11 +195,14 @@ class TestPreDeploymentCrate(TestUtils):
                 for slot in np.arange(16)+1:
                     subsystems = info[0]['slots'][slot]['subsystems']
                     for ss in subsystems:
-                        for lane in np.arange(16)+1:
-                            status = ss[lane]['status']
-                            label = ss[lane]['label']
-                            fields = ss[lane]['fields']
-                            if status:
+                        idx = list(info[0]['slots'][slot]['subsystems'][ss]['lanes'].keys())
+                        for lane in idx:
+                            lane_info = info[0]['slots'][slot]['subsystems'][ss]['lanes'][lane]
+                            status = lane_info['status']
+                            label = lane_info['label']
+                            fields = lane_info['fields']
+                            # print(slot, ss, label, fields, status)
+                            if status == True:
                                 # if status == True, append info (True --> error)
                                 bp_errs.append([slot, ss, lane, status, label ,fields])
 
