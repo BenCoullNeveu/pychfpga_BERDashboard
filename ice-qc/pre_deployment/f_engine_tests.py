@@ -179,6 +179,7 @@ class TestPreDeploymentCrate(TestUtils):
         xr.header('Backplane Error Test')
         cfg = self.cfg.f_engine_tests.backplane_err # not needed
         n_checks = cfg.n_checks
+        t_sleep = cfg.t_sleep 
         test_results = NameSpace()
 
         passed = False
@@ -190,6 +191,10 @@ class TestPreDeploymentCrate(TestUtils):
             
             for _ in range(n_checks):
 
+                # Add 1s of sleep time between error gathering in case errors accumulate:
+                asyncio.sleep(t_sleep)
+
+                # Get corner turn engine status:
                 info = asyncio.run(self.ca.get_corner_turn_engine_status_async(reset_stats=True)) # reset stats for each check
 
                 for slot in np.arange(16)+1:
@@ -205,7 +210,7 @@ class TestPreDeploymentCrate(TestUtils):
                             if status == True:
                                 # if status == True, append info (True --> error)
                                 bp_errs.append([slot, ss, lane, status, label ,fields])
-
+                                              
             # while True:
             #     xr.input('Press ENTER to print shuffle status results. (Q:Exit) ')
             #     asyncio.run(self.ca.print_shuffle_status(reset_stats=True)) # Reset stats when reprinting table to see if errors go away

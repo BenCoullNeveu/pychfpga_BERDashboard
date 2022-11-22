@@ -66,6 +66,7 @@ f_engine_tests:
 
   backplane_err:
     n_checks: 10
+    t_sleep: 1
 
   sync_test:
     n_syncs: 100
