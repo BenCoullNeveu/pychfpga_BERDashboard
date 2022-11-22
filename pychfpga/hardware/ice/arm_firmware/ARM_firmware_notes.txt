@@ -8,6 +8,8 @@ R11.3d: new uimage (uimage.d) that sets pulldowns instead of pullups. Boot hangs
 R11.3f: New MLO with 2s delay
 R11.3f2: Same, but built with new tool
 R11.3f3: Added linux boot delay
+R11.3g: fixed SD card read error in 1st bootloader
+R11.3h: fix libiceboard fan tray readout
 
 
 
@@ -90,3 +92,11 @@ Commands:
 	sudo cp u-boot.bin mnt/
 	sudo umount mnt/
 	bzip2 -k dfmux_release_11.3g.img
+
+R11.3h
+
+	sudo mount -o loop,offset=32000512 Chime_R11.3g.img mnt/
+	sudo cp libiceboard.so mnt/usr/share/tuber/
+	sudo umount mnt
+	mv Chime_R11.3g.img Chime_R11.3h.img
+	rm Chime_R11.3g.img.bz2
