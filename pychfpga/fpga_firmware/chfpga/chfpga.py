@@ -1687,7 +1687,7 @@ class chFPGA(FPGAFirmware):
             f'mac={mac_addr}({mac_addr_int})')
 
         # Set the UDP data channel networking parameters (MAC, IP & PORT) over the MMI interface
-        await self.mb.fpga_core_reg_write_async(self._FPGA_DATA_DEST_IP_ADDR_ADDR, mac_addr_int & 0xFFFFFFFF)
+        await self.mb.fpga_core_reg_write_async(self._FPGA_DATA_DEST_MAC_ADDR_LSW_ADDR, mac_addr_int & 0xFFFFFFFF)
         await self.mb.fpga_core_reg_write_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR, (mac_addr_int>>16) & 0xFFFF0000 | (port & 0xFFFF))
         await self.mb.fpga_core_reg_write_async(self._FPGA_DATA_DEST_IP_ADDR_ADDR, ip_addr_int)
 
