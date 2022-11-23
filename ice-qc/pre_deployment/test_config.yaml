@@ -5,7 +5,7 @@ model_number: 'MGK7BP16'
 fpga_bit_file: '../../pychfpga/fpga_firmware/bitstreams/chFPGA_MGK7MB_Rev2.bit'
 
 instruments:
-  ps:     {labpy_object: 'agilent_N5700', adapter: 'TCPIP::10.42.200.2'} #, interface: 'lan' ip_addr: '10.10.10.151', gpib_addr: 5}  # Agilent N5764A power supply
+  ps:     {labpy_object: 'agilent_N5700', adapter: 'TCPIP::10.10.10.151'} # 10.42.200.2'} #, interface: 'lan' ip_addr: '10.10.10.151', gpib_addr: 5}  # Agilent N5764A power supply
 
 ?: &default_fpga_array # Shouldn't really be used
     iceboards: 0047
@@ -21,6 +21,7 @@ test_list:
     clock:   {description: 'ADC clock test',             path: 'f_engine_tests.py::TestPreDeploymentCrate::test_adc_clocks',   required: yes, require_serial_number: yes, dependencies: null}
     syncdel: {description: 'ADC sync delays test',       path: 'f_engine_tests.py::TestPreDeploymentCrate::test_sync_delays',  required: yes, require_serial_number: yes, dependencies: null}
     eye:     {description: 'ADC eye test',               path: 'f_engine_tests.py::TestPreDeploymentCrate::test_adc_eye',      required: yes, require_serial_number: yes, dependencies: null}
+    cycle:   {description: 'Power cycle test',           path: 'f_engine_tests.py::TestPreDeploymentCrate::test_power_cycle',  required: yes, require_serial_number: yes, dependencies: null}
 
 menu:
     # The menu item will match the user input to either the 'key' field or to the regular expression 'regex'. The matching dictionary is returned.
@@ -38,6 +39,7 @@ menu:
     - { key: '3',                    action: run_test, test_tag: clock}
     - { key: '4',                    action: run_test, test_tag: syncdel}
     - { key: '5',                    action: run_test, test_tag: eye}
+    - { key: '6',                    action: run_test, test_tag: cycle}
     - { key: 'S',                    action: push,    description: 'Send all new test results data to McGill'}
     - { key: 'R',                    action: summary, description: 'Generate summary of all tests'           }
     - { key: 'Q',                    action: exit,    description: 'Exit'                                    }
@@ -55,7 +57,7 @@ f_engine_tests:
     ps_current: 76   # Amps. Maximum current limit to set on the F-Engine power supply
     ps_t_sleep: 90 # Time in seconds to let the power supply sleep upon power cycle to allow crate to boot
     fpga_array_params:
-      hwm: 'bp16 33:0'
+      hwm: 'bp16 25:0'
       stderr_log_level: 'warning'
       prog: 1 # or should we always force FPGA reprogram?
       mode: 'shuffle256'
@@ -81,3 +83,6 @@ f_engine_tests:
     n_checks: 50
     n_refs: 25
     n_fails_accept: 5
+
+  p_cycle_test:
+    n_cycles: 100

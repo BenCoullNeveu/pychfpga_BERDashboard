@@ -113,6 +113,9 @@ class TestPreDeploymentCrate(TestUtils):
     6) Check ADC eye diagrams
         - initialize crate
         - visual inspection
+    7) Power cycle
+        - initialize crate N times, sleep for t seconds in between
+        - scrape clock error and udp error metrics, add a counter for each
     """
 
     @pytest.fixture(autouse=True)
@@ -161,6 +164,7 @@ class TestPreDeploymentCrate(TestUtils):
         finally:
             test_results.passed = passed
             xr.save_data(test_results)
+            self.ps.set_output(state=False) # Turn off power supply
 
 
     def test_bperr(self, xr):
@@ -448,6 +452,42 @@ class TestPreDeploymentCrate(TestUtils):
             test_results.passed = passed
             xr.save_data(test_results)
             self.ps.set_output(state=False) # Turn off power supply
+
+    def test_power_cycle(self, xr):
+        """
+        QC006: Crate initialization test: ensure crate properly intializes
+
+        Procedure:
+
+          - Start the power cycle test on the computer
+          - Power up crate
+          - Cycle through crate initialization n_cycles times, count
+            number of clock and udp errors
+
+        """
+
+        xr.header('Power Cycle Test')
+        cfg = self.cfg.f_engine_tests.p_cycle_test
+        n_cycles = cfg.n_cycles
+        test_results = NameSpace()
+        clk_err_ctr = 0
+        udp_err_ctr = 0
+
+        # Initialize the crate:
+        passed = False
+        try:
+            for n in range(n_cycles):
+                self.ca = self.crate_init()
+
+                # How do we check for clk & udp errs?
+
+            # Need to make some assertion for pass/fail
+            # e.g. assert _____, f'______'
+        finally:
+            test_results.passed = passed
+            xr.save_data(test_results)
+            self.ps.set_output(state=False) # Turn off power supply
+
 
 if __name__ == '__main__':
     """ Run the test in this file."""
