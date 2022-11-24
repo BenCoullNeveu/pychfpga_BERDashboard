@@ -59,7 +59,7 @@ f_engine_tests:
     fpga_array_params:
       hwm: 'bp16 25:0'
       stderr_log_level: 'warning'
-      prog: 1 # or should we always force FPGA reprogram?
+      prog: 1
       mode: 'shuffle256'
       sync_method: 'irigb'
       mdns_timeout: 60
@@ -85,4 +85,6 @@ f_engine_tests:
     n_fails_accept: 5
 
   p_cycle_test:
-    n_cycles: 100
+    n_cycles: 5
+    percent_accept: 0.01
+    t_cycle: 300 # in seconds

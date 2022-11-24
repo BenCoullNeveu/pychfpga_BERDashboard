@@ -5,6 +5,7 @@ Tests to be run in preparation for deployment of a full F-Engine, including
 a fully-populated crate, switch, power supply, GPS, etc.
 """
 
+# Standard packages
 import asyncio
 import time
 
@@ -57,13 +58,13 @@ class TestUtils:
         Run fpga_array, initializing the crate. Recover ca object. Power is reset by default.
         """
         if reset_power:
-             # Check if self.ps already exists (i.e. ps on from previous test) 
+             # Check if self.ps already exists (i.e. ps on from previous test)
              if not self.ps:
                  self.ps = self.open_ps()
              # Check status of power supply:
              ps_status = self.ps.status()['status']
              if ps_status == 'ON':
-                print(f'Power supply is {ps_status}') 
+                print(f'Power supply is {ps_status}')
                 # Turning off power supply
                 print('Turning off power supply...')
                 self.ps.set_output(state=False) # Force power cycle if power supply is on
@@ -72,7 +73,7 @@ class TestUtils:
                  print(f'Power supply is {ps_status}')
              # Turn power supply back on:
              print(f'Turning on power supply...')
-             self.ps.set_output(state=True) 
+             self.ps.set_output(state=True)
              time.sleep(self.cfg.f_engine_tests.global_settings.ps_t_sleep) # Sleep to let the crate boot
 
         fpga_array_params = self.cfg.f_engine_tests.global_settings.fpga_array_params
@@ -183,7 +184,7 @@ class TestPreDeploymentCrate(TestUtils):
         xr.header('Backplane Error Test')
         cfg = self.cfg.f_engine_tests.backplane_err # not needed
         n_checks = cfg.n_checks
-        t_sleep = cfg.t_sleep 
+        t_sleep = cfg.t_sleep
         test_results = NameSpace()
 
         passed = False
@@ -192,7 +193,7 @@ class TestPreDeploymentCrate(TestUtils):
         try:
             # Initialize the crate
             self.ca = self.crate_init()
-            
+
             for _ in range(n_checks):
 
                 # Add 1s of sleep time between error gathering in case errors accumulate:
@@ -214,7 +215,7 @@ class TestPreDeploymentCrate(TestUtils):
                             if status == True:
                                 # if status == True, append info (True --> error)
                                 bp_errs.append([slot, ss, lane, status, label ,fields])
-                                              
+
             # while True:
             #     xr.input('Press ENTER to print shuffle status results. (Q:Exit) ')
             #     asyncio.run(self.ca.print_shuffle_status(reset_stats=True)) # Reset stats when reprinting table to see if errors go away
@@ -455,7 +456,7 @@ class TestPreDeploymentCrate(TestUtils):
 
     def test_power_cycle(self, xr):
         """
-        QC006: Crate initialization test: ensure crate properly intializes
+        QC007: Power cycle test: cycle crate initializations, logging ADC clock and UDP errors.
 
         Procedure:
 
@@ -469,20 +470,62 @@ class TestPreDeploymentCrate(TestUtils):
         xr.header('Power Cycle Test')
         cfg = self.cfg.f_engine_tests.p_cycle_test
         n_cycles = cfg.n_cycles
-        test_results = NameSpace()
-        clk_err_ctr = 0
-        udp_err_ctr = 0
+        percent_accept = cfg.percent_accept
+        n_fails_accept = int(percent_accept*n_cycles) # Define number of acceptable fails
+        t_cycle = cfg.t_cycle
 
-        # Initialize the crate:
+        # A clock fail or a udp fail is defined as a cycle which has one or more errors.
+        test_results = NameSpace()
+        clk_fails = 0
+        udp_fails = 0
+        err_tags = []
+
         passed = False
         try:
             for n in range(n_cycles):
+
+                # Initialize the crate:
                 self.ca = self.crate_init()
 
-                # How do we check for clk & udp errs?
+                for i in self.ca.ib:
 
-            # Need to make some assertion for pass/fail
-            # e.g. assert _____, f'______'
+                    # Check counters and error lists:
+                    n_clk_errs = i.adc_clk_err_ctr
+                    clk_errs_msgs = i.adc_clk_err_msgs
+                    n_udp_errs = i.udp_err_ctr
+                    udp_errs_msgs = i.adc_clk_err_msgs
+
+
+                    # Increment error counters if needed, and append relevant
+                    # information to err_tags:
+                    if (n_clk_errs != 0 and n_udp_errs == 0):
+                        clk_fails += 1
+                        err_tags.append({'Cycle': n,
+                                         'ib': i,
+                                         'n_clk_errs': n_clk_errs,
+                                         'clk_err_msgs': clk_errs_msgs})
+                    elif (n_udp_errs != 0 and n_clk_errs == 0):
+                        udp_fails += 1
+                        err_tags.append({'Cycle': n,
+                                         'ib': i,
+                                         'n_udp_errs': n_udp_errs,
+                                         'clk_err_msgs': clk_errs_msgs})
+                    elif (n_clk_errs != 0 and n_udp_errs != 0):
+                        clk_fails += 1
+                        udp_fails += 1
+                        err_tags.append({'Cycle': n,
+                                         'ib': i,
+                                         'n_clk_errs': n_clk_errs,
+                                         'clk_err_msgs': clk_errs_msgs,
+                                         'n_udp_errs': n_udp_errs,
+                                         'clk_err_msgs': clk_errs_msgs})
+
+                # Turn off crate and sleep before turning back on
+                # to allow it to cool down:
+                self.ps.set_output(state=False)
+                time.sleep(t_cycle)
+
+            assert (clk_err_ctr <= n_fails_accept and udp_err_ctr <= n_fails_accept), f'Errors on: {err_tags}'
         finally:
             test_results.passed = passed
             xr.save_data(test_results)

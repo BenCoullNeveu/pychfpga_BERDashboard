@@ -311,6 +311,12 @@ class chFPGA(FPGAFirmware):
         # the IRIG-B generator
         self.zero_target_irigb_year_and_day = False
 
+        # Firmware attributes used for QC testing
+        self.adc_clk_err_ctr = 0
+        self.adc_clk_err_msgs = []
+        self.udp_err_ctr = 0
+        self.udp_err_msgs = []
+
     def get_id(self, lane=None):
         return self.mb.get_id(lane=lane)
 
@@ -1129,6 +1135,8 @@ class chFPGA(FPGAFirmware):
             msg = f'{self!r}: ADC output frequencies at stage {stage} are {[f/1e6 for f in freqs]} (check #{trial+1}) {"ERROR!" if err else ""}'
             if err:
                 self.logger.warn(msg)
+                self.adc_clk_err_ctr += 1
+                self.adc_clk_err_msgs.append(msg)
             else:
                 self.logger.debug(msg)
                 break
@@ -1308,6 +1316,8 @@ class chFPGA(FPGAFirmware):
                 metrics.add('fpga_udp_' + name, value= (vect >> pos) & (2**width-1))
         except IOError as e:
             self.logger.error('%r: Error getting FPGA udp metrics. Error is %r' % (self, e))
+            self.udp_err_ctr += 1
+            self.udp_err_msgs.append('%r: Error getting FPGA udp metrics. Error is %r' % (self, e))
         return metrics
 
     async def get_udp_status_async(self):
