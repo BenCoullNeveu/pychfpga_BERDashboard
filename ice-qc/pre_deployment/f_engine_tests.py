@@ -15,12 +15,12 @@ import numpy as np
 
 # External private packages
 from wtl.namespace import NameSpace
-from wtl.pytest_xreport import xr
+from wtl.pytest_xreport import xr, TestMenu
 import pychfpga
 from pychfpga import fpga_array
 import labpy
 
-TEST_CONFIG_FILE = './pre_deployment/test_config.yaml'
+TEST_CONFIG_FILE = './test_config.yaml'
 
 class TestUtils:
     """ Some utility methods common to all tests.
@@ -44,6 +44,7 @@ class TestUtils:
             self.ps = None
 
         # initialize power supply if we have one
+        print('Setting up power supply')
         if self.ps:
             voltage = voltage if voltage is not None else self.cfg.f_engine_tests.global_settings.ps_voltage
             current = current if current is not None else self.cfg.f_engine_tests.global_settings.ps_current
@@ -74,15 +75,16 @@ class TestUtils:
              # Turn power supply back on:
              print(f'Turning on power supply...')
              self.ps.set_output(state=True)
-             time.sleep(self.cfg.f_engine_tests.global_settings.ps_t_sleep) # Sleep to let the crate boot
+             delay = self.cfg.f_engine_tests.global_settings.ps_t_sleep
+             print(f'Waiting for {delay} seconds to let the boards boot')
+             time.sleep(delay) # Sleep to let the crate boot
 
         fpga_array_params = self.cfg.f_engine_tests.global_settings.fpga_array_params
-        ca = fpga_array.FPGAArray(hwm = fpga_array_params.hwm,
-                stderr_log_level = fpga_array_params.stderr_log_level,
-                prog = fpga_array_params.prog,
-                mode = fpga_array_params.mode,
-                sync_method = fpga_array_params.sync_method,
-                mdns_timeout = fpga_array_params.mdns_timeout)
+        ca = fpga_array.FPGAArray(**fpga_array_params)
+        ic = ca.ic[0]
+        # set crate model and serial number
+        self.model = ic.part_number
+        self.serial = ic.serial
 
         if ca.ib:
             return ca
@@ -127,8 +129,13 @@ class TestPreDeploymentCrate(TestUtils):
         self.cfg = xr.config  # get the test config NameSpace
         # pre-define instrument variable. We'll load them only as needed by the tests.
         self.ps = None
-
+        self.model = None # should be set by the test 
+        self.serial = None # should be set by the test
         yield  # pass control to the test and return
+
+        # pass the model and serial number we discoverd back to XReport so the test result files can be named appropriately
+        xr.params.model = self.model
+        xr.params.serial = self.serial
 
         # turn off power supply
         if self.ps:
@@ -478,23 +485,34 @@ class TestPreDeploymentCrate(TestUtils):
         test_results = NameSpace()
         clk_fails = 0
         udp_fails = 0
+        exception_fails = 0
         err_tags = []
+        exception_tags = []
 
         passed = False
         try:
             for n in range(n_cycles):
-
+                print(f'****************************')
+                print(f'Power-cycling test iteration {n + 1}/{n_cycles}')
+                print(f'****************************')
                 # Initialize the crate:
-                self.ca = self.crate_init()
+                try:
+                    self.ca = self.crate_init()
+                except (RuntimeError, IOError) as e:
+                    print(f'Failed initializing the array because of error {e}')
+                    exception_fails += 1
+                    exception_tags.append(repr(e))
+                    continue
 
+                print('Got an IceBoard array')
                 for i in self.ca.ib:
 
                     # Check counters and error lists:
                     n_clk_errs = i.adc_clk_err_ctr
                     clk_errs_msgs = i.adc_clk_err_msgs
-                    n_udp_errs = i.udp_err_ctr
+                    n_udp_errs = i.udp_err_ctr + i.mmi.error_counter
                     udp_errs_msgs = i.adc_clk_err_msgs
-
+                    print(f'Slot {i.slot} got {n_clk_errs} ADC clock errors, {n_udp_errs} UDP communication errors')
 
                     # Increment error counters if needed, and append relevant
                     # information to err_tags:
@@ -519,13 +537,19 @@ class TestPreDeploymentCrate(TestUtils):
                                          'clk_err_msgs': clk_errs_msgs,
                                          'n_udp_errs': n_udp_errs,
                                          'clk_err_msgs': clk_errs_msgs})
+                
+                print(f'Errors so far at iteration {n + 1}/{n_cycles}: ADC clk errors:{clk_fails}, UDP errors={udp_fails}, exceptions={exception_fails}')
 
                 # Turn off crate and sleep before turning back on
                 # to allow it to cool down:
+                print('Turning OFF the crate')
                 self.ps.set_output(state=False)
+                print(f'Letting the crate cool down for {t_cycle} seconds before repeating the test')
                 time.sleep(t_cycle)
 
-            assert (clk_err_ctr <= n_fails_accept and udp_err_ctr <= n_fails_accept), f'Errors on: {err_tags}'
+            assert (clk_fails <= n_fails_accept and udp_fails <= n_fails_accept and not exception_fails), f'Errors on: {err_tags}'
+            passed = True  # Yeh, we made it through
+
         finally:
             test_results.passed = passed
             xr.save_data(test_results)
