@@ -348,6 +348,31 @@ class ShuffleCrossbar(MMI):
         return mon if is_list else mon[0]
 
     async def get_align_status(self):
+        """ Return the status flags of the crossbar packet aligners
+
+        Returns:
+
+            A list in the form ``[{flag_name:flag_value, ...}, ...]``. Only
+            the flags for which ``bool(flag_value)`` evaluates to True are
+            provided (assuming a False value inmplies no error).
+
+            The flags are:
+
+            ``IGNORE``: Is the lane ignored?
+
+            ``TLAST``: Did the frame ended at the same time as the frame in lane 0
+
+            ``TVALID``: Did the frame provided data at the same time as the frame in lane 0
+
+            ``DISCARD``: Did the logic decide to discard the frame
+
+            ``MISSING``: Did the frame fail to start during the start window
+
+            ``FIFO``: Did the data FIFO overflow
+
+            ``TIMEOUT``: Not used
+
+        """
         status = []
         err_names = ['IGNORE', 'TLAST', 'TVALID', 'DISCARD', 'MISSING', 'FIFO', 'TIMEOUT']
         errors = await self.get_lane_monitor(
@@ -358,12 +383,40 @@ class ShuffleCrossbar(MMI):
         return status
 
     async def get_frame_alignment_status(self):
+        """ Return the status flags of the crossbar frame alignment checking logic
+
+        Returns:
+
+            A list in the form ``[{flag_name:flag_value, ...}, ...]``. Only
+            the flags for which ``bool(flag_value)`` evaluates to True are
+            provided (assuming a False value inmplies no error).
+
+            The flags are:
+
+            ``DELTA``: Difference of frame number between the lane and lane 0.
+
+        """
         frame_numbers = await self.capture_frame_number()
         # is_aligned = len(set(frame_numbers)) == 1
         status = [{'DELTA': f-frame_numbers[0]} if f-frame_numbers[0] else {} for (lane, f) in enumerate(frame_numbers)]
         return status
 
     async def get_bin_sel_status(self):
+        """ Return the status flags of the crossbar bin selectors
+
+        Returns:
+
+            A list in the form ``[{flag_name:flag_value, ...}, ...]``. Only
+            the flags for which ``bool(flag_value)`` evaluates to True are
+            provided (assuming a False value inmplies no error).
+
+            The flags are:
+
+            ``DFIFO``: Data fifo overflow
+
+            ``FFIFO``: Flags FIFO overflow
+
+        """
         status = []
         for bs in self.BIN_SEL:
             number_of_sublanes_per_output = self.NUMBER_OF_INPUT_LANES // bs.NUMBER_OF_OUTPUTS

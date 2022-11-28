@@ -1,7 +1,7 @@
 # Requirements for running tests and quality control scripts
 
 wtl.pytest-xreport @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.pytest-xreport.git@jfc/dev
-labpy @ git+ssh://git@bitbucket.org/winterlandcosmology/labpy.git@1.0.1
+labpy @ git+ssh://git@bitbucket.org/winterlandcosmology/labpy.git@1.0.2
 numpy
 matplotlib
 

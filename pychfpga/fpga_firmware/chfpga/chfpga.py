@@ -311,6 +311,12 @@ class chFPGA(FPGAFirmware):
         # the IRIG-B generator
         self.zero_target_irigb_year_and_day = False
 
+        # Firmware attributes used for QC testing
+        self.adc_clk_err_ctr = 0
+        self.adc_clk_err_msgs = []
+        self.udp_err_ctr = 0
+        self.udp_err_msgs = []
+
     def get_id(self, lane=None):
         return self.mb.get_id(lane=lane)
 
@@ -512,7 +518,7 @@ class chFPGA(FPGAFirmware):
             await asyncio.sleep(0.150)  # wait for autonegotiation to complete
             status = await self.get_sgmii_status_vector()
             if status & 1:
-                self.logger.debug(f"{self!r}: SFP successfully established link with autonegociation")
+                self.logger.info(f"{self!r}: SFP successfully established link with autonegociation (1000BASE-X mode)")
                 break
             else:
                 self.logger.debug(f"{self!r}: SFP did not respond to autonegociation on trial {trial+1}. It might not support it. Retrying without autonegociation.")
@@ -521,7 +527,7 @@ class chFPGA(FPGAFirmware):
                 await asyncio.sleep(0.150)  # wait for autonegotiation to complete
                 status = await self.get_sgmii_status_vector()
                 if status & 1:
-                    self.logger.debug(f"{self!r}: SFP successfully established link without autonegociation")
+                    self.logger.info(f"{self!r}: SFP successfully established link without autonegociation (SGMII mode)")
                     break
                 raise IOError(f"{self!r}: Cannot get the SFP module to establish a link")
 
@@ -1129,8 +1135,10 @@ class chFPGA(FPGAFirmware):
             msg = f'{self!r}: ADC output frequencies at stage {stage} are {[f/1e6 for f in freqs]} (check #{trial+1}) {"ERROR!" if err else ""}'
             if err:
                 self.logger.warn(msg)
+                self.adc_clk_err_ctr += 1
+                self.adc_clk_err_msgs.append(msg)
             else:
-                self.logger.info(msg)
+                self.logger.debug(msg)
                 break
         if err:
             msg = f'{self!r}: some ADCs are not generating a proper clock at stage "{stage}". Frequencies are {freqs} MHz. Expected frequency is {self._sampling_frequency/4/1e6}. Deltas = {[f-self._sampling_frequency/4/1e16 for f in freqs]}'
@@ -1308,6 +1316,8 @@ class chFPGA(FPGAFirmware):
                 metrics.add('fpga_udp_' + name, value= (vect >> pos) & (2**width-1))
         except IOError as e:
             self.logger.error('%r: Error getting FPGA udp metrics. Error is %r' % (self, e))
+            self.udp_err_ctr += 1
+            self.udp_err_msgs.append('%r: Error getting FPGA udp metrics. Error is %r' % (self, e))
         return metrics
 
     async def get_udp_status_async(self):
@@ -1497,7 +1507,12 @@ class chFPGA(FPGAFirmware):
 
         """
         val = await self.mb.fpga_core_reg_spi_read_async(self._SFP_STATUS_ADDR)
-        print(f'link={bool(val&1)}, sync={bool(val&(1<<1))}, RUDI={(val>>2)&(0b11111):05b}, PHY={(val>>7)&1}, ERR={(val>>13)&1} ERRCODE={(val>>8)&3:02b},speed={(val>>10)&3:02b}, duplex={(val>>12)&1}, pause={(val>>14)&3:02b}')
+        self.logger.debug(f'{self!r}: SGMII/1000BASE-X status: '
+                          f'link={bool(val&1)}, sync={bool(val&(1<<1))}, '
+                          f'RUDI={(val>>2)&(0b11111):05b}, PHY={(val>>7)&1}, '
+                          f'ERR={(val>>13)&1} ERRCODE={(val>>8)&3:02b}, '
+                          f'speed={(val>>10)&3:02b}, duplex={(val>>12)&1}, '
+                          f'pause={(val>>14)&3:02b}')
         return val
 
 
@@ -1682,7 +1697,7 @@ class chFPGA(FPGAFirmware):
             f'mac={mac_addr}({mac_addr_int})')
 
         # Set the UDP data channel networking parameters (MAC, IP & PORT) over the MMI interface
-        await self.mb.fpga_core_reg_write_async(self._FPGA_DATA_DEST_IP_ADDR_ADDR, mac_addr_int & 0xFFFFFFFF)
+        await self.mb.fpga_core_reg_write_async(self._FPGA_DATA_DEST_MAC_ADDR_LSW_ADDR, mac_addr_int & 0xFFFFFFFF)
         await self.mb.fpga_core_reg_write_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR, (mac_addr_int>>16) & 0xFFFF0000 | (port & 0xFFFF))
         await self.mb.fpga_core_reg_write_async(self._FPGA_DATA_DEST_IP_ADDR_ADDR, ip_addr_int)
 
@@ -5975,7 +5990,9 @@ class chFPGA(FPGAFirmware):
             packet_rate = 800e6 / 2048 / frames_per_packet
             ethernet_data_rate = (packet_rate * ethernet_packet_size) * 8
             self.logger.info(
-                f'{self!r}: {crossbar_name}\n'
+                f'{self!r}: {crossbar_name}, Eth packet size {ethernet_packet_size} bytes, Eth data rate {ethernet_data_rate/1e9:0.1f} Gbit/s')
+            self.logger.debug(
+                f'{self!r}: {crossbar_name}:'
                 f'   UDP payload size: {payload_size} bytes\n'
                 f'   Ethernet packet size: {ethernet_packet_size} bytes\n'
                 f'   Ethernet data rate: {ethernet_data_rate/1e9:0.1f} Gbit/s\n'

@@ -214,7 +214,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):
         once the hardware map is completed and stable.
         """
 
-        print(f"IceBoard.__init__(): Creating {self.__class__.__name__}(serial={serial}, hostname={hostname}, slot={slot}, subarray={subarray}, kwargs={kwargs})")
+        # print(f"IceBoard.__init__(): Creating {self.__class__.__name__}(serial={serial}, hostname={hostname}, slot={slot}, subarray={subarray}, kwargs={kwargs})")
 
         # First initialize the superclasses. The MRO provides the following  __init__ call sequence:
         #   1) Motherboard.__init__() is called first and gobbles all the arguments.

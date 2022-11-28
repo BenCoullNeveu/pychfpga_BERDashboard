@@ -749,6 +749,7 @@ class XGLinkArray(XGLinkCore):
 
         for link_type, link_group in [('pcb_gtx', 'pcb'), ('qsfp_gtx', 'qsfp')]:
             await asyncio.sleep(0)  # let the ioloop process data
+
             err, min_len, max_len, frame_det, rx_fifo, tx_fifo = await self.get_rx_lane_monitor(
                 ['ERROR_CTR', 'MIN_FRAME_LENGTH', 'MAX_FRAME_LENGTH',
                  'FRAME_DETECT', 'RX_FIFO_OVERFLOW', 'TX_FIFO_OVERFLOW'],
@@ -781,17 +782,19 @@ class XGLinkArray(XGLinkCore):
         corresponding lane.
         """
         status = []
+        bypassed = (link_group=='pcb' and self.BYPASS_PCB_SHUFFLE) or (link_group =='qsfp' and self.BYPASS_QSFP_SHUFFLE)
+
         err, min_len, max_len, frame_det, rx_fifo, tx_fifo = await self.get_rx_lane_monitor(
-            ['ERROR_CTR', 'MIN_FRAME_LENGTH', 'MAX_FRAME_LENGTH',
-             'FRAME_DETECT', 'RX_FIFO_OVERFLOW', 'TX_FIFO_OVERFLOW'],
+            ('ERROR_CTR', 'MIN_FRAME_LENGTH', 'MAX_FRAME_LENGTH',
+             'FRAME_DETECT', 'RX_FIFO_OVERFLOW', 'TX_FIFO_OVERFLOW'),
             link_group)
         for lane in range(len(err)):
             lane_status = {}
-            if err[lane]:
+            if not bypassed and err[lane]:
                 lane_status['ERR'] = err[lane]
-            if max_len[lane] != min_len[lane]:
+            if not bypassed and max_len[lane] != min_len[lane]:
                 lane_status['LEN'] = (min_len[lane], max_len[lane])
-            if not frame_det[lane]:
+            if not bypassed and not frame_det[lane]:
                 lane_status['FDET'] = 0
             if rx_fifo[lane] or tx_fifo[lane]:
                 lane_status['FIFO'] = ','.join((['RX'] if rx_fifo[lane] else []) + (['TX'] if tx_fifo[lane] else []))
