@@ -269,6 +269,9 @@ class TestPreDeploymentCrate(TestUtils):
 
         passed = False
         n_syncs = cfg.n_syncs
+        sync_counter = 0
+        exception_fails = 0
+        exception_tags = []
 
         # Initialize the crate
         try:
@@ -277,10 +280,15 @@ class TestPreDeploymentCrate(TestUtils):
             counter = 0
             for n in range(n_syncs):
                 print(f'Sync {n+1}')
-                self.ca.sync()
-                counter += 1
+                try:
+                    self.ca.sync()
+                    # If no exception to the above, increment counter:
+                    sync_counter += 1
+                except Exception as e:
+                    exception_fails += 1
+                    exception_tags.append([f'Cycle {n}', repr(e)])
 
-            assert counter == n_syncs
+            assert counter == n_syncs, f'Sync fails observed on: {exception_tags}'
             passed = True
         finally:
             test_results.passed = passed
@@ -499,7 +507,7 @@ class TestPreDeploymentCrate(TestUtils):
                 try:
                     self.ca = self.crate_init()
                 except (RuntimeError, IOError) as e:
-                    print(f'Failed initializing the array because of error {e}')
+                    print(f'Failed initializing the array because of error {e!r}')
                     exception_fails += 1
                     exception_tags.append(repr(e))
                     continue
