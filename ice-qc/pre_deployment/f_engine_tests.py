@@ -510,6 +510,7 @@ class TestPreDeploymentCrate(TestUtils):
                     print(f'Failed initializing the array because of error {e!r}')
                     exception_fails += 1
                     exception_tags.append(repr(e))
+                    print(f'Errors so far at iteration {n + 1}/{n_cycles}: ADC clk errors:{clk_fails}, UDP errors={udp_fails}, exceptions={exception_fails}')
                     continue
 
                 print('Got an IceBoard array')
@@ -545,6 +546,10 @@ class TestPreDeploymentCrate(TestUtils):
                                          'clk_err_msgs': clk_errs_msgs,
                                          'n_udp_errs': n_udp_errs,
                                          'clk_err_msgs': clk_errs_msgs})
+
+                    # Close UDP communication with the iceboard to prevent errors:
+                    print(f'Closing UDP connection to slot {i.slot}')
+                    asyncio.run(i.close_async())
                 
                 print(f'Errors so far at iteration {n + 1}/{n_cycles}: ADC clk errors:{clk_fails}, UDP errors={udp_fails}, exceptions={exception_fails}')
 
@@ -555,7 +560,7 @@ class TestPreDeploymentCrate(TestUtils):
                 print(f'Letting the crate cool down for {t_cycle} seconds before repeating the test')
                 time.sleep(t_cycle)
 
-            assert (clk_fails <= n_fails_accept and udp_fails <= n_fails_accept and not exception_fails), f'Errors on: {err_tags}'
+            assert (clk_fails <= n_fails_accept and udp_fails <= n_fails_accept and not exception_fails), f'Errors on: {err_tags}, exceptions on: {exception_tags}'
             passed = True  # Yeh, we made it through
 
         finally:
