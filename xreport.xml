@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="0.774" timestamp="2022-11-26T04:15:38.633968" hostname="gw.hco"><testcase classname="ice-qc.pre_deployment.f_engine_tests.TestPreDeploymentCrate" name="test_power_cycle" time="0.001"><error message="failed on setup with &quot;AttributeError: 'Config' object has no attribute '_xreport'&quot;">request = &lt;SubRequest 'xr' for &lt;Function test_power_cycle&gt;&gt;, extra = [], pytestconfig = &lt;_pytest.config.Config object at 0x7f69ab085400&gt;
+
+    @pytest.fixture
+    def xr(request, extra, pytestconfig):
+        """ Returns the xreport instance, updated with the parameters specific to the function under test """
+&gt;       xreport = pytestconfig._xreport
+E       AttributeError: 'Config' object has no attribute '_xreport'
+
+../.venv38_ian_dev/lib/python3.8/site-packages/wtl/pytest_xreport/xreport.py:210: AttributeError</error></testcase></testsuite></testsuites>

@@ -212,9 +212,9 @@ class TestPreDeploymentCrate(TestUtils):
                 for slot in np.arange(16)+1:
                     subsystems = info[0]['slots'][slot]['subsystems']
                     for ss in subsystems:
-                        idx = list(info[0]['slots'][slot]['subsystems'][ss]['lanes'].keys())
+                        idx = list(subsystems[ss]['lanes'].keys())
                         for lane in idx:
-                            lane_info = info[0]['slots'][slot]['subsystems'][ss]['lanes'][lane]
+                            lane_info = subsystems[ss]['lanes'][lane]
                             status = lane_info['status']
                             label = lane_info['label']
                             fields = lane_info['fields']
