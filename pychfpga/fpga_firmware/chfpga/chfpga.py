@@ -118,7 +118,8 @@ class chFPGA(FPGAFirmware):
         ("MGK7MB", "chFPGA", ("shuffle16", "shuffle128", "shuffle256", "shuffle512", "chan8", "chan4")): dict(firmware_url='chFPGA_MGK7MB_Rev2.bit', processing_frequency = 200e6),
         ("MGK7MB", "siFPGA", ("corr16",)): dict(firmware_url='SIFPGA_MGK7MB.bit', processing_frequency = 200e6),
         ("MGK7MB", "chordFPGA", ("chord16",)): dict(firmware_url='chordFPGA_MGK7MB_Rev2.bit', processing_frequency = 300e6),
-        ("ZCU111", "siFPGA", ("corr4")): dict(firmware_url='sifpga_zcu111_wrapper.bit', processing_frequency = 200e6)
+        ("ZCU111", "siFPGA", ("corr4")): dict(firmware_url='sifpga_zcu111_wrapper.bit', processing_frequency = 200e6),
+        ("CRS", "siFPGA", ("corr4")): dict(firmware_url='sifpga_crs_wrapper.bit', processing_frequency = 200e6),
     }
 
 
@@ -375,12 +376,12 @@ class chFPGA(FPGAFirmware):
         self.set_interface_ip_address()
 
         # Creates the MMI interface and open communications to the FPGA through it.
-        if self.mb.part_number == "ZCU111":
+        if self.mb.part_number in ("ZCU111", "CRS"):
             self.mmi = TCPipe_BSB_MMI(self.mb.tcpipe)
         elif self.mb.part_number == "MGK7MB":
             self.mmi = await self.open_udp_mmi_async()
         else:
-            raise(f'Motherboard on type {self.mb.part_number} does not support any MMI/BSB interface to the FPGA')
+            raise RuntimeError(f'Motherboard on type {self.mb.part_number} does not support any MMI/BSB interface to the FPGA')
 
     async def close_mmi_async(self):
         if self.mmi:
