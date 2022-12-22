@@ -161,14 +161,14 @@ class TCPipe:
         self.tx_view[len(cmd): len(cmd) + len(data)] = data
         self.tx_view[len(cmd) + len(data): len(cmd) + len(data) + read_length] = b'\x00' * read_length
 
-        print(f'Sending {self.tx_buf[:len(cmd) + len(data) + read_length]}')
+        # print(f'Sending {self.tx_buf[:len(cmd) + len(data) + read_length]}')
         self.sock.sendall(self.tx_view[:len(cmd) + len(data) + read_length])
         rx_len = self.sock.recv_into(self.rx_buf)
         if self.rx_buf[0]:
             raise IOError(f'SPI Reply has error code {self.rx_buf[0]}')
         if rx_len != 1 + len(data) + read_length:
             raise IOError(f'SPI Received {rx_len} bytes instead of {1+read_length} bytes')
-        print(f'received {self.rx_buf[:rx_len]}, returning {self.rx_buf[rx_len-read_length:rx_len]}')
+        # print(f'received {self.rx_buf[:rx_len]}, returning {self.rx_buf[rx_len-read_length:rx_len]}')
 
         return self.rx_buf[rx_len-read_length:rx_len]
 
