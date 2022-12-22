@@ -19,6 +19,7 @@ class TCPipe:
     RPC_IIC_WRITE = 0x01
     RPC_IIC_WRITE_READ = 0x02
     RPC_IIC_READ = 0x03
+    RPC_SPI_WRITE_READ = 0x04
 
     def __init__(self, hostname, port=7, timeout=2):
         self.hostname = hostname
@@ -138,6 +139,39 @@ class TCPipe:
         rx_len = self.sock.recv_into(self.rx_buf)
         return self.rx_buf[:rx_len]
 
+    def spi_write_read(self, spi_device, data, read_length):
+        """ Writes `data` to SPI address `spi_device` while reading, and return  the last `read_length` bytes transaction.
+
+        Parameters:
+
+            spi_device (int): SPI device to enable (not implemented).
+
+            data (bytes): data to write during the write phase. `read_length` null bytes will be appended for the read phase.
+
+            read_length (int): number of bytes to read (1-255)
+
+        Returns:
+
+            (bytearray): bytes that have been read
+        """
+        if not isinstance(data, (bytes, bytearray)):
+            data = bytes(data)
+        cmd = bytes((self.RPC_PREFIX, self.RPC_SPI_WRITE_READ, 2 + len(data) + read_length, 0, spi_device, read_length))
+        self.tx_view[:len(cmd)] = cmd
+        self.tx_view[len(cmd): len(cmd) + len(data)] = data
+        self.tx_view[len(cmd) + len(data): len(cmd) + len(data) + read_length] = b'\x00' * read_length
+
+        print(f'Sending {self.tx_buf[:len(cmd) + len(data) + read_length]}')
+        self.sock.sendall(self.tx_view[:len(cmd) + len(data) + read_length])
+        rx_len = self.sock.recv_into(self.rx_buf)
+        if self.rx_buf[0]:
+            raise IOError(f'SPI Reply has error code {self.rx_buf[0]}')
+        if rx_len != 1 + len(data) + read_length:
+            raise IOError(f'SPI Received {rx_len} bytes instead of {1+read_length} bytes')
+        print(f'received {self.rx_buf[:rx_len]}, returning {self.rx_buf[rx_len-read_length:rx_len]}')
+
+        return self.rx_buf[rx_len-read_length:rx_len]
+
     def set_fpga_bitstream(self, data, crc=0, timeout=20):
         """ Programs the FPGA with the provided bitstream.
 
@@ -197,10 +231,17 @@ class TCPipe_I2C:
 
         Parameters:
 
-            bus_info (dict): Describes the port, switch and switch parameter
-                - port (int): I2C port to use
-                - switch (instance): switch instance
-                - switch_params (int or dict): arguments to pass to the switch instance
+            bus_info (int, dict, tuple): Describes the port, switch and switch parameter
+                It can be either a
+                    - ``i2c_port`` integer,
+                    - ``(switch_obj, switch_params)`` tuple, or
+                    ``{"port":i2c_port, "switch":switch_obj, "switch_params": switch_params"} dict
+
+                where
+
+                    - i2c_port (int): I2C port (aka bus number) to use. If not specified, we'll use the I2C port of the specified switch, if any.
+                    - switch (instance): switch object instance
+                    - switch_params (int or dict): arguments to pass to the switch instance
 
             args, kwargs: passed to the bus select function
 
@@ -208,14 +249,37 @@ class TCPipe_I2C:
 
             IOError: Raised by an FPGA-based I2C controller in case of transaction errors
 
+        Example:
+
+            select_bus(1)  # activate I2C port 1
+            select_bus((some_i2c_switch, 3)) # select bus from specified switch, and enable I2C port 3 of the switch
+
         """
-        self.current_port = bus_info['port']
-        switch = bus_info['switch']
+
+        if isinstance(bus_info, int):
+            switch = switch_params = None
+            port = bus_info
+        elif isinstance(bus_info, tuple):
+            (switch, switch_params) = bus_info
+            port = None
+        elif isinstance(bus_info, dict):
+            port = bus_info.get('port')
+            switch = bus_info.get('switch')
+            switch_params = bus_info.get('switch_params')
+        else:
+            raise TypeError('Invalid port/bus info type')
+
+        if port is None and switch:
+            port = switch.port
+
+        self.current_port = port
+
         if not switch:
             return
-        switch_params = bus_info['switch_params']
+
         if self.current_switch_params.setdefault(switch, None) == switch_params:
             return
+
         if isinstance(switch_params, dict):
             switch.set_port(**switch_params)
         else:
@@ -276,10 +340,145 @@ class TCPipe_I2C:
         if bus_name:
             self.select_bus(bus_name, retry=3)
         try:
-            self.write_read(addr, data=[], read_length=0, retry=0)  # dummy I2C acces
-        except IOError:
+            self.write_read(addr, data=[], read_length=1, retry=0)  # dummy I2C acces
+        except (IOError, OSError):
             return False
         return True
+
+
+class TCPipe_SPI:
+    """
+    Provides an SPI-over-TCPIPE interface using the standardized SPI object API.
+
+    An instance of this object is passed to the SPI devices to provide them the methods to access their hardware.
+    """
+
+    SPIException = IOError  # Exception object to expect from SPI communication errors
+
+    def __init__(self, tcpipe, verbose=None):
+        super().__init__()
+        self.tcpipe = tcpipe
+        self._logger = logging.getLogger(__name__)
+        self.current_port = None;  # I2C port currently in use
+
+    # def select_bus(self, bus_info, retry=1):
+    #     """
+    #     Configure the I2C port and I2C switches so the following
+    #     communications will access the desired I2C bus. 'bus_id'
+    #     can be a bus name or bus number, or a list of those if
+    #     multiple buses are to be accessed at the same time. An
+    #     error will be provided if all the buses are not accessible
+    #     through the same FPGA I2C port. This function assumes that
+    #     each FPGA I2C port has an identical I2C switch.
+
+    #     Parameters:
+
+    #         bus_info (int, dict, tuple): Describes the port, switch and switch parameter
+    #             It can be either a
+    #                 - ``i2c_port`` integer,
+    #                 - ``(switch_obj, switch_params)`` tuple, or
+    #                 ``{"port":i2c_port, "switch":switch_obj, "switch_params": switch_params"} dict
+
+    #             where
+
+    #                 - i2c_port (int): I2C port (aka bus number) to use. If not specified, we'll use the I2C port of the specified switch, if any.
+    #                 - switch (instance): switch object instance
+    #                 - switch_params (int or dict): arguments to pass to the switch instance
+
+    #         args, kwargs: passed to the bus select function
+
+    #     Exceptions:
+
+    #         IOError: Raised by an FPGA-based I2C controller in case of transaction errors
+
+    #     Example:
+
+    #         select_bus(1)  # activate I2C port 1
+    #         select_bus((some_i2c_switch, 3)) # select bus from specified switch, and enable I2C port 3 of the switch
+
+    #     """
+
+    #     if isinstance(bus_info, int):
+    #         switch = switch_params = None
+    #         port = bus_info
+    #     elif isinstance(bus_info, tuple):
+    #         (switch, switch_params) = bus_info
+    #         port = None
+    #     elif isinstance(bus_info, dict):
+    #         port = bus_info.get('port')
+    #         switch = bus_info.get('switch')
+    #         switch_params = bus_info.get('switch_params')
+    #     else:
+    #         raise TypeError('Invalid port/bus info type')
+
+    #     if port is None and switch:
+    #         port = switch.port
+
+    #     self.current_port = port
+
+    #     if not switch:
+    #         return
+
+    #     if self.current_switch_params.setdefault(switch, None) == switch_params:
+    #         return
+
+    #     if isinstance(switch_params, dict):
+    #         switch.set_port(**switch_params)
+    #     else:
+    #         switch.set_port(switch_params)
+    #     self.current_switch_params[switch] = switch_params
+
+    # def write_read(self, *args, **kwargs):
+    def write_read(self, spi_device=0, data=[], read_length=0, verbose=1, noerror=False, retry=1):
+        """
+        Writes and read to/from SPI device `spi_device`.
+
+
+        Parameters:
+
+            spi_device (int): Number of the SPI device to access, which corresponde to the index of the chip select line to activate.
+
+
+            data (bytes or list of int): list of bytes to write before the read operation. If ``None``, no write is performed.
+
+            read_length (int): Number of bytes to read.
+
+            verbose (int): verbosity level
+
+            noerror (bool): if True, no exception will be raised
+
+            retry (int): Number of times to retry a transfer before raising an exception
+
+        Returns:
+            bytearray containing the read bytes
+
+        Exceptions:
+
+            IOError: Raised by an FPGA-based I2C controller in case of transaction errors
+            ValueError: Is raised when `addr`, `read>_length` or `write_length` are out of range.
+
+        """
+        # self._logger.debug("Accessing I2C bus...")
+
+        return self.tcpipe.spi_write_read(spi_device, data, read_length)
+
+    # def is_present(self, addr, bus_name=None):
+    #     """ Test the presence of an I2C device at the specified address.
+
+    #     Parameters:
+
+    #         addr (int): I2C address of the device to query
+
+    #         bus_name (str, int, or list of str or int): I2C bus(es) to activate
+
+    #     """
+    #     if bus_name:
+    #         self.select_bus(bus_name, retry=3)
+    #     try:
+    #         self.write_read(addr, data=[], read_length=1, retry=0)  # dummy I2C acces
+    #     except (IOError, OSError):
+    #         return False
+    #     return True
 
 
 class TCPipe_BSB_MMI(BSB_MMI):
