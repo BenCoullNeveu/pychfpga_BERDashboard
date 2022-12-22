@@ -20,7 +20,8 @@ class tmp421(object):
     """
     REGISTER_TABLE = {
         'THIGH_LCL': 0x00,  # Local temperature (High byte)  - 2 read compatible
-        'THIGH_RMT': 0x01,  # Remote Temperature (High byte) - 2 read compatible
+        'THIGH_RMT': 0x01,  # Remote Temperature 1 (High byte) - 2 read compatible
+        'THIGH_RMT2': 0x02,  # Remote Temperature 2 (TMP422) (High byte) - 2 read compatible
         'STATUS': 0x08,  # Status register
         'CFG1': 0x09,  # Config Register 1
         'CFG2': 0x0a,  # Config Register 2
@@ -28,6 +29,7 @@ class tmp421(object):
         'ONESHOT': 0x0f,  # One shot start register
         'TLOW_LCL': 0x10,  # Local temperature (Low byte)
         'TLOW_RMT': 0x11,  # Remote temperature (Low byte)
+        'TLOW_RMT2': 0x11,  # Remote temperature 2 (TMP422) (Low byte)
         'CORR': 0x21,  # Temperature correction
         'RST': 0xFC,  # Software reset
         'MID': 0xFE,  # Manufacture ID
@@ -87,7 +89,7 @@ class tmp421(object):
             self.select()
 
         if (mask & 0xFF) != 0xff:
-            old_value = self.i2c.write_read(self.address, data=[register], read_length=1)
+            old_value = self.i2c.write_read(self.address, data=[register], read_length=1)[0]
             new_value = (old_value & (~ mask)) | (value & mask)
         else:
             new_value = value
@@ -108,13 +110,13 @@ class tmp421(object):
 
         return self.i2c.write_read(self.address, data=[register], read_length=read_length)
 
-    def get_temperature(self):
+    def get_temperature(self, n_ext=1):
         """
         Reads temperature (in degrees Celcius) from TEMP register
         """
 
         self.write('ONESHOT', 0xFF, 0xFF)
-        while self.read('STATUS', read_length=1) >> 8:  # while BUSY=1
+        while self.read('STATUS', read_length=1)[0] >> 8:  # while BUSY=1
             print('BUSY=1...')
             pass
 
@@ -126,4 +128,12 @@ class tmp421(object):
         local_temp = np.int8(local_temp_high) + float(np.uint8(local_temp_low) >> 4) / 16
         remote_temp = np.int8(remote_temp_high) + float(np.uint8(remote_temp_low) >> 4) / 16
         remote_fault = bool(remote_temp_low & 0b00000011)
+
+        if n_ext > 1:
+            remote2_temp_high = self.read('THIGH_RMT2', read_length=1)[0]
+            remote2_temp_low = self.read('TLOW_RMT2', read_length=1)[0]
+            remote2_temp = np.int8(remote2_temp_high) + float(np.uint8(remote2_temp_low) >> 4) / 16
+            remote2_fault = bool(remote2_temp_low & 0b00000011)
+            return local_temp, remote_temp, remote2_temp, remote_fault, remote2_fault
+
         return local_temp, remote_temp, remote_fault
