@@ -1,18 +1,39 @@
 #!/usr/bin/python
 
 """
-FMC_EEPROM.py module
-Implements the EEPROM read/write interface through the FPGA
-
-History:
-    2012-03-29 JFC : Created
-    2012-08-27 JFC : Fixed reference to common.util as pychfpga.common.util
+EEPROM.py module
+Implements an object to interface through a I2C EEPROM
 """
 import logging
-
+import time  #debug
 
 class eeprom(object):
-    """ Implements an EEPROM interface optimized for I2C access through the FPGA"""
+    """ Implements an EEPROM interface optimized for I2C access through small buffers
+
+
+    Parameters:
+
+        i2c_handlers: I2CInterface object that is used to access the I2C buses
+
+        address (int): 7-bit address of the EEPROM device
+
+        bus_name (int, tuple, dict): I2C port and switch through which the
+            device is accessed. A single integer specifies a I2C port number,
+            while a tuple or sict dpecifies the switch object and the switch
+            parameters to use.
+
+        address_width (int): number of bits of addressing. This sets the number of address bytes sent at the beginning of the transactions.
+
+        write_page_size (int): Size of the memory pages (writes do not cross page boundaries in a single transaction)
+
+        max_read_length (int): maximum number of bytes that are read by i2c transaction
+
+        max_write_length (int): maximum number of bytes that are written by i2c transaction
+
+        write_cycle_time (float): time (in seconds) required to write data.
+
+        verbose (int): verbose level
+    """
 
     class EEPROMException(Exception):
         pass
@@ -26,6 +47,7 @@ class eeprom(object):
             write_page_size=0,
             max_read_length=4, # max number of bytes to read at a time
             max_write_length=3, # max number of bytes to write at a time
+            write_cycle_time=0.005, # write cycle
             verbose=1):
         """
         """
@@ -41,6 +63,7 @@ class eeprom(object):
         self.address_page_mask = write_page_size - 1
         self.max_read_length = max_read_length
         self.max_write_length = max_read_length
+        self.write_cycle_time = write_cycle_time
 
     def _get_addr_bytes(self, addr):
         """
@@ -55,7 +78,7 @@ class eeprom(object):
         return bytes
 
     def read(self, addr, length=1, retry=0, **kwargs):
-        """ Reads from the EEPROM. Data is returned as a string.
+        """ Reads from the EEPROM. Data is returned as a ``bytes`` object.
 
         Parameters:
 
@@ -152,10 +175,12 @@ class eeprom(object):
             #  2) The number of bytes that the I2C interface can send ( 3 - number of address bytes)
             #  3) The number of bytes until the end of the page
             block_length = min(len(data), self.max_write_length-len(addr_bytes)+1, (addr | self.address_page_mask) - addr + 1)
+            print(f'block_length={block_length}')
             self.i2c.write_read(
                 self.address | addr_bytes[0],
                 addr_bytes[1:] + data[:block_length],
                 read_length=0, **kwargs)  # sets the address
+            time.sleep(self.write_cycle_time)
             data = data[block_length:]
             addr += block_length
 
