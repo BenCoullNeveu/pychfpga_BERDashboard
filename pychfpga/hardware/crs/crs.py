@@ -257,6 +257,7 @@ class CRS(Motherboard):
 
 
         self.pll = hmc7044(self.spi)
+        self.pll.init()
 
     def get_power_supply_status(self):
         """ Return the voltage, current and power use by each power supply rail """

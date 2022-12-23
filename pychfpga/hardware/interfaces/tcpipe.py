@@ -121,11 +121,8 @@ class TCPipe:
     def bsb_write_read(self, data):
         """ Writes `data` to the FPGA firmware Byte-serial bus and return reply.
 
-        Used for accessing devices such as EEPROMs that require a command or addres be sent in the same transaction before reading from the device.
 
         Parameters:
-
-            addr (int): bits 6:0 is the I2C address. Bit 7 indiates whether we access IIC bus 0 or 1.
 
             data (bytes): data to write prior to the read operation
 

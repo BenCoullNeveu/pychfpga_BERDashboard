@@ -86,8 +86,8 @@ class hmc7044(object):
 
         # Program PLL2. Select the VCO range (high or low). Then
         # program the dividers (R2, N2, and reference doubler).
-        # self.set_pll2(f_in=50e6, f_out=3000e6)
-        # self.set_oscout()
+        self.set_pll2(f_in=50e6, f_out=3200e6)
+        self.set_oscout()
 
         # Program PLL1. Set the lock detect timer threshold based
         # on the PLL1 BW of the user system. Set the LCM, R1, and
@@ -106,20 +106,21 @@ class hmc7044(object):
         # (for example, LVPECL, CML, and LVDS). Set the divide
         # ratio, channel start-up mode, coarse/analog delays, and
         # performance modes.
-        self.set_output(0, divider=1)
-        self.set_output(1, divider=18)
-        self.set_output(2, divider=300)
-        self.set_output(3, divider=300)
-        self.set_output(4, divider=8)
-        self.set_output(5, divider=4000)
-        self.set_output(6, divider=24)
-        self.set_output(7, divider=24)
-        self.set_output(8, divider=1)
-        self.set_output(9, divider=1)
-        self.set_output(10, divider=1)
-        self.set_output(11, divider=1)
-        self.set_output(12, divider=1)
-        self.set_output(13, divider=4000)
+        self.set_output(0, divider=2) # RF_CLK
+        self.set_output(1, divider=16) # DDR4_CLK
+        self.set_output(2, divider=320) # CLKOUT_SMP
+        self.set_output(3, divider=320) # SYSREF_SMP
+        self.set_output(4, divider=16) # PL_CLK
+        self.set_output(5, divider=320) # PL_SYSREF
+        self.set_output(6, divider=16) # GTY_CLK0_128
+        self.set_output(7, divider=16) # GTY_CLK0_130
+        self.set_output(8, divider=2)  # RF_CLK
+        self.set_output(9, divider=2) # RF_CLK
+        self.set_output(10, divider=2) # RF_CLK
+        self.set_output(11, divider=2) # RF_CLK
+        self.set_output(12, divider=2) # RF_CLK
+        self.set_output(13, divider=320) # RF_SYSCLK
+
         print(f'reg[0x0001]=0x{self.read_reg(0x1):02X}')
 
         # Wait until the VCO peak detector loop has stabilized, 10 ms after set_pll2
