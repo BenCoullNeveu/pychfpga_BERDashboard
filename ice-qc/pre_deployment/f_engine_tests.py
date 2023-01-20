@@ -568,6 +568,17 @@ class TestPreDeploymentCrate(TestUtils):
                     print(f'init_exceptions={init_exception_fails}, delay_exceptions={delay_fails}, backplane errors = {backplane_fails}')
                     continue
 
+                # Run the backplane test first (otherwise set_adc_delays makes things too busy and can cause issues):
+                print('Checking backplane errors...')
+                bp_errs = self.check_bp_errs()
+                if len(bp_errs) > 0:
+                    print('Got the following backplane errors:')
+                    print('bp_errs: ', bp_errs)
+                    backplane_fails += 1
+                    backplane_err_tags.append({'Cycle': n,
+                                                  'ib': i,
+                                                  'bp_errs': bp_errs})
+
                 print('Got an IceBoard array')
                 for i in self.ca.ib:
  
@@ -602,17 +613,6 @@ class TestPreDeploymentCrate(TestUtils):
                         delay_exception_tags.append({'Cycle': n,
                                                     'ib': i,
                                                     'exception': repr(e)})
-
-                # Now run the backplane test:
-                print('Checking backplane errors...')
-                bp_errs = self.check_bp_errs()
-                if len(bp_errs) > 0:
-                    print('Got the following backplane errors:')
-                    print('bp_errs: ', bp_errs)
-                    backplane_fails += 1                        
-                    backplane_err_tags.append({'Cycle': n,
-                                                  'ib': i,
-                                                  'bp_errs': bp_errs})
 
                 for i in self.ca.ib:
                     # Close UDP communication with the iceboard to prevent errors:

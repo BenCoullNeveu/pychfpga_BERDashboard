@@ -112,6 +112,6 @@ f_engine_tests:
     n_fails_accept: 5
 
   p_cycle_test:
-    n_cycles: 5
+    n_cycles: 50
     percent_accept: 0.01
-    t_cycle: 1 # 1200 = 20 min # 600 = 10 min # specify in seconds
+    t_cycle: 600 # 1200 = 20 min # 600 = 10 min # specify in seconds
