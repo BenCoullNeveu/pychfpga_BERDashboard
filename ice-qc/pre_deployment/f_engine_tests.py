@@ -570,7 +570,7 @@ class TestPreDeploymentCrate(TestUtils):
 
                 print('Got an IceBoard array')
                 for i in self.ca.ib:
-
+ 
                     # Check counters and error lists:
                     n_clk_errs = i.adc_clk_err_ctr
                     clk_errs_msgs = i.adc_clk_err_msgs
@@ -603,19 +603,23 @@ class TestPreDeploymentCrate(TestUtils):
                                                     'ib': i,
                                                     'exception': repr(e)})
 
-                    # Now run the backplane test:
-                    bp_errs = self.check_bp_errs()
-                    if len(bp_errs) > 0:
-                        backplane_fails += 1
-                        backplane_err_tags.append({'Cycle': n,
+                # Now run the backplane test:
+                print('Checking backplane errors...')
+                bp_errs = self.check_bp_errs()
+                if len(bp_errs) > 0:
+                    print('Got the following backplane errors:')
+                    print('bp_errs: ', bp_errs)
+                    backplane_fails += 1                        
+                    backplane_err_tags.append({'Cycle': n,
                                                   'ib': i,
                                                   'bp_errs': bp_errs})
 
+                for i in self.ca.ib:
                     # Close UDP communication with the iceboard to prevent errors:
                     print(f'Closing UDP connection to slot {i.slot}')
                     asyncio.run(i.close_async())
 
-                print(f'Errors so far at iteration {n + 1}/{n_cycles}: ADC clk errors:{clk_fails}, UDP errors={udp_fails}')
+                print(f'Errors so far at iteration {n + 1}/{n_cycles}: ADC clk errors={clk_fails}, UDP errors={udp_fails}')
                 print(f'init_exceptions={init_exception_fails}, delay_exceptions={delay_fails}, backplane errors={backplane_fails}')
 
                 # Turn off crate and sleep before turning back on
@@ -625,7 +629,7 @@ class TestPreDeploymentCrate(TestUtils):
                 print(f'Letting the crate cool down for {t_cycle} seconds before repeating the test')
                 time.sleep(t_cycle)
 
-            assert (max([init_exception_fails, clk_fails, udp_fails, delay_fails, backplane_fails]) < n_fails_accept), f'Errors on: {err_tags}, exceptions on: {exception_tags}'
+            assert (max([init_exception_fails, clk_fails, udp_fails, delay_fails, backplane_fails]) < n_fails_accept), f'ADC errors on: {adc_err_tags}, UDP errors on: {udp_err_tags}, Init exceptions on: {init_exception_tags}, Delay exceptions on: {delay_exception_tags}, Backplane errors on: {backplane_err_tags}'
             passed = True  # Yeh, we made it through
 
         finally:
