@@ -42,6 +42,7 @@ class Motherboard(HardwareMap):
     # _cached_repr = None  # Stores a pre-processed string representation of the board repr() for efficiency
 
     NUMBER_OF_FMC_SLOTS = 0  # Number of supported mezzanines
+    FMC_MEZZ_NUMBERS = () # Logical mezzanine numbers
 
     port = None  # port number on which to access the platform `hostname`. Must be defined by subclasses. Is used by fpga_master.
 
