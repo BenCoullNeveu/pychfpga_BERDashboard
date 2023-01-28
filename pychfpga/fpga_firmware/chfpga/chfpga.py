@@ -215,6 +215,7 @@ class chFPGA(FPGAFirmware):
     _PLATFORM_ID_MGK7MB_REV0 = 2  #: ID number for the McGill MGK7MB Rev 0 motherboard (a.k.a Iceboard Rev 0). Works for All subsequent revs.
     _PLATFORM_ID_MGK7MB_REV2 = 3  #: ID number for the McGill MGK7MB Rev 2 motherboard (a.k.a Iceboard Rev 2). Works for All subsequent revs.
     _PLATFORM_ID_ZCU111 = 4  #: ID number for Xilinx ZCU111 evaluation board.
+    _PLATFORM_ID_CRS = 5  #: ID number for Xilinx ZCU111 evaluation board.
 
     #: Map of all supported platform indexed by the `PLATFORM_ID` returned by the FPGA
     _PLATFORM_ID_LIST = {
@@ -641,7 +642,7 @@ class chFPGA(FPGAFirmware):
                 self.logger.debug('%r: === Instantiating and initializing GPIO' % self)
                 await asyncio.sleep(0)
                 self.GPIO = gpio.GPIO(self, self._SYSTEM_GPIO_BASE_ADDR)
-                # self.GPIO.init() # don't cal linit() yet as this sends some commands. The module can still read the cookie without it.
+                # self.GPIO.init() # don't call init() yet as this sends some commands. The module can still read the cookie without it.
 
                 # Read the firmware version cookie from the GPIO subsystem (this
                 # is provided by the FPGA core firmware which is always present on
@@ -699,7 +700,7 @@ class chFPGA(FPGAFirmware):
 
             # Define platform-specific constants
             if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
-                assert self.mb.part_number == "ZCU111", 'This version of the firmware is meant to operate on the ZCU111 only'
+                assert self.mb.part_number == "ZCU111" or self.mb.part_number == "CRS", 'This version of the firmware is meant to operate on the ZCU111 only'
                 self.HAS_REFCLK = False
                 self.HAS_SPI = False
                 self.HAS_I2C = False
@@ -1130,9 +1131,15 @@ class chFPGA(FPGAFirmware):
             self.get_data_receiver()
 
     def check_adc_frequencies(self, stage):
+
+        target_frequency = self._sampling_frequency
+
+        if self.PLATFORM_ID in (self._PLATFORM_ID_ZCU111, self._PLATFORM_ID_ZCU111):
+            target_frequency /= 2
+
         for trial in range(10):
             freqs = [self.FreqCtr.read_frequency(f'ADC_CLK{i}', gate_time=0.001) for i in (0,4,8,12)] # ***JFC debug
-            err = any(abs(f-self._sampling_frequency/4) > 2.1e3 for f in freqs)
+            err = any(abs(f-target_frequency/4) > 2.1e3 for f in freqs)
             msg = f'{self!r}: ADC output frequencies at stage {stage} are {[f/1e6 for f in freqs]} (check #{trial+1}) {"ERROR!" if err else ""}'
             if err:
                 self.logger.warn(msg)
@@ -1142,7 +1149,7 @@ class chFPGA(FPGAFirmware):
                 self.logger.debug(msg)
                 break
         if err:
-            msg = f'{self!r}: some ADCs are not generating a proper clock at stage "{stage}". Frequencies are {freqs} MHz. Expected frequency is {self._sampling_frequency/4/1e6}. Deltas = {[f-self._sampling_frequency/4/1e16 for f in freqs]}'
+            msg = f'{self!r}: some ADCs are not generating a proper clock at stage "{stage}". Frequencies are {freqs} MHz. Expected frequency is {target_frequency/4/1e6}. Deltas = {[f-self._sampling_frequency/4/1e16 for f in freqs]}'
             self.logger.error(msg)
             pass
         return err
@@ -2527,8 +2534,8 @@ class chFPGA(FPGAFirmware):
         if verbose:
             self.logger.debug("%r: Syncing board" % self)
 
-        if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
-            self.logger.warning(f"{self!r}: Sync is not yet implemented on the ZCU111")
+        if self.PLATFORM_ID in (self._PLATFORM_ID_ZCU111, self._PLATFORM_ID_CRS):
+            self.logger.warning(f"{self!r}: Sync is not yet implemented on the {self.mb.part_number}")
         else:
             self.set_adc_mask(0)  # null the ADC data before it gets to the channelizers to reduce power consumption
             if local:
