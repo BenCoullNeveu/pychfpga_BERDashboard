@@ -1465,8 +1465,11 @@ class FPGAArray(object):
             if '.' in el:  # if hostname (has a '.' somewhere)
                 hostname, slot, crate_number = split_fields(el, 3)
                 # print(f'Adding Motherboard {hostname}, {slot}, {crate_number}')
-                ib = Motherboard.get_unique_instance(hostname=hostname, slot=slot, crate_number=crate_number)
-                current_class = None
+                if current_class is not None:
+                    if not issubclass(current_class, Motherboard):
+                        raise RuntimeError('IP addresses can only be specified for Motherboard objects')
+                ib = Motherboard.get_unique_instance(new_class=current_class, hostname=hostname, slot=slot, crate_number=crate_number)
+                # current_class = None
             elif el[0].isdigit():  # if a serial (is only digits)
                 if not current_class:
                     raise RuntimeError('A part number must be specified before a target serial number')
