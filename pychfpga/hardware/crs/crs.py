@@ -111,7 +111,6 @@ class CRS(Motherboard):
     part_number = 'CRS'
     _ipmi_part_numbers = ['CRS']
 
-    NUMBER_OF_FMC_SLOTS = 0
     NUMBER_OF_CHANNELIZERS = 4
 
     port = 7  # port number on which to access the platform `hostname`
@@ -245,11 +244,12 @@ class CRS(Motherboard):
             '1v2b': dict(device=self.i2c1_ina231_1v2b, rshunt=0.01, imax=16),
         }
 
+        self.logger.info(f'Initializing Voltage/current monitor chips')
         for name, info in self.i2c1_ina231_list.items():
             d = info['device']
             d.init(r_shunt=info['rshunt'], i_typ=info['imax'])
             time.sleep(0.010)  # wait for the first integration to complete
-            print(f'Rail {name}: Vbus={d.get_bus_voltage()}V, I={d.get_current()}A, P={d.get_power()}W')
+            self.logger.info(f'Rail {name}: Vbus={d.get_bus_voltage()}V, I={d.get_current()}A, P={d.get_power()}W')
 
 
 
@@ -257,6 +257,7 @@ class CRS(Motherboard):
 
 
         self.pll = hmc7044(self.spi)
+        self.logger.info(f'Initializing programmable PLL')
         self.pll.init()
 
     def get_power_supply_status(self):
