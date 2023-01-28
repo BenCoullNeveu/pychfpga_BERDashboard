@@ -40,12 +40,14 @@ class FUNCGEN(MMI):
     FN_FRAME8 = 4
     FN_FRAME4 = 5
     FN_BUFFER_NIBBLE4 = 6
+    FN_ADC16 = 7
     BUFFER_SIZE = 2048  # bytes
     FRAME_SIZE = 2048  # bytes
 
     # The following define the source of the data
     DATA_SOURCE_NAMES = {
         'adc':                   FN_ADC,  # Sends the ADC data
+        'adc16':                 FN_ADC16,  # Sends the every other sample of ADC data in 16 bit, MSB first
         'noise':                 FN_NOISE,  # Uniform white noise generator
         'word_ctr_buffer_flags': FN_WORD_CTR,  # 32-bit Frame/word counter, with ADC overflow from bit 0 of buffer bytes
         'buffer':                FN_BUFFER,  # Sends the data stored in the buffer
