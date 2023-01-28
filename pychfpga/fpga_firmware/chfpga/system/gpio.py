@@ -51,8 +51,11 @@ class GPIO(MMI):
     BLINKER_RESET              = BitField(CONTROL, 3, 7, doc='When active, stops the LED blinker')
     ANT_RESET                  = BitField(CONTROL, 3, 6, doc='Antenna processing pipeline reset')
     CORR_RESET                 = BitField(CONTROL, 3, 5, doc='Correlator reset')
+    CTRL_RESET_TRIG            = BitField(CONTROL, 3, 4, doc='low-to-hich transition generates a ctrl_rst pulse')
+    SYSMON_RESET               = BitField(CONTROL, 3, 3, doc='SYSMON reset')
     # CORR_IP_PORT_OFFSET        = BitField(CONTROL, 3, 2, width=2, doc='Correlator output data IP port offset from the base port')
     # DATA_IP_PORT_OFFSET        = BitField(CONTROL, 3, 0, width=2, doc='Captured data IP port offset from the base port')
+    # USER_RESET                 = BitField(CONTROL, 3, 0, doc='system reset')
     HOST_FRAME_READ_RATE       = BitField(CONTROL, 4, 0, width=5, doc='Indicates how often the host UDP buffers are read. Used to throttle data transmision. Period = 2/125MHz*2^value ')
     BUCK_PHASE                 = BitField(CONTROL, 12, 0, width=64, doc='Phase of each of the 16 Buck sync lines. There are 16 possible phase values for each line. Bits 3:0 is for phase of line 0, bits 7:4 for phase of line 1 etc.')
     # TARGET_MAC_ADDR            = BitField(CONTROL, 18, 0, width=48, doc='NETWORK_CONFIG_SOURCE=0: destination MAC address for outgoing data on UDP channel 1. NETWORK_CONFIG_SOURCE=1,2: unused.  NETWORK_CONFIG_SOURCE=3, FPGA listening MAC address to be loaded on the rising edge of TARGET_LOAD when TARGET_FPGA_SERIAL_NUMBER matches the actual FPGA serial number.')
@@ -112,10 +115,11 @@ class GPIO(MMI):
     TIMESTAMP                  = BitField(STATUS, 10, 0, width=32, doc='Bitstream timestamp word')
     PLATFORM_ID                = BitField(STATUS, 11, 0, width=8, doc='Which FPGA/board in use.  0 for ML605 eval board, 1 for KC705 evaluation board')
     FPGA_SERIAL_NUMBER         = BitField(STATUS, 19, 0, width=64, doc='FPGA 57-bit serial number')
-    NUMBER_OF_CROSSBAR_INPUTS  = BitField(STATUS, 20, 0, width=8, doc='Number of channelizer feds to the crossbar outputs')
+    NUMBER_OF_CROSSBAR_INPUTS  = BitField(STATUS, 20, 0, width=8, doc='Number of channelizer fed to the crossbar outputs')
     NUMBER_OF_CROSSBAR_OUTPUTS = BitField(STATUS, 21, 0, width=8, doc='Number of crossbar outputs')
     PROTOCOL_VERSION           = BitField(STATUS, 23, 0, width=16, doc='Protocol version used to manage host software compatibility.')
     CHANNELIZERS_CLOCK_SOURCE  = BitField(STATUS, 24, 0, width=8, doc='Indicates which ADC is used to provide the clock from all channelizers.')
+    NUMBER_OF_ADCS             = BitField(STATUS, 25, 0, width=8, doc='Number of ADCs inputs')
     ADC_PLL_LOCK0              = BitField(STATUS, 33, 6,  doc='Lock status of the ADC PLL in FMC0')
     ADC_PLL_LOCK1              = BitField(STATUS, 33, 7,  doc='Lock status of the ADC PLL in FMC1')
     CMD_RPLY_PACKET_COUNTERS   = BitField(STATUS, 35, 0, width=16, doc='Number of reply packets received since last FPGA configuration. MSB=Commands, LSB=Replies')
@@ -297,9 +301,16 @@ class GPIO(MMI):
     def init(self):
         """
         Initializes the GPIO module operations.
+
         This puts the channelizers and correlators in reset state."""
         self.ANT_RESET = 1
         self.CORR_RESET = 1
+        # self.USER_RESET = 0
+
+        if self.PLATFORM_ID in (self.fpga._PLATFORM_ID_ZCU111, self.fpga._PLATFORM_ID_CRS):
+            self.BUCK_CLK_DIV = 17
+
+        self.logger.info(f'Buck switching frequency is set at {200/16/self.BUCK_CLK_DIV:.3f} MHz')
 
         # In the alternate code below, we do not use self.ANT_RESET=1 to reset
         # the antenna because this implies reading the control register, and
@@ -315,8 +326,8 @@ class GPIO(MMI):
 
     def status(self):
         """ Displays the module status"""
-        self.logger.info('-------------------------GPIO--------------------------------------')
-        self.logger.info('Bistream timestamp is: %s' % self.get_bitstream_date())
+        self.logger.info(f'-------------------------GPIO--------------------------------------')
+        self.logger.info(f'Bistream timestamp is: {self.get_bitstream_date()}')
 
 
 
