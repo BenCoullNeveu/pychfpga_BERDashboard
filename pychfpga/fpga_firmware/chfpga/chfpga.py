@@ -501,11 +501,9 @@ class chFPGA(FPGAFirmware):
         # if not self.fpga_control_port_number:
         #    self.fpga_control_port_number = self.local_control_port_number
 
-        build_info = await self.mb.tuber_get_build_info_async()
-        if 'R11.4' not in build_info.icecore_git_hash:
-            raise RuntimeError('ARM firmware is not compatible with this version of the FPGA firmare (SPI link will not work - cannot setup networking)')
-
-        # Set-up the FPGA networking parameters using the ARM-SPI link to the FPGA
+        # Set-up the FPGA networking parameters using the ARM-SPI link to the
+        # FPGA We assume it has been checked that the proper version of the SD
+        # card is present so the SPI communication  with the FPGA will work.
         self.fpga_mac_addr = await self.set_fpga_control_networking_parameters_async(
             fpga_ip_addr=self.fpga_ip_addr,
             fpga_port_number=self.fpga_control_port_number)
