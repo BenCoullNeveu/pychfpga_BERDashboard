@@ -2828,7 +2828,7 @@ class FPGAArray(object):
 
         # Don't try to check the SYNC status if we don't have a SYNC engine (REFCLK) in the firmware of all boards
 
-        if check and not all(ib.REFCLK for ib in self.ib):
+        if check and not all(list(ib.REFCLK for ib in self.ib)):
             check = False
             self.logger. warning(f'{self!r}: SYNC will not be checked as not all firmware have SYNC logic')
 
