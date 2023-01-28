@@ -57,7 +57,7 @@ class hmc7044(object):
         self.spi_port = spi_port
         self.regs = {}  # image of latest values written
 
-    def init(self, filename="../crs/CRS_CHORD_3000MHz.py"):
+    def init(self, fref=10e6, fosc=50e6, fvco=3200e6, frfdc=1600e6, fsys=200e6, fsysref=10e6, ilename="../crs/CRS_CHORD_3000MHz.py"):
         """Initializes the PLL.
 
         """
@@ -75,26 +75,26 @@ class hmc7044(object):
         # Initialize basic registers not handled below
         self.init_registers()
 
-        print(f'reg[0x0001]=0x{self.read_reg(0x1):02X}')
+        # print(f'reg[0x0001]=0x{self.read_reg(0x1):02X}')
         # Set PLL1 clock inputs
         self.set_input('CLKIN0', enable=False, term=True) # Ethernet recovered clock
         self.set_input('CLKIN1', enable=False, term=True) # Backplane 10 MHz reference
         self.set_input('CLKIN2', enable=True, term=True) # SMA 10 MHz reference
         self.set_input('CLKIN3', enable=False, term=True) # Recovered clock from FPGA
         self.set_input('OSCIN', enable=True, term=True) # Oscillator
-        print(f'reg[0x0001]=0x{self.read_reg(0x1):02X}')
+        # print(f'reg[0x0001]=0x{self.read_reg(0x1):02X}')
 
         # Program PLL2. Select the VCO range (high or low). Then
         # program the dividers (R2, N2, and reference doubler).
-        self.set_pll2(f_in=50e6, f_out=3200e6)
+        self.set_pll2(f_in=fosc, f_out=fvco)
         self.set_oscout()
 
         # Program PLL1. Set the lock detect timer threshold based
         # on the PLL1 BW of the user system. Set the LCM, R1, and
         # N1 divider setpoints. Enable the reference and VCXO
         # input buffer terminations.
-        self.set_pll1(f_in=10e6, f_out=50e6)
-        print(f'reg[0x0001]=0x{self.read_reg(0x1):02X}')
+        self.set_pll1(f_in=fref, f_out=fosc)
+        # print(f'reg[0x0001]=0x{self.read_reg(0x1):02X}')
 
         # Program the SYSREF timer. Set the divide ratio (a
         # submultiple of the lower output channel frequency). Set the
@@ -106,22 +106,22 @@ class hmc7044(object):
         # (for example, LVPECL, CML, and LVDS). Set the divide
         # ratio, channel start-up mode, coarse/analog delays, and
         # performance modes.
-        self.set_output(0, divider=2) # RF_CLK
-        self.set_output(1, divider=16) # DDR4_CLK
-        self.set_output(2, divider=320) # CLKOUT_SMP
-        self.set_output(3, divider=320) # SYSREF_SMP
-        self.set_output(4, divider=16) # PL_CLK
-        self.set_output(5, divider=320) # PL_SYSREF
-        self.set_output(6, divider=16) # GTY_CLK0_128
-        self.set_output(7, divider=16) # GTY_CLK0_130
-        self.set_output(8, divider=2)  # RF_CLK
-        self.set_output(9, divider=2) # RF_CLK
-        self.set_output(10, divider=2) # RF_CLK
-        self.set_output(11, divider=2) # RF_CLK
-        self.set_output(12, divider=2) # RF_CLK
-        self.set_output(13, divider=320) # RF_SYSCLK
+        self.set_output(0, f_vco=fvco, f_out=frfdc) # RF_CLK
+        self.set_output(1, f_vco=fvco, f_out=200e6) # DDR4_CLK
+        self.set_output(2, f_vco=fvco, f_out=fsys) # CLKOUT_SMP
+        self.set_output(3, f_vco=fvco, f_out=fsysref) # SYSREF_SMP
+        self.set_output(4, f_vco=fvco, f_out=fsys) # PL_CLK  3200/16=200 MHz
+        self.set_output(5, f_vco=fvco, f_out=fsysref) # PL_SYSREF
+        self.set_output(6, f_vco=fvco, f_out=200e6) # GTY_CLK0_128
+        self.set_output(7, f_vco=fvco, f_out=200e6) # GTY_CLK0_130
+        self.set_output(8, f_vco=fvco, f_out=frfdc)  # RF_CLK
+        self.set_output(9, f_vco=fvco, f_out=frfdc) # RF_CLK
+        self.set_output(10, f_vco=fvco, f_out=frfdc) # RF_CLK
+        self.set_output(11, f_vco=fvco, f_out=frfdc) # RF_CLK
+        self.set_output(12, f_vco=fvco, f_out=frfdc) # RF_CLK
+        self.set_output(13, f_vco=fvco, f_out=fsysref) # RF_SYSCLK
 
-        print(f'reg[0x0001]=0x{self.read_reg(0x1):02X}')
+        # print(f'reg[0x0001]=0x{self.read_reg(0x1):02X}')
 
         # Wait until the VCO peak detector loop has stabilized, 10 ms after set_pll2
         time.sleep(0.01)
@@ -130,7 +130,7 @@ class hmc7044(object):
         # calibration. Toggle the restart dividers/FSMs bit to 1 and
         # then back to 0.
         self.restart()
-        print(f'reg[0x0001]=0x{self.read_reg(0x1):02X}')
+        # print(f'reg[0x0001]=0x{self.read_reg(0x1):02X}')
 
         # Wait for PLL2 to be locked (takes ~50 μs in typical configurations).
 
@@ -184,7 +184,7 @@ class hmc7044(object):
             regs = regs.items()
 
         for (reg, val) in regs:
-            print(f'Writing Reg {reg:04X} with 0x{val:02X}')
+            # print(f'Writing Reg {reg:04X} with 0x{val:02X}')
             self.write_reg(reg, val)
             # time.sleep(0.1)
 
@@ -677,7 +677,9 @@ class hmc7044(object):
                    slip_enable=0,
                    startup_mode=0,
                    multislip_enable=0,
-                   divider=1,
+                   divider=None,
+                   f_out=None,
+                   f_vco=None,
                    analog_delay=0,
                    digital_delay=0,
                    multislip_delay=0,
@@ -717,28 +719,35 @@ class hmc7044(object):
                 2: reserved
                 3: Dynamic
 
-            divider (int): 12-bit channel divider setpoint LSB. The divider
-                supports even divide ratios from 2 to 4094. The supported odd
-                divide ratios are 1, 3, and 5. All even and odd divide ratios
-                have 50.0% duty cycle.
+            divider (int or float): 12-bit channel divider setpoint LSB. The
+                divider supports even divide ratios from 2 to 4094. The
+                supported odd divide ratios are 1, 3, and 5. All even and odd
+                divide ratios have 50.0% duty cycle. `divider` can be a float,
+                but an arror will be raised if it has a fractional part. Set
+                to `None` if `f_out` and `f_vco` are specified instead.
 
+            f_out (float); desired output frequency in Hz. Used to compute
+                `divide`. `divide` should not be specified. Requires `f_vco`
+                to be specified.
 
-           analog_delay (int): 24 fine delay steps. Step size = 25 ps. Values
+            f_vco (float): frequency of the PLL2 VCO in Hz. Required only if `f_out` is specified.
+
+            analog_delay (int): 24 fine delay steps. Step size = 25 ps. Values
                 greater than 23 have no effect on analog delay.
 
-           digital_delay (int): 17 coarse delay steps. Step size = 1/2 VCO
+            digital_delay (int): 17 coarse delay steps. Step size = 1/2 VCO
                 cycle. This flip flop (FF)-based digital delay does not
                 increase noise level at the expense of power. Values greater
                 than 17 have no effect on coarse delay.
 
-           multislip_delay (int): 12-bit multislip digital delay amount LSB.
+            multislip_delay (int): 12-bit multislip digital delay amount LSB.
                 Step size = (delay amount: MSB + LSB) × VCO cycles. If
                 multislip enable bit = 1, any slip events (caused by GPI, SPI,
                 SYNC, or pulse generator events) repeat the number of times
                 set by 12-Bit Multislip Digital Delay[11:0] to adjust the
                 phase by step size.
 
-           output_sel (int): Channel output mux selection. If None, it will be
+            output_sel (int): Channel output mux selection. If None, it will be
                set to 0 for even and 1 for off channel numbers, i.e. CLK
                outputs use CLK divider and SCLK output uses SCLK dividers.
 
@@ -748,24 +757,24 @@ class hmc7044(object):
                 3: Input VCO clock (fundamental). Fundamental can also
                    be generated with 12-Bit Channel Divider[11:0] = 1.
 
-           mute (int): Idle at Logic 0 selection (pulse generator mode only). Force to Logic 0 or Vcm .
+            mute (int): Idle at Logic 0 selection (pulse generator mode only). Force to Logic 0 or Vcm .
 
                 0: Normal mode (selection for DCLK).
                 1: Reserved.
                 2: Force to Logic 0.
                 3: Reserved.
 
-           dynamic_driver (int): Dynamic driver enable (pulse generator mode
+            dynamic_driver (int): Dynamic driver enable (pulse generator mode
                 only). Driver is enabled/disabled with channel enable bit
 
-           driver_mode (int): Output driver mode selection.
+            driver_mode (int): Output driver mode selection.
 
                 0: CML mode.
                 1: LVPECL mode.
                 2: LVDS mode.
                 3: CMOS mode.
 
-           driver_impedance (int): Output driver impedance selection for CML mode.
+            driver_impedance (int): Output driver impedance selection for CML mode olny.
 
                 0: Internal resistor disable.
                 1: Internal 100 Ω resistor enable per output pin.
@@ -774,6 +783,17 @@ class hmc7044(object):
 
 
         """
+
+
+        if f_out and divider:
+            raise RuntimeError(f'f_out and divider cannot be specified at the same time')
+        if f_out:
+            if not f_vco:
+                raise RuntimeError(f'f_vco must be specified if f_out is specified.')
+            divider = f_vco / f_out
+        if divider != int(divider):
+            raise RuntimeError(f'Output {output_number} divider={divider} is not an integer')
+        divider = int(divider)
 
         if  not 1 <= divider <= 4094:
             raise ValueError(f'Output divider={divider} is out of range (1-4094)')
