@@ -60,6 +60,7 @@ class SYSMON(MMI):
             fpga._PLATFORM_ID_MGK7MB_REV0,
             fpga._PLATFORM_ID_MGK7MB_REV2,
             fpga._PLATFORM_ID_ZCU111,
+            fpga._PLATFORM_ID_CRS,
             )
 
         super().__init__(fpga_instance, base_address)
@@ -67,6 +68,12 @@ class SYSMON(MMI):
 
     def init(self):
         if self.supported_by_platform:
+            # JFC: Fix until the CRS firmware has proper SYSMON RESET
+            # self.fpga.GPIO.SYSMON_RESET=1
+            # self.fpga.GPIO.SYSMON_RESET=0
+            # self.fpga.GPIO.CTRL_RESET_TRIG=1
+            # self.fpga.GPIO.CTRL_RESET_TRIG=0
+
             self.write_drp(self.CONFIG1_ADDR, 0x0000)
             self.write_drp(self.CONFIG2_ADDR, 0x0000)
             self.write_drp(self.SEQ_ADC_SEL1_ADDR, 0x3F01)  # Enable all ADC channels
