@@ -122,6 +122,7 @@ class FreqCtr(MMI):
         Prints the Frequency Counter status.
         """
         fpga = self.fpga
+        mb = fpga.mb
 
         gate_time = 0.05
         resolution = 2.0 / gate_time
@@ -155,16 +156,17 @@ class FreqCtr(MMI):
         print('   BP Shuffle TX word clock: %7.3f MHz (%0.3f Gbps)' % (bp_shuffle_txclk / 1e6, bp_shuffle_txclk * 32 * 32 /33 / 1e9))
         print('   GPU link TX word clock:   %7.3f MHz (%0.3f Gbps)' % (gpu_txclk / 1e6, gpu_txclk * 32 * 32 / 33 / 1e9))
         print(' FMCA clocks')
-        print('   FMCA Reference:           %7.3f MHz%s' % (self.read_frequency('FMCA_REFCLK', gate_time=gate_time) / 1e6, '' if fpga.is_fmc_present(0) else ' (ADC board not present)'))
+        print('   FMCA Reference:           %7.3f MHz%s' % (self.read_frequency('FMCA_REFCLK', gate_time=gate_time) / 1e6, '' if mb.is_fmc_present(0) else ' (ADC board not present)'))
         print('   FMCA MGT PLL Ref clock 0: %7.3f MHz' % (self.read_frequency('FMCA_MGT_PLL_REFCLK0', gate_time=gate_time) / 1e6))
         print('   FMCA MGT PLL Ref clock 1: %7.3f MHz' % (self.read_frequency('FMCA_MGT_PLL_REFCLK1', gate_time=gate_time) / 1e6))
         print(' FMCB clocks')
-        print('   FMCB Reference:           %7.3f MHz%s' % (self.read_frequency('FMCB_REFCLK', gate_time=gate_time) / 1e6, '' if fpga.is_fmc_present(1) else ' (ADC board not present)'))
+        print('   FMCB Reference:           %7.3f MHz%s' % (self.read_frequency('FMCB_REFCLK', gate_time=gate_time) / 1e6, '' if mb.is_fmc_present(1) else ' (ADC board not present)'))
         print('   FMCB MGT PLL Ref clock 0: %7.3f MHz' % (self.read_frequency('FMCB_MGT_PLL_REFCLK0', gate_time=gate_time) / 1e6))
         print('   FMCB MGT PLL Ref clock 1: %7.3f MHz' % (self.read_frequency('FMCB_MGT_PLL_REFCLK1', gate_time=gate_time) / 1e6))
         print(' ADC clocks')
-        for i in range(fpga.NUMBER_OF_CHANNELIZERS):
-            print('   ADC%02i clock:              %7.3f MHz%s' % (i, self.read_frequency('ADC_CLK%i' % i, gate_time=gate_time) / 1e6, '' if fpga.is_fmc_present(0) else ' (No ADC board in FMCA - Cannot clock the channelizers)'))
+        for i in range(fpga.NUMBER_OF_ADCS or fpga.NUMBER_OF_CHANNELIZERS):
+            # print('   ADC%02i clock:              %7.3f MHz%s' % (i, self.read_frequency('ADC_CLK%i' % i, gate_time=gate_time) / 1e6, '' if fpga.is_fmc_present(0) else ' (No ADC board in FMCA - Cannot clock the channelizers)'))
+            print('   ADC%02i clock:              %7.3f MHz' % (i, self.read_frequency('ADC_CLK%i' % i, gate_time=gate_time) / 1e6))
         print('   Resolution:     %10.6f MHz' % (resolution / 1e6))
         print('   Gate time:      %.3f s' % (gate_time))
         print('   FPGA Fan speed: %7.0f RPM (resolution %.0f RPM)' % (self.read_frequency('FAN', gate_time=fan_gate_time) * 60. / 2, fan_resolution * 60. / 2)) # 1 Hz=60 RPM, divide by 2 because there is 2 pulses per fan turn
