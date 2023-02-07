@@ -5041,7 +5041,7 @@ class chFPGA(FPGAFirmware):
             crate_number = self.crate.crate_number if self.crate else 0
             stream_type = 0
 
-        elif mode == 'shuffle16':
+        elif mode in ('shuffle16', 'chord16'):
             """
             In shuffle16 mode, each of the GPU links output data for 128 bins,
             each bins containing the data from 16 channels. The data for each
@@ -5672,7 +5672,7 @@ class chFPGA(FPGAFirmware):
             cb3_output_frame_flags_words_per_frame = (
                 cb3_input_frame_flags_words_per_frame * cb3_input_lanes_per_output_lane)
 
-        elif mode in ('corr16', 'chord16'):
+        elif mode in ('corr16', ):
             """
             Implement the corner-turn operation for the 16-channel firmware correlator embedded in
             the same FPGA. in this mode, we simply enable the 1st crossbar. The 2nd and 3rd

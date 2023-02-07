@@ -1723,7 +1723,7 @@ class FPGAArray(object):
             # Sync board(s)
             self.sync()
 
-        elif mode in ['shuffle256', 'shuffle512', 'shuffle16', 'shuffle128']:
+        elif mode in ['shuffle256', 'shuffle512', 'shuffle16', 'shuffle128', 'chord16']:
             if not all(self.ib.CROSSBAR2) or not all(self.ib.CROSSBAR3):
                 raise RuntimeError(f' Mode {mode} requires all boards to have their CROSSBAR2 and CROSSBAR 3 implemented')
             self.ib.BP_SHUFFLE.set_tx_power(13)
@@ -1744,7 +1744,7 @@ class FPGAArray(object):
             self.ib.CROSSBAR3.reset_stats()
             # Sync was performed by init_corner_turn()
 
-        elif mode in ('corr16', 'corr4', 'chord16'):
+        elif mode in ('corr16', 'corr4'):
             if not all(self.ib.CORR):
                 raise RuntimeError(f'Mode {mode} requires all boards to have a firmware correlator engine')
             bin_map = self.get_corner_turn_bin_map(
