@@ -1771,7 +1771,7 @@ class FPGAArray(object):
 
         Parameters:
 
-            mode (str): opertional mode. 'shuffle256' , 'shuffle512' and 'shuffle16'
+            mode (str): opertional mode. 'shuffle256' , 'shuffle512', 'shuffle16' and 'chord16'
                 implement frequency-remaping. Other modes return de default
                 map.
 
@@ -2550,7 +2550,7 @@ class FPGAArray(object):
                     if tx not in tx_list:
                         self.logger.debug(f'{self!r}: In {ib.crate!r}, {rx} has no corresponding transmitter')
 
-        if mode != 'shuffle128' and mode !='shuffle16':  # ***JFC: temporary hack
+        if mode not in ('shuffle128', 'shuffle16', 'chord16'):  # ***JFC: temporary hack to exclude modes that have no crate info an dget_frequency_map() crashes.
             # Get the exhaustive frequency map that is implemented by the current actual corner turn engine.
             # The map is in the format (crate, slot, lane): freq_bin_list. crate and slot might not be numeric if there is no crate or crate number.
             freq_map = self.get_frequency_map(format='l:bb')
@@ -2559,7 +2559,7 @@ class FPGAArray(object):
                                                for lane_id, data in freq_map.items()}
 
         # Double check that the frequency map that we obtained matches our target bin map.
-        if mode == 'shuffle256' or mode == 'shuffle512':
+        if mode in ('shuffle256', 'shuffle512'):
             errors = 0
             for (crate, slot, lane), actual_bins in list(self.corner_turn_frequency_bins.items()):
                 bs = bin_map[(crate % 2, slot)]

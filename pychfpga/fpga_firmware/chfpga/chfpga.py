@@ -4741,7 +4741,7 @@ class chFPGA(FPGAFirmware):
                       8-bit data from 16 channelizers is sent directly to the
                       8 CT-Engine outputs.
 
-                    - 'shuffle16': A corner-turn operation is applied only
+                    - 'shuffle16 and 'chord16': A corner-turn operation is applied only
                       within the 16 channelizer outputs of this board.
 
                     - 'shuffle256': The corner-turn operation is applies
@@ -4753,7 +4753,7 @@ class chFPGA(FPGAFirmware):
                       boards within a crate using the backplane PCB links, and
                       between 2 crates using the backplane QSFP links.
 
-                    - 'corr16' and 'chord16': The corner-turn engine is configured to feed
+                    - 'corr16': The corner-turn engine is configured to feed
                       the internal firmware correlator (only if the firmware
                       was compiled with it).
 
