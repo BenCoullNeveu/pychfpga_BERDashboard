@@ -155,14 +155,19 @@ class FreqCtr(MMI):
         print('   Correlator:               %7.3f MHz' % (self.read_frequency('CORR_CLK', gate_time=gate_time) / 1e6))
         print('   BP Shuffle TX word clock: %7.3f MHz (%0.3f Gbps)' % (bp_shuffle_txclk / 1e6, bp_shuffle_txclk * 32 * 32 /33 / 1e9))
         print('   GPU link TX word clock:   %7.3f MHz (%0.3f Gbps)' % (gpu_txclk / 1e6, gpu_txclk * 32 * 32 / 33 / 1e9))
-        print(' FMCA clocks')
-        print('   FMCA Reference:           %7.3f MHz%s' % (self.read_frequency('FMCA_REFCLK', gate_time=gate_time) / 1e6, '' if mb.is_fmc_present(0) else ' (ADC board not present)'))
-        print('   FMCA MGT PLL Ref clock 0: %7.3f MHz' % (self.read_frequency('FMCA_MGT_PLL_REFCLK0', gate_time=gate_time) / 1e6))
-        print('   FMCA MGT PLL Ref clock 1: %7.3f MHz' % (self.read_frequency('FMCA_MGT_PLL_REFCLK1', gate_time=gate_time) / 1e6))
-        print(' FMCB clocks')
-        print('   FMCB Reference:           %7.3f MHz%s' % (self.read_frequency('FMCB_REFCLK', gate_time=gate_time) / 1e6, '' if mb.is_fmc_present(1) else ' (ADC board not present)'))
-        print('   FMCB MGT PLL Ref clock 0: %7.3f MHz' % (self.read_frequency('FMCB_MGT_PLL_REFCLK0', gate_time=gate_time) / 1e6))
-        print('   FMCB MGT PLL Ref clock 1: %7.3f MHz' % (self.read_frequency('FMCB_MGT_PLL_REFCLK1', gate_time=gate_time) / 1e6))
+        for fmc in range(mb.NUMBER_OF_FMC_SLOTS):
+            if mb.is_fmc_present(fmc):
+                fmc_name = 'FMC' + chr(ord('A') + fmc)
+                print(f' {fmc_name} clocks')
+                freq_refclk = self.read_frequency(f'{fmc_name}_REFCLK', gate_time=gate_time) / 1e6
+                freq_mgt0 = self.read_frequency(f'{fmc_name}_MGT_PLL_REFCLK0', gate_time=gate_time) / 1e6
+                freq_mgt1 = self.read_frequency(f'{fmc_name}_MGT_PLL_REFCLK1', gate_time=gate_time) / 1e6
+                print(f'   {fmc_name} Reference:           {freq_refclk:7.3f} MHz')
+                print(f'   {fmc_name} MGT PLL Ref clock 0: {freq_mgt0:7.3f} MHz')
+                print(f'   {fmc_name} MGT PLL Ref clock 1: {freq_mgt1:7.3f} MHz')
+            else:
+                print(f' {fmc_name}: Not present')
+
         print(' ADC clocks')
         for i in range(fpga.NUMBER_OF_ADCS or fpga.NUMBER_OF_CHANNELIZERS):
             # print('   ADC%02i clock:              %7.3f MHz%s' % (i, self.read_frequency('ADC_CLK%i' % i, gate_time=gate_time) / 1e6, '' if fpga.is_fmc_present(0) else ' (No ADC board in FMCA - Cannot clock the channelizers)'))
