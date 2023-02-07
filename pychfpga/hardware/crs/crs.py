@@ -126,7 +126,7 @@ class CRS(Motherboard):
 
         self.iic = None
         self.spi = None
-        self.mmi = None
+        # self.mmi = None
         self.tcpipe = None
         self._is_open = None
         self.fpga = None  # firmware object
@@ -217,7 +217,7 @@ class CRS(Motherboard):
         # Switch port 3:
         #   External I2C header
 
-        self.i2c1_switch = i2c1_switch = pca9546a(self.iic, address=0x71, port=1)
+        self.i2c0_switch = i2c0_switch = pca9546a(self.iic, address=0x71, port=1)
         # Switch port 0:
         #    QSFP26
         # Switch port 1-6
@@ -248,17 +248,18 @@ class CRS(Motherboard):
         for name, info in self.i2c1_ina231_list.items():
             d = info['device']
             d.init(r_shunt=info['rshunt'], i_typ=info['imax'])
-            time.sleep(0.010)  # wait for the first integration to complete
-            self.logger.info(f'Rail {name}: Vbus={d.get_bus_voltage()}V, I={d.get_current()}A, P={d.get_power()}W')
-
-
-
-
-
 
         self.pll = hmc7044(self.spi)
         self.logger.info(f'Initializing programmable PLL')
         self.pll.init()
+        self.logger.info(f'Done programming PLL')
+
+
+        # Print board voltages/currents
+        # The delay of programming the PLL is sufficient to allow the first voltage average to refresh
+        for name, info in self.i2c1_ina231_list.items():
+            d = info['device']
+            self.logger.info(f'Rail {name}: Vbus={d.get_bus_voltage():.3f}V, I={d.get_current():.3f}A, P={d.get_power():.1f}W')
 
     def get_power_supply_status(self):
         """ Return the voltage, current and power use by each power supply rail """
