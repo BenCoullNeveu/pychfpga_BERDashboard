@@ -726,6 +726,7 @@ class chFPGA(FPGAFirmware):
             # Identify the number of channelizers and their properties
             self.CHANNELIZERS_CLOCK_SOURCE = self.GPIO.CHANNELIZERS_CLOCK_SOURCE
             self.NUMBER_OF_CHANNELIZERS = self.GPIO.NUMBER_OF_CHANNELIZERS
+            self.NUMBER_OF_ADCS = self.GPIO.NUMBER_OF_ADCS
             self.NUMBER_OF_ANTENNAS_WITH_FFT = self.GPIO.NUMBER_OF_CHANNELIZERS_WITH_FFT
             self.LIST_OF_ANTENNAS_WITH_FFT = list(range(self.NUMBER_OF_ANTENNAS_WITH_FFT))
 
