@@ -117,7 +117,7 @@ class chFPGA(FPGAFirmware):
     PLATFORM_SUPPORT = { # (platform_model, firmware_config, modes): {firmware_filename: <fw_fn>, <other platform parameters>}
         ("MGK7MB", "chFPGA", ("shuffle16", "shuffle128", "shuffle256", "shuffle512", "chan8", "chan4")): dict(firmware_url='chFPGA_MGK7MB_Rev2.bit', processing_frequency = 200e6),
         ("MGK7MB", "siFPGA", ("corr16",)): dict(firmware_url='SIFPGA_MGK7MB.bit', processing_frequency = 200e6),
-        ("MGK7MB", "chordFPGA", ("chord16",)): dict(firmware_url='chordFPGA_MGK7MB_Rev2.bit', processing_frequency = 300e6),
+        ("MGK7MB", "chordFPGA", ("chord16",)): dict(firmware_url='chordFPGA_MGK7MB.bit', processing_frequency = 300e6),
         ("ZCU111", "siFPGA", ("corr4")): dict(firmware_url='sifpga_zcu111_wrapper.bit', processing_frequency = 200e6)
     }
 
@@ -4753,7 +4753,7 @@ class chFPGA(FPGAFirmware):
                       boards within a crate using the backplane PCB links, and
                       between 2 crates using the backplane QSFP links.
 
-                    - 'corr16': The corner-turn engine is configured to feed
+                    - 'corr16' and 'chord16': The corner-turn engine is configured to feed
                       the internal firmware correlator (only if the firmware
                       was compiled with it).
 
@@ -5672,7 +5672,7 @@ class chFPGA(FPGAFirmware):
             cb3_output_frame_flags_words_per_frame = (
                 cb3_input_frame_flags_words_per_frame * cb3_input_lanes_per_output_lane)
 
-        elif mode == 'corr16':
+        elif mode in ('corr16', 'chord16'):
             """
             Implement the corner-turn operation for the 16-channel firmware correlator embedded in
             the same FPGA. in this mode, we simply enable the 1st crossbar. The 2nd and 3rd
