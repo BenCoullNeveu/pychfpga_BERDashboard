@@ -720,8 +720,8 @@ class FPGAMaster(object):
 
     async def start_hdf5_capture(self, capture_folder=None, capture_filename=None, capture_refresh_time=None,
                              capture_duration=None,capture_elements_per_file=None,
-                             capture_auxchan=None, capture_folder_auxchan=None, capture_filename_auxchan=None,
-                             capture_refresh_time_auxchan=None, capture_auxchan_stream_id=None):
+                             capture_aux=None, capture_folder_aux=None, capture_filename_aux=None,
+                             capture_refresh_time_aux=None, capture_aux_stream_id=None):
         """
         Instructs the raw_acq server to start storing raw data in HDF5 files
         at a specified rate, duration and in the specified folder. It has an option to save up to two
@@ -749,14 +749,14 @@ class FPGAMaster(object):
             capture_elements_per_file (int): Number of frames to store in each HDF5 files. If not
             specified or `None`, the parameter is taken from the config file.
 
-            capture_auxchan (bool): True for writting auxiliary raw_adc channel with separate folder,
+            capture_aux (bool): True for writting auxiliary raw_adc channel with separate folder,
             cadence and for a particular input
 
-            capture_folder_auxchan (str), capture_filename_auxchan (str), capture_refresh_time_auxchan (float):
+            capture_folder_aux (str), capture_filename_aux (str), capture_refresh_time_aux (float):
             same as for capture_folder, capture_filename and capture_refresh_time (above) but for the auxiliary
             raw_adc channel
 
-            capture_auxchan_stream_id (int): raw adc input number for which to save the auxiliary stream.
+            capture_aux_stream_id (int): raw adc input number for which to save the auxiliary stream.
 
         """
         conf = self.config.raw_acq.common_config
@@ -766,11 +766,11 @@ class FPGAMaster(object):
         capture_duration = capture_duration or conf.hdf5_capture_duration
         capture_elements_per_file = capture_elements_per_file or conf.hdf5_capture_elements_per_file
 
-        capture_auxchan = capture_auxchan or conf.get("hdf5_capture_auxchan", False)
-        capture_folder_auxchan = capture_folder_auxchan or conf.get("hdf5_capture_folder_auxchan", './')
-        capture_filename_auxchan = capture_filename_auxchan or conf.get("hdf5_capture_filename_auxchan", '{file_number:06d}_auxchan.h5')
-        capture_refresh_time_auxchan = capture_refresh_time_auxchan or conf.get("hdf5_capture_refresh_time_auxchan", 0)
-        capture_auxchan_stream_id = capture_auxchan_stream_id or conf.get("hdf5_capture_auxchan_stream_id", 6)
+        capture_aux = capture_aux or conf.get("hdf5_capture_aux", False)
+        capture_folder_aux = capture_folder_aux or conf.get("hdf5_capture_folder_aux", './')
+        capture_filename_aux = capture_filename_aux or conf.get("hdf5_capture_filename_aux", '{file_number:06d}_aux.h5')
+        capture_refresh_time_aux = capture_refresh_time_aux or conf.get("hdf5_capture_refresh_time_aux", 0)
+        capture_aux_stream_id = capture_aux_stream_id or conf.get("hdf5_capture_aux_stream_id", 6)
 
         if capture_duration is not None:
             self.log.info(
@@ -783,11 +783,11 @@ class FPGAMaster(object):
                     capture_duration=capture_duration,
                     capture_refresh_time=capture_refresh_time,
                     elements_per_file=capture_elements_per_file,
-                    capture_auxchan=capture_auxchan,
-                    base_dir_auxchan=capture_folder_auxchan,
-                    base_filename_auxchan=capture_filename_auxchan,
-                    capture_refresh_time_auxchan=capture_refresh_time_auxchan,
-                    capture_auxchan_stream_id=capture_auxchan_stream_id
+                    capture_aux=capture_aux,
+                    base_dir_aux=capture_folder_aux,
+                    base_filename_aux=capture_filename_aux,
+                    capture_refresh_time_aux=capture_refresh_time_aux,
+                    capture_aux_stream_id=capture_aux_stream_id
                     )
                 for server_name, server in self.raw_acq.items()])
 
