@@ -1720,6 +1720,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):
 
         required_tuber_methods = [  # Use the unmangled name as published by the ARM
             'is_fpga_programmed',
+            'get_build_info',
             # '_mezzanine_eeprom_read_base64',
         ]
 
@@ -1733,6 +1734,25 @@ class IceBoard(Motherboard, TuberIceBoardBase):
             if method not in tuber_methods:
                 raise RuntimeError(f"{self!r}: The current version of the ARM firmware "
                                    f"does not provide the method '{method}' that is needed for this application")
+
+        # Make sure we have the right version of IceCore (Tuber) and SD card bootloader
+        build_info = await self.tuber_get_build_info_async()
+
+        self.logger.debug(f'{self!r}: SD card build info is {build_info}')
+
+        if 'R11.4' not in build_info.icecore_git_hash:
+            raise RuntimeError(f'ARM firmware is not compatible with this version of the FPGA firmare (SPI link between ARM and FPGA will not work - cannot setup networking). Build info is {build_info}')
+
+        if 'R11.4-6' not in build_info.icecore_git_hash or build_info.icecore_git_time != '2021-11-19':
+            self.logger.warning(f'{self!r}: Current version of the icecore software on the SD card is not the latest one. It is recommended to update the SD card with the latest image. Build info is {build_info}')
+
+        if '_get_file_contents' not in tuber_methods:
+            self.logger.warning(f'{self!r}: The current version of the icecore software does not allow checking the bootloader version. Please update the SD card if there are boot issues (boards not booting or not showing up on the network). Build info is {build_info}')
+        else:
+            version = (await self._tuber_get_file_contents_async('/usr/lib/iceboard/version.txt')).strip()
+            self.logger.info(f'{self!r}: SD card version is {version}')
+            if version != 'Chime_R11.3i':
+                self.logger.warning(f'{self!r}: The current version of the SD card is not up to date. Please update the SD card if there are boot issues (boards not booting or not showing up on the network). Build info is {build_info}, version is {version}')
 
         return True
 

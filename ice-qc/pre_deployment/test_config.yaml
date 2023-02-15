@@ -63,11 +63,31 @@ f_engine_tests:
     ps_current: 76   # Amps. Maximum current limit to set on the F-Engine power supply
     ps_t_sleep: 120 # Time in seconds to let the power supply sleep upon power cycle to allow crate to boot
     fpga_array_params:
-      # hwm: 'bp16 25:0'
-      hwm: 'bp16 33:0'
+      # hwm: 'bp16 25:0' # McGill kitchen test rack
+      # hwm: 'bp16 33:0' # GBO-F-Engine in McGill FRB testbed
+      hwm:
+               - {class: "IceCrate_MGK7BP16", serial: "033", crate_number: 0}
+               - {class: "IceBoard", hostname: "10.42.200.6", crate_number: 0}
+               - {class: "IceBoard", hostname: "10.42.200.19", crate_number: 0}
+               - {class: "IceBoard", hostname: "10.42.200.14", crate_number: 0}
+               - {class: "IceBoard", hostname: "10.42.200.17", crate_number: 0}
+               - {class: "IceBoard", hostname: "10.42.200.10", crate_number: 0}
+               - {class: "IceBoard", hostname: "10.42.200.34", crate_number: 0}
+               - {class: "IceBoard", hostname: "10.42.200.9", crate_number: 0}
+               - {class: "IceBoard", hostname: "10.42.200.8", crate_number: 0}
+               - {class: "IceBoard", hostname: "10.42.200.5", crate_number: 0}
+               - {class: "IceBoard", hostname: "10.42.200.16", crate_number: 0}
+               - {class: "IceBoard", hostname: "10.42.200.15", crate_number: 0}
+               - {class: "IceBoard", hostname: "10.42.200.4", crate_number: 0}
+               - {class: "IceBoard", hostname: "10.42.200.13", crate_number: 0}
+               - {class: "IceBoard", hostname: "10.42.200.7", crate_number: 0}
+               - {class: "IceBoard", hostname: "10.42.200.18", crate_number: 0}
+               - {class: "IceBoard", hostname: "10.42.200.12", crate_number: 0}
       stderr_log_level: 'info'
-      prog: 1
-      mode: 'shuffle256'
+      prog: 2
+      #mode: 'shuffle128' # only for KKO F-Engine
+      #ignore_missing_boards: True # only for KKO F-Engine
+      mode: 'shuffle256' # All else
       sync_method: 'irigb'
       mdns_timeout: 60
 
@@ -94,4 +114,4 @@ f_engine_tests:
   p_cycle_test:
     n_cycles: 50
     percent_accept: 0.01
-    t_cycle: 600 # in seconds
+    t_cycle: 600 # 1200 = 20 min # 600 = 10 min # specify in seconds
