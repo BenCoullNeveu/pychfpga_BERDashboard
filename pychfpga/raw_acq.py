@@ -1094,20 +1094,12 @@ class RawPacketProcessor(object):
         We write data for channels that have not been written for at least self.hdf5_refresh_time
         """
 
-        def write_adc_stream(self, buf_ix, ix, auxchan=False):
-            if auxchan is True:
-                the_hdf5_file=self.hdf5_file_auxchan
-                the_hdf5_last_time=self.hdf5_last_time_auxchan
-                the_hdf5_refresh_time=self.hdf5_refresh_time_auxchan
-            else:
-                the_hdf5_file=self.hdf5_file
-                the_hdf5_last_time=self.hdf5_last_time
-                the_hdf5_refresh_time=self.hdf5_refresh_time
-
-            if the_hdf5_file:
+        def write_adc_stream(self, buf_ix, ix, hdf5_file=self.hdf5_file, hdf5_last_time=self.hdf5_last_time,
+                                                     hdf5_refresh_time=self.hdf5_refresh_time, auxchan=False):
+            if hdf5_file:
                 t0 = time.time()
                 # find the channel index of channels that need to be written
-                is_old = (t0 - the_hdf5_last_time[ix]) > the_hdf5_refresh_time  # boolean ndarray
+                is_old = (t0 - hdf5_last_time[ix]) > hdf5_refresh_time  # boolean ndarray
                 # find buffer index of entries that should be written
                 bix = buf_ix[is_old]
                 if auxchan is True:
@@ -1117,13 +1109,13 @@ class RawPacketProcessor(object):
                     # update the last time of the channels . We use the boolean
                     # array directly, since we don't need to reuse an channel
                     # index array anymore
-                    the_hdf5_last_time[ix[is_old]] = t0
+                    hdf5_last_time[ix[is_old]] = t0
                     # save the selected entries. Unfortunately, the array indexing
                     # buf_x[bix] will cause copies to be created for each
                     # argument. To avoid this extra copy, we would have to pass
                     # bix separately, and let the copy happen only when we
                     # transfer the data to the hdf5 internal buffers.
-                    the_hdf5_file.write(
+                    hdf5_file.write(
                         self.buf_ts[bix],
                         self.buf_stream_id[bix],
                         self.buf_flags[bix],
@@ -1136,10 +1128,11 @@ class RawPacketProcessor(object):
                 # self.log.info(f'{self!r}: it took {dt*1000:.3f} ms to write {len(bix) packets to HDF5 file')
                 self.hdf5_block_writes += 1
 
-        write_adc_stream(self, buf_ix, ix, auxchan=False)
+        write_adc_stream(self, buf_ix, ix, self.hdf5_file, self.hdf5_last_time, self.hdf5_refresh_time, auxchan=False)
         #Separate writer for auxillary channel:
         if self.hdf5_capture_auxchan:
-            write_adc_stream(self, buf_ix, ix, auxchan=self.hdf5_capture_auxchan)
+            write_adc_stream(self, buf_ix, ix, self.hdf5_file_auxchan, self.hdf5_last_time_auxchan,
+                                                                     self.hdf5_refresh_time_auxchan, auxchan=True)
 
     def start_adc_hdf5(self,
                         capture_auxchan,
@@ -1165,11 +1158,8 @@ class RawPacketProcessor(object):
             f'elements_per_file={elements_per_file}')
 
         self.hdf5_capture_auxchan = capture_auxchan
-        
         self.elements_per_file = elements_per_file
-
         self.hdf5_start_time = time.time()  # used to keep track of how long the disk capture has been running
-        
         self.hdf5_refresh_time = capture_refresh_time
 
         if self.hdf5_capture_auxchan is True:
@@ -1201,6 +1191,7 @@ class RawPacketProcessor(object):
         self.hdf5_file = HDF5RawWriter(base_dir=self.hdf5_base_dir,
                                        filename=base_filename,
                                        elements_per_file=self.elements_per_file)
+        
         # Separate for auxillary channel:
         if self.hdf5_capture_auxchan is True:
             self.hdf5_base_dir_auxchan = self.recv.expand_path(base_dir_auxchan, extra_fields)
