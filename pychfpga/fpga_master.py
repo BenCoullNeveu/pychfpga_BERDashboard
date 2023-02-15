@@ -718,8 +718,9 @@ class FPGAMaster(object):
             await self.compute_gains(targets=[group], **params)
 
 
-    async def start_hdf5_capture(self, capture_maser_input=None, capture_folder=None, capture_folder_maser=None, capture_filename=None, capture_refresh_time=None,
-                           capture_refresh_time_maser=None, capture_duration=None, capture_elements_per_file=None, capture_maser_stream_id=None):
+    async def start_hdf5_capture(self, capture_auxchan=None, capture_folder=None, capture_folder_auxchan=None, capture_filename=None,
+                            capture_filename_auxchan=None, capture_refresh_time=None,capture_refresh_time_auxchan=None, capture_duration=None,
+                            capture_elements_per_file=None, capture_auxchan_stream_id=None):
         """
         Instructs the raw_acq server to start storing raw data in HDF5 files
         at a specified rate, duration and in the specified folder.
@@ -747,15 +748,16 @@ class FPGAMaster(object):
 
         """
         conf = self.config.raw_acq.common_config
-        capture_maser_input = capture_maser_input or conf.hdf5_capture_maser_input
+        capture_auxchan = capture_auxchan or conf.get("hdf5_capture_auxchan", False)
         capture_folder = capture_folder or conf.hdf5_capture_folder
-        capture_folder_maser = capture_folder_maser or conf.hdf5_capture_folder_maser
+        capture_folder_auxchan = capture_folder_auxchan or conf.get("hdf5_capture_folder_auxchan", './')
         capture_filename = capture_filename or conf.hdf5_capture_filename
+        capture_filename_auxchan = capture_filename_auxchan or conf.get("hdf5_capture_filename_auxchan", '{file_number:06d}_auxchan.h5')
         capture_duration = capture_duration or conf.hdf5_capture_duration
         capture_elements_per_file = capture_elements_per_file or conf.hdf5_capture_elements_per_file
         capture_refresh_time = capture_refresh_time or conf.hdf5_capture_refresh_time
-        capture_refresh_time_maser = capture_refresh_time_maser or conf.hdf5_capture_refresh_time_maser
-        capture_maser_stream_id = capture_maser_stream_id or conf.hdf5_capture_maser_stream_id
+        capture_refresh_time_auxchan = capture_refresh_time_auxchan or conf.get("hdf5_capture_refresh_time_auxchan", 0)
+        capture_auxchan_stream_id = capture_auxchan_stream_id or conf.get("hdf5_capture_auxchan_stream_id", 6)
 
         if capture_duration is not None:
             self.log.info(
@@ -763,15 +765,16 @@ class FPGAMaster(object):
                 f'seconds (0 = infinite)')
 
             await asyncio.gather(*[server.start_raw_hdf5(
-                    capture_maser_input=capture_maser_input,
+                    capture_auxchan=capture_auxchan,
                     base_dir=capture_folder,
-                    base_dir_maser=capture_folder_maser,
+                    base_dir_auxchan=capture_folder_auxchan,
                     base_filename=capture_filename,
+                    base_filename_auxchan=capture_filename_auxchan,
                     capture_duration=capture_duration,
                     capture_refresh_time=capture_refresh_time,
-                    capture_refresh_time_maser=capture_refresh_time_maser,
+                    capture_refresh_time_auxchan=capture_refresh_time_auxchan,
                     elements_per_file=capture_elements_per_file,
-                    capture_maser_stream_id=capture_maser_stream_id
+                    capture_auxchan_stream_id=capture_auxchan_stream_id
                     )
                 for server_name, server in self.raw_acq.items()])
 
@@ -1087,7 +1090,7 @@ class FPGAMaster(object):
                 raise RuntimeError(errmsg)
         else:
             self.log.warning(f'ADC delay table folder (adc_delay_params.delay_table_folder) is not set. Delays will be saved in the default folder specified in set_adc_delays()')
-        await ca.set_adc_delays_async(**adc_delay_params)
+        #await ca.set_adc_delays_async(**adc_delay_params)
 
         # Reset the correlator. Not sure if this is necesssary?
         # ca.ib.set_corr_reset(1)
