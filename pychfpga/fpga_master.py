@@ -721,7 +721,8 @@ class FPGAMaster(object):
     async def start_hdf5_capture(self, capture_folder=None, capture_filename=None, capture_refresh_time=None,
                              capture_duration=None,capture_elements_per_file=None,
                              capture_aux=None, capture_folder_aux=None, capture_filename_aux=None,
-                             capture_refresh_time_aux=None, capture_aux_stream_id=None):
+                             capture_refresh_time_aux=None, capture_aux_stream_id=None,
+                             capture_elements_per_file_aux=None):
         """
         Instructs the raw_acq server to start storing raw data in HDF5 files
         at a specified rate, duration and in the specified folder. It has an option to save up to two
@@ -752,9 +753,8 @@ class FPGAMaster(object):
             capture_aux (bool): True for writting auxiliary raw_adc channel with separate folder,
             cadence and for a particular input
 
-            capture_folder_aux (str), capture_filename_aux (str), capture_refresh_time_aux (float):
-            same as for capture_folder, capture_filename and capture_refresh_time (above) but for the auxiliary
-            raw_adc channel
+            capture_folder_aux (str), capture_filename_aux (str), capture_refresh_time_aux (float),
+            capture_elements_per_file_aux (int): same as for pars above but for the auxiliary raw_adc channel
 
             capture_aux_stream_id (int): raw adc input number for which to save the auxiliary stream.
 
@@ -771,6 +771,7 @@ class FPGAMaster(object):
         capture_filename_aux = capture_filename_aux or conf.get("hdf5_capture_filename_aux", '{file_number:06d}_aux.h5')
         capture_refresh_time_aux = capture_refresh_time_aux or conf.get("hdf5_capture_refresh_time_aux", 0)
         capture_aux_stream_id = capture_aux_stream_id or conf.get("hdf5_capture_aux_stream_id", 6)
+        capture_elements_per_file_aux = capture_elements_per_file_aux or conf.get("hdf5_capture_elements_per_file_aux", 131072)
 
         if capture_duration is not None:
             self.log.info(
@@ -787,7 +788,8 @@ class FPGAMaster(object):
                     base_dir_aux=capture_folder_aux,
                     base_filename_aux=capture_filename_aux,
                     capture_refresh_time_aux=capture_refresh_time_aux,
-                    capture_aux_stream_id=capture_aux_stream_id
+                    capture_aux_stream_id=capture_aux_stream_id,
+                    elements_per_file_aux=capture_elements_per_file_aux
                     )
                 for server_name, server in self.raw_acq.items()])
 
