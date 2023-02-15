@@ -855,7 +855,7 @@ class RawPacketProcessor(object):
         self.hfd5_base_dir_aux = None
         self.hdf5_file_aux = None
         self.hdf5_refresh_time_aux = 1# updated when HDF5 capture is requested
-        self.hdf5_aux_stream_id = 6
+        self.hdf5_aux_stream_ids = [6] # adc input ids for which to save auxiliary hdf5 stream
         self.hdf5_last_time_aux = np.zeros(self.NCHAN, dtype=np.float64)
 
         # ADC averaged RMS processing
@@ -1106,7 +1106,7 @@ class RawPacketProcessor(object):
             Parameters:
                 hdf5_file (hdf5 file): Which file to write the frames to
                 (options: self.hfd5_file - containting all adc inputs or self.hdf5_file_auxiliary - contating a 
-                chosen self.hdf5_aux_stream_id)
+                chosen self.hdf5_aux_stream_ids)
                 aux (bool): whether to select inputs for the auxiliary writer or not
 
             The following is assigned during initialisation of RawPacketProcessor (from the config file),
@@ -1127,7 +1127,7 @@ class RawPacketProcessor(object):
                 if stream_id:
                     #select only specified channel if provided
                     iix = ix[is_old]
-                    bix = bix[self.stream_id[iix]==self.hdf5_aux_stream_id]
+                    bix = bix[np.isin(self.stream_id[iix],self.hdf5_aux_stream_ids)]
                 if bix.size:
                     # update the last time of the channels . We use the boolean
                     # array directly, since we don't need to reuse an channel
@@ -1155,7 +1155,7 @@ class RawPacketProcessor(object):
         #Separate optional writer for auxiliary channel:
         if self.hdf5_capture_aux:
             write_adc_stream(self.hdf5_file_aux, self.hdf5_last_time_aux,self.hdf5_refresh_time_aux,
-                                                                    stream_id=self.hdf5_aux_stream_id)
+                                                                    stream_id=self.hdf5_aux_stream_ids)
 
     def start_adc_hdf5(self,
                        base_dir,
@@ -1167,7 +1167,7 @@ class RawPacketProcessor(object):
                        base_dir_aux='./',
                        base_filename_aux='{file_number:06d}_aux.h5',
                        capture_refresh_time_aux=0,
-                       capture_aux_stream_id=6,
+                       capture_aux_stream_ids=[6],
                        elements_per_file_aux=2048 *64):
         if self.hdf5_file:
             self.stop_adc_hdf5()
@@ -1193,7 +1193,7 @@ class RawPacketProcessor(object):
                 f'capture_duration={capture_duration} (type={type(capture_duration)}), '
                 f'elements_per_file={elements_per_file_aux}')
             self.hdf5_refresh_time_aux = capture_refresh_time_aux
-            self.hdf5_aux_stream_id = capture_aux_stream_id
+            self.hdf5_aux_stream_ids = capture_aux_stream_ids
             self.elements_per_file_aux = elements_per_file_aux
 
 
@@ -2793,7 +2793,7 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
             base_dir_aux='./',
             base_filename_aux='RawAcq_aux',
             capture_refresh_time_aux=0,
-            capture_aux_stream_id=6,
+            capture_aux_stream_ids=[6],
             elements_per_file_aux=2048 * 64):
         self.receiver.raw_packet_processor.start_adc_hdf5(
             base_dir=base_dir,
@@ -2805,7 +2805,7 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
             base_dir_aux=base_dir_aux,
             base_filename_aux=base_filename_aux,
             capture_refresh_time_aux=capture_refresh_time_aux,
-            capture_aux_stream_id=capture_aux_stream_id,
+            capture_aux_stream_ids=capture_aux_stream_ids,
             elements_per_file_aux=elements_per_file_aux)
         return "started hdf5 writing to disk."
 
@@ -3010,7 +3010,7 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
                              base_dir_aux=None,
                              base_filename_aux=None,
                              capture_refresh_time_aux=0,
-                             capture_aux_stream_id=6,
+                             capture_aux_stream_ids=[6],
                              elements_per_file_aux=2048 * 64):
         result = await self.post(
             'start-raw-hdf5',
@@ -3023,7 +3023,7 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
             base_dir_aux=base_dir_aux or self.hdf5_base_dir_aux,
             base_filename_aux=base_filename_aux or self.base_filename_aux,
             capture_refresh_time_aux=capture_refresh_time_aux,
-            capture_aux_stream_id = capture_aux_stream_id,
+            capture_aux_stream_ids = capture_aux_stream_ids,
             elements_per_file_aux=elements_per_file_aux
             )
         return result
