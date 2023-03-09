@@ -57,7 +57,7 @@ class hmc7044(object):
         self.spi_port = spi_port
         self.regs = {}  # image of latest values written
 
-    def init(self, fref=10e6, fosc=50e6, fvco=3200e6, frfdc=1600e6, fsys=200e6, fsysref=10e6, ilename="../crs/CRS_CHORD_3000MHz.py"):
+    def init(self, fref=10e6, fosc=50e6, fvco=3200e6, frfdc=1600e6, fsys=200e6, fsysref=10e6, filename=None):
         """Initializes the PLL.
 
         """
@@ -67,9 +67,9 @@ class hmc7044(object):
         # which can cause disruptions on the Ethernet link.
         # self.reset()
 
-        # if filename and False:
-        #     regs = self.load_config_file(filename)
-        #     self.write_regs(regs)
+        if filename:
+            regs = self.load_config_file(filename)
+            self.write_regs(regs)
 
 
         # Initialize basic registers not handled below
