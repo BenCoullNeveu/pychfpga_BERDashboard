@@ -55,13 +55,21 @@ class FPGAFirmware():
 
                 fw_info: A dict containing any other additional firmware information specific to the firmware name and platform.
         """
-        fw = [(fw_cls, pf_info.copy())
+
+        # find the firmware class, modes and extra platform/mode info for the specified platform name 
+        pf_modes = {mode: (fw_cls, pf_info)
                     for (fw_cls_name, fw_cls) in cls._class_registry.items()
                     for (pf_name, fw_name, modes), pf_info in fw_cls.PLATFORM_SUPPORT.items()
-                    if pf_name == platform_name and mode in modes]
+                    for mode in modes
+                    if pf_name == platform_name}
+
+        fw = [(fw_cls, pf_info.copy())
+                    for pf_mode, (fw_cls, pf_info) in pf_modes.items()
+                    if mode ==  pf_mode]
+
 
         if not fw:
-            raise RuntimeError(f'Could not find firmware for mode {mode} for platform {platform_name}')
+            raise RuntimeError(f'Could not find firmware for mode {mode} for platform {platform_name}. Available modes are {",".join(pf_modes)}')
         elif len(fw) > 1:
             raise RuntimeError(f'Found multiple matches for firmware mode {mode} and platform {platform_name}')
         fw_cls, pf_info = fw[0]
