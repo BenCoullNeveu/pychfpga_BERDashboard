@@ -1633,7 +1633,7 @@ class FPGAArray(object):
                   is based on the crate number: Crate N and N+1 form a pair, whereas N
                   is a even number.
 
-                - 'corr16': The corner-turn engine is configured to feed the
+                - 'corr4', 'corr8', 'corr16': The corner-turn engine is configured to feed the
                   internal firmware correlator (only if the firmware was compiled with it).
 
             frames_per_packet (int): Number of frames to combine in a single
@@ -1742,7 +1742,7 @@ class FPGAArray(object):
             self.ib.CROSSBAR3.reset_stats()
             # Sync was performed by init_corner_turn()
 
-        elif mode in ('corr16', 'corr4'):
+        elif mode in ('corr16', 'corr8', 'corr4'):
             if not all(self.ib.CORR):
                 raise RuntimeError(f'Mode {mode} requires all boards to have a firmware correlator engine')
             bin_map = self.get_corner_turn_bin_map(

@@ -54,9 +54,11 @@ from .f_engine import prober  # needed to access RawFrameReceiver
 
 # FPGA Corner-turn Engine
 from .ct_engine import chan_crossbar
+from .ct_engine import ultract
 from .ct_engine import shuffle_crossbar
 from .ct_engine import shuffle
 from .ct_engine import gpu
+from .ct_engine import cge
 
 # FPGA Correlator (X-Engine)
 from .x_engine import CORR  # 16-channel correlator (if implemented in firmware)
@@ -118,8 +120,8 @@ class chFPGA(FPGAFirmware):
         ("MGK7MB", "chFPGA", ("shuffle16", "shuffle128", "shuffle256", "shuffle512", "chan8", "chan4")): dict(firmware_url='chFPGA_MGK7MB_Rev2.bit', processing_frequency = 200e6),
         ("MGK7MB", "siFPGA", ("corr16",)): dict(firmware_url='SIFPGA_MGK7MB.bit', processing_frequency = 200e6),
         ("MGK7MB", "chordFPGA", ("chord16",)): dict(firmware_url='chordFPGA_MGK7MB_Rev2.bit', processing_frequency = 300e6),
-        ("ZCU111", "siFPGA", ("corr4")): dict(firmware_url='sifpga_zcu111_wrapper.bit', processing_frequency = 200e6),
-        ("CRS", "siFPGA", ("corr4")): dict(firmware_url='sifpga_crs_wrapper.bit', processing_frequency = 200e6),
+        ("ZCU111", "siFPGA", ("corr4","corr8")): dict(firmware_url='sifpga_zcu111_wrapper.bit', processing_frequency = 200e6),
+        ("CRS", "siFPGA", ("corr4","corr8")): dict(firmware_url='sifpga_crs_wrapper.bit', processing_frequency = 200e6),
     }
 
 
@@ -698,7 +700,10 @@ class chFPGA(FPGAFirmware):
             if self.PLATFORM_ID not in self._PLATFORM_ID_LIST:
                 raise RuntimeError('%r: Platform ID 0x%02X is not recognized' % (self, self.PLATFORM_ID))
 
-            # Define platform-specific constants
+
+            self._NUMBER_OF_FMC_SLOTS = self.mb.NUMBER_OF_FMC_SLOTS
+
+            # Set platform/implementation-specific features & constants based on a local table
             if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
                 assert self.mb.part_number == "ZCU111" or self.mb.part_number == "CRS", 'This version of the firmware is meant to operate on the ZCU111 only'
                 self.HAS_REFCLK = False
@@ -706,6 +711,8 @@ class chFPGA(FPGAFirmware):
                 self.HAS_I2C = False
                 self.HAS_ADCDAQ = False
                 self.MAX_BSB_COMMAND_LENGTH = 512
+                self.CROSSBAR1_TYPE = "URAM"
+                self.GPU_LINK_TYPE = "100GE"
 
             elif self.PLATFORM_ID in (self._PLATFORM_ID_MGK7MB_REV0, self._PLATFORM_ID_MGK7MB_REV2):
                 assert self.mb.part_number == "MGK7MB", 'This version of the firmware is meant to operate on the MGK7MB (IceBoard) only'
@@ -714,10 +721,14 @@ class chFPGA(FPGAFirmware):
                 self.HAS_I2C = True
                 self.HAS_ADCDAQ = True
                 self.MAX_BSB_COMMAND_LENGTH = 2048  # maybe more, depends on the UDP bufer
+                self.CROSSBAR1_TYPE = "BRAM"
+                self.GPU_LINK_TYPE = "10GE"
+            else:
+                raise RuntimeError(f'Unknown feature list for PLATFORM_ID = {self.PLATFORM_ID}')
 
 
-            self._NUMBER_OF_FMC_SLOTS = self.mb.NUMBER_OF_FMC_SLOTS
-
+            # Set platform/implementation-specific features & constants based on values reported by the FPGA GPIO module
+            #
             # Get frame size info
             self._LOG2_FRAME_LENGTH = self.GPIO.LOG2_FRAME_LENGTH
             self.FRAME_LENGTH = 2**self._LOG2_FRAME_LENGTH  # 2**11 = 2048 time samples per frame
@@ -732,7 +743,7 @@ class chFPGA(FPGAFirmware):
 
             # Get corner-turn engine configuration info
             self.NUMBER_OF_CROSSBAR_INPUTS = self.GPIO.NUMBER_OF_CROSSBAR_INPUTS
-            self.NUMBER_OF_CROSSBAR_OUTPUTS = self.GPIO.NUMBER_OF_CROSSBAR_OUTPUTS
+            self.NUMBER_OF_CROSSBAR1_OUTPUTS = self.GPIO.NUMBER_OF_CROSSBAR_OUTPUTS
             self.NUMBER_OF_BP_SHUFFLE_LANES = self.GPIO.NUMBER_OF_BP_SHUFFLE_LANES
 
             # Get GPU link configuration info
@@ -756,7 +767,7 @@ class chFPGA(FPGAFirmware):
             self.logger.debug('%r: Crossbar configuration: %i inputs x %i outputs' % (
                 self,
                 self.NUMBER_OF_CROSSBAR_INPUTS,
-                self.NUMBER_OF_CROSSBAR_OUTPUTS))
+                self.NUMBER_OF_CROSSBAR1_OUTPUTS))
             self.logger.debug('%r: Number of correlators: %i (correlators %s)' % (
                 self,
                 len(self.LIST_OF_IMPLEMENTED_CORRELATORS),
@@ -804,11 +815,20 @@ class chFPGA(FPGAFirmware):
             self.CHAN_FMC_NUMBER = [i // 8 for i in range(self.NUMBER_OF_CHANNELIZERS)]
 
             await asyncio.sleep(0)
-            self.logger.debug('%r: === Instantiating 1st CROSSBAR' % self)
-            self.CROSSBAR = chan_crossbar.ChanCrossbar(
-                self,
-                self._CROSSBAR1_BASE_ADDR,
-                self._CROSSBAR_ADDR_INCREMENT)  # CROSSBAR block
+
+            self.logger.debug(f'{self!r}: === Instantiating 1st CROSSBAR, Type {self.CROSSBAR1_TYPE}')
+            if self.CROSSBAR1_TYPE == "BRAM":
+                self.CROSSBAR = chan_crossbar.ChanCrossbar(
+                    self,
+                    self._CROSSBAR1_BASE_ADDR,
+                    self._CROSSBAR_ADDR_INCREMENT)  # CROSSBAR block
+            elif self.CROSSBAR1_TYPE == "URAM":
+                self.CROSSBAR = ultract.UltraCT(
+                    self,
+                    self._CROSSBAR1_BASE_ADDR,
+                    self._CROSSBAR_ADDR_INCREMENT)
+            else:
+                raise RuntimeError('Unknown CROSSBAR1 type')
 
             if self.NUMBER_OF_BP_SHUFFLE_LANES:
                 self.logger.debug('%r: === Instantiating Backplane shuffle subsystem' % self)
@@ -845,9 +865,14 @@ class chFPGA(FPGAFirmware):
             else:
                 self.CORR = None
 
-            if self.NUMBER_OF_GPU_LINKS:
-                self.logger.debug('%r: === Instantiating GPU LINKS' % self)
-                self.GPU = gpu.GPU(self, self._GPU_LINK_BASE_ADDR, self._GPU_LINK_ADDR_INCREMENT)
+            if self.NUMBER_OF_GPU_LINKS or self.GPU_LINK_TYPE=='100GE':
+                self.logger.debug(f'{self!r}: === Instantiating GPU LINK(S), Type={self.GPU_LINK_TYPE}')
+                if self.GPU_LINK_TYPE=='10GE':
+                    self.GPU = gpu.GPU(self, self._GPU_LINK_BASE_ADDR, self._GPU_LINK_ADDR_INCREMENT)
+                elif self.GPU_LINK_TYPE=='100GE':
+                    self.GPU = cge.CGE(self, self._GPU_LINK_BASE_ADDR, self._GPU_LINK_ADDR_INCREMENT)
+                else:
+                    raise RuntimeError('Unknown GPU link type {self.GPU_LINK_TYPE}')
             else:
                 self.GPU = None
 
@@ -1062,8 +1087,8 @@ class chFPGA(FPGAFirmware):
         self.logger.debug('%r: === Initializing Corner-Turn engine' % self)
         self.logger.debug('%r: === Initializing 1st Crossbar' % self)
         await asyncio.sleep(0)
-        if self.NUMBER_OF_CROSSBAR_OUTPUTS > 0:
-            self.logger.debug('%r:  - 1st CROSSBAR' % self)
+        if self.NUMBER_OF_CROSSBAR1_OUTPUTS > 0:
+            self.logger.debug(f'{self!r}:  - 1st CROSSBAR, type {self.CROSSBAR1_TYPE}')
             self.CROSSBAR.init()
             # self.CROSSBAR.status()
         else:
@@ -4049,7 +4074,7 @@ class chFPGA(FPGAFirmware):
             sync (bool): If True (default), a local sync() will be performed.
         """
         if crossbar_outputs is None:
-            crossbar_outputs = list(range(self.NUMBER_OF_CROSSBAR_OUTPUTS))
+            crossbar_outputs = list(range(self.NUMBER_OF_CROSSBAR1_OUTPUTS))
 
         if not isinstance(crossbar_outputs, list):
             raise ValueError("'crossbar_outputs' must be a list")
@@ -4764,7 +4789,7 @@ class chFPGA(FPGAFirmware):
                       boards within a crate using the backplane PCB links, and
                       between 2 crates using the backplane QSFP links.
 
-                    - 'corr16': The corner-turn engine is configured to feed
+                    - 'corr4', 'corr8', 'corr16': The corner-turn engine is configured to feed
                       the internal firmware correlator (only if the firmware
                       was compiled with it).
 
@@ -5797,6 +5822,17 @@ class chFPGA(FPGAFirmware):
             cb3_output_frame_flags_words_per_frame = 0  # To be updated
             stream_type = 0  # not used, as the shuffled packets are correlated never get out of the FPGA
             crate_number = 0  # idem
+
+        elif mode == 'corr8':
+            """
+            Implement the corner-turn operation for the 16-channel firmware correlator embedded in
+            the same FPGA. in this mode, we simply enable the 1st crossbar. The 2nd and 3rd
+            crossbars are not present in the firmware.
+            """
+            if self.CROSSBAR1_TYPE=="URAM":
+                return 0
+
+            raise RuntimeError('Unsupported mode corr8 with current firmware configuration')
 
         elif mode is None:  # Manual config
             cb1_four_bit = True
