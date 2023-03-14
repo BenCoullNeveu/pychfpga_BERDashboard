@@ -12,7 +12,7 @@ import urllib.parse
 import datetime
 import os
 import base64
-
+import time
 class FPGABitstream(object):
     """ Object used to fetch and store FPGA bit files.
 
@@ -46,12 +46,14 @@ class FPGABitstream(object):
         filename = os.path.join(os.path.dirname(__file__), bitstream_folder, url)
 
         mtime = os.path.getmtime(filename)
-        logger.debug(f'{cls.__name__}: Bitstream file timestamp at {filename} is {mtime}')
+        mtime_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(mtime))
+        logger.debug(f'{cls.__name__}: Bitstream file timestamp at {filename} is {mtime_str}')
 
         if (filename, mtime) in cls.bitstream_cache:
             b = cls.bitstream_cache[(filename, mtime)]
-            logger.debug(f'{cls.__name__}: Reusing existing FPGABitstream object for file {filename} ...')
+            logger.debug(f'{cls.__name__}: Reusing existing FPGABitstream object in cache for file {filename} ...')
         else:
+            logger.debug(f'{cls.__name__}: FPGABitstream is not in cache or has changed. Reloading object for file {filename} ...')
             b = cls.bitstream_cache[(filename, mtime)] = cls(url=filename)
         return b
 
