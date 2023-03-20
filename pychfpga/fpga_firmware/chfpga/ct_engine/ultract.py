@@ -11,6 +11,7 @@ import asyncio
 
 from wtl.metrics import Metrics
 from ..mmi import MMI, BitField
+import numpy as np
 
 from . import chan_bin_sel
 
@@ -21,12 +22,21 @@ class UltraCT(MMI):
     CONTROL = BitField.CONTROL
     STATUS = BitField.STATUS
 
-    CHAN_WRITE_EN       = BitField(CONTROL, 0, 7, doc='Allows channelizer data to be written in the buffer')
-    AUTO_TRIG           = BitField(CONTROL, 0, 6, doc='Buffer transmission does not wait for channelizer data to have filled the buffer; a new transmission starts as soon as a previous transmission stops.   ')
     RAM_SEL             = BitField(CONTROL, 0, 5, doc='When 0, RAM writes are made to the UltraRAM data memory. When 1, RAM writes are made to the playlist memory.')
     RAM_BANK            = BitField(CONTROL, 0, 4, doc='Determines in which bank of the data buffer is written by RAM writes')
     RAM_FRAME            = BitField(CONTROL, 0, 0, width=4, doc='Determines for which frame of the data buffer is written by RAM writes')
 
+    RX_WRITE_EN       = BitField(CONTROL, 1, 7, doc='1: Allows channelizer data to be written in the data buffer')
+    TX_TRIG_SEL         = BitField(CONTROL, 1, 6, doc='   0: Data transmission starts when an incoming frame set is completed; 1: data transmission starts every `TX_PERIOD` clocks. ')
+    TX_ENABLE           = BitField(CONTROL, 1, 5, doc="'1' to enable data transmission. '0' data transmission is muted.  ")
+    TX_RESET           = BitField(CONTROL, 1, 4, doc="'1' resets the data transmitter  ")
+    TX_TOGGLE_BANK           = BitField(CONTROL, 1, 3, doc="When 0, only bank 0 is sent. When 1, the bank not being currently written into is sent.")
+    TX_INSERT_TIMESTAMP           = BitField(CONTROL, 1, 2, doc="When 1, a timestamp is inserted in the header words .")
+    RX_MASK_LOW_BINS  = BitField(CONTROL, 1, 1, doc="When 1, a incoming data for bins 0 to 127 is not written into the buffer so these bins can be used for packet headers.")
+    TX_OVERRIDE_DATA  = BitField(CONTROL, 1, 0, doc="When 1, the output data is oferriden by a fixed pattern.")
+
+    TX_PERIOD           = BitField(CONTROL, 5, 0, width=32, doc="Number of clocks between playlist transmission")
+    TX_LENGTH           = BitField(CONTROL, 6, 0, width=8, doc="maximum number of words to transmit in a period")
 
     OVERRUN           = BitField(STATUS, 0, 0, doc='1 when data transmission request was performed before the previous transmission was completed. Sticky flag.')
     IN_FRAME_CTR           = BitField(STATUS, 1, 0, width=8, doc='Counts the number of frames coming in.')
@@ -37,6 +47,7 @@ class UltraCT(MMI):
         self.verbose = verbose
         self.logger = logging.getLogger(__name__)
         self.crossbar_level = 1
+        self.NUMBER_OF_CROSSBAR_OUTPUTS = 1 # 1 physicala link, although we have up to 128 logical links
         super().__init__(fpga_instance, base_address)
 
     def __getitem__(self, key):
@@ -55,6 +66,74 @@ class UltraCT(MMI):
         # for (i, bs) in enumerate(self.BIN_SEL):
         #     bin_list = np.arange(number_of_bins_per_crossbar_output) * 16 + i
         #     bs.select_bins(bin_list)
+
+
+
+        self.RX_WRITE_EN = 0
+        self.RX_MASK_LOW_BINS = 1
+
+        self.TX_TRIG_SEL = 1  # enable period-based transmission trigger
+        self.TX_ENABLE = 1
+        self.TX_TOGGLE_BANK = 0
+        self.TX_INSERT_TIMESTAMP = 1
+        self.TX_OVERRIDE_DATA = 0
+        self.TX_RESET = 1
+        self.set_playlist()
+        hdr = (0xFFFFFFFFFFFF_010203040506_0800_4500_0000_1234_0000_7F11_0000_0A0A0A82_0A0A0A0A_A027_A028_0000_0000_BEEFFACEABBA_00000000_deadbea7_0011223344556677).to_bytes(64,'big')
+        self.set_bin(0, hdr)
+        for i in range(16):
+            self.set_bin(1, frame=i, data=np.arange(8, dtype=np.uint8)+16*i)
+        self.TX_RESET = 0
+
+
+    def set_bin(self, bin, data, frame=0):
+        """ Set the bin data for one or more frames
+        """
+        for i in range(0,len(data),8):
+            self.set_data(bin=bin, frame=frame, data=data[i:i+8])
+            frame += 1
+
+    def set_playlist(self,bins=[[0,1]]):
+        """
+
+
+        bins (list of list): describes the bin numbers to send in each packet. 8-frame (8*8 = 64 bytes) of the first bin is send, and 16 frames (128 bytes) is sent for the others.  
+        Word:
+
+            15: End of transmisison
+            14: End of packet
+            13: Number of frames: 0: 2 frames, 1: 4 frames
+            12-0: Bin number
+        """
+        self.RAM_SEL = 1  # select playlist buffer
+        addr = 0
+        for i, b in enumerate(bins): 
+            b = np.array(b, dtype='>u2')
+            b[-1] |= 1<<14 # end of packet on last bin
+            b[1:] |= 1<<13 # Send 4 frames except for 1st bin
+            if i == len(bins)-1:
+                b[-1] |= (1<<15) # end of transmission on last bin of last packet
+            print(f'Writing PL RAM[{addr}]={b.tobytes().hex()}')
+            self.write_ram(addr, b.tobytes())
+            addr += 2 * len(b)
+
+        # self.RAM_SEL = 0  # select playlist buffer
+        # b = np.array([i + (1<<13) for i in range(10*10)], dtype=np.uint8)
+
+    def set_data(self, data, bin=0, frame=0, bank=0):
+        self.RAM_SEL = 0  # select data buffer
+        if not isinstance(bank, (list, tuple)):
+            bank = (bank,)
+        if not isinstance(frame, (list, tuple)):
+            frame = (frame,)
+        if isinstance(data, np.ndarray):
+            data = data.tobytes()
+        for b in bank:
+            self.RAM_BANK = b
+            for f in frame:
+                self.RAM_FRAME = f
+                self.write_ram(8*bin, data)
+
 
     def set_data_width(self, width):
     #     """

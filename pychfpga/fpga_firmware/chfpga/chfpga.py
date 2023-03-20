@@ -121,7 +121,7 @@ class chFPGA(FPGAFirmware):
         ("MGK7MB", "siFPGA", ("corr16",)): dict(firmware_url='SIFPGA_MGK7MB.bit', processing_frequency = 200e6),
         ("MGK7MB", "chordFPGA", ("chord16",)): dict(firmware_url='chordFPGA_MGK7MB_Rev2.bit', processing_frequency = 300e6),
         ("ZCU111", "siFPGA", ("corr4","corr8")): dict(firmware_url='sifpga_zcu111_wrapper.bit', processing_frequency = 200e6),
-        ("CRS", "siFPGA", ("corr4","corr8")): dict(firmware_url='sifpga_crs_wrapper.bit', processing_frequency = 200e6),
+        ("CRS", "siFPGA", ("corr4","corr8", "chan8")): dict(firmware_url='sifpga_crs_wrapper.bit', processing_frequency = 200e6),
     }
 
 
@@ -4981,6 +4981,12 @@ class chFPGA(FPGAFirmware):
         cb2_sof_window_stop = None
 
         if mode == 'chan8':
+
+            if self.CROSSBAR1_TYPE=="URAM":
+                self.set_corr_reset(0)
+                self.set_ant_reset(0)
+                return (0,)
+
             # Get raw data from the channelizer (all 32-bit sent as is). Only 8 lanes are available to the GPU.
             #############################
             # 1st Crossbar
@@ -5829,7 +5835,9 @@ class chFPGA(FPGAFirmware):
             the same FPGA. in this mode, we simply enable the 1st crossbar. The 2nd and 3rd
             crossbars are not present in the firmware.
             """
-            if self.CROSSBAR1_TYPE=="URAM":
+            if self.CROSSBAR1_TYPE=="URAM": # hack
+                self.set_corr_reset(0)
+                self.set_ant_reset(0)
                 return 0
 
             raise RuntimeError('Unsupported mode corr8 with current firmware configuration')
