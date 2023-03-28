@@ -7,7 +7,7 @@ Interface for the FPGA UltraRAM-based crossbar/packet generator.
 
 import logging
 import asyncio
-
+import socket
 
 from wtl.metrics import Metrics
 from ..mmi import MMI, BitField
@@ -38,6 +38,8 @@ class UltraCT(MMI):
     TX_PERIOD           = BitField(CONTROL, 5, 0, width=32, doc="Number of clocks between playlist transmission")
     TX_LENGTH           = BitField(CONTROL, 6, 0, width=8, doc="maximum number of words to transmit in a period")
 
+    TIMESTAMP_INCR           = BitField(CONTROL, 7, 0, width=5,  doc="Timestamp increments between transmission sets")
+
     OVERRUN           = BitField(STATUS, 0, 0, doc='1 when data transmission request was performed before the previous transmission was completed. Sticky flag.')
     IN_FRAME_CTR           = BitField(STATUS, 1, 0, width=8, doc='Counts the number of frames coming in.')
     OUT_FRAME_CTR           = BitField(STATUS, 2, 0, width=8, doc='Counts the number of frames coming out.')
@@ -49,6 +51,13 @@ class UltraCT(MMI):
         self.crossbar_level = 1
         self.NUMBER_OF_CROSSBAR_OUTPUTS = 1 # 1 physicala link, although we have up to 128 logical links
         super().__init__(fpga_instance, base_address)
+
+        self.source_mac_addr = "00:5D:03:01:02:03"
+        self.source_ip_addr = "10.70.0.1"
+        self.source_ip_port = 41000
+        self.targets = {
+            0: dict(target_mac_addr="FF:FF:FF:FF:FF:FF", target_ip_addr="255.255.255.255", target_ip_port=41001)
+        }
 
     def __getitem__(self, key):
         """    Returns the bin selector instance specified by the key"""
@@ -79,25 +88,71 @@ class UltraCT(MMI):
         self.TX_OVERRIDE_DATA = 0
         self.TX_RESET = 1
         self.set_playlist()
-        hdr = (0xFFFFFFFFFFFF_010203040506_0800_4500_0000_1234_0000_7F11_0000_0A0A0A82_0A0A0A0A_A027_A028_0000_0000_BEEFFACEABBA_00000000_deadbea7_0011223344556677).to_bytes(64,'big')
-        self.set_bin(0, hdr)
+        # hdr = (0xFFFFFFFFFFFF_010203040506_0800_4500_0000_1234_0000_7F11_0000_0A0A0A82_0A0A0A0A_A027_A028_0000_0000_BEEFFACEABBA_00000000_deadbea7_0011223344556677).to_bytes(64,'big')
+        # self.set_bin_data(0, hdr)
         for i in range(16):
-            self.set_bin(1, frame=i, data=np.arange(8, dtype=np.uint8)+16*i)
+            self.set_bin_data(1, frame=i, data=np.arange(8, dtype=np.uint8)+16*i)
+
         self.TX_RESET = 0
 
-
-    def set_bin(self, bin, data, frame=0):
-        """ Set the bin data for one or more frames
+    def set_bin_data(self, bin, data, frame=0):
+        """ Set the bin data for one or more consecutive frames
         """
         for i in range(0,len(data),8):
-            self.set_data(bin=bin, frame=frame, data=data[i:i+8])
+            self.write_data_buffer(bin=bin, frame=frame, data=data[i:i+8])
             frame += 1
 
-    def set_playlist(self,bins=[[0,1]]):
+    def set_ethernet_header(self, target, length, stream_id):
+        """ Stores an Ethernet/IP/UDP/payload header in the bin corresponding to specified target. 
         """
+        def h(s):
+            print(s)
+            return bytes.fromhex(s.translate({ord(c):None for c in "_ :"}))
+        src_mac_addr = h(self.source_mac_addr)
+        src_ip_addr = socket.inet_aton(self.source_ip_addr)
+        src_port = self.source_ip_port.to_bytes(2, 'big')
+
+        tgt = self.targets[target]
+        dest_mac_addr = h(tgt['target_mac_addr'])
+        dest_ip_addr = socket.inet_aton(tgt['target_ip_addr'])
+        dest_port = tgt['target_ip_port'].to_bytes(2, 'big')
+
+        udp_len = 8 + 22 + length
+        ip_len = 20 + udp_len
+
+        # ethernet header
+        ethertype = h('0800') # IP protocol
+        # eth_header = f"{dest_mac_addr} {src_mac_addr} 0800"  # -- dest MAC addr, src MAC addr, ethertype (0x0800=IPv4)
+        eth_bytes = dest_mac_addr + src_mac_addr + ethertype  # -- dest MAC addr, src MAC addr, ethertype (0x0800=IPv4)
+
+        # IP header
+        # ip_header = ; #-- Version/HdrLen/DSCP/ECP flags, IP Len, ID, Flags/Frag offset, TTL, Protocol, IP header checksum, src IP addr, Dest IP Addr
+        ip_bytes = bytearray(h('4500') + ip_len.to_bytes(2,'big') + h('1234 0000 7F 11_0000') + src_ip_addr + dest_ip_addr)
+        ip_checksum = (sum(ip_bytes[::2]) << 8) + sum(ip_bytes[1::2])
+        ip_checksum = (~ (ip_checksum + (ip_checksum >> 16))) & 0xFFFF
+        ip_bytes[10:12] = ip_checksum.to_bytes(2,'big')
+
+        # UDP Header
+        udp_bytes = src_port + dest_port + udp_len.to_bytes(2, 'big') + h("0000"); #-- Src port, dest port, UDP len,  UDP checksum (0=disable)
+        # udp_header = f"{src_port:04X} {dest_port:04X} {udp_len:04X} 0000"; #-- Src port, dest port, UDP len,  UDP checksum (0=disable)
+
+        # user header
+        user_bytes = h("CF14") + stream_id.to_bytes(2, 'little') + h('0000 0000 0000000000000000 000000000000')
+
+        # total header
+        header = eth_bytes + ip_bytes + udp_bytes + user_bytes
+        print(f"Eth Header is {eth_bytes.hex()} ({len(eth_bytes)} bytes)")
+        print(f"IP Header is {ip_bytes.hex()} ({len(ip_bytes)} bytes)")
+        print(f"UDP Header is {udp_bytes.hex()} ({len(udp_bytes)} bytes)")
+        print(f"User Header is {user_bytes.hex()} ({len(user_bytes)} bytes)")
+
+        # print(f"Header is {header.hex()} ({len(header)} bytes)")
+        self.set_bin_data(target, header)
 
 
-        bins (list of list): describes the bin numbers to send in each packet. 8-frame (8*8 = 64 bytes) of the first bin is send, and 16 frames (128 bytes) is sent for the others.  
+    def set_playlist(self,bins={0:[1]}):
+        """
+        bins (dict): {target_id:bin_list} dict describing the bin numbers to send to each target. 8-frame (8*8 = 64 bytes) of the first bin is send, and 16 frames (128 bytes) is sent for the others.  
         Word:
 
             15: End of transmisison
@@ -105,22 +160,23 @@ class UltraCT(MMI):
             13: Number of frames: 0: 2 frames, 1: 4 frames
             12-0: Bin number
         """
-        self.RAM_SEL = 1  # select playlist buffer
         addr = 0
-        for i, b in enumerate(bins): 
-            b = np.array(b, dtype='>u2')
+        for i, (target, b) in enumerate(bins.items()): 
+            length = 8 * 16 * len(b)
+            self.set_ethernet_header(target, length, stream_id=0x1234)
+            b = np.array([target] + b, dtype='>u2')
             b[-1] |= 1<<14 # end of packet on last bin
             b[1:] |= 1<<13 # Send 4 frames except for 1st bin
             if i == len(bins)-1:
                 b[-1] |= (1<<15) # end of transmission on last bin of last packet
             print(f'Writing PL RAM[{addr}]={b.tobytes().hex()}')
-            self.write_ram(addr, b.tobytes())
+            self.write_playlist_buffer(addr, b.tobytes())
             addr += 2 * len(b)
 
         # self.RAM_SEL = 0  # select playlist buffer
         # b = np.array([i + (1<<13) for i in range(10*10)], dtype=np.uint8)
 
-    def set_data(self, data, bin=0, frame=0, bank=0):
+    def write_data_buffer(self, data, bin=0, frame=0, bank=0):
         self.RAM_SEL = 0  # select data buffer
         if not isinstance(bank, (list, tuple)):
             bank = (bank,)
@@ -133,6 +189,10 @@ class UltraCT(MMI):
             for f in frame:
                 self.RAM_FRAME = f
                 self.write_ram(8*bin, data)
+
+    def write_playlist_buffer(self, addr, data):
+        self.RAM_SEL = 1  # select data buffer
+        self.write_ram(addr, data)
 
 
     def set_data_width(self, width):
