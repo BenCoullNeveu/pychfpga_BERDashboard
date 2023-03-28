@@ -14,6 +14,8 @@ History:
 import time
 import os
 
+from .TICSPRO_loader import load_pll_regs
+
 
 class lmx2594spi(object):
     """
@@ -32,13 +34,7 @@ class lmx2594spi(object):
         """
         """
 
-        fullpath = os.path.join(os.path.dirname(__file__), filename)
-        regs = []
-        with open(fullpath, 'r') as f:
-            for line in f.readlines():
-                if line.startswith('R'):
-                    r,v = line.split()
-                    regs.append((int(r[1:]), int(v, 16)))
+        regs = load_pll_regs(filename)
 
         for (reg, value) in regs:
             if reg<=78:
