@@ -251,7 +251,35 @@ class CRS(Motherboard):
 
         self.pll = hmc7044(self.spi)
         self.logger.info(f'Initializing programmable PLL')
-        self.pll.init()
+        fvco = 250e6*12
+        frfdc = fvco # divider: 1
+        fpl = frfdc/16 #frfdc / 8 # signal processing clock, typ. 375 MHz
+        fsys = 250e6 # system clock. Divider = 3000/250 = 12 (200 MHz is not possible because divider is odd)
+        fsysref = 10e6 # Divider = 300 
+
+        # SMP P22/P23 - 3rd from M2, OUT0_P/N, 25/50 MHz from fixed PLL
+        self.pll.init(
+            fref=10e6, # external 10 MHz reference from backplane or SMA
+            fosc=50e6, # on-board VCXO nominal frequency
+            fvco=fvco, 
+            fout={
+                0: frfdc,    # RF_CLK (FPGA RFDC 229)
+                1: fsys,     # DDR4_CLK (FPGA Bank 67 LVDS)- used as system clock
+                2: fsys,     # CLKOUT_SMP (SMP connector P2 - Back row, 1st from M2)- to SMP connector, for debugging
+                3: fsysref,  # SYSREF_SMP (SMP connector P27, Bak row, 2nd from M2)- to SMP connector, for debugging
+                4: fpl,      # PL_CLK (FPGA Bank 69 LVDS) - used as processing clock 
+                5: fsysref,  # PL_SYSREF (FPGA Bank 69 LVDS) - used as 10 MHz reference
+                6: fsys,     # GTY_CLK0_128 - not used
+                7: fsys,     # GTY_CLK0_130 - not used
+                8: frfdc,    # RF_CLK (FPGA RFDC)
+                9: frfdc,    # RF_CLK (FPGA RFDC)
+                10: frfdc,   # RF_CLK (FPGA RFDC)
+                11: frfdc,   # RF_CLK (FPGA RFDC)
+                12: frfdc,   # RF_CLK (FPGA RFDC)
+                13: fsysref, # RF_SYSCLK (FPGA RFDC)
+            })
+
+
         self.logger.info(f'Done programming PLL')
 
 

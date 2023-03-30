@@ -57,8 +57,18 @@ class hmc7044(object):
         self.spi_port = spi_port
         self.regs = {}  # image of latest values written
 
-    def init(self, fref=10e6, fosc=50e6, fvco=3200e6, frfdc=1600e6, fsys=200e6, fsysref=10e6, filename=None):
+    def init(self, fref=10e6, fosc=50e6, fvco=3200e6, fout={}, filename=None):
         """Initializes the PLL.
+
+        Parameters:
+
+            fref (float): reference clock frequency, in Hz. The 50 MHz VCXO of the first PLL will be locked to this reference. 
+
+            fosc (float): Frequency of the VCXO, in Hz. 
+
+            fvco (float): Frequency of the PLL2's VCO, in Hz.
+
+            fout (dict): Frequency of each of the the PLL2's outputs. These should be a submultiples of fvco.
 
         """
 
@@ -106,20 +116,8 @@ class hmc7044(object):
         # (for example, LVPECL, CML, and LVDS). Set the divide
         # ratio, channel start-up mode, coarse/analog delays, and
         # performance modes.
-        self.set_output(0, f_vco=fvco, f_out=frfdc) # RF_CLK
-        self.set_output(1, f_vco=fvco, f_out=200e6) # DDR4_CLK
-        self.set_output(2, f_vco=fvco, f_out=fsys) # CLKOUT_SMP
-        self.set_output(3, f_vco=fvco, f_out=fsysref) # SYSREF_SMP
-        self.set_output(4, f_vco=fvco, f_out=fsys) # PL_CLK  3200/16=200 MHz
-        self.set_output(5, f_vco=fvco, f_out=fsysref) # PL_SYSREF
-        self.set_output(6, f_vco=fvco, f_out=200e6) # GTY_CLK0_128
-        self.set_output(7, f_vco=fvco, f_out=200e6) # GTY_CLK0_130
-        self.set_output(8, f_vco=fvco, f_out=frfdc)  # RF_CLK
-        self.set_output(9, f_vco=fvco, f_out=frfdc) # RF_CLK
-        self.set_output(10, f_vco=fvco, f_out=frfdc) # RF_CLK
-        self.set_output(11, f_vco=fvco, f_out=frfdc) # RF_CLK
-        self.set_output(12, f_vco=fvco, f_out=frfdc) # RF_CLK
-        self.set_output(13, f_vco=fvco, f_out=fsysref) # RF_SYSCLK
+        for output, freq in fout.items():
+            self.set_output(output, f_vco=fvco, f_out=freq) 
 
         # print(f'reg[0x0001]=0x{self.read_reg(0x1):02X}')
 
@@ -593,7 +591,7 @@ class hmc7044(object):
         if f_out > 3550e6:
             raise ValueError('VCO frequenct too high. Must be <3550 MHz')
         if f_out < 2400e6 or f_out > 3200e6:
-            self.log.warning('VCO frequency in datasheet range but is outside the guaranteed 2400-3200 MHz range')
+            self._logger.warning('VCO frequency in datasheet range but is outside the guaranteed 2400-3200 MHz range')
 
         if vco_sel is None:
             vco_sel = 2 if f_out < 2800e6 else 1  # 0=external, 1= high, 2 = low
@@ -791,6 +789,9 @@ class hmc7044(object):
             if not f_vco:
                 raise RuntimeError(f'f_vco must be specified if f_out is specified.')
             divider = f_vco / f_out
+            if f_vco > 1000e6:
+                print(f'Setting output {output_number}to LVPECL')
+                driver_mode = 1
         if divider != int(divider):
             raise RuntimeError(f'Output {output_number} divider={divider} is not an integer')
         divider = int(divider)
@@ -798,7 +799,7 @@ class hmc7044(object):
         if  not 1 <= divider <= 4094:
             raise ValueError(f'Output divider={divider} is out of range (1-4094)')
         if divider > 5 and divider & 1:
-            raise ValueError(f'The only accepted odd output dividers are 1, 3 and 5')
+            raise ValueError(f'Divider {divider} for output {output_number} is not supported. The only accepted odd output dividers are 1, 3 and 5')
         if analog_delay > 23:
             raise ValueError(f'Analog delay out of range (0 to 23)')
         if digital_delay > 17:
