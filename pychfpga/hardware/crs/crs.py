@@ -25,6 +25,7 @@ from pychfpga.fpga_firmware import FPGAFirmware
 
 # from ..i2c_devices.pca9575 import pca9575  as tca9575a # I2C 16-bit IO Expander
 from ..i2c_devices.pca9546a import pca9546a  # I2C switch
+from ..i2c_devices.pca8574 import PCA8574
 from ..i2c_devices.tmp421 import tmp421  # Temperature sensor
 from ..i2c_devices.ina230 import ina230 as ina231  # Temperature sensor
 # from ..i2c_devices.sc18is602b import sc18is602b # I2C-to-SPI bridge
@@ -112,6 +113,7 @@ class CRS(Motherboard):
     _ipmi_part_numbers = ['CRS']
 
     NUMBER_OF_CHANNELIZERS = 4
+    REV0_SERIALS = ('0429,')  # hack to temporarily set the revision number
 
     port = 7  # port number on which to access the platform `hostname`
 
@@ -132,6 +134,7 @@ class CRS(Motherboard):
         self.fpga = None  # firmware object
 
         self.firmware_crc = None  # temporary local storage of the CRC since we currently can't read it until the firmware is programmed.
+        self.revision = None
 
 
     def open(self):
@@ -140,7 +143,9 @@ class CRS(Motherboard):
 
     async def open_platform_async(self, **kwargs):
 
-
+        if not self.serial:
+            raise RuntimeError('Cannot determine revision number form serial number')
+        self.revision = 0 if self.serial in self.REV0_SERIALS else 1
         self.logger.debug(f'{self!r}: open() is called')
 
 
@@ -201,7 +206,10 @@ class CRS(Motherboard):
         self.i2c1_tmp421_1v2b = tmp421(self.iic, address=0x4D, port=(i2c1_switch, 0))
         self.i2c1_tmp422_0v85 = tmp421(self.iic, address=0x4f, port=(i2c1_switch, 0))
 
-
+        if self.revision > 0:
+            self.i2c1_disp = PCA8574(self.iic, address=0x22, port=(i2c1_switch, 0))
+        else:
+            self.i2c1_disp = None
         self.i2c1_eeprom_data = eeprom(self.iic, address=0x57, bus_name=(i2c1_switch, 0), address_width=7, max_read_length=255, max_write_length=8, write_page_size=8)
         self.i2c1_eeprom_serial = eeprom(self.iic, address=0x5F, bus_name=(i2c1_switch, 0), address_width=8, max_read_length=255)  # must read 16 bytes from memory address 0x80
 
@@ -244,16 +252,17 @@ class CRS(Motherboard):
             '1v2b': dict(device=self.i2c1_ina231_1v2b, rshunt=0.01, imax=16),
         }
 
+        # return
         self.logger.info(f'Initializing Voltage/current monitor chips')
         for name, info in self.i2c1_ina231_list.items():
             d = info['device']
             d.init(r_shunt=info['rshunt'], i_typ=info['imax'])
 
-        self.pll = hmc7044(self.spi)
+        self.pll = hmc7044(self.spi, spi_port=1 if self.revision >0 else 0)
         self.logger.info(f'Initializing programmable PLL')
         fvco = 250e6*12
         frfdc = fvco # divider: 1
-        fpl = frfdc/16 #frfdc / 8 # signal processing clock, typ. 375 MHz
+        fpl = frfdc / 8 # signal processing clock, typ. 375 MHz
         fsys = 250e6 # system clock. Divider = 3000/250 = 12 (200 MHz is not possible because divider is odd)
         fsysref = 10e6 # Divider = 300 
 
@@ -367,8 +376,8 @@ class CRS(Motherboard):
         Returns a boolean indicating whether the board is responding to network queries.
         """
         # print(f'{self!r} Ping_async()')
-        self.logger.info('%r: Pinging %s' % (self, self.hostname))
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.logger.info(f'{self!r}: Pinging {self.hostname} at {self.socket.getsockname()}')
         s.settimeout(timeout)
         loop = asyncio.get_event_loop()
         try:
