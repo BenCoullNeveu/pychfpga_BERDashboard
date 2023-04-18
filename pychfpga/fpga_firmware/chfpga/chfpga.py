@@ -410,6 +410,7 @@ class chFPGA(FPGAFirmware):
             if self.mb.hostname:
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 s.connect((self.mb.hostname, self.mb.port))
+                self.logger.debug(f'{self!r}: Established TCP connection with {s.getsockname()} to determine interface.')
                 (self.interface_ip_addr, _) = s.getsockname()
                 s.close()
             else:
