@@ -32,8 +32,10 @@ class TCPipe:
         self.rx_buf = bytearray(1024)
         self.rx_view = memoryview(self.rx_buf)
         self.firmware_crc = None
+        print(f'Opened TCPipe socket at {self.sock.getsockname()}')
 
     def close(self):
+        print(f'Closing TCPipe socket at {self.sock.getsockname()}')
         self.sock.close()
         self.sock = None
 
@@ -77,10 +79,15 @@ class TCPipe:
         """
         if not isinstance(data, (bytes, bytearray)):
             data = bytes(data)
-        cmd = bytes((self.RPC_PREFIX, self.RPC_IIC_WRITE_READ, 2 + len(data), 0, addr, read_length))
-        tx_len = 6 # excluding data
+        tx_len = 6 # RPC header, I2C address, read length,  excluding data
         tx_len_data = tx_len + len(data)
-        self.tx_view[:tx_len] = cmd
+        self.tx_view[0] = self.RPC_PREFIX
+        self.tx_view[1] = self.RPC_IIC_WRITE_READ
+        self.tx_view[2] = 2 + len(data)  # I2C addr, read_length & data length
+        self.tx_view[3] = 0 # data length assumed to be < 256-2
+        self.tx_view[4] = addr # I2C address
+        self.tx_view[5] = read_length # number of bytes to read fter the write
+
         self.tx_view[tx_len:tx_len_data] = data
 
         # print(f'Sending {self.tx_view[:tx_len_data]}')
@@ -107,9 +114,15 @@ class TCPipe:
         """
         if not isinstance(data, (bytes, bytearray)):
             data = bytes(data)
-        tx_len = 5 # excluding data
+        tx_len = 5 # RPC hader + I2C address, excluding data
         tx_len_data = tx_len + len(data)
-        self.tx_view[:tx_len] = bytes((self.RPC_PREFIX, self.RPC_IIC_WRITE, 1 + len(data), 0, addr))
+        self.tx_view[0] = self.RPC_PREFIX
+        self.tx_view[1] = self.RPC_IIC_WRITE
+        self.tx_view[2] = 1 + len(data)
+        self.tx_view[3] = 0 # data length assumed to be < 256
+        self.tx_view[4] = addr # I2C address
+
+
         self.tx_view[tx_len:tx_len_data] = data
         self.sock.sendall(self.tx_view[:tx_len_data])
         rx_len = self.sock.recv_into(self.rx_buf)
@@ -130,7 +143,11 @@ class TCPipe:
         """
         tx_len = 4 # excluding data
         tx_len_data = tx_len + len(data)
-        self.tx_view[:tx_len] = bytes((self.RPC_PREFIX, self.RPC_BSB_WRITE_READ, len(data) & 0xFF, len(data) >> 8))
+        # self.tx_view[:tx_len] = bytes((self.RPC_PREFIX, self.RPC_BSB_WRITE_READ, len(data) & 0xFF, len(data) >> 8))
+        self.tx_view[0] = self.RPC_PREFIX
+        self.tx_view[1] = self.RPC_BSB_WRITE_READ
+        self.tx_view[2] = len(data) & 0xFF # lsb of data length
+        self.tx_view[3] = len(data) >> 8 # msb of dat alength
         self.tx_view[tx_len:tx_len_data] = data
         self.sock.sendall(self.tx_view[:tx_len_data])
         rx_len = self.sock.recv_into(self.rx_buf)
@@ -153,13 +170,20 @@ class TCPipe:
         """
         if not isinstance(data, (bytes, bytearray)):
             data = bytes(data)
-        cmd = bytes((self.RPC_PREFIX, self.RPC_SPI_WRITE_READ, 2 + len(data) + read_length, 0, spi_device, read_length))
-        self.tx_view[:len(cmd)] = cmd
-        self.tx_view[len(cmd): len(cmd) + len(data)] = data
-        self.tx_view[len(cmd) + len(data): len(cmd) + len(data) + read_length] = b'\x00' * read_length
+        # cmd = bytes((self.RPC_PREFIX, self.RPC_SPI_WRITE_READ, 2 + len(data) + read_length, 0, spi_device, read_length))
+        tx_len = 6
+        self.tx_view[0] = self.RPC_PREFIX
+        self.tx_view[1] = self.RPC_SPI_WRITE_READ
+        self.tx_view[2] = 2 + len(data)  # SPI port, read_length & data length
+        self.tx_view[3] = 0 # data length assumed to be < 256-2
+        self.tx_view[4] = spi_device # SPI port
+        self.tx_view[5] = read_length # number of bytes to read fter the write
 
-        # print(f'Sending {self.tx_buf[:len(cmd) + len(data) + read_length]}')
-        self.sock.sendall(self.tx_view[:len(cmd) + len(data) + read_length])
+        self.tx_view[tx_len: tx_len + len(data)] = data
+        self.tx_view[tx_len + len(data): tx_len + len(data) + read_length] = b'\x00' * read_length
+
+        # print(f'Sending {self.tx_buf[:tx_len + len(data) + read_length]}')
+        self.sock.sendall(self.tx_view[:tx_len + len(data) + read_length])
         rx_len = self.sock.recv_into(self.rx_buf)
         if self.rx_buf[0]:
             raise IOError(f'SPI Reply has error code {self.rx_buf[0]}')
@@ -169,7 +193,7 @@ class TCPipe:
 
         return self.rx_buf[rx_len-read_length:rx_len]
 
-    def set_fpga_bitstream(self, data, crc=0, timeout=20):
+    def set_fpga_bitstream(self, data, crc=0, timeout=40):
         """ Programs the FPGA with the provided bitstream.
 
         Parameters:
@@ -497,7 +521,7 @@ class TCPipe_BSB_MMI(BSB_MMI):
     def _send_command(self, cmd, expected_reply_length, retry=1, resync=False, **kwargs):
         reply = self.tcpipe.bsb_write_read(cmd)
         if len(reply) != expected_reply_length + 1:
-            raise IOError('Unexpected number of reply bytes')
+            raise IOError(f'Unexpected number of reply bytes. Got {len(reply)} bytes ({reply.hex(",")}), expected {expected_reply_length + 1} bytes')
         return reply[1:]
 
     def close(self):
