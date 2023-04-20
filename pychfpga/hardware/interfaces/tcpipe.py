@@ -20,20 +20,26 @@ class TCPipe:
     RPC_IIC_WRITE_READ = 0x02
     RPC_IIC_READ = 0x03
     RPC_SPI_WRITE_READ = 0x04
+    opened_sockets = {}
 
     def __init__(self, hostname, port=7, timeout=2):
         self.hostname = hostname
         self.port = port
+        self.sock = self.opened_sockets.pop((hostname, port), None)
+        if self.sock:
+            self.sock.close()
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.settimeout(timeout)
         self.sock.connect((hostname, self.port))
+        self.opened_sockets[(hostname, port)] = self.sock
         self.tx_buf = bytearray(1024)
         self.tx_view = memoryview(self.tx_buf)
         self.rx_buf = bytearray(1024)
         self.rx_view = memoryview(self.rx_buf)
         self.firmware_crc = None
         print(f'Opened TCPipe socket at {self.sock.getsockname()}')
-
+        self.bsb_sent_ctr = 0
+        
     def close(self):
         print(f'Closing TCPipe socket at {self.sock.getsockname()}')
         self.sock.close()
@@ -150,6 +156,8 @@ class TCPipe:
         self.tx_view[3] = len(data) >> 8 # msb of dat alength
         self.tx_view[tx_len:tx_len_data] = data
         self.sock.sendall(self.tx_view[:tx_len_data])
+        self.bsb_sent_ctr += 1
+        # print(self.bsb_sent_ctr)
         rx_len = self.sock.recv_into(self.rx_buf)
         return self.rx_buf[:rx_len]
 
