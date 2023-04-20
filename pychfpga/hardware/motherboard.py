@@ -571,9 +571,10 @@ class Motherboard(HardwareMap):
         """Establish a communication link with the FPGA."""
         raise NotImplementedError('This method must be implemented by a subclass')
 
-    async def init_fpga_async(self):
-        """ Initializes the FPGA firmware."""
-        raise NotImplementedError('This method must be implemented by a subclass')
+    async def init_fpga_async(self, **kwargs):
+        """ Initializes the FPGA firmware.
+        """
+        await self.fpga.init_async(**kwargs)
 
     # ****************************
     # Metrics

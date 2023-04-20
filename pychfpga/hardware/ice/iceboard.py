@@ -983,7 +983,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):
 
         """
         # Fully initialize the FPGA firmware
-        await self.fpga.init_async(**kwargs)
+        await super().init_fpga_async(**kwargs)
 
         # Set LEDs to indicate initialization state
         await self.set_led('GP_LED1', 1)  # Full FPGA firmware is initialized

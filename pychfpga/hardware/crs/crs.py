@@ -362,9 +362,6 @@ class CRS(Motherboard):
     async def close_fpga_async(self):
         await self.fpga.close()
 
-    async def init_fpga_async(self, **kwargs):
-        await self.fpga.init_async(**kwargs)
-
     def is_open(self):
         return self._is_open
 
