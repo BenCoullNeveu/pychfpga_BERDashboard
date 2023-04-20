@@ -107,7 +107,7 @@ class FPGAArray(object):
             udp_retries=10,
             fpga_ip_addr_fn='(a,b,3,d)',
 
-            sampling_frequency=800e6,
+            sampling_frequency=None,
             # reference_frequency=10e6,
             # data_width=4,
 
@@ -524,7 +524,7 @@ class FPGAArray(object):
 
             frames_per_packet=2,
             chan8_channel_map=list(range(8)),
-            sampling_frequency=800e6,
+            sampling_frequency=None,
             tx_power=None,
             integration_period=None,
             autocorr_only=None,
@@ -5389,9 +5389,9 @@ def create_fpga_array(args=None):
             not specified, the same interface as the one used for communicate
             with the ARM processor is used.
 
-        sampling_frequency: Specifies the sampling frequency of the CHIME ADC mezzanine, in Hz (typically 800 MHz)
+        sampling_frequency: Specifies the sampling frequency of the CHIME ADC mezzanine, in Hz (typically 800 MHz). If `None`, the platform/firmware mode default is used.
 
-        reference_frequency: Specifies the frequency of the system's reference clock in Hz (typically 10 MHz)
+        reference_frequency: Specifies the frequency of the system's reference clock in Hz (typically 10 MHz). If `None`, the platform/firmware mode default is used. 
 
         data_width: Bit width used after the channelizer's scaler (4 or 8)
 

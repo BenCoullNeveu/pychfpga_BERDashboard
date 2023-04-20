@@ -120,8 +120,8 @@ class chFPGA(FPGAFirmware):
         ("MGK7MB", "chFPGA", ("shuffle16", "shuffle128", "shuffle256", "shuffle512", "chan8", "chan4")): dict(firmware_url='chFPGA_MGK7MB_Rev2.bit', processing_frequency = 200e6),
         ("MGK7MB", "siFPGA", ("corr16",)): dict(firmware_url='SIFPGA_MGK7MB.bit', processing_frequency = 200e6),
         ("MGK7MB", "chordFPGA", ("chord16",)): dict(firmware_url='chordFPGA_MGK7MB_Rev2.bit', processing_frequency = 300e6),
-        ("ZCU111", "siFPGA", ("corr4","corr8")): dict(firmware_url='sifpga_zcu111_wrapper.bit', processing_frequency = 200e6),
-        ("CRS", "siFPGA", ("corr4","corr8", "chan8")): dict(firmware_url='sifpga_crs_wrapper.bit', processing_frequency = 200e6),
+        ("ZCU111", "siFPGA", ("corr4","corr8")): dict(firmware_url='sifpga_zcu111_wrapper.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
+        ("CRS", "siFPGA", ("corr4","corr8", "chan8")): dict(firmware_url='sifpga_crs_wrapper.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=32),
     }
 
 
@@ -257,34 +257,26 @@ class chFPGA(FPGAFirmware):
 
 
 
-    def __init__(self, motherboard, processing_frequency=None):
+    def __init__(self, motherboard, **fw_params):
         """
-        Creates an empty IceBoard/chFPGA handler object, but do not interact with the board yet.
+        Creates an empty chFPGA firmware handler object, but do not interact with the board yet.
 
         Parameters:
 
-            hostname (str): hostname or IP address of the ICEBoard ARM
-                processor (mandatory)
+            motherboard (Motherboard subclass): Motherboard platform on which the FPGA is located. 
 
-            serial (str): Serial number of the board. Can be provided by the
-                ARM.
-
-            crate (IceCrateHandler): = object that handle the backplane on
-                which the board is connected. ``None`` if the board is not
-                connected to a backplane.
-
-            slot (int): Slot number in which the board is installed ona
-                backplane. None if there is no backplane.
+            **fw_params (dict): Extra parameters to be associated with this
+                  version of the firmware. Those are obtained from the platform
+                  support table. They will be used during the init phase.
 
 
-        The `__init__` function stores the parameters as instance attributes
-        of the same name.
-
-        Note: `__init__` *only* create an empty `chFPGA_controller` object and hold basic
-            configuration information but does not attempt to interact with the FPGA. Interaction
-            with the FPGA starts with `open`. This means that `chFPGA_controller` objects can be
-            created for board that do not exist are are not powered up yet. This is useful when
-            arrays of boards are loaded from an unfiltered hardware map.
+        Note: `__init__` *only* create an empty `chFPGA` object and hold basic
+        configuration information but does not attempt to interact with the
+        FPGA yet. Interaction with the FPGA starts with `open_async`. Full
+        firmwar einitialization is performed by `init_async`. This means that
+        `chFPGA` objects can be created for board that do not exist are are
+        not powered up yet. This is useful when arrays of boards are loaded
+        from an unfiltered hardware map.
         """
 
         # Initialize basic instance attributes, but don't do anything yet that involves communicating with the firmware.
@@ -296,10 +288,11 @@ class chFPGA(FPGAFirmware):
         self.logger.debug(f"{self!r}: Creating chFPGA FPGAFirmware object")
 
 
-        # Firmware attributes provided by PLATFORM_SUPPORT
-        self.processing_frequency = processing_frequency
+        # Firmware attributes provided by PLATFORM_SUPPORT. Those will be used later by `init_async`. 
+        self.fw_params = fw_params
 
-        # Firmware attributes that will be derived from the FPGA itself
+        # Firmware attributes that will be intialized later by `init_async`
+        self.processing_frequency = None
         self._sampling_frequency = None  # Set in init()
         self._reference_frequency = None  # set in init()
         self.FRAME_PERIOD = None
@@ -929,12 +922,13 @@ class chFPGA(FPGAFirmware):
 
     async def init_async(
             self,
-            sampling_frequency=800e6,
-            processing_frequency=200e6,
-            reference_frequency=10e6,
+            sampling_frequency=None,
+            processing_frequency=None,
+            reference_frequency=None,
             adc_mode=0,
             adc_bandwidth=2,
             adc_delay_table=ADC_DELAY_TABLE,
+            adc_clock_divider=None,
             data_width=4,
             group_frames=4,
             enable_gpu_link=1,
@@ -946,20 +940,22 @@ class chFPGA(FPGAFirmware):
 
         Parameters:
 
-             sampling_frequency (float): Sampling frequency in Hz to set on the ADC Mezzanine boards
+             sampling_frequency (float): Sampling frequency in Hz to set on the ADC Mezzanine boards. If `None`, the platform/mode default is used.
                  (default 800 MHz)
 
              processing_frequency (float): Frequency of the internally
                  generated channelizer signal processing clock in Hz. Is
                  compared with sampling_frequency/4 to determine if we can use
                  the internal clock instead of the ADC clock to avoid causing
-                 large current spikes when we start and stop the ADCs.
+                 large current spikes when we start and stop the ADCs. If `None`, the platform/mode defaut is used.
 
              reference_frequency (float): Frequency in Hz of the Iceboard's reference clock (default
-                 is 10 MHz)
+                 is 10 MHz).
 
              adc_delay_table (dict): initial setting of the ADC delays. see `set_adc_delays`.
                  A default delay table is used if none is provided.
+
+             adc_clock_divider (float): ratio between the ADC sampling frequency and the measured ADC clock speed. If `None`, the platform/mode default is used. 
 
              data_width (int): 4 or 8. Indicate of the channelizer output is in (4+4)bit or (8+8
                  bit) mode
@@ -972,6 +968,8 @@ class chFPGA(FPGAFirmware):
 
              verbose (int): verbose level
 
+             kwargs (dict): Any other arguments. These are not used. 
+
         Returns:
             None
 
@@ -981,9 +979,11 @@ class chFPGA(FPGAFirmware):
             reprogramthe fpga to come back to a known state if manual changes were made.
         """
 
-        self._sampling_frequency = sampling_frequency
-        self._reference_frequency = reference_frequency
-        self._processing_frequency = processing_frequency
+        self._sampling_frequency = sampling_frequency or self.fw_params.get('sampling_frequency') or 800e6;
+        self._reference_frequency = reference_frequency  or self.fw_params.get('reference_frequency') or 10e6;
+        self.adc_clock_divider = adc_clock_divider  or self.fw_params.get('adc_clock_divider');
+        self._processing_frequency = processing_frequency  or self.fw_params.get('processing_frequency') or self._sampling_frequency / 4;
+
         self.FRAME_PERIOD = float(self.FRAME_LENGTH) / self._sampling_frequency
         self.FRAME_RATE = 1 / self.FRAME_PERIOD
 
@@ -1159,14 +1159,11 @@ class chFPGA(FPGAFirmware):
 
     def check_adc_frequencies(self, stage):
 
-        target_frequency = self._sampling_frequency
-
-        if self.PLATFORM_ID in (self._PLATFORM_ID_ZCU111, self._PLATFORM_ID_ZCU111):
-            target_frequency /= 2
+        target_frequency = self._sampling_frequency/self.adc_clock_divider
 
         for trial in range(10):
             freqs = [self.FreqCtr.read_frequency(f'ADC_CLK{i}', gate_time=0.001) for i in (0,4,8,12)] # ***JFC debug
-            err = any(abs(f-target_frequency/4) > 2.1e3 for f in freqs)
+            err = any(abs(f-target_frequency) > 2.1e3 for f in freqs)
             msg = f'{self!r}: ADC output frequencies at stage {stage} are {[f/1e6 for f in freqs]} (check #{trial+1}) {"ERROR!" if err else ""}'
             if err:
                 self.logger.warn(msg)
@@ -1176,7 +1173,8 @@ class chFPGA(FPGAFirmware):
                 self.logger.debug(msg)
                 break
         if err:
-            msg = f'{self!r}: some ADCs are not generating a proper clock at stage "{stage}". Frequencies are {freqs} MHz. Expected frequency is {target_frequency/4/1e6}. Deltas = {[f-self._sampling_frequency/4/1e16 for f in freqs]}'
+            msg = f'{self!r}: some ADCs are not generating a proper clock at stage "{stage}". Frequencies are {freqs} MHz. ' \
+                  f'Expected frequency is {target_frequency/1e6:.6f} MHz. Deltas = {[(f-target_frequency)/1e6 for f in freqs]}'
             self.logger.error(msg)
             pass
         return err
