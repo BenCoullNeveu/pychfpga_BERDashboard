@@ -256,7 +256,7 @@ class CRS(Motherboard):
         self.logger.info(f'Initializing Voltage/current monitor chips')
         for name, info in self.i2c1_ina231_list.items():
             d = info['device']
-            d.init(r_shunt=info['rshunt'], i_typ=info['imax'])
+            d.init(r_shunt=info['rshunt'], i_typ=info['imax'], avg=3)
 
         self.pll = hmc7044(self.spi, spi_port=1 if self.revision >0 else 0)
         self.logger.info(f'Initializing programmable PLL')
@@ -294,6 +294,7 @@ class CRS(Motherboard):
 
         # Print board voltages/currents
         # The delay of programming the PLL is sufficient to allow the first voltage average to refresh
+        # await asyncio.sleep(1)
         for name, info in self.i2c1_ina231_list.items():
             d = info['device']
             self.logger.info(f'Rail {name}: Vbus={d.get_bus_voltage():.3f}V, I={d.get_current():.3f}A, P={d.get_power():.1f}W')

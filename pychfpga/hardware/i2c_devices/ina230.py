@@ -43,7 +43,7 @@ class ina230(object):
         self.address = address
         self.port = port
 
-    def init(self, v_out=0, r_shunt=0.01, i_typ=1, tol_i=0.2):
+    def init(self, v_out=0, r_shunt=0.01, i_typ=1, tol_i=0.2, avg=3, vbus_ct=0, vsh_ct=0):
         """ Initialization of INA230 I2C current/power monitor object
 
         Parameters:
@@ -51,6 +51,15 @@ class ina230(object):
             r_shunt is the shunt resistance in mOhms (inductor DC resistance)
             i_typ is the typical current to be measured in Amps
             tol_i is the tolerance in the measured resistance (the Maximum Expected Current is ityp*(1+tol_i))
+            avg (int): codes the number of averages. Actual averaging is
+               0: 1
+               1: 4
+               2: 16
+               3: 64
+               4: 128
+               5: 256
+               6: 512
+               7: 1024 
         """
         # Calibration to be written in CAL register.
         # self.cal = int(np.floor(((2.**15) * 5.12) / ((i_typ * (1 + tol_i)) * r_shunt)))
@@ -65,7 +74,7 @@ class ina230(object):
 
         self.write('CONF', 0x8000, mask=0x8000)  # Generating system reset
         self.write('CAL', self.cal)  # Writing calibration value to CAL register to read current and power
-        self.write('CONF', 0x4F27)
+        self.write('CONF', 0x4007 | (avg&7 <<9) | (vbus_ct&7 << 6) | (vsh_ct&7 << 3))
 
     def select(self):
         """ Selects the proper I2C port to talk to this device.
