@@ -227,6 +227,7 @@ class chFPGA(FPGAFirmware):
         _PLATFORM_ID_MGK7MB_REV0: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev0', None),
         _PLATFORM_ID_MGK7MB_REV2: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev2', None),
         _PLATFORM_ID_ZCU111:  ('Zynq Ultrascale+ RfSoC (ZU28) Xilinx ZCU111 Evaluation Board', None),
+        _PLATFORM_ID_CRS:  ('Zynq Ultrascale+ RfSoC (ZU48) t0 technology CRS Board ', None),
     }
 
     # UDP communication constants (used if implemented in firmware)
@@ -698,7 +699,7 @@ class chFPGA(FPGAFirmware):
             self._NUMBER_OF_FMC_SLOTS = self.mb.NUMBER_OF_FMC_SLOTS
 
             # Set platform/implementation-specific features & constants based on a local table
-            if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
+            if self.PLATFORM_ID in (self._PLATFORM_ID_ZCU111, self._PLATFORM_ID_CRS):
                 assert self.mb.part_number == "ZCU111" or self.mb.part_number == "CRS", 'This version of the firmware is meant to operate on the ZCU111 only'
                 self.HAS_REFCLK = False
                 self.HAS_SPI = False
