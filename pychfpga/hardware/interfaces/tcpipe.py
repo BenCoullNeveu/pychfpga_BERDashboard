@@ -39,13 +39,17 @@ class TCPipe:
         self.firmware_crc = None
         print(f'Opened TCPipe socket at {self.sock.getsockname()}')
         self.bsb_sent_ctr = 0
-        
+
     def close(self):
         print(f'Closing TCPipe socket at {self.sock.getsockname()}')
         self.sock.close()
         self.sock = None
 
     def i2c_read(self, addr, read_length, no_error=False):
+        return self.i2c_write_read(addr, data=b'', read_length=read_length, no_error=no_error)
+
+
+    def i2c_polled_read(self, addr, read_length, no_error=False):
         tx_len = 6  # prefix, cmd, len_lsb, len_msb, addr, read_length
         self.tx_view[:tx_len] = bytes((self.RPC_PREFIX, self.RPC_IIC_READ, 2, 0, addr, read_length))
         self.sock.send(self.tx_view[:tx_len])
@@ -69,7 +73,7 @@ class TCPipe:
     #     txv[4:4+len(header)] = header
     #     txv[4+len(header):4+len(header)+len(data)] = data
 
-    def i2c_write_read(self, addr, data, read_length):
+    def i2c_write_read(self, addr, data, read_length, no_error=False):
         """ Writes `data` to I2C address `addr`, perform a restart, and read `read_length` from the same device.
 
         Used for accessing devices such as EEPROMs that require a command or addres be sent in the same transaction before reading from the device.
@@ -85,25 +89,31 @@ class TCPipe:
         """
         if not isinstance(data, (bytes, bytearray)):
             data = bytes(data)
+        if 0 > read_length >= 256:
+            raise ValueError('Read length bust be between 0 and 255')
         tx_len = 6 # RPC header, I2C address, read length,  excluding data
         tx_len_data = tx_len + len(data)
+        rpc_len = 2 + len(data)
         self.tx_view[0] = self.RPC_PREFIX
         self.tx_view[1] = self.RPC_IIC_WRITE_READ
-        self.tx_view[2] = 2 + len(data)  # I2C addr, read_length & data length
-        self.tx_view[3] = 0 # data length assumed to be < 256-2
-        self.tx_view[4] = addr # I2C address
-        self.tx_view[5] = read_length # number of bytes to read fter the write
+        self.tx_view[2] = rpc_len & 0xFF  # I2C addr, read_length & data
+        self.tx_view[3] = rpc_len >> 8
+        self.tx_view[4] = addr # 7-bit I2C address; bit 7 is the port number.
+        self.tx_view[5] = read_length # number of bytes to read after the write
 
         self.tx_view[tx_len:tx_len_data] = data
 
-        # print(f'Sending {self.tx_view[:tx_len_data]}')
+        # print(f'Sending {bytes(self.tx_view[:tx_len_data]).hex(":")}')
         self.sock.sendall(self.tx_view[:tx_len_data])
         rx_len = self.sock.recv_into(self.rx_buf)
         if self.rx_buf[0]:
-            raise IOError(f'Reply has error code {self.rx_buf[0]}')
-        if rx_len != 1+read_length:
-            raise IOError(f'Receive {rx_len} bytes instead of {1+read_length} bytes')
-        return self.rx_buf[1:read_length+1]
+            if no_error:
+                return b''
+            else:
+                raise IOError(f'TCPipe I2C: Reply has error code {self.rx_buf[0]}')
+        if rx_len != 1 + read_length:
+            raise IOError(f'TCPipe I2C: Receive {rx_len} bytes instead of {1+read_length} bytes')
+        return self.rx_buf[1:read_length + 1]
 
     def i2c_write(self, addr, data):
         """ Writes `data` to I2C address `addr`.
@@ -118,24 +128,25 @@ class TCPipe:
 
 
         """
-        if not isinstance(data, (bytes, bytearray)):
-            data = bytes(data)
-        tx_len = 5 # RPC hader + I2C address, excluding data
-        tx_len_data = tx_len + len(data)
-        self.tx_view[0] = self.RPC_PREFIX
-        self.tx_view[1] = self.RPC_IIC_WRITE
-        self.tx_view[2] = 1 + len(data)
-        self.tx_view[3] = 0 # data length assumed to be < 256
-        self.tx_view[4] = addr # I2C address
+        self.i2c_write_read(addr, data, read_length=0)
+        # if not isinstance(data, (bytes, bytearray)):
+        #     data = bytes(data)
+        # tx_len = 5 # RPC hader + I2C address, excluding data
+        # tx_len_data = tx_len + len(data)
+        # self.tx_view[0] = self.RPC_PREFIX
+        # self.tx_view[1] = self.RPC_IIC_WRITE
+        # self.tx_view[2] = 1 + len(data)
+        # self.tx_view[3] = 0 # data length assumed to be < 256
+        # self.tx_view[4] = addr # I2C address
 
 
-        self.tx_view[tx_len:tx_len_data] = data
-        self.sock.sendall(self.tx_view[:tx_len_data])
-        rx_len = self.sock.recv_into(self.rx_buf)
-        if self.rx_buf[0]:
-            raise IOError(f'Reply has error code {self.rx_buf[0]}')
-        if rx_len != 1:
-            raise IOError(f'Receive {rx_len} bytes instead of 1 byte')
+        # self.tx_view[tx_len:tx_len_data] = data
+        # self.sock.sendall(self.tx_view[:tx_len_data])
+        # rx_len = self.sock.recv_into(self.rx_buf)
+        # if self.rx_buf[0]:
+        #     raise IOError(f'Reply has error code {self.rx_buf[0]}')
+        # if rx_len != 1:
+        #     raise IOError(f'Receive {rx_len} bytes instead of 1 byte')
 
     def bsb_write_read(self, data):
         """ Writes `data` to the FPGA firmware Byte-serial bus and return reply.
