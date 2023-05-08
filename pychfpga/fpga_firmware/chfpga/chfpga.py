@@ -724,10 +724,23 @@ class chFPGA(FPGAFirmware):
 
             # Set platform/implementation-specific features & constants based on values reported by the FPGA GPIO module
             #
-            # Get frame size info
+            # Get frame size info, i.e number of samples per frame 
             self._LOG2_FRAME_LENGTH = self.GPIO.LOG2_FRAME_LENGTH
             self.FRAME_LENGTH = 2**self._LOG2_FRAME_LENGTH  # 2**11 = 2048 time samples per frame
+            self.ADC_SAMPLES_PER_FRAME = self.FRAME_LENGTH  # more explicit name
+
             self.NUMBER_OF_FREQUENCY_BINS = self.FRAME_LENGTH // 2  # 1024 frequency bins per frame
+
+            # Number of samples per word (i.e number of samples processed per clock)
+            self._LOG2_SAMPLES_PER_WORD = self.GPIO.LOG2_SAMPLES_PER_WORD
+            self.SAMPLES_PER_WORD = 2**self._LOG2_SAMPLES_PER_WORD
+
+            # Number of bits and bytes per ADC sample
+            self.ADC_BITS_PER_SAMPLE = self.GPIO.ADC_BITS_PER_SAMPLE
+            self.ADC_BYTES_PER_SAMPLE = (self.GPIO.ADC_BITS_PER_SAMPLE + 7) // 8  # round up to the nearest byte
+
+            # Number of bytes in a frame
+            self.ADC_BYTES_PER_FRAME = self.FRAME_LENGTH * self.ADC_BYTES_PER_SAMPLE  # SAMPLES_PER_FRAME * BYTES_PER_SAMPLE
 
             # Identify the number of channelizers and their properties
             self.CHANNELIZERS_CLOCK_SOURCE = self.GPIO.CHANNELIZERS_CLOCK_SOURCE
