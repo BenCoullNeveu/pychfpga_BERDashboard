@@ -20,13 +20,15 @@ class FUNCGEN(MMI):
 
     # Memory-mapped register definition
     RESET            = BitField(CONTROL, 0x00, 7, doc='Resets this module')
-    # USE_OVERFLOW     = BitField(CONTROL, 0x00, 6, doc="when '1', overflow flags are generated when the outputs is 0x7F or 0x80")
     ENABLE           = BitField(CONTROL, 0x00, 6, doc="doc")
-    RAM_PAGE         = BitField(CONTROL, 0x00, 3, width=3, doc="Selects which 512-byte page of RAM we are writing into")
+    RAM_PAGE_LSB     = BitField(CONTROL, 0x00, 3, width=3, doc="LSB of the 512-byte RAM page we want to access")
     FUNCTION         = BitField(CONTROL, 0x00, 0, width=3, doc="Selects the source of the signal to be generated")
     BYTE_A           = BitField(CONTROL, 0x01, 0, width=8, doc="Byte A to be used by the function generator")
     BYTE_B           = BitField(CONTROL, 0x02, 0, width=8, doc="Byte B to be used by the function generator")
     NUMBER_OF_FRAMES = BitField(CONTROL, 0x03, 0, width=8, doc="Number of frames to send. If 0, send continuously.")
+    BYTE_C           = BitField(CONTROL, 0x04, 0, width=8, doc="Byte C to be used by the function generator")
+    SHIFT            = BitField(CONTROL, 0x05, 0, width=4, doc="Number of bits to shift-right the ADC data before it is passed on")
+    RAM_PAGE_MSB     = BitField(CONTROL, 0x05, 4, width=4, doc="MSB of the 512-byte RAM page we want to access")
 
     RAMP_CTR   = BitField(STATUS, 0x00, 0, width=8, doc="Last 8 bits of the ramp counter (for debuging)")
     FRAME_CTR  = BitField(STATUS, 0x01, 0, width=8, doc="Frame counter")
@@ -40,9 +42,7 @@ class FUNCGEN(MMI):
     FN_FRAME8 = 4
     FN_FRAME4 = 5
     FN_BUFFER_NIBBLE4 = 6
-    FN_ADC16 = 7
-    BUFFER_SIZE = 2048  # bytes
-    FRAME_SIZE = 2048  # bytes
+    FN_ADC16 = 7 # *deprecated*
 
     # The following define the source of the data
     DATA_SOURCE_NAMES = {
@@ -59,8 +59,8 @@ class FUNCGEN(MMI):
 
 
     def one(self):
-        v = (9*np.ones(2048, dtype=np.uint8)) << 4 # with the offset encoding, 9s here result in 1s in the complex visibility data
-        v[1::2] = (8*np.ones(1024, dtype=np.uint8)) << 4 # with the offset encoding, 8s here result in 0s in the complex visibility data
+        v = (9*np.ones(self.NB, dtype=np.uint8)) << 4 # with the offset encoding, 9s here result in 1s in the complex visibility data
+        v[1::2] = (8*np.ones(self.NB // 2, dtype=np.uint8)) << 4 # with the offset encoding, 8s here result in 0s in the complex visibility data
         return v
 
     def freq_test(self, freq_test_bins=[]):
@@ -79,9 +79,9 @@ class FUNCGEN(MMI):
                                        14, 15,  7,  8, 10, 12, 13, 14, 15,  8, 10, 12, 13, 14, 15,  9, 10,
                                        11, 12, 14, 15, 12, 13, 14, 15, 11, 12, 13, 14, 15, 12, 13, 14, 15,
                                        13, 14, 15, 14, 15, 15], dtype=np.uint8) << 4
-        v = np.zeros(2048, dtype=np.uint8)
-        v_real = np.zeros(1024, dtype=np.uint8)
-        v_imag = np.zeros(1024, dtype=np.uint8)
+        v = np.zeros(self.NB, dtype=np.uint8)
+        v_real = np.zeros(self.NB // 2, dtype=np.uint8)
+        v_imag = np.zeros(self.NB // 2, dtype=np.uint8)
         v_real[freq_test_bins] = freq_pattern_real[:N]
         v_imag[freq_test_bins] = freq_pattern_imag[:N]
         v[::2] = v_real
@@ -92,27 +92,45 @@ class FUNCGEN(MMI):
 
         # The following define the patterns we can program in the waveform buffer
         # reminder: byte ordering is lost after operators (>>, /, +, & etc). Use N//2 to make sure  the arange is of integer type.
-        'arb':            (0, lambda data, self=None, N=BUFFER_SIZE: data),  # Arbitrary waveform stored in buffer
-        'a':              (1, lambda a, self=None, N=BUFFER_SIZE: np.tile(np.uint8(a), N)),  # All bytes are Byte A
-        'b':              (2, lambda b, self=None, N=BUFFER_SIZE: np.tile(np.uint8(b), N)),  # All bytes are Byte B
-        'ab':             (3, lambda a, b, self=None, N=BUFFER_SIZE: np.tile(np.array([a, b], np.uint8), N // 2)),  # Bytes alternate between A and B.
-        'ramp':           (4, lambda self=None, N=BUFFER_SIZE, **kwargs: np.arange(N, dtype=np.uint8)),  # Successive bytes generate a repeating ramp from 0 to 255.
-        'real_ramp':      (5, lambda self=None, N=BUFFER_SIZE, **kwargs: (np.arange(N // 2) << 8).astype('>u2').view(np.uint8)),  # Generates the ramp: 0,0,0,1,0,2,0,3,0... If the data is read as (8+8)-bit complex value pairs, we obtain (0,0j), (1+0j)... (255+0j)
-        '4bit_ramp':      (6, lambda self=None, N=BUFFER_SIZE, **kwargs: np.arange(N, dtype=np.uint8) << 4),  # Generates the ramp 0x00, 0x10, 0x20, ... 0xF0.
-        '4bit_real_ramp': (7, lambda self=None, N=BUFFER_SIZE, **kwargs: (np.arange(N // 2) << 12).astype('>u2').view(np.uint8)),  # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
+        'arb':            (0, lambda data, self=None: data),  # Arbitrary waveform stored in buffer
+        'a':              (1, lambda self, a: np.fill(self.NS, a << self.lshift, self.dtype).view('u1')),  # All bytes are Byte A. 16-bit friendly
+        'b':              (2, lambda self, b: np.fill(self.NS, b << self.lshift, self.dtype).view('u1')),  # All bytes are Byte B
+        'ab':             (3, lambda self, a, b, : np.tile(np.array((a << self.lshift, b << self.lshift), self.dtype), self.NS // 2).view('u1')),  # Bytes alternate between A and B.
+        'ramp':           (4, lambda self=None, **kwargs: np.arange(self.NS, dtype=self.dtype).view('u1')),  # Successive bytes generate a repeating ramp from 0 to 255.
+        'real_ramp':      (5, lambda self=None, **kwargs: (np.arange(self.NS // 2) << 8).astype('>u2').view(np.uint8)),  # Generates the ramp: 0,0,0,1,0,2,0,3,0... If the data is read as (8+8)-bit complex value pairs, we obtain (0,0j), (1+0j)... (255+0j)
+        '4bit_ramp':      (6, lambda self=None, **kwargs: np.arange(self.NS, dtype=np.uint8) << 4),  # Generates the ramp 0x00, 0x10, 0x20, ... 0xF0.
+        '4bit_real_ramp': (7, lambda self=None, **kwargs: (np.arange(self.NS // 2) << 12).astype('>u2').view(np.uint8)),  # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
          # '4bit_split_ramp': (0, FN_BUFFER, ),  # Generates 0x0000, 0x0010, 0x0020, .. 0x00F0, 0x1000, 0x1010 ...
-        'sin':            (8, lambda self, freq=1, N=BUFFER_SIZE: (np.sin(np.arange(N) * 2 * np.pi / N * freq) * 127).astype(np.uint8)),  # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
-        'crate_slot':     (9, lambda self, N=BUFFER_SIZE: np.tile(np.array([self.fpga.get_id()[0], self.fpga.get_id()[1]], np.uint8) << 4, N // 2)),  # Bytes alternate between crate number and slot number (in upper 4 bits). If FFT and scaler are bypassed, then the complex data has the crate number in the real part and slot number in imag part.
+        'sin':            (8, lambda self, freq=1: (np.sin(np.arange(self.NS) * 2 * np.pi / self.NS * freq) * 127).astype(np.uint8)),  # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
+        'crate_slot':     (9, lambda self: np.tile(np.array([self.fpga.get_id()[0], self.fpga.get_id()[1]], np.uint8) << 4, self.NS // 2)),  # Bytes alternate between crate number and slot number (in upper 4 bits). If FFT and scaler are bypassed, then the complex data has the crate number in the real part and slot number in imag part.
         #'crate':          (10, lambda self, N=BUFFER_SIZE: np.tile(np.array([self.get_id()[0]<<4, 0], np.uint8), N / 2)),  # Bytes alternate between crate number (in upper 4 bits) and 0. If FFT and scaler are bypassed, then the complex data has the crate number in the real part.
         'freq_test':      (10, freq_test),
         'one':            (11, one),
-        '4bit_complex_ramp': (12, lambda self=None, N=BUFFER_SIZE: (((np.arange(N // 2) & 0xf0) << 8) + ((np.arange(N // 2) & 0xf) << 4)).astype('>u2').view('u1')),  # Generates the ramp: 0x00, 0x00, 0x00, 0x10, 0x00, 0x20 ... 0xF0, 0xF0. The corner turn interpret these as (0+0j), (0+1j,) ...  (0+15j), (1+0j), ... (15+15j)
+        '4bit_complex_ramp': (12, lambda self=None: (((np.arange(self.NS // 2) & 0xf0) << 8) + ((np.arange(self.NS // 2) & 0xf) << 4)).astype('>u2').view('u1')),  # Generates the ramp: 0x00, 0x00, 0x00, 0x10, 0x00, 0x20 ... 0xF0, 0xF0. The corner turn interpret these as (0+0j), (0+1j,) ...  (0+15j), (1+0j), ... (15+15j)
+        'a16':            (13, lambda a, self=None: np.full(self.NS, a, '>u2').view('u1')),  # All samples are A. Big endian storage.
         }
 
     buffer_cache = None
 
     def __init__(self, fpga_instance, base_address, instance_number):
         super().__init__(fpga_instance, base_address, instance_number)
+        self.SAMPLES_PER_FRAME = self.NS = self.fpga.ADC_SAMPLES_PER_FRAME
+        self.BYTES_PER_FRAME = self.NB = self.fpga.ADC_BYTES_PER_FRAME
+        self.BYTES_PER_SAMPLE = self.BPS = self.fpga.ADC_BYTES_PER_SAMPLE
+        self.BUFFER_SIZE = self.BYTES_PER_FRAME  # bytes
+        self.FRAME_SIZE = self.BYTES_PER_FRAME  # bytes
+        self.PAGE_SIZE = 512 # number of bytes accessible in one RAM page
+        self.N_PAGES = self.BYTES_PER_FRAME //  self.PAGE_SIZE # number of pages 
+
+        # Determine the sample numpy storage type and how many bits to left-shift when storing in the buffer
+        if self.BYTES_PER_SAMPLE == 1:
+            self.dtype = 'u1'
+            self.lshift = 8 - self.fpga.ADC_BITS_PER_SAMPLE
+        elif self.BYTES_PER_SAMPLE == 2:
+            self.dtype = '>u2'
+            self.lshift = 16 - self.fpga.ADC_BITS_PER_SAMPLE
+        else:
+            raise RuntimeError(f"Only ADC data with 1 or 2 bytes/samples (1-16 bits) is supported. Current value is {self.BYTES_PER_SAMPLE} bytes/sample  ")
         # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
         self._lock()
 
@@ -163,7 +181,7 @@ class FUNCGEN(MMI):
         waveform as 2048 bytes .
         """
         if function_name not in self.FUNCTION_NAMES:
-            raise Exception("Invalid function name. Valid ones are '%s'" % ', '.join(self.FUNCTION_NAMES.keys()))
+            raise RuntimeError("Invalid function name. Valid ones are '%s'" % ', '.join(self.FUNCTION_NAMES.keys()))
         (fn_number, buffer_gen) = self.FUNCTION_NAMES[function_name]
         function_args = ', '.join('%s=%.30r' % (arg, val) for (arg, val) in kwargs.items())
         buffer_info = f'{function_name}({function_args})'
@@ -180,44 +198,58 @@ class FUNCGEN(MMI):
             return 'Unknown'
         else:
             return fn_names[0]
+    def set_ram_page(self, page):
+        """ Sets the RAM page number
+
+        Parameters:
+            page (int): page to access. Must be <self.N_PAGES
+        """
+        if page >= self.N_PAGES:
+            raise ValueError(f'Invalid page number. There are {self.N_PAGES} in this configuration')
+        self.RAM_PAGE_LSB = page & 0b111
+        self.RAM_PAGE_MSB = (page >> 3) & 0b1111
 
     def set_buffer(self, data, function_number=0, info='Arbitrary data'):
         """
         """
-
         data = np.array(data, np.uint8)
         if self.buffer_cache is None:
-            self.buffer_cache = np.zeros(self.BUFFER_SIZE, np.uint8)
+            self.buffer_cache = np.zeros(self.NB, np.uint8)
 
         # Write the data, page by page
-        for page in range(4):
-            page_slice = slice(page * 512, page * 512 + 512)
+        for page in range(self.N_PAGES):
+            page_slice = slice(page * self.PAGE_SIZE, (page + 1) * self.PAGE_SIZE)
             page_data = data[page_slice]
-            self.RAM_PAGE = page
+            self.set_ram_page(page)
             self.write_ram(0, page_data)
             self.buffer_cache[page_slice] = page_data
 
-        # Write info on the buffer contents in an unused page
-        self.RAM_PAGE = 4
-        self.write_ram(0, function_number)
-        self.write_ram(1, info.encode() + b'\x00')
+        # Store info on the buffer contents 
+        self.BYTE_C = function_number
+        # self.RAM_PAGE = 4
+        # self.write_ram(0, function_number)
+        # self.write_ram(1, info.encode() + b'\x00')
 
     def get_buffer(self, use_cache=True):
 
         if use_cache and self.buffer_cache is not None:
             return self.buffer_cache
         data = np.zeros(self.BUFFER_SIZE, np.uint8)
-        for page in range(4):
-            self.RAM_PAGE = page
-            data[page * 512: (page + 1) * 512] = self.read_ram(0, length=512)
+        for page in range(self.N_PAGES):
+            self.set_ram_page(page)
+            data[page * self.PAGE_SIZE: (page + 1) * self.PAGE_SIZE] = self.read_ram(0, length=self.PAGE_SIZE)
         return data
 
     def get_buffer_info(self):
-        self.RAM_PAGE = 4
-        data = self.read_ram(0, length=512)
-        fn_number = data[0]
-        data_str = data[1:].tostring()
-        info = data_str[:data_str.index(chr(0))]
+        # self.RAM_PAGE = 4
+        # data = self.read_ram(0, length=512)
+        # fn_number = data[0]
+        # data_str = data[1:].tostring()
+        # info = data_str[:data_str.index(chr(0))]
+        fn_number = self.BYTE_C
+        fn_names = [name for name, (n, _) in self.FUNCTION_NAMES.items() if n==fn_number]
+        fn_name = fn_names[0] if len(fn_name) == 1 else 'Unknown'
+        info = f'Function {fn_number}: {fn_name}'
         return (fn_number, info, None)  # Fn number, info string, CRC32
 
     def get_sim_output(self, adc_input=None, source=None, number_of_frames=4):
