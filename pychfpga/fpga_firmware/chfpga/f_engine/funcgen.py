@@ -93,8 +93,8 @@ class FUNCGEN(MMI):
         # The following define the patterns we can program in the waveform buffer
         # reminder: byte ordering is lost after operators (>>, /, +, & etc). Use N//2 to make sure  the arange is of integer type.
         'arb':            (0, lambda data, self=None: data),  # Arbitrary waveform stored in buffer
-        'a':              (1, lambda self, a: np.fill(self.NS, a << self.lshift, self.dtype).view('u1')),  # All bytes are Byte A. 16-bit friendly
-        'b':              (2, lambda self, b: np.fill(self.NS, b << self.lshift, self.dtype).view('u1')),  # All bytes are Byte B
+        'a':              (1, lambda self, a: np.full(self.NS, a << self.lshift, self.dtype).view('u1')),  # All bytes are Byte A. 16-bit friendly
+        'b':              (2, lambda self, b: np.full(self.NS, b << self.lshift, self.dtype).view('u1')),  # All bytes are Byte B
         'ab':             (3, lambda self, a, b, : np.tile(np.array((a << self.lshift, b << self.lshift), self.dtype), self.NS // 2).view('u1')),  # Bytes alternate between A and B.
         'ramp':           (4, lambda self=None, **kwargs: np.arange(self.NS, dtype=self.dtype).view('u1')),  # Successive bytes generate a repeating ramp from 0 to 255.
         'real_ramp':      (5, lambda self=None, **kwargs: (np.arange(self.NS // 2) << 8).astype('>u2').view(np.uint8)),  # Generates the ramp: 0,0,0,1,0,2,0,3,0... If the data is read as (8+8)-bit complex value pairs, we obtain (0,0j), (1+0j)... (255+0j)
@@ -210,9 +210,25 @@ class FUNCGEN(MMI):
         self.RAM_PAGE_MSB = (page >> 3) & 0b1111
 
     def set_buffer(self, data, function_number=0, info='Arbitrary data'):
+        """ Sets the buffer contents to be used for functions that uses it.
+
+        Parameters:
+
+            data: Data to write inthe buffer. Must include data for a full frame. If an numpy ``ndarray`` is provided, the buffer is interpreted as an array of uint8. If not, data is converted into a array of uint8.  
+ 
+            function_number: Value  (0-255) to store along with the data to identify the buffer contents.
+
+            info (str): *deprecated*
+
         """
-        """
-        data = np.array(data, np.uint8)
+        if not isinstance(data, np.ndarray):
+            data = np.array(data, np.uint8)
+        else:
+            data = data.view(np.uint8)
+
+        if len(data) != self.NB:
+            raise ValueError(f'data must repreent {self.NS} samples and {self.NB} bytes')
+
         if self.buffer_cache is None:
             self.buffer_cache = np.zeros(self.NB, np.uint8)
 
@@ -222,6 +238,7 @@ class FUNCGEN(MMI):
             page_data = data[page_slice]
             self.set_ram_page(page)
             self.write_ram(0, page_data)
+            print(f'page={page}, slice={page_slice}, data={data.dtype, data.shape}, page_data={(page_data.dtype, page_data.shape)}, cache={self.buffer_cache.shape}')
             self.buffer_cache[page_slice] = page_data
 
         # Store info on the buffer contents 
