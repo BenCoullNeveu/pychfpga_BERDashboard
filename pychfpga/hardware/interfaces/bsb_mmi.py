@@ -48,8 +48,18 @@ class BSB_MMI:
     MAX_BSB_COMMAND_PACKET_LENGTH = 0
     MAX_BSB_REPLY_PACKET_LENGTH = 0
 
+    # List command opcodes indexed by addr[20:19]
+    READ_OPCODES = (OPCODE_READ_CONTROL, OPCODE_READ_STATUS, OPCODE_READ_RAM, None)
+    WRITE_OPCODES = (OPCODE_WRITE_CONTROL, None, OPCODE_WRITE_RAM, None)
+    MASKED_WRITE_OPCODES = (OPCODE_WRITE_CONTROL_MASK, None, None, None)
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # pre-allocated buffers
+        self.tx_buf = memoryview(bytearray(512+3)); # use memoryview so we can use zero-copy slices
+        self.rx_buf = memoryview(bytearray(256)); # use memoryview so we can use zero-copy slices
+        self.rx_command = bytearray(3); # for read commands
 
     def _send_command(self, cmd, expected_reply_length, **kwargs):
         """ Send a read or write command to the FPGA and check the reply for the correct
@@ -76,97 +86,120 @@ class BSB_MMI:
         """
         raise NotImplementedError('Subclass must define the send method')
 
-    def read(self, addr, type=np.dtype('>u1'), length=1,
+    def read(self, addr, type, length,
              timeout=None, retry=None, resync=True):
         """
         Reads memory-mapped byte(s) from the FPGA through the Ethernet
         interface.
 
-        'length' values of type 'type' are read. The Reads will be done in the
-        minimum number of requests in order to read all bytes.
+        Parameters:
 
-        ``resync``: If True, the receiver will ignore command sequence number
-        mismatches and will resynchronize the local counter with the value
-        that was received. This is normally done only once when the system is
-        initialized.
 
-        Returns a numpy array of uint8 where the bytes are intrepreted as a series of
-        'length' elements of type 'type'.
+            addr (int): Address from which to read within the BSB address
+                space. The control/status/RAM pages are determined from the high
+                bits of the address. 
+
+            type (``int``, str or dtype): If `type` is the ``int`` object, a single
+                integer of `length` bytes is read as a big endian and is returned. Otherwise, 
+                a numpy array of `length` numpy objects of dtype `type` is returned.
+
+
+            length (int): Indicates the number of bytes (if type==int) or the number of numpy elements of dtype==type to read.  
+                Multiple transactions will be performed if the requested number of bytes cannot be obtained in a single one.
+
+            timeout (float): If not None, sets the timeout period for the read transaction.
+
+            retry (int): Number times the read is retried. If None, the default is used. 
+
+            resync (bool): If True, the receiver will ignore command sequence number
+                mismatches and will resynchronize the local counter with the value
+                that was received. This is normally done only once when the system is
+                initialized.
+
+        Returns:
+
+            - If `type`=``int`, returns an integer. Otherwise, returns a numpy array.
 
         2014-02-06 JFC: Now reads multiple bytes at a time to improve
-        efficiency by using the length field in the command word.
+            efficiency by using the length field in the command word.
         """
 
-        itemsize = np.dtype(type).itemsize  # number of bytes contained in the destinaion vector type
-        byte_length = length * itemsize  # total number of bytes to read
-        dout = np.zeros(byte_length, np.int8)  # initialize result vector as a byte array
-        offset = 0
-        # Loop to read all required bytes (the FPGA does not support multi-byte reads (yet))
+        byte_length = abs(length) * (1 if type is int else np.dtype(type).itemsize) # total number of bytes to read
+        # use preallocated destination buffer unless we need more bytes, in which case a new one is allocated
+        rx_buf = self.rx_buf[:byte_length] if byte_length <= len(self.rx_buf) else memoryview(bytearray(byte_length)) 
 
         if timeout:
             self.set_timeout(timeout)
 
-        if addr & self._RAM_BASE_ADDR:
-            opcode = self.OPCODE_READ_RAM
-        elif addr & self._STATUS_BASE_ADDR:
-            opcode = self.OPCODE_READ_STATUS
-        else:
-            opcode = self.OPCODE_READ_CONTROL
-
+        # Determine the command opcode based on the page encoded in the upper bits of the address  
+        opcode = self.READ_OPCODES[addr >> 19]
+        if opcode is None:
+            raise RuntimeError(f'Invalid opcode for address page {addr >> 19}')
+        # Loop to read all required bytes (the FPGA does not support multi-byte reads (yet))
+        offset = 0
         while offset < byte_length:
             # compute the log2 of the number of bytes to read, limited to 3 (i.e. 8 bytes)
             log2_length = min((byte_length - offset).bit_length() - 1, 3)
             read_length = 1 << log2_length  # number of bytes to read in this iteration
-            command_bytes = bytes([
-                    (opcode << 5) | (log2_length << 3) + ((addr >> 16) & 0x07),  # byte 0: opcode, length, MSB of address
-                    (addr >> 8) & 0xFF,  # byte 1: address
-                    addr & 0xFF])  # Byte 2: LSB of address
+            self.rx_command[0] = (opcode << 5) | (log2_length << 3) + ((addr >> 16) & 0x07)  # Byte 0: opcode, length, MSB of address
+            self.rx_command[1] = (addr >> 8) & 0xFF  # Byte 1: address
+            self.rx_command[2] = addr & 0xFF  # Byte 2: LSB of address
 
             # Check command length against platform capability
-            if len(command_bytes) > self.MAX_BSB_COMMAND_PACKET_LENGTH:
-                raise RuntimeError('BSB read command packet is too large for this platform')
-            data = self._send_command(command_bytes, read_length, retry, resync)
+            # if len(command_bytes) > self.MAX_BSB_COMMAND_PACKET_LENGTH:
+            #     raise RuntimeError('BSB read command packet is too large for this platform')
+            rx_buf[offset: offset + read_length] = self._send_command(self.rx_command, read_length, retry, resync)
             if retry is not None and retry < 0:
-                self.logger.warning('%r: FPGA_MMI retry = %i' % (self, retry))
+                self.logger.warning(f'{self!r}: FPGA_MMI retry = {retry}')
                 return
             if offset + read_length > byte_length:
-                raise IOError('%r: mmi.read(): Received too many bytes' % self)
-            dout[offset: offset + read_length] = np.frombuffer(data, dtype=np.uint8)  # store received byte
+                raise IOError(f'{self!r}: mmi.read(): Received too many bytes')
+            # dout[offset: offset + read_length] = np.frombuffer(data, dtype=np.uint8)  # store received byte
             addr += read_length
             offset += read_length
 
-        dout.dtype = np.dtype(type)  # change interpretation of the byte array into a 'type' array
-
-        # If we requested a single value (length=1), returns the object,
-        # otherwise return a numpy array of objects
-
-        if len(dout) == 1:
-            # print(f'mmi read dout={dout} -> {dout[0]}')
-            return dout[0]
+        if type is int:
+            return int.from_bytes(rx_buf, 'big', signed=length < 0)
         else:
-            # print(f'mmi read dout={dout} )')
+            dout = np.frombuffer(rx_buf, dtype=np.dtype(type))
             return dout
+            # # If we requested a single value (length=1), returns the object,
+            # # otherwise return a numpy array of objects
+
+            # if len(dout) == 1:
+            #     # print(f'mmi read dout={dout} -> {dout[0]}')
+            #     return dout[0]
+            # else:
+            #     # print(f'mmi read dout={dout} )')
+            #     return dout
 
 
     def _to_bytes(self, data):
+        """ Returns a byte-like view of `data`
+
+        - A bytestring, bytearray or memoryview is returned as is
+        - A numpy array or numpy integer is viewed as an array of bytes according to its intrinsic endianness. 
+        - A list or tuple is converted in a bytestring (each element representing a byte value)
+        - An integer is interpreted as the value of a single byte
+        - Any other type is passed to bytes() and returned  
+        """
         # print(f'to_bytes data = {data}')
-        if isinstance(data, bytes):
+        if isinstance(data, (bytes, bytearray, memoryview)):
             return data
-        elif isinstance(data, list):
-            return bytes(data)
         elif isinstance(data, np.ndarray):
-            return bytes(iter(data))
+            return data.view('u1')
+        elif isinstance(data, (list, tuple)):
+            return bytes(data)
+        elif isinstance(data, np.integer):
+            return np.array((data,)).view('u1')
         elif isinstance(data, int):
-            return bytes([data])
-        elif isinstance(data, (np.uint32, np.uint16, np.uint8)):
-            return data.newbyteorder('>').tobytes()  # store as big endian (most significant byte first)
+            return bytes((data,))
         else:
-            return bytes([data])
+            return bytes(data)
 
     def write(self, addr, data, mask=None, retry=None, resync=True):
         """
-        Writes byte(s) to memory-mapped registers in the FPGA through the
-        Ethernet interface.
+        Writes byte(s) to memory-mapped registers in the FPGA.
 
         'data' can be:
             - String
@@ -178,35 +211,33 @@ class BSB_MMI:
         """
 
 
-        if addr & self._RAM_BASE_ADDR:
-            opcode = self.OPCODE_WRITE_RAM
-        elif addr & self._STATUS_BASE_ADDR:
-            raise FpgaMmiException(
-                'FpgaMmi: Attempt to write to a STATUS register')
-        elif mask is None:
-            opcode = self.OPCODE_WRITE_CONTROL
-        else:
-            opcode = self.OPCODE_WRITE_CONTROL_MASK
-
-        command_bytes = bytes((
-            (opcode << 5) | ((addr >> 16) & 0x07),
-            (addr >> 8) & 0xFF,
-            addr & 0xFF))
+        opcode = self.WRITE_OPCODES[addr >> 19] if mask is None else self.MASKED_WRITE_OPCODES[addr >> 19]
+        if opcode is None:
+            raise RuntimeError(f'Invalid opcode for address page {addr >> 19}')
 
         data_bytes = self._to_bytes(data)
-        length = len(data_bytes)
+        length = len(data_bytes) if mask is None else 2 * len(data_bytes)
+
+        # use preallocated destination buffer unless we need more bytes, in which case a new one is allocated
+        tx_buf = self.tx_buf[:length + 3] if length <= len(self.tx_buf) else memoryview(bytearray(length + 3)) 
+
+        tx_buf[0] = (opcode << 5) | ((addr >> 16) & 0x07)  # Byte 0: opcode, length, MSB of address
+        tx_buf[1] = (addr >> 8) & 0xFF  # Byte 1: address
+        tx_buf[2] = addr & 0xFF  # Byte 2: LSB of address
+
 
         # If there is a mask, interleave the data with the masks
         if mask is not None:
-            mask_bytes = self._to_bytes(mask)
-            data_bytes = b''.join(
-                [bytes((d, m)) for (d, m) in zip(data_bytes, mask_bytes)])
+            tx_buf[3::2] = data_bytes
+            tx_buf[4::2] = self._to_bytes(mask)
+        else:
+            tx_buf[3:] = data_bytes
 
         # Check command length against platform capability
-        if len(command_bytes) + len(data_bytes) > self.MAX_BSB_COMMAND_PACKET_LENGTH:
+        if len(tx_buf) > self.MAX_BSB_COMMAND_PACKET_LENGTH:
             raise RuntimeError('BSB write Command packet is too large for this platform')
 
-        self._send_command(command_bytes + data_bytes, 0, retry, resync)
+        self._send_command(tx_buf, 0, retry, resync)
         return length
 
     def flush(self, timeout=0.05):

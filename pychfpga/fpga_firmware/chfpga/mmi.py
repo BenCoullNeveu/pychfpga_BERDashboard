@@ -113,38 +113,34 @@ class BitField(object):
             obj.write_drp(self._addr, new_data)
         elif self.page == self.CONTROL:
             number_of_bytes = (self.bit + self.width - 1) // 8 + 1
-            mask_bytes = np.array(((1 << self.width)-1) << self.bit, '>u8').tobytes()
-            data_bytes = np.array(value << self.bit, '>u8').tobytes()
-
-
-            obj.write_control(self.msb_addr,
-                              data_bytes[-number_of_bytes:],
-                              mask=mask_bytes[-number_of_bytes:])
+            mask_bytes = (((1 << self.width) - 1) << self.bit).to_bytes(number_of_bytes, 'big')
+            data_bytes = (value << self.bit).to_bytes(number_of_bytes, 'big')
+            obj.write_control(self.msb_addr, data_bytes, mask=mask_bytes)
 
         elif self.page == self.STATUS:
             raise RuntimeError('Cannot write to a STATUS register')
         elif self.page == self.RAM:
             raise RuntimeError('Cannot use a bitfield to write to a RAM page')
         else:
-            raise RuntimeError('Unknown page %i' % self.page)  # Should never happen, was tested in __init__
+            raise RuntimeError(f'Unknown page {self.page}')  # Should never happen, was tested in __init__
 
     def read(self, obj):
-        if self.number_of_bytes not in self.data_types:
-            raise ValueError(
-                'Unsupported byte width %i. The bitfield must '
-                'span exactly 1, 2, 4 or 8 bytes' % self.number_of_bytes)
-        data_type = self.data_types[self.number_of_bytes]
+        # if self.number_of_bytes not in self.data_types:
+        #     raise ValueError(
+        #         'Unsupported byte width %i. The bitfield must '
+        #         'span exactly 1, 2, 4 or 8 bytes' % self.number_of_bytes)
+        # data_type = self.data_types[self.number_of_bytes]
 
         if self.page == self.DRP:
             value = obj.read_drp(self._addr)  # read 16-bit value
         elif self.page == self.CONTROL:
-            value = obj.read_control(self.msb_addr, type=data_type)
+            value = obj.read_control(self.msb_addr, type=int, length=self.number_of_bytes)
         elif self.page == self.STATUS:
-            value = obj.read_status(self.msb_addr, type=data_type)
+            value = obj.read_status(self.msb_addr, type=int, length=self.number_of_bytes)
         elif self.page == self.RAM:
-            value = obj.read_ram(self.msb_addr, type=data_type)
+            value = obj.read_ram(self.msb_addr, type=int, length=self.number_of_bytes)
         else:
-            raise RuntimeError('Unknown page %i' % self.page)  # Should never happen, was tested in __init__
+            raise RuntimeError(f'Unknown page {self.page}')  # Should never happen, was tested in __init__
 
         # if verbose:
         #     print('Read base address %05X, addr: %i - %i, bit %i, width=%i, value=%i' % (obj.base_address, msb_addr, lsb_addr, self.bit, self.width, data))
@@ -206,16 +202,17 @@ class MMI(object):
     def _lock(self):
         self.__dict__['_locked'] = True
 
-    def read(self, addr, *args, **kwargs):
-        """ Reads bytes from the FPGA memory-mapped registers."""
+    def read(self, addr, type, length, **kwargs):
+        """ Reads bytes from the FPGA memory-mapped registers according to the specified `type` and `length`.
+        """
         # if isinstance(addr, int):
-        return self.fpga.mmi.read(self.base_address + addr, *args, **kwargs)
+        return self.fpga.mmi.read(self.base_address + addr, type=type, length=length, **kwargs)
         # elif isinstance(addr, str):
         #     return self.fpga.read(self.base_address + self.BITS[addr].addr, *args, **kwargs)
 
     def read_bit(self, addr, bit):
         """ Reads a bit from a FPGA memory-mapped register."""
-        return bool(self.read(addr) & (1 << bit))
+        return bool(self.read(addr, type=int, length=1) & (1 << bit))
 
     def read_drp(self, addr):
         """
@@ -225,33 +222,33 @@ class MMI(object):
         """
         if not 0 <= 2* addr <= 0x1FF:
             raise RuntimeError('%r: Invalid DRP address %i' % (self, addr))
-        return self.read(_RAM_BASE_ADDR + 2 * addr, type=np.dtype('<u2'))
+        return self.read(_RAM_BASE_ADDR + 2 * addr, type=np.dtype('<u2'), length=1)[0]
 
-    def read_ram(self, addr, *args, **kwargs):
+    def read_ram(self, addr, type, length, **kwargs):
         """
-        Reads a byte from the RAM space
+        Reads an array of `length` bytes from address `addr` in the RAM space
         """
         if not 0 <= addr <= 0x1FF:
             raise RuntimeError('%r: Invalid RAM address %i' % (self, addr))
-        return self.read(_RAM_BASE_ADDR + addr, *args, **kwargs)
+        return self.read(_RAM_BASE_ADDR + addr, type=type, length=length, **kwargs)
 
-    def read_status(self, addr, *args, **kwargs):
+    def read_status(self, addr, type, length, **kwargs):
         """
-        Reads byte(s) from the STATUS registers
+        Reads a `length` bytes from the STATUS registers from address `addr`
         """
 
         if not 0 <= addr <= 0x07F:
             raise RuntimeError('%r: Invalid STATUS register address %i' % (self, addr))
-        return self.read(_STATUS_BASE_ADDR + addr, *args, **kwargs)
+        return self.read(_STATUS_BASE_ADDR + addr, type=type, length=length, **kwargs)
 
-    def read_control(self, addr, *args, **kwargs):
+    def read_control(self, addr, type, length):
         """
-        Reads byte(s) from the STATUS registers
+        Reads `length` bytes from the CONTROL registers starting at address `addr`
         """
 
         if not 0 <= addr <= 0x07F:
             raise RuntimeError('%r: Invalid CONTROL register address %i' % (self, addr))
-        return self.read(_CONTROL_BASE_ADDR + addr, *args, **kwargs)
+        return self.read(_CONTROL_BASE_ADDR + addr, type=type, length=length)
 
     def read_bitfield(self, bitfield, verbose=0):
         """ Reads the field identified by the name 'bit_name' which is looked
