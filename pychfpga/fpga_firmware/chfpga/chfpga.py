@@ -59,6 +59,7 @@ from .ct_engine import shuffle_crossbar
 from .ct_engine import shuffle
 from .ct_engine import gpu
 from .ct_engine import cge
+from .ct_engine import ucap
 
 # FPGA Correlator (X-Engine)
 from .x_engine import CORR  # 16-channel correlator (if implemented in firmware)
@@ -142,13 +143,14 @@ class chFPGA(FPGAFirmware):
     # Top systems
     _SYSTEM_BASE_ADDR = 0x00000
     _SYSTEM_BASE_ADDR      = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 0  #: 0x00000: System peripherals base address.
-    _CHAN_BASE_ADDR        = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 1  #: 0x10000: Channelizer base address. The ADCDAQ subsystem is located in the CHAN address space.
-    _CROSSBAR1_BASE_ADDR   = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 2  #: 0x20000: 1st CROSSBAR (channelizer crossbar) base address
+    _CHAN_BASE_ADDR        = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 1  #: 0x10000: F-Engine (channelizer) base address. The ADCDAQ subsystem is located in the CHAN address space.
+    _CROSSBAR1_BASE_ADDR   = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 2  #: 0x20000: CT-Engine 1st CROSSBAR (channelizer crossbar) base address
     _GPU_LINK_BASE_ADDR    = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 3  #: 0x30000: GPU Link base address
-    _CROSSBAR3_BASE_ADDR   = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 4  #: 0x40000: 3rd crossbar (shard with correlator)
-    _CORR_BASE_ADDR        = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 4  #: 0x40000: Correlator (shared with 3rd crossbar)
-    _BP_SHUFFLE_BASE_ADDR  = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 5  #: 0x50000: Backplane PCB and Backplane QSFP 10Gbps packet transmitter/receivers
-    _CROSSBAR2_BASE_ADDR   = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 6  #: 0x60000: 2nd CROSSBAR base address
+    _CROSSBAR3_BASE_ADDR   = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 4  #: 0x40000: CT-Engine 3rd crossbar (shard with correlator)
+    _CORR_BASE_ADDR        = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 4  #: 0x40000: X-Engine (correlator) (shared with 3rd crossbar)
+    _BP_SHUFFLE_BASE_ADDR  = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 5  #: 0x50000: CT-Engine Backplane PCB and Backplane QSFP 10Gbps packet transmitter/receivers
+    _CROSSBAR2_BASE_ADDR   = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 6  #: 0x60000: CT-Engine 2nd CROSSBAR base address
+    _UCAP_BASE_ADDR        = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 7  #: 0x60000: UCAP base address
 
     _SYSTEM_ADDR_INCREMENT         = 0x01000  #: Address increment between each system peripheral (addressed by bits 15:12 -> 16 possible submodules)
     _CHAN_ADDR_INCREMENT           = 0x01000  #: Address increment between each channelizer (addressed by bits 15:12 -> 16 possible submodules)
@@ -708,6 +710,7 @@ class chFPGA(FPGAFirmware):
                 self.MAX_BSB_COMMAND_LENGTH = 512
                 self.CROSSBAR1_TYPE = "URAM"
                 self.GPU_LINK_TYPE = "100GE"
+                self.CAPTURE_TYPE = "UCAP"
 
             elif self.PLATFORM_ID in (self._PLATFORM_ID_MGK7MB_REV0, self._PLATFORM_ID_MGK7MB_REV2):
                 assert self.mb.part_number == "MGK7MB", 'This version of the firmware is meant to operate on the MGK7MB (IceBoard) only'
@@ -718,6 +721,7 @@ class chFPGA(FPGAFirmware):
                 self.MAX_BSB_COMMAND_LENGTH = 2048  # maybe more, depends on the UDP bufer
                 self.CROSSBAR1_TYPE = "BRAM"
                 self.GPU_LINK_TYPE = "10GE"
+                self.CAPTURE_TYPE = "PROBER"
             else:
                 raise RuntimeError(f'Unknown feature list for PLATFORM_ID = {self.PLATFORM_ID}')
 
@@ -880,10 +884,16 @@ class chFPGA(FPGAFirmware):
                 elif self.GPU_LINK_TYPE=='100GE':
                     self.GPU = cge.CGE(self, self._GPU_LINK_BASE_ADDR, self._GPU_LINK_ADDR_INCREMENT)
                 else:
-                    raise RuntimeError('Unknown GPU link type {self.GPU_LINK_TYPE}')
+                    raise RuntimeError(f'Unknown GPU link type {self.GPU_LINK_TYPE}')
             else:
                 self.GPU = None
 
+            if self.CAPTURE_TYPE == 'UCAP':
+                self.logger.debug(f'{self!r}: === Instantiating UCAP')
+                self.UCAP = ucap.UCAP(self, self._UCAP_BASE_ADDR, 0)
+            elif self.CAPTURE_TYPE !='PROBER':
+                raise RuntimeError(f'Unknown Data capture type {self.CAPTURE_TYPE}')
+   
             self.logger.debug('%r: This motherboard has %i FMC slots' % (self, self._NUMBER_OF_FMC_SLOTS))
 
             # ---------------------------------------------------------------------
@@ -1222,7 +1232,7 @@ class chFPGA(FPGAFirmware):
         """
         # print(f'Reading core reg via MMI at {addr:03X}')
         if self.mmi:
-            return int(self.mmi.read(self.mmi._RAM_BASE_ADDR + addr, type='<u4')) & 0xFFFFFFFF
+            return int(self.mmi.read(self.mmi._RAM_BASE_ADDR + addr, type='<u4'), length=1) & 0xFFFFFFFF
         else:
             raise IOError('Attempted to read FPGA core registers before MMI is initialized')
 
@@ -1313,7 +1323,7 @@ class chFPGA(FPGAFirmware):
         if not self.is_core_open():
             await self.open_core()
         try:
-            self.mmi.read(self._GPIO_COOKIE_REG, timeout=timeout)
+            self.mmi.read(self._GPIO_COOKIE_REG, type=int, length=1, timeout=timeout)
             return True
         except IOError:
             return False
@@ -1401,8 +1411,8 @@ class chFPGA(FPGAFirmware):
                 self.logger.debug(f'{self!r}: Trying to read from FPGA UDP stack')
                 try:
                     self.mmi.flush()
-                    self.mmi.read(0, length=1, retry=-1, resync=1)
-                    self.mmi.read(0, length=1, resync=1)
+                    self.mmi.read(0, type=int, length=1, retry=-1, resync=1)
+                    self.mmi.read(0, type=int, length=1, resync=1)
                     self.mmi.flush()
                     (cmd, rply) = self.GPIO.get_command_count()
                     self.mmi.send_counter = cmd
@@ -1762,7 +1772,7 @@ class chFPGA(FPGAFirmware):
         by the first command sent to the FPGA to reset the communication link.
         """
         await asyncio.sleep(0)
-        return self.mmi.read(self._GPIO_COOKIE_REG, resync=resync) & 0x7F
+        return self.mmi.read(self._GPIO_COOKIE_REG, type=int, length=1, resync=resync) & 0x7F
 
     def get_fpga_firmware_version(self):
         """
