@@ -65,11 +65,13 @@ class TestUtils:
                  self.ps = self.open_ps()
              # Check status of power supply:
              ps_status = self.ps.status()['status']
-             if ps_status == 'ON':
+             if ps_status == 'ON' or ps_status == 'OK':
                 print(f'Power supply is {ps_status}')
                 # Turning off power supply
-                print('Turning off power supply...')
+                print(f'Turning off power supply...')
                 self.ps.set_output(state=False) # Force power cycle if power supply is on
+                ps_status = self.ps.status()['status']
+                print(f'Power supply is now {ps_status}')
                 time.sleep(5) # Give it a few seconds before turning back on
              else:
                  print(f'Power supply is {ps_status}')
@@ -95,6 +97,8 @@ class TestPreDeploymentCrate(TestUtils):
     List of tests:
 
     0?) Visual inspection?
+    
+    0) Check connection to power supply
 
     1) Check board initialization:
         - all 16 boards found in hwm
@@ -142,6 +146,77 @@ class TestPreDeploymentCrate(TestUtils):
         if self.ps:
             self.ps.set_output(state=False) #Ensuring power on N5764A is off
 
+    def test_ps_connection(self, xr):
+        """
+        QC000: Power supply connection test: ensure power supply responds to commands consistently.
+
+        Procedure:
+            
+            - Start the power supply connection test on the computer
+            - Open connection to power supply
+            - If test fails, then power supply stops turning on/off
+        """
+        xr.header('Power Supply Connection Test')
+        cfg = self.cfg.f_engine_tests.ps_connection_test
+        n_ps_cycles = cfg.n_ps_cycles
+        on_time = cfg.on_time
+        off_time = cfg.off_time
+
+        test_results = NameSpace()
+
+        turn_ON_errs = []
+        turn_OFF_errs = []
+
+        passed = False
+
+        try:
+
+            for n in range(n_ps_cycles):
+                
+                # open connection to power supply
+                #********************************************************************************************************************************
+                #if this test fails, place this line outside of the for loop - maybe opening the connection everytime is the source of the problem
+                #********************************************************************************************************************************
+                self.ps = self.open_ps()
+
+
+                print('\n*******************************')
+                print(f'Cycle {n+1}/{n_ps_cycles}')
+                print('*******************************')
+
+                          
+                print('--------------------------------------------')
+                print(f'Turning ON power supply')
+                print(f'Wait {on_time} seconds')
+                # turn on power supply
+                self.ps.set_output(state=True)
+                time.sleep(on_time)
+                ps_status = self.ps.status()['status']
+                print(f'Power supply is {ps_status}')
+                if ps_status != 'ON' and ps_status != 'OK':
+                    turn_ON_errs.append(f'cycle {n+1}: {ps_status}')
+                
+                print('--------------------------------------------')
+                print(f'Turning OFF power supply')
+                print(f'Wait {off_time} seconds')
+                # turn off power supply
+                self.ps.set_output(state=False)
+                time.sleep(off_time)
+                ps_status = self.ps.status()['status']
+                print(f'Power supply is {ps_status}')
+                if ps_status != 'OFF':
+                    turn_OFF_errs.append(f'cycle {n+1}: {ps_status}')
+                print('--------------------------------------------')
+
+            assert (not turn_ON_errs and not turn_OFF_errs), f'Power supply connection errors: turning ON errors: {turn_ON_errs}, turning OFF errors: {turn_OFF_errs}'
+            passed = True
+
+        finally:
+            test_results.passed = passed
+            xr.save_data(test_results)
+            # if this test passed, the ps should already be off; if it didn't, it can't be turned off remotely and has to be turned off manually
+            # self.ps.set_output(state=False)    
+
     def test_init(self, xr):
         """
         QC001: Crate initialization test: ensure crate properly intializes
@@ -173,8 +248,8 @@ class TestPreDeploymentCrate(TestUtils):
         finally:
             test_results.passed = passed
             xr.save_data(test_results)
-            self.ps.set_output(state=False) # Turn off power supply
-
+            #self.ps.set_output(state=False) # Turn off power supply
+    
 
     def test_bperr(self, xr):
         """
@@ -198,7 +273,7 @@ class TestPreDeploymentCrate(TestUtils):
 
         passed = False
         bp_errs = []
-
+    
         try:
             # Initialize the crate
             self.ca = self.crate_init()
@@ -206,14 +281,17 @@ class TestPreDeploymentCrate(TestUtils):
             for n in range(n_checks):
 
                 # Add 1s of sleep time between error gathering in case errors accumulate:
-                asyncio.sleep(t_sleep)
+                time.sleep(t_sleep)
 
                 # Get corner turn engine status:
                 # info = asyncio.run(self.ca.get_corner_turn_engine_status_async(reset_stats=True)) # reset stats for each check
 
                 bp_errs_cycle_n = self.check_bp_errs()
-                bp_errs.append(f'cycle {n}', bp_errs_cycle_n)
-
+               # bp_errs.append([f'cycle {n}', bp_errs_cycle_n])
+               # cycle_errs.append(bp_errs_cycle_n)
+                if bp_errs_cycle_n:
+                    bp_errs.append([f'cycle {n}', bp_errs_cycle_n])
+               # bp_errs.append(bp_errs_cycle_n)
                 # # In shuffle256 mode, there should be no errors on any lanes on any subsystems on any motherboard.
 
                 # if shuffle_mode == 'shuffle256':
@@ -287,13 +365,16 @@ class TestPreDeploymentCrate(TestUtils):
                 #                         bp_errs.append([slot, ss, lane, status, label ,fields])
 
             assert not bp_errs, f'Backplane errors present on: {bp_errs}'
+        
+           # if not bp_errs:            
             passed = True
 
         finally:
             test_results.passed = passed
             xr.save_data(test_results)
             self.ps.set_output(state=False) # Turn off power supply
-
+            #assert not bp_errs, f'Backplane erros present on: {bp_errs}'
+            
     def test_sync(self, xr):
         """
         QC003: Sync/IRIG-B test: stress test of crate sync using IRIG-B
@@ -321,7 +402,6 @@ class TestPreDeploymentCrate(TestUtils):
         try:
             # xr.input('Turn on the power supply. Press ENTER to continue. (Q:Exit) ')
             self.ca = self.crate_init()
-            counter = 0
             for n in range(n_syncs):
                 print(f'Sync {n+1}')
                 try:
@@ -332,7 +412,7 @@ class TestPreDeploymentCrate(TestUtils):
                     exception_fails += 1
                     exception_tags.append([f'Cycle {n}', repr(e)])
 
-            assert counter == n_syncs, f'Sync fails observed on: {exception_tags}'
+            assert sync_counter == n_syncs, f'Sync fails observed on: {exception_tags}'
             passed = True
         finally:
             test_results.passed = passed
@@ -362,8 +442,9 @@ class TestPreDeploymentCrate(TestUtils):
         # The FreqCtr counts rising clock edges; the most it could miss over a given integration period
         # is 1 edge. Also, FreqCtr measures at 1/2 the rate of the 400 MHz clock coming from the ADC,
         # so it could miss, at most, 2 rising edges.
-        expected_diffs = {-2/integration_period, 0.0, 2/integration_period} # fix this
+        expected_diffs = {-2/integration_period, 0.0, 2/integration_period}
         failed_clocks = []
+        measured_diffs = []
 
         passed = False
         try:
@@ -376,13 +457,12 @@ class TestPreDeploymentCrate(TestUtils):
             # is the maximum error, resulting from a missed rising edge) --> is this correct?
 
             for i in self.ca.ib:
-                for clock in range(15):
+                for clock in range(16):
                     print(f'{i}, ADC_CLK{clock}')
                     diffs = set(i.FreqCtr.read_frequency(f'ADC_CLK{clock}', integration_period) - 200e6 for _ in range(n_clock_checks))
                     # If diffs is not a subset of expected_diffs, i.e. it contains an unexpected value, then append to failed_clocks
                     if not diffs.issubset(expected_diffs):
-                        failed_clocks.append([f'{i}', f'ADC_CLK{clock}', diffs])
-
+                        failed_clocks.append([f'{i}', f'ADC_CLK{clock}', diffs])    
             assert not failed_clocks, f'ADC clock errors present on: {failed_clocks}'
             passed = True
 
@@ -466,7 +546,7 @@ class TestPreDeploymentCrate(TestUtils):
 
             for i in self.ca.ib:
                 for channel in range(16):
-                    print('=============================================================')
+                    print(f'=============================================================')
                     print(f'Checking ADC eye diagrams for {i}, ADC channel {channel}')
 
                     ref_nz_idx = [] # 'reference non-zero indices', checks where non-zero values are in eye diagram
@@ -532,6 +612,8 @@ class TestPreDeploymentCrate(TestUtils):
         percent_accept = cfg.percent_accept
         n_fails_accept = int(percent_accept*n_cycles) # Define number of acceptable fails
         t_cycle = cfg.t_cycle
+        run_all_tests = cfg.run_all_tests
+        minutes = cfg.t_pause_crate_init
 
         test_results = NameSpace()
 
@@ -552,76 +634,81 @@ class TestPreDeploymentCrate(TestUtils):
         backplane_err_tags = []
 
         passed = False
+        
         try:
+
             for n in range(n_cycles):
+               
                 print(f'****************************')
                 print(f'Power-cycling test iteration {n + 1}/{n_cycles}')
                 print(f'****************************')
+                
                 # Initialize the crate:
                 try:
                     self.ca = self.crate_init()
-                except (RuntimeError, IOError) as e:
+                except (RuntimeError, IOError, OSError) as e:
+                    
                     print(f'Failed initializing the array because of error {e!r}')
+                    
                     init_exception_fails += 1
-                    init_exception_tags.append(repr(e))
-                    print(f'Errors so far at iteration {n + 1}/{n_cycles}: ADC clk errors:{clk_fails}, UDP errors={udp_fails}')
-                    print(f'init_exceptions={init_exception_fails}, delay_exceptions={delay_fails}, backplane errors = {backplane_fails}')
-                    continue
+                    init_exception_tags.append({'Cycle': n, 'exception': repr(e)})
 
-                # Run the backplane test first (otherwise set_adc_delays makes things too busy and can cause issues):
-                print('Checking backplane errors...')
-                bp_errs = self.check_bp_errs()
-                if len(bp_errs) > 0:
-                    print('Got the following backplane errors:')
-                    print('bp_errs: ', bp_errs)
-                    backplane_fails += 1
-                    backplane_err_tags.append({'Cycle': n,
+                else:
+                    # Run the backplane test first (otherwise set_adc_delays makes things too busy and can cause issues)
+                    print('Checking backplane errors...')
+                    bp_errs = self.check_bp_errs()
+                    if len(bp_errs) > 0:
+                        print('Got the following backplane errors:')
+                        print('bp_errs: ', bp_errs)
+                        backplane_fails += 1
+                        backplane_err_tags.append({'Cycle': n,
                                                   'ib': i,
                                                   'bp_errs': bp_errs})
 
-                print('Got an IceBoard array')
-                for i in self.ca.ib:
+                    print('Got an IceBoard array')
+                    for i in self.ca.ib:
  
-                    # Check counters and error lists:
-                    n_clk_errs = i.adc_clk_err_ctr
-                    clk_errs_msgs = i.adc_clk_err_msgs
-                    n_udp_errs = i.udp_err_ctr + i.mmi.error_counter
-                    udp_errs_msgs = i.adc_clk_err_msgs
-                    print(f'Slot {i.slot} got {n_clk_errs} ADC clock errors, {n_udp_errs} UDP communication errors')
+                        # Check counters and error lists:
+                        n_clk_errs = i.adc_clk_err_ctr
+                        clk_errs_msgs = i.adc_clk_err_msgs
+                        n_udp_errs = i.udp_err_ctr + i.mmi.error_counter
+                        udp_errs_msgs = i.adc_clk_err_msgs
+                        print(f'Slot {i.slot} got {n_clk_errs} ADC clock errors, {n_udp_errs} UDP communication errors')
 
-                    # Increment error counters if needed, and append relevant
-                    # information to err_tags:
-                    if n_clk_errs != 0:
-                        clk_fails += 1
-                        adc_err_tags.append({'Cycle': n,
+                        # Increment error counters if needed, and append relevant
+                        # information to err_tags:
+                        if n_clk_errs != 0:
+                            clk_fails += 1
+                            adc_err_tags.append({'Cycle': n,
                                          'ib': i,
                                          'n_clk_errs': n_clk_errs,
                                          'clk_err_msgs': clk_errs_msgs})
-                    if n_udp_errs != 0:
-                        udp_fails += 1
-                        udp_err_tags.append({'Cycle': n,
+                        if n_udp_errs != 0:
+                            udp_fails += 1
+                            udp_err_tags.append({'Cycle': n,
                                          'ib': i,
                                          'n_udp_errs': n_udp_errs,
                                          'clk_err_msgs': clk_errs_msgs})
 
-                    # Now set all ADC delays and check for exceptions:
-                    try:
-                        i.set_adc_delays(compute_delays = 2, save_delays = False, check_sync_delays = 1, check_adc_delays = 20)
-                    except (RuntimeError) as e:
-                        print(f'set_adc_delays failed because of error {e!r}')
-                        delay_fails += 1
-                        delay_exception_tags.append({'Cycle': n,
+                        # Now set all ADC delays and check for exceptions:
+                        try:
+                            i.set_adc_delays(compute_delays = 2, save_delays = False, check_sync_delays = 1, check_adc_delays = 20)
+                        except (RuntimeError, IOError, OSError) as e:
+                            print(f'set_adc_delays failed because of error {e!r}')
+                            delay_fails += 1
+                            delay_exception_tags.append({'Cycle': n,
                                                     'ib': i,
                                                     'exception': repr(e)})
 
-                for i in self.ca.ib:
-                    # Close UDP communication with the iceboard to prevent errors:
-                    print(f'Closing UDP connection to slot {i.slot}')
-                    asyncio.run(i.close_async())
+                    for i in self.ca.ib:
+                        # Close UDP communication with the iceboard to prevent errors:
+                        print(f'Closing UDP connection to slot {i.slot}')
+                        asyncio.run(i.close_async())
 
                 print(f'Errors so far at iteration {n + 1}/{n_cycles}: ADC clk errors={clk_fails}, UDP errors={udp_fails}')
                 print(f'init_exceptions={init_exception_fails}, delay_exceptions={delay_fails}, backplane errors={backplane_fails}')
-
+                
+                
                 # Turn off crate and sleep before turning back on
                 # to allow it to cool down:
                 print('Turning OFF the crate')
@@ -629,14 +716,15 @@ class TestPreDeploymentCrate(TestUtils):
                 print(f'Letting the crate cool down for {t_cycle} seconds before repeating the test')
                 time.sleep(t_cycle)
 
-            assert (max([init_exception_fails, clk_fails, udp_fails, delay_fails, backplane_fails]) < n_fails_accept), f'ADC errors on: {adc_err_tags}, UDP errors on: {udp_err_tags}, Init exceptions on: {init_exception_tags}, Delay exceptions on: {delay_exception_tags}, Backplane errors on: {backplane_err_tags}'
+            assert (max(init_exception_fails, clk_fails, udp_fails, delay_fails, backplane_fails) < n_fails_accept), f'ADC errors on: {adc_err_tags}, UDP errors on: {udp_err_tags}, Init exceptions on: {init_exception_tags}, Delay exceptions on: {delay_exception_tags}, Backplane errors on: {backplane_err_tags}'
             passed = True  # Yeh, we made it through
 
         finally:
             test_results.passed = passed
             xr.save_data(test_results)
             self.ps.set_output(state=False) # Turn off power supply
-
+           
+            
     def check_bp_errs(self):
         """
         Check for backplane errors. This has been made into its own function so it can be called
