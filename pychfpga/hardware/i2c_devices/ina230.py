@@ -43,7 +43,7 @@ class ina230(object):
         self.address = address
         self.port = port
 
-    def init(self, v_out, r_shunt, i_typ, tol_i):
+    def init(self, v_out=0, r_shunt=0.01, i_typ=1, tol_i=0.2):
         """ Initialization of INA230 I2C current/power monitor object
 
         Parameters:
@@ -53,10 +53,14 @@ class ina230(object):
             tol_i is the tolerance in the measured resistance (the Maximum Expected Current is ityp*(1+tol_i))
         """
         # Calibration to be written in CAL register.
-        self.cal = int(np.floor(((2.**15) * 5.12) / ((i_typ * (1 + tol_i)) * r_shunt)))
+        # self.cal = int(np.floor(((2.**15) * 5.12) / ((i_typ * (1 + tol_i)) * r_shunt)))
         # current conversion factor (amps/LSB). First calculate self.cal since
         # that implies a rounding (maybe doesn't matter)
-        self.current_lsb = 5.12 / (self.cal * r_shunt)
+        # self.current_lsb = 5.12 / (self.cal * r_shunt)
+
+        self.current_lsb = (i_typ * (1 + tol_i)) / 2**15
+        self.cal = int(0.00512 / (self.current_lsb * r_shunt))
+
         self.power_lsb = 25. * self.current_lsb  # power conversion factor (watts/LSB)
 
         self.write('CONF', 0x8000, mask=0x8000)  # Generating system reset
@@ -91,8 +95,8 @@ class ina230(object):
         else:
             new_value = value
 
-        msbyte = new_value >> 8
-        lsbyte = new_value - (msbyte << 8)
+        msbyte = (new_value >> 8) & 0xff
+        lsbyte = new_value & 0xff
 
         self.i2c.write_read(self.address, data=[register, msbyte, lsbyte])
 

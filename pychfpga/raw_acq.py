@@ -850,6 +850,13 @@ class RawPacketProcessor(object):
         self.hdf5_refresh_time = 30  # is updated when HDF5 capture is requested
         self.hdf5_last_time = np.zeros(self.NCHAN, dtype=np.float64)
         self.hdf5_block_writes = 0
+        # Auxiliary ADC HDF5 file writer parameters
+        self.hdf5_capture_aux_enable = False
+        self.hfd5_aux_base_dir = None
+        self.hdf5_aux_file = None
+        self.hdf5_aux_refresh_time = 1# updated when HDF5 capture is requested
+        self.hdf5_aux_stream_ids = [6] # adc input ids for which to save auxiliary hdf5 stream
+        self.hdf5_aux_last_time = np.zeros(self.NCHAN, dtype=np.float64)
 
         # ADC averaged RMS processing
         self.adc_rms_rlock = threading.RLock()
@@ -1073,8 +1080,11 @@ class RawPacketProcessor(object):
             #         self.jumps.get(jump_id, 0) +
             #         np.sum(np.abs(np.diff(adc_data)) > threshold))
 
+
+
     def process_adc_hdf5(self, buf_ix, ix):
-        """ Write data to HDF file
+        """ Write data to HDF5 files: one file for all the adc inputs and an optional separate file
+        for a selected adc input with different cadence
 
         Parameters:
 
@@ -1085,42 +1095,88 @@ class RawPacketProcessor(object):
 
         We write data for channels that have not been written for at least self.hdf5_refresh_time
         """
-        if self.hdf5_file:
-            t0 = time.time()
-            # find the channel index of channels that need to be written
-            is_old = (t0 - self.hdf5_last_time[ix]) > self.hdf5_refresh_time  # boolean ndarray
-            # find buffer index of entries that should be written
-            bix = buf_ix[is_old]
-            if bix.size:
-                # update the last time of the channels . We use the boolean
-                # array directly, since we don't need to reuse an channel
-                # index array anymore
-                self.hdf5_last_time[ix[is_old]] = t0
-                # save the selected entries. Unfortunately, the array indexing
-                # buf_x[bix] will cause copies to be created for each
-                # argument. To avoid this extra copy, we would have to pass
-                # bix separately, and let the copy happen only when we
-                # transfer the data to the hdf5 internal buffers.
-                self.hdf5_file.write(
-                    self.buf_ts[bix],
-                    self.buf_stream_id[bix],
-                    self.buf_flags[bix],
-                    self.buf_data[bix])
 
-            # keep track of how many packets we write and how much time it
-            # takes so we can get an average that informs us of the maximum
-            # packet rate we can sustain
-            dt = time.time() - t0
-            # self.log.info(f'{self!r}: it took {dt*1000:.3f} ms to write {len(bix) packets to HDF5 file')
-            self.hdf5_block_writes += 1
+        def write_adc_stream(hdf5_file=self.hdf5_file,
+                            hdf5_last_time=self.hdf5_last_time,
+                            hdf5_refresh_time=self.hdf5_refresh_time,
+                            stream_ids=None):
+
+            """ Does the actual writing of raw adc frames from the buffer based on the selected refresh rate
+            for the chosen HDF5 writer. In the case of auxiliary hdf5 writer in selects only the frames for
+            the chosen adc input.
+
+            Parameters:
+
+                hdf5_file (hdf5 file): Which file to write the frames to(options: self.hfd5_file - containting
+                     all adc inputs or self.hdf5_aux_file - contating a chosen self.hdf5_aux_stream_ids)
+
+                stream_ids (int): if not `None`, select specified inputs for hdf5 file writer
+
+            The following is assigned during initialisation of RawPacketProcessor (from the config file),
+                    but needs to be explicitly fed into this function:
+
+                hdf5_last_time (ctime): which file's last time to use (options: self.hdf5_last_time or
+                    self.hdf5_aux_last_time)
+                
+                hdf5_refresh_time (ctime): which file's rerfresh time to use (options: self.hdf5_refresh_time
+                    or self.hdf5_aux_refresh_time)
+
+            """
+            if hdf5_file:
+                t0 = time.time()
+                # find the channel index of channels that need to be written
+                is_old = (t0 - hdf5_last_time[ix]) > hdf5_refresh_time  # boolean ndarray
+                # find buffer index of entries that should be written
+                bix = buf_ix[is_old]
+                if stream_ids:
+                    #select only specified channels if provided
+                    iix = ix[is_old]
+                    bix = bix[np.isin(self.stream_id[iix],stream_ids)]
+                if bix.size:
+                    # update the last time of the channels . We use the boolean
+                    # array directly, since we don't need to reuse an channel
+                    # index array anymore
+                    hdf5_last_time[ix[is_old]] = t0
+                    # save the selected entries. Unfortunately, the array indexing
+                    # buf_x[bix] will cause copies to be created for each
+                    # argument. To avoid this extra copy, we would have to pass
+                    # bix separately, and let the copy happen only when we
+                    # transfer the data to the hdf5 internal buffers.
+                    hdf5_file.write(
+                        self.buf_ts[bix],
+                        self.buf_stream_id[bix],
+                        self.buf_flags[bix],
+                        self.buf_data[bix])
+
+                # keep track of how many packets we write and how much time it
+                # takes so we can get an average that informs us of the maximum
+                # packet rate we can sustain
+                dt = time.time() - t0
+                # self.log.info(f'{self!r}: it took {dt*1000:.3f} ms to write {len(bix) packets to HDF5 file')
+                self.hdf5_block_writes += 1
+
+        write_adc_stream(self.hdf5_file, self.hdf5_last_time, self.hdf5_refresh_time)
+        #Separate optional writer for auxiliary channel:
+        if self.hdf5_capture_aux_enable:
+            write_adc_stream(self.hdf5_aux_file, self.hdf5_aux_last_time,self.hdf5_aux_refresh_time,
+                                                                    stream_ids=self.hdf5_aux_stream_ids)
 
     def start_adc_hdf5(self,
                        base_dir,
                        base_filename,
                        capture_duration=60,
                        capture_refresh_time=0,
-                       elements_per_file=2048 * 64):
+                       elements_per_file=2048 * 64,
+                       capture_aux_enable=False,
+                       aux_base_dir='./',
+                       aux_base_filename='{file_number:06d}_aux.h5',
+                       capture_aux_refresh_time=0,
+                       capture_aux_stream_ids=[6],
+                       aux_elements_per_file=2048 *64):
         if self.hdf5_file:
+            self.stop_adc_hdf5()
+            # raise RuntimeError('HDF5 dataWriter is already running')
+        if self.hdf5_aux_file:
             self.stop_adc_hdf5()
             # raise RuntimeError('HDF5 dataWriter is already running')
         self.log.info(
@@ -1128,11 +1184,22 @@ class RawPacketProcessor(object):
             f'with base_dir={base_dir}, base_filename={base_filename}, '
             f'capture_duration={capture_duration} (type={type(capture_duration)}), '
             f'elements_per_file={elements_per_file}')
+
+        self.hdf5_capture_aux_enable = capture_aux_enable
         self.elements_per_file = elements_per_file
-
         self.hdf5_start_time = time.time()  # used to keep track of how long the disk capture has been running
-
         self.hdf5_refresh_time = capture_refresh_time
+
+        if self.hdf5_capture_aux_enable is True:
+            self.log.info(
+                f'{self!r}: Starting HDF5 raw data data writer for auxillary channel '
+                f'with base_dir={aux_base_dir}, base_filename={aux_base_filename}, '
+                f'capture_duration={capture_duration} (type={type(capture_duration)}), '
+                f'elements_per_file={aux_elements_per_file}')
+            self.hdf5_aux_refresh_time = capture_aux_refresh_time
+            self.hdf5_aux_stream_ids = capture_aux_stream_ids
+            self.aux_elements_per_file = aux_elements_per_file
+
 
         # Schedule for the acquisition to stop if capture_ducation is non-zero
         if capture_duration:
@@ -1154,6 +1221,19 @@ class RawPacketProcessor(object):
                                        filename=base_filename,
                                        elements_per_file=self.elements_per_file)
 
+        # Separate writer for auxillary channel:
+        if self.hdf5_capture_aux_enable is True:
+            self.hdf5_aux_base_dir = self.recv.expand_path(aux_base_dir, extra_fields)
+            try:
+                os.makedirs(self.hdf5_aux_base_dir)
+            except Exception:
+                self.log.warning(f"{self!r}: couldn't make directory '{self.hdf5_aux_base_dir}'. Using current directory.")
+                self.hdf5_aux_base_dir = './'
+
+            self.hdf5_aux_file = HDF5RawWriter(base_dir=self.hdf5_aux_base_dir,
+                                           filename=aux_base_filename,
+                                           elements_per_file=self.aux_elements_per_file)
+
     def stop_adc_hdf5(self):
         if not self.hdf5_file:
             raise RuntimeError(f'{self!r}: HDF5 dataWriter is not running. Cannot stop it.')
@@ -1161,6 +1241,15 @@ class RawPacketProcessor(object):
         hdf5_file = self.hdf5_file
         self.hdf5_file = None  # Stop the thread from using the file before we close it
         hdf5_file.close()
+
+        if self.hdf5_capture_aux_enable is True:
+            if not self.hdf5_aux_file:
+                raise RuntimeError(f'{self!r}: Auxiliary HDF5 dataWriter is not running. Cannot stop it.')
+            self.log.info(f'{self!r}: Stopping auxiliary HDF5 data writer')
+            hdf5_aux_file = self.hdf5_aux_file
+            self.hdf5_aux_file = None  # Stop the thread from using the file before we close it
+            hdf5_aux_file.close()
+
         self.hdf5_start_time = None
         write_rate = ((self.adc_hdf5_max_processing_time * 1000. / self.hdf5_block_writes)
                       if self.hdf5_block_writes else 0)
@@ -2703,13 +2792,25 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
             base_filename='RawAcq',
             capture_duration=0,
             capture_refresh_time=0,
-            elements_per_file=2048 * 64):
+            elements_per_file=2048 * 64,
+            capture_aux_enable=False,
+            aux_base_dir='./',
+            aux_base_filename='RawAcq_aux',
+            capture_aux_refresh_time=0,
+            capture_aux_stream_ids=[6],
+            aux_elements_per_file=2048 * 64):
         self.receiver.raw_packet_processor.start_adc_hdf5(
             base_dir=base_dir,
             base_filename=base_filename,
             capture_duration=capture_duration,
             capture_refresh_time=capture_refresh_time,
-            elements_per_file=elements_per_file)
+            elements_per_file=elements_per_file,
+            capture_aux_enable=capture_aux_enable,
+            aux_base_dir=aux_base_dir,
+            aux_base_filename=aux_base_filename,
+            capture_aux_refresh_time=capture_aux_refresh_time,
+            capture_aux_stream_ids=capture_aux_stream_ids,
+            aux_elements_per_file=aux_elements_per_file)
         return "started hdf5 writing to disk."
 
     @endpoint('stop-raw-hdf5')
@@ -2844,6 +2945,8 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
                  port=RawAcqAsyncRESTServer.DEFAULT_PORT,
                  base_dir='~/data',
                  base_filename=None,
+                 aux_base_dir='~/data',
+                 aux_base_filename=None,
                  create_server=True,
                  **config):
         super().__init__(
@@ -2854,7 +2957,9 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
 
         self.name = name
         self.hdf5_base_dir = base_dir
+        self.hdf5_aux_base_dir = aux_base_dir
         self.base_filename = base_filename or name
+        self.aux_base_filename = aux_base_filename
         self.config = config
 
     async def ping(self):
@@ -2904,14 +3009,27 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
                              base_filename=None,
                              capture_duration=0,
                              capture_refresh_time=0,
-                             elements_per_file=2048 * 64):
+                             elements_per_file=2048 * 64,
+                             capture_aux_enable=None,
+                             aux_base_dir=None,
+                             aux_base_filename=None,
+                             capture_aux_refresh_time=0,
+                             capture_aux_stream_ids=[6],
+                             aux_elements_per_file=2048 * 64):
         result = await self.post(
             'start-raw-hdf5',
             base_dir=base_dir or self.hdf5_base_dir,
             base_filename=base_filename or self.base_filename,
             capture_duration=capture_duration,
             capture_refresh_time=capture_refresh_time,
-            elements_per_file=elements_per_file)
+            elements_per_file=elements_per_file,
+            capture_aux_enable = capture_aux_enable,
+            aux_base_dir=aux_base_dir or self.hdf5_aux_base_dir,
+            aux_base_filename=aux_base_filename or self.aux_base_filename,
+            capture_aux_refresh_time=capture_aux_refresh_time,
+            capture_aux_stream_ids = capture_aux_stream_ids,
+            aux_elements_per_file=aux_elements_per_file
+            )
         return result
 
     async def stop_raw_hdf5(self):
