@@ -117,7 +117,7 @@ class GPIO(MMI):
     PLATFORM_ID                = BitField(STATUS, 11, 0, width=8, doc='Which FPGA/board in use.  0 for ML605 eval board, 1 for KC705 evaluation board')
     FPGA_SERIAL_NUMBER         = BitField(STATUS, 19, 0, width=64, doc='FPGA 57-bit serial number')
     NUMBER_OF_CROSSBAR_INPUTS  = BitField(STATUS, 20, 0, width=8, doc='Number of channelizer fed to the crossbar outputs')
-    NUMBER_OF_CROSSBAR_OUTPUTS = BitField(STATUS, 21, 0, width=8, doc='Number of crossbar outputs')
+    NUMBER_OF_CROSSBAR1_OUTPUTS = BitField(STATUS, 21, 0, width=8, doc='Number of crossbar outputs')
     PROTOCOL_VERSION           = BitField(STATUS, 23, 0, width=16, doc='Protocol version used to manage host software compatibility.')
     CHANNELIZERS_CLOCK_SOURCE  = BitField(STATUS, 24, 0, width=8, doc='Indicates which ADC is used to provide the clock from all channelizers.')
     NUMBER_OF_ADCS             = BitField(STATUS, 25, 0, width=8, doc='Number of ADCs inputs')
