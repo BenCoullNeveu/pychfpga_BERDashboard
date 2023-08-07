@@ -1466,7 +1466,10 @@ class FPGAArray(object):
             if '.' in el:  # if hostname (has a '.' somewhere)
                 hostname, slot, crate_number = split_fields(el, 3)
                 # print(f'Adding Motherboard {hostname}, {slot}, {crate_number}')
-                ib = Motherboard.get_unique_instance(hostname=hostname, slot=slot, crate_number=crate_number)
+                if current_class:
+                    ib = current_class.get_unique_instance(hostname=hostname, slot=slot, crate_number=crate_number)
+                else:
+                    ib = Motherboard.get_unique_instance(hostname=hostname, slot=slot, crate_number=crate_number)
                 current_class = None
             elif el[0].isdigit():  # if a serial (is only digits)
                 if not current_class:
