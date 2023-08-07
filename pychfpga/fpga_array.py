@@ -67,6 +67,7 @@ from pychfpga.hardware import Motherboard, Crate
 from pychfpga.hardware.ice import IceBoard, IceCrate
 from pychfpga.hardware.zcu111 import ZCU111
 from pychfpga.hardware.crs import CRS
+from pychfpga.hardware.zuboard import ZUBoard
 from pychfpga.hardware.Agilent_N5764A import AgilentN5764A
 
 
