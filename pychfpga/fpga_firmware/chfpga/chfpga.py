@@ -118,9 +118,9 @@ class chFPGA(FPGAFirmware):
 
     # Define the motherboard models and operational modes supported by this class, and associate corresponding FPGA configuration bitstreams and initialization parameters
     PLATFORM_SUPPORT = { # (platform_model, firmware_config, modes): {firmware_filename: <fw_fn>, <other platform parameters>}
-        ("MGK7MB", "chFPGA", ("shuffle16", "shuffle128", "shuffle256", "shuffle512", "chan8", "chan4")): dict(firmware_url='chFPGA_MGK7MB_Rev2.bit', processing_frequency = 200e6),
-        ("MGK7MB", "siFPGA", ("corr16",)): dict(firmware_url='SIFPGA_MGK7MB.bit', processing_frequency = 200e6),
-        ("MGK7MB", "chordFPGA", ("chord16",)): dict(firmware_url='chordFPGA_MGK7MB_Rev2.bit', processing_frequency = 300e6),
+        ("MGK7MB", "chFPGA", ("shuffle16", "shuffle128", "shuffle256", "shuffle512", "chan8", "chan4")): dict(firmware_url='chFPGA_MGK7MB_Rev2.bit', sampling_frequency=800e6, processing_frequency=200e6),
+        ("MGK7MB", "siFPGA", ("corr16",)): dict(firmware_url='SIFPGA_MGK7MB.bit', sampling_frequency=800e6, processing_frequency = 200e6),
+        ("MGK7MB", "chordFPGA", ("chord16",)): dict(firmware_url='chordFPGA_MGK7MB_Rev2.bit', sampling_frequency=1200e6, processing_frequency = 300e6),
         ("ZCU111", "siFPGA", ("corr4","corr8")): dict(firmware_url='sifpga_zcu111_wrapper.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
         ("CRS", "siFPGA", ("corr4","corr8", "chan8")): dict(firmware_url='sifpga_crs_wrapper.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=32),
     }
@@ -1013,6 +1013,8 @@ class chFPGA(FPGAFirmware):
 
         self.logger.debug('%r: --- Initializing FPGA subsystems' % self)
 
+        self.logger.debug(f'{self!r}: sampling_frequency={self._sampling_frequency}')
+
         self.logger.debug('%r: --- Initializing GPIO' % self)
 
         # Initialize GPIO.
@@ -1076,9 +1078,9 @@ class chFPGA(FPGAFirmware):
                 # Initializes the mezzanine
                 # will disable the reset line
                 await mezz.init(
-                    sampling_frequency=sampling_frequency,
-                    reference_frequency=reference_frequency,
-                    processing_frequency=processing_frequency,
+                    sampling_frequency=self._sampling_frequency,
+                    reference_frequency=self._reference_frequency,
+                    processing_frequency=self._processing_frequency,
                     adc_mode=adc_mode,
                     adc_bandwidth=adc_bandwidth)
                 # mezz.status()
