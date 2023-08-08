@@ -63,7 +63,7 @@ class ChanBinSel(MMI):
         super().__init__(fpga_instance, base_address, instance_number)
         self.logger = logging.getLogger(__name__)
         self.NUMBER_OF_CROSSBAR_INPUTS = self.fpga.NUMBER_OF_CROSSBAR_INPUTS
-        self.NUMBER_OF_CROSSBAR_OUTPUTS = self.fpga.NUMBER_OF_CROSSBAR_OUTPUTS
+        self.NUMBER_OF_CROSSBAR_OUTPUTS = self.fpga.NUMBER_OF_CROSSBAR1_OUTPUTS
         self.cached_bin_select_table = None
         self._lock()
 

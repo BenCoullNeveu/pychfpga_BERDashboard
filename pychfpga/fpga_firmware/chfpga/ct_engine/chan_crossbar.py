@@ -52,8 +52,8 @@ class ChanCrossbar(MMI):
         super().__init__(fpga_instance, base_address)
         self.BIN_SEL = []
         self.NUMBER_OF_CROSSBAR_INPUTS = self.fpga.NUMBER_OF_CROSSBAR_INPUTS
-        self.NUMBER_OF_CROSSBAR_OUTPUTS = self.fpga.NUMBER_OF_CROSSBAR_OUTPUTS
-        for i in range(self.fpga.NUMBER_OF_CROSSBAR_OUTPUTS):
+        self.NUMBER_OF_CROSSBAR_OUTPUTS = self.fpga.NUMBER_OF_CROSSBAR1_OUTPUTS
+        for i in range(self.fpga.NUMBER_OF_CROSSBAR1_OUTPUTS):
             self.BIN_SEL.append(chan_bin_sel.ChanBinSel(fpga_instance, base_address + (i+1) * address_increment, i))
 
     def __getitem__(self, key):
