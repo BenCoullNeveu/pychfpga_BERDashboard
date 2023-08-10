@@ -33,11 +33,30 @@ class ADC_PLL_base(object):
         brd = self.adc_board
         brd.spi_read_write(brd.SPI_PLL1_ADDR, data)
 
-    def init(self, fout=1600, fref=10, verbose=None, **args):
+    def init(self, fout=1600, fref=10, verbose=None, muxout=5, **args):
         """
-        Initializes the ADC PLL (Analog Devices ADF4350) to provide an adequate clock to the ADC.
-            fout: ADC reference frequency in MHz. Sampling rate is fout/2.
-            fref: PLL reference frequency in MHZ (typically 10 or 25 MHz)
+        Initializes the ADC PLL (Analog Devices ADF4350) to provide the requested reference clock to the ADC.
+
+        Parameters:
+            fout (float): ADC reference frequency in MHz. Sampling rate is fout/2.
+
+            fref (float): PLL reference frequency in MHZ (typically 10 or 25 MHz)
+
+            verbose (bool): When True, additional information is printed out. If None, the object's own verbose setting is used.
+
+
+            muxout (int): Mux pin output configuration. Pin is typically used for lock detect (LD) 
+
+                 0= Hi-Z,
+                 1= Vdd,
+                 2= GND,
+                 3= R Divider out,
+                 4= N divider out (Warning: interferes with lock process!),
+                 5= Analog lock detect,
+                 6= Digital lock detect,
+                 7= reserved
+
+            args (dict): Not used since Python 3. Was used to override the internal parameters.
 
         NOTES:
             - The reference clock x2 doubler or /2 divider are never enabled
@@ -105,7 +124,7 @@ class ADC_PLL_base(object):
         #   5= Analog lock detect,
         #   6= Digital lock detect,
         #   7= reserved
-        muxout = 5
+        # muxout = args.get('muxout', 5)
         ref_doubler = 0  # Reference clock doubler: 0=disabled, 1=enabled
         rdiv2 = 1  # Reference clock divide-by-2: 0=disabled, 1=enabled
         R_counter = 1  # Reference clock divider: 1-1023
