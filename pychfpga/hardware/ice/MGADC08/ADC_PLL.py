@@ -31,9 +31,9 @@ class ADC_PLL_base(object):
     def write(self, data):
         """ Writes a 32-bit word to PLL (MSB first). The register address is contained in the word."""
         brd = self.adc_board
-        brd.spi_read_write(brd.SPI_PLL1_ADDR, data)
+        brd.spi_read_write(brd.SPI_PLL1_ADDR, data.to_bytes(4,'big'))
 
-    def init(self, fout=1600, fref=10, verbose=None, muxout=5, **args):
+    def init(self, fout=1600, fref=10, verbose=None, muxout=5):
         """
         Initializes the ADC PLL (Analog Devices ADF4350) to provide the requested reference clock to the ADC.
 
@@ -55,8 +55,9 @@ class ADC_PLL_base(object):
                  5= Analog lock detect,
                  6= Digital lock detect,
                  7= reserved
+        Returns:
 
-            args (dict): Not used since Python 3. Was used to override the internal parameters.
+            (tuple): the values of the registers that have been programmed into the PLL
 
         NOTES:
             - The reference clock x2 doubler or /2 divider are never enabled
@@ -172,24 +173,13 @@ class ADC_PLL_base(object):
             self.logger.debug('%r:  Output division factor: %i' % (self.adc_board, fdiv))
             self.logger.debug('%r:  Programmed output frequency: %.3f' % (self.adc_board, fvco / fdiv))
 
-        # Override variable names if any is specified in the function call
-        if args:
-            raise ValueError('Overriding PLL parameters is no longer possible in Python 3. Code structure will have to be changed.')
-        for (varname, value) in list(args.items()):
-            if varname in locals():
-                if verbose:
-                    self.logger.debug('%r: Setting %s = %i' % (self.adc_board, varname, value))
-                exec('%s=%i' % (varname, value))
-            else:
-                self.logger.debug('%r: "%s" is not a PLL variable' % (self.adc_board, varname))
-
-        PLL_reg5 = np.uint32((LD_pin_mode << 22) + (0x3 << 19) + 5)
-        PLL_reg4 = np.uint32((FB_select << 23) + (RF_div << 20) + (band_sel_div << 12)
+        PLL_reg5 = ((LD_pin_mode << 22) + (0x3 << 19) + 5)
+        PLL_reg4 = ((FB_select << 23) + (RF_div << 20) + (band_sel_div << 12)
                              + (vco_power_down << 11) + (mute_until_lock_detect << 10)
                              + (AUX_sel << 9) + (AUX_enable << 8) + (AUX_power << 6)
                              + (RF_enable << 5) + (RF_power << 3)+4)
-        PLL_reg3 = np.uint32((cycle_slip_reduction << 18) + (clock_div_mode << 15) + (clock_div << 3)+3)
-        PLL_reg2 = np.uint32((noise_mode << 29) + (muxout << 26) + (ref_doubler << 25)
+        PLL_reg3 = (cycle_slip_reduction << 18) + (clock_div_mode << 15) + (clock_div << 3)+3
+        PLL_reg2 = ((noise_mode << 29) + (muxout << 26) + (ref_doubler << 25)
                              + (rdiv2 << 24) + (R_counter << 14) + (double_buf << 13)
                              + (CP_current << 9) + (LDF << 8) + (LDP << 7)
                              + (PD_polarity << 6) + (power_down << 5)
@@ -198,18 +188,13 @@ class ADC_PLL_base(object):
         #                    + (R_counter << 14) + (double_buf << 13) + (CP_current << 9)
         #                    + (LDF << 8) + (LDP << 7) + (PD_polarity << 6)
         #                    + (power_down << 5) + (1 << 4) + (counter_reset << 3)+2)
-        PLL_reg1 = np.uint32((prescaler << 27) + (phase << 15) + (modulus << 3)+1)
-        PLL_reg0 = np.uint32((int_div << 15) + (frac_div << 3)+0)
+        PLL_reg1 = (prescaler << 27) + (phase << 15) + (modulus << 3) + 1
+        PLL_reg0 = (int_div << 15) + (frac_div << 3) + 0
 
         trial = 0
         while True:
-            self.write(np.uint32(PLL_reg5))  # write Reg 5:
-            self.write(np.uint32(PLL_reg4))  # write Reg 4:
-            self.write(np.uint32(PLL_reg3))  # write Reg 3:
-            self.write(np.uint32(PLL_reg2))  # write Reg 2:
-            self.write(np.uint32(PLL_reg1))  # write Reg 1:
-            self.write(np.uint32(PLL_reg0))  # write Reg 0:
-            self.write(np.uint32(PLL_reg0))  # write Reg 0: # To make sure DBR values are clocked in.
+            for reg in (PLL_reg5, PLL_reg4, PLL_reg3, PLL_reg2, PLL_reg1, PLL_reg0, PLL_reg0):  # reg0 is written twice to make sure DBR values are clocked in.
+                self.write(reg)
 
             time.sleep(0.050)
             if self.is_locked():
