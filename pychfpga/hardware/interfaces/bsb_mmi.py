@@ -191,7 +191,8 @@ class BSB_MMI:
         elif isinstance(data, (list, tuple)):
             return bytes(data)
         elif isinstance(data, np.integer):
-            return np.array((data,)).view('u1')
+            self.log.warning(f'{self!r: BSB_MMI: converting a numpy integer to a byte array with intristic byte order. We recommend you convert to bytes with an explicit byte order to avoid any incompatibilities.}')
+            return data.tobytes()
         elif isinstance(data, int):
             return bytes((data,))
         else:
