@@ -407,10 +407,12 @@ class TestPreDeploymentCrate(TestUtils):
                 try:
                     self.ca.sync()
                     # If no exception to the above, increment counter:
-                    sync_counter += 1
+                    # sync_counter += 1
                 except Exception as e:
                     exception_fails += 1
                     exception_tags.append([f'Cycle {n}', repr(e)])
+                else:
+                    sync_counter += 1
 
             assert sync_counter == n_syncs, f'Sync fails observed on: {exception_tags}'
             passed = True
@@ -635,10 +637,15 @@ class TestPreDeploymentCrate(TestUtils):
 
         passed = False
         
+
+
+        adc_clks = []
+
+
+
         try:
 
             for n in range(n_cycles):
-               
                 print(f'****************************')
                 print(f'Power-cycling test iteration {n + 1}/{n_cycles}')
                 print(f'****************************')
@@ -646,13 +653,14 @@ class TestPreDeploymentCrate(TestUtils):
                 # Initialize the crate:
                 try:
                     self.ca = self.crate_init()
+             
                 except (RuntimeError, IOError, OSError) as e:
                     
                     print(f'Failed initializing the array because of error {e!r}')
                     
                     init_exception_fails += 1
                     init_exception_tags.append({'Cycle': n, 'exception': repr(e)})
-
+                    
                 else:
                     # Run the backplane test first (otherwise set_adc_delays makes things too busy and can cause issues)
                     print('Checking backplane errors...')
@@ -707,7 +715,6 @@ class TestPreDeploymentCrate(TestUtils):
 
                 print(f'Errors so far at iteration {n + 1}/{n_cycles}: ADC clk errors={clk_fails}, UDP errors={udp_fails}')
                 print(f'init_exceptions={init_exception_fails}, delay_exceptions={delay_fails}, backplane errors={backplane_fails}')
-                
                 
                 # Turn off crate and sleep before turning back on
                 # to allow it to cool down:

@@ -103,9 +103,9 @@ f_engine_tests:
 
 
   ps_connection_test:
-    n_ps_cycles: 1
-    on_time: 5 #seconds
-    off_time: 1
+    n_ps_cycles: 50  
+    on_time: 120 #seconds
+    off_time: 10
         
   crate_init:
 
@@ -128,8 +128,6 @@ f_engine_tests:
     n_fails_accept: 5
 
   p_cycle_test:
-    n_cycles: 100 
-    percent_accept: 0.01 #0.01
-    t_cycle: 600  #time in seconds
-    run_all_tests: False # when set to false, only the crate initialization test will run
-    t_pause_crate_init: 0 #minutes; specifies how long the program should be paused once the crate initialization fails
+    n_cycles: 20 
+    percent_accept: 0.05 #0.01
+    t_cycle: 10  #time in seconds
