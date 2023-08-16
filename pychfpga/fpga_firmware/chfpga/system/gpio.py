@@ -206,8 +206,19 @@ class GPIO(MMI):
 
     def get_user_bits(self):
         """ Returns the status of the two user-controlled bits that can be routed to any of the user outputs
+
+        Returns:
+            int: the value of the user bits
         """
-        return self.USER_BIT0, self.USER_BIT1
+        return self.USER_BITS
+
+    def set_user_bits(self, value):
+        """ Sets the two user-controlled bits that can be routed to any of the user outputs
+
+        Paraeters:
+            value (int): the value of the user bits
+        """
+        self.USER_BITS = value
 
     USER_OUTPUT_SOURCE_TABLE = {
         'sync': 0,  # User-generated SYNC signal (sunc_out)

@@ -4641,10 +4641,20 @@ class chFPGA(FPGAFirmware):
 
         Returns:
 
-            A tuple containing the status of (user_bit0, user_bit1).
+            int: the value of (user_bit0, user_bit1).
         """
 
         return self.GPIO.get_user_bits()
+
+
+    def set_user_bits(self, value):
+        """ Sets the state of the user-programmable bits that can be routed to any of the user outputs.
+
+        Parameters:
+
+            value (int): The value sof the user bits 
+        """
+        self.GPIO.set_user_bits(value)
 
     def set_adc_mask(self, mask=0xFF, channels=None):
         """ Set the mask that is applied on the ADC data on the specified channel.
