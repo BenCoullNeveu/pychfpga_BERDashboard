@@ -502,11 +502,9 @@ class chFPGA(FPGAFirmware):
         # if not self.fpga_control_port_number:
         #    self.fpga_control_port_number = self.local_control_port_number
 
-        build_info = await self.mb.tuber_get_build_info_async()
-        if 'R11.4' not in build_info.icecore_git_hash:
-            raise RuntimeError('ARM firmware is not compatible with this version of the FPGA firmare (SPI link will not work - cannot setup networking)')
-
-        # Set-up the FPGA networking parameters using the ARM-SPI link to the FPGA
+        # Set-up the FPGA networking parameters using the ARM-SPI link to the
+        # FPGA We assume it has been checked that the proper version of the SD
+        # card is present so the SPI communication  with the FPGA will work.
         self.fpga_mac_addr = await self.set_fpga_control_networking_parameters_async(
             fpga_ip_addr=self.fpga_ip_addr,
             fpga_port_number=self.fpga_control_port_number)
@@ -4812,7 +4810,7 @@ class chFPGA(FPGAFirmware):
                       8-bit data from 16 channelizers is sent directly to the
                       8 CT-Engine outputs.
 
-                    - 'shuffle16': A corner-turn operation is applied only
+                    - 'shuffle16 and 'chord16': A corner-turn operation is applied only
                       within the 16 channelizer outputs of this board.
 
                     - 'shuffle256': The corner-turn operation is applies
@@ -5118,7 +5116,7 @@ class chFPGA(FPGAFirmware):
             crate_number = self.crate.crate_number if self.crate else 0
             stream_type = 0
 
-        elif mode == 'shuffle16':
+        elif mode in ('shuffle16', 'chord16'):
             """
             In shuffle16 mode, each of the GPU links output data for 128 bins,
             each bins containing the data from 16 channels. The data for each
@@ -5749,7 +5747,7 @@ class chFPGA(FPGAFirmware):
             cb3_output_frame_flags_words_per_frame = (
                 cb3_input_frame_flags_words_per_frame * cb3_input_lanes_per_output_lane)
 
-        elif mode == 'corr16':
+        elif mode in ('corr16', ):
             """
             Implement the corner-turn operation for the 16-channel firmware correlator embedded in
             the same FPGA. in this mode, we simply enable the 1st crossbar. The 2nd and 3rd

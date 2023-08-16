@@ -8,6 +8,7 @@ a fully-populated crate, switch, power supply, GPS, etc.
 # Standard packages
 import asyncio
 import time
+import re
 
 # Pypi packages
 import pytest
@@ -64,11 +65,13 @@ class TestUtils:
                  self.ps = self.open_ps()
              # Check status of power supply:
              ps_status = self.ps.status()['status']
-             if ps_status == 'ON':
+             if ps_status == 'ON' or ps_status == 'OK':
                 print(f'Power supply is {ps_status}')
                 # Turning off power supply
-                print('Turning off power supply...')
+                print(f'Turning off power supply...')
                 self.ps.set_output(state=False) # Force power cycle if power supply is on
+                ps_status = self.ps.status()['status']
+                print(f'Power supply is now {ps_status}')
                 time.sleep(5) # Give it a few seconds before turning back on
              else:
                  print(f'Power supply is {ps_status}')
@@ -94,6 +97,8 @@ class TestPreDeploymentCrate(TestUtils):
     List of tests:
 
     0?) Visual inspection?
+    
+    0) Check connection to power supply
 
     1) Check board initialization:
         - all 16 boards found in hwm
@@ -129,7 +134,7 @@ class TestPreDeploymentCrate(TestUtils):
         self.cfg = xr.config  # get the test config NameSpace
         # pre-define instrument variable. We'll load them only as needed by the tests.
         self.ps = None
-        self.model = None # should be set by the test 
+        self.model = None # should be set by the test
         self.serial = None # should be set by the test
         yield  # pass control to the test and return
 
@@ -140,6 +145,77 @@ class TestPreDeploymentCrate(TestUtils):
         # turn off power supply
         if self.ps:
             self.ps.set_output(state=False) #Ensuring power on N5764A is off
+
+    def test_ps_connection(self, xr):
+        """
+        QC000: Power supply connection test: ensure power supply responds to commands consistently.
+
+        Procedure:
+            
+            - Start the power supply connection test on the computer
+            - Open connection to power supply
+            - If test fails, then power supply stops turning on/off
+        """
+        xr.header('Power Supply Connection Test')
+        cfg = self.cfg.f_engine_tests.ps_connection_test
+        n_ps_cycles = cfg.n_ps_cycles
+        on_time = cfg.on_time
+        off_time = cfg.off_time
+
+        test_results = NameSpace()
+
+        turn_ON_errs = []
+        turn_OFF_errs = []
+
+        passed = False
+
+        try:
+
+            for n in range(n_ps_cycles):
+                
+                # open connection to power supply
+                #********************************************************************************************************************************
+                #if this test fails, place this line outside of the for loop - maybe opening the connection everytime is the source of the problem
+                #********************************************************************************************************************************
+                self.ps = self.open_ps()
+
+
+                print('\n*******************************')
+                print(f'Cycle {n+1}/{n_ps_cycles}')
+                print('*******************************')
+
+                          
+                print('--------------------------------------------')
+                print(f'Turning ON power supply')
+                print(f'Wait {on_time} seconds')
+                # turn on power supply
+                self.ps.set_output(state=True)
+                time.sleep(on_time)
+                ps_status = self.ps.status()['status']
+                print(f'Power supply is {ps_status}')
+                if ps_status != 'ON' and ps_status != 'OK':
+                    turn_ON_errs.append(f'cycle {n+1}: {ps_status}')
+                
+                print('--------------------------------------------')
+                print(f'Turning OFF power supply')
+                print(f'Wait {off_time} seconds')
+                # turn off power supply
+                self.ps.set_output(state=False)
+                time.sleep(off_time)
+                ps_status = self.ps.status()['status']
+                print(f'Power supply is {ps_status}')
+                if ps_status != 'OFF':
+                    turn_OFF_errs.append(f'cycle {n+1}: {ps_status}')
+                print('--------------------------------------------')
+
+            assert (not turn_ON_errs and not turn_OFF_errs), f'Power supply connection errors: turning ON errors: {turn_ON_errs}, turning OFF errors: {turn_OFF_errs}'
+            passed = True
+
+        finally:
+            test_results.passed = passed
+            xr.save_data(test_results)
+            # if this test passed, the ps should already be off; if it didn't, it can't be turned off remotely and has to be turned off manually
+            # self.ps.set_output(state=False)    
 
     def test_init(self, xr):
         """
@@ -172,8 +248,8 @@ class TestPreDeploymentCrate(TestUtils):
         finally:
             test_results.passed = passed
             xr.save_data(test_results)
-            self.ps.set_output(state=False) # Turn off power supply
-
+            #self.ps.set_output(state=False) # Turn off power supply
+    
 
     def test_bperr(self, xr):
         """
@@ -190,66 +266,115 @@ class TestPreDeploymentCrate(TestUtils):
 
         xr.header('Backplane Error Test')
         cfg = self.cfg.f_engine_tests.backplane_err # not needed
+        shuffle_mode = self.cfg.f_engine_tests.global_settings.fpga_array_params.mode
         n_checks = cfg.n_checks
         t_sleep = cfg.t_sleep
         test_results = NameSpace()
 
         passed = False
         bp_errs = []
-
+    
         try:
             # Initialize the crate
             self.ca = self.crate_init()
 
-            for _ in range(n_checks):
+            for n in range(n_checks):
 
                 # Add 1s of sleep time between error gathering in case errors accumulate:
-                asyncio.sleep(t_sleep)
+                time.sleep(t_sleep)
 
                 # Get corner turn engine status:
-                info = asyncio.run(self.ca.get_corner_turn_engine_status_async(reset_stats=True)) # reset stats for each check
+                # info = asyncio.run(self.ca.get_corner_turn_engine_status_async(reset_stats=True)) # reset stats for each check
 
-                for slot in np.arange(16)+1:
-                    subsystems = info[0]['slots'][slot]['subsystems']
-                    for ss in subsystems:
-                        idx = list(info[0]['slots'][slot]['subsystems'][ss]['lanes'].keys())
-                        for lane in idx:
-                            lane_info = info[0]['slots'][slot]['subsystems'][ss]['lanes'][lane]
-                            status = lane_info['status']
-                            label = lane_info['label']
-                            fields = lane_info['fields']
-                            # print(slot, ss, label, fields, status)
-                            if status == True:
-                                # if status == True, append info (True --> error)
-                                bp_errs.append([slot, ss, lane, status, label ,fields])
+                bp_errs_cycle_n = self.check_bp_errs()
+               # bp_errs.append([f'cycle {n}', bp_errs_cycle_n])
+               # cycle_errs.append(bp_errs_cycle_n)
+                if bp_errs_cycle_n:
+                    bp_errs.append([f'cycle {n}', bp_errs_cycle_n])
+               # bp_errs.append(bp_errs_cycle_n)
+                # # In shuffle256 mode, there should be no errors on any lanes on any subsystems on any motherboard.
 
-            # while True:
-            #     xr.input('Press ENTER to print shuffle status results. (Q:Exit) ')
-            #     asyncio.run(self.ca.print_shuffle_status(reset_stats=True)) # Reset stats when reprinting table to see if errors go away
-            #     errs_present = xr.input('Are there any backplane errors?. Note that QSFP errors are expected if not connected to X-Engine. Answer Y/N. (Q:Exit) ')
+                # if shuffle_mode == 'shuffle256':
+                #     for slot in np.arange(16)+1:
+                #         subsystems = info[0]['slots'][slot]['subsystems']
+                #         for ss in subsystems:
+                #             idx = list(subsystems[ss]['lanes'].keys())
+                #             for lane in idx:
+                #                 lane_info = subsystems[ss]['lanes'][lane]
+                #                 status = lane_info['status']
+                #                 label = lane_info['label']
+                #                 fields = lane_info['fields']
+                #                 # print(slot, ss, label, fields, status)
+                #                 if status == True:
+                #                     # if status == True, append info (True --> error)
+                #                     bp_errs.append([slot, ss, lane, status, label ,fields])
 
-            #     if errs_present == 'y':
-            #         while True:
-            #             finished = xr.input('Press ENTER to write the error. If finished, answer F. (Q:Exit) ')
-            #             if finished == 'f':
-            #                 break
-            #             lane = xr.input('Enter the location of the error, e.g. BP PCB Rx L11. (Q:Exit) ') # i.e. left-most column of print_shuffle_status
-            #             slot_serial = xr.input('Enter the slot and serial number of the error, e.g. Slot 6, SN0332. (Q:Exit) ') # slot + serial
-            #             bp_errs.append((lane, slot_serial))
+                # # In shuffle128 mode, it is expected that there will be errors associated with the slots that are not present.
+                # # We need to iterate through the subsystems and determine what needs to be checked systematically, hence the
+                # # many specific 'if' statements.
 
-            #     print_again = xr.input('Would you like to reprint the shuffle status results? Answer Y/N. (Q:Exit) ')
+                # if shuffle_mode == 'shuffle128':
+                #     # First, need to identify which Tx/Rx pairs are expected to fail due to having only 8 boards:
+                #     slots = [i.slot-1 for i in self.ca.ib] # Subtract 1 to get 0-base
+                #     all_slots = np.arange(16) # 0-base
+                #     missing_slots = list(set(slots) ^ set(all_slots)) # Using XOR operator ^ to get slots uncommon to both lists
+                #     for slot in slots:
+                #         subsystems = info[0]['slots'][slot+1]['subsystems']
+                #         cb2_ignore_lanes = [] # Needed to tell 'CB2 FRAME #' which lanes to check.
+                #         for ss in subsystems:
+                #             idx = list(subsystems[ss]['lanes'].keys())
+                #             for lane in idx:
+                #                 lane_info = subsystems[ss]['lanes'][lane]
+                #                 status = lane_info['status']
+                #                 label = lane_info['label']
+                #                 fields = lane_info['fields']
 
-            #     if print_again == 'n':
-            #         break
+                #                 if ss == 'BP PCB':
+                #                     # Need to check the Tx/Rx pairs to see whether any are associated with a
+                #                     # slot number that is not present (i.e. one without a board).
+                #                     tx = fields['Tx']
+                #                     rx = fields['Rx']
+                #                     tx = [int(s) for s in re.findall(r'\b\d+\b', f'{tx}')] # convert pairs to lists of ints
+                #                     rx = [int(s) for s in re.findall(r'\b\d+\b', f'{rx}')]
+                #                     if len(list(set(tx) & set(slots))) == 2 and len(list(set(rx) & set(slots))) == 2:
+                #                         # We use the '&' operator to get the slot numbers common to both tx or rx and slots.
+                #                         # If the len of both lists is 2, then both the Tx and Rx pairs are from valid slots,
+                #                         # and we can check their status:
+                #                         if status == True:
+                #                             bp_errs.append([slot, ss, lane, status, label ,fields])
+
+                #                 if ss == 'CB2 ALIGN':
+                #                     # Here, we need to check whether there is an 'IGNORE' in the field. If not,
+                #                     # check if there's an error. If yes, append the lane number to cb2_ignore_lanes
+                #                     # so that we know which lanes to check when we go through the 'CB2 FRAME #' subsystem
+                #                     if 'IGNORE' not in list(fields.keys()) and status == True:
+                #                         bp_errs.append([slot, ss, lane, status, label ,fields])
+                #                     if 'IGNORE' in list(fields.keys()):
+                #                         cb2_ignore_lane.append(lane)
+
+                #                 if ss == 'CB2 FRAME #':
+                #                     # Check the lanes with no 'IGNORE' in 'CB2 ALIGN'
+                #                     if lane not in cb2_ignore_lanes and status == True:
+                #                         bp_errs.append([slot, ss, lane, status, label ,fields])
+
+                #                 # The other subsystems are 'BP QSFP', 'CB2 BIN SEL', 'CB2 ALIGN', 'CB2 FRAME #', and 'CB3 BIN SEL'.
+                #                 # None of these should have any errors on any lane, so we can just check if all lanes are good:
+
+                #                 else:
+                #                     if status == True:
+                #                         bp_errs.append([slot, ss, lane, status, label ,fields])
 
             assert not bp_errs, f'Backplane errors present on: {bp_errs}'
+        
+           # if not bp_errs:            
             passed = True
 
         finally:
             test_results.passed = passed
             xr.save_data(test_results)
             self.ps.set_output(state=False) # Turn off power supply
-
+            #assert not bp_errs, f'Backplane erros present on: {bp_errs}'
+            
     def test_sync(self, xr):
         """
         QC003: Sync/IRIG-B test: stress test of crate sync using IRIG-B
@@ -269,18 +394,27 @@ class TestPreDeploymentCrate(TestUtils):
 
         passed = False
         n_syncs = cfg.n_syncs
+        sync_counter = 0
+        exception_fails = 0
+        exception_tags = []
 
         # Initialize the crate
         try:
             # xr.input('Turn on the power supply. Press ENTER to continue. (Q:Exit) ')
             self.ca = self.crate_init()
-            counter = 0
             for n in range(n_syncs):
                 print(f'Sync {n+1}')
-                self.ca.sync()
-                counter += 1
+                try:
+                    self.ca.sync()
+                    # If no exception to the above, increment counter:
+                    # sync_counter += 1
+                except Exception as e:
+                    exception_fails += 1
+                    exception_tags.append([f'Cycle {n}', repr(e)])
+                else:
+                    sync_counter += 1
 
-            assert counter == n_syncs
+            assert sync_counter == n_syncs, f'Sync fails observed on: {exception_tags}'
             passed = True
         finally:
             test_results.passed = passed
@@ -310,8 +444,9 @@ class TestPreDeploymentCrate(TestUtils):
         # The FreqCtr counts rising clock edges; the most it could miss over a given integration period
         # is 1 edge. Also, FreqCtr measures at 1/2 the rate of the 400 MHz clock coming from the ADC,
         # so it could miss, at most, 2 rising edges.
-        expected_diffs = {-2/integration_period, 0.0, 2/integration_period} # fix this
+        expected_diffs = {-2/integration_period, 0.0, 2/integration_period}
         failed_clocks = []
+        measured_diffs = []
 
         passed = False
         try:
@@ -324,13 +459,12 @@ class TestPreDeploymentCrate(TestUtils):
             # is the maximum error, resulting from a missed rising edge) --> is this correct?
 
             for i in self.ca.ib:
-                for clock in range(15):
+                for clock in range(16):
                     print(f'{i}, ADC_CLK{clock}')
                     diffs = set(i.FreqCtr.read_frequency(f'ADC_CLK{clock}', integration_period) - 200e6 for _ in range(n_clock_checks))
                     # If diffs is not a subset of expected_diffs, i.e. it contains an unexpected value, then append to failed_clocks
                     if not diffs.issubset(expected_diffs):
-                        failed_clocks.append([f'{i}', f'ADC_CLK{clock}', diffs])
-
+                        failed_clocks.append([f'{i}', f'ADC_CLK{clock}', diffs])    
             assert not failed_clocks, f'ADC clock errors present on: {failed_clocks}'
             passed = True
 
@@ -414,7 +548,7 @@ class TestPreDeploymentCrate(TestUtils):
 
             for i in self.ca.ib:
                 for channel in range(16):
-                    print('=============================================================')
+                    print(f'=============================================================')
                     print(f'Checking ADC eye diagrams for {i}, ADC channel {channel}')
 
                     ref_nz_idx = [] # 'reference non-zero indices', checks where non-zero values are in eye diagram
@@ -470,7 +604,7 @@ class TestPreDeploymentCrate(TestUtils):
           - Start the power cycle test on the computer
           - Power up crate
           - Cycle through crate initialization n_cycles times, count
-            number of clock and udp errors
+            some relevant errors
 
         """
 
@@ -480,66 +614,108 @@ class TestPreDeploymentCrate(TestUtils):
         percent_accept = cfg.percent_accept
         n_fails_accept = int(percent_accept*n_cycles) # Define number of acceptable fails
         t_cycle = cfg.t_cycle
+        run_all_tests = cfg.run_all_tests
+        minutes = cfg.t_pause_crate_init
 
-        # A clock fail or a udp fail is defined as a cycle which has one or more errors.
         test_results = NameSpace()
+
+        # A fail is defined as a cycle which has one or more errors.
+
+        init_exception_fails = 0
+        init_exception_tags = []
+
         clk_fails = 0
         udp_fails = 0
-        exception_fails = 0
-        err_tags = []
-        exception_tags = []
+        adc_err_tags = []
+        udp_err_tags = []
+
+        delay_fails = 0
+        delay_exception_tags = []
+
+        backplane_fails = 0
+        backplane_err_tags = []
 
         passed = False
+        
+
+
+        adc_clks = []
+
+
+
         try:
+
             for n in range(n_cycles):
                 print(f'****************************')
                 print(f'Power-cycling test iteration {n + 1}/{n_cycles}')
                 print(f'****************************')
+                
                 # Initialize the crate:
                 try:
                     self.ca = self.crate_init()
-                except (RuntimeError, IOError) as e:
-                    print(f'Failed initializing the array because of error {e}')
-                    exception_fails += 1
-                    exception_tags.append(repr(e))
-                    continue
+             
+                except (RuntimeError, IOError, OSError) as e:
+                    
+                    print(f'Failed initializing the array because of error {e!r}')
+                    
+                    init_exception_fails += 1
+                    init_exception_tags.append({'Cycle': n, 'exception': repr(e)})
+                    
+                else:
+                    # Run the backplane test first (otherwise set_adc_delays makes things too busy and can cause issues)
+                    print('Checking backplane errors...')
+                    bp_errs = self.check_bp_errs()
+                    if len(bp_errs) > 0:
+                        print('Got the following backplane errors:')
+                        print('bp_errs: ', bp_errs)
+                        backplane_fails += 1
+                        backplane_err_tags.append({'Cycle': n,
+                                                  'ib': i,
+                                                  'bp_errs': bp_errs})
 
-                print('Got an IceBoard array')
-                for i in self.ca.ib:
+                    print('Got an IceBoard array')
+                    for i in self.ca.ib:
+ 
+                        # Check counters and error lists:
+                        n_clk_errs = i.adc_clk_err_ctr
+                        clk_errs_msgs = i.adc_clk_err_msgs
+                        n_udp_errs = i.udp_err_ctr + i.mmi.error_counter
+                        udp_errs_msgs = i.adc_clk_err_msgs
+                        print(f'Slot {i.slot} got {n_clk_errs} ADC clock errors, {n_udp_errs} UDP communication errors')
 
-                    # Check counters and error lists:
-                    n_clk_errs = i.adc_clk_err_ctr
-                    clk_errs_msgs = i.adc_clk_err_msgs
-                    n_udp_errs = i.udp_err_ctr + i.mmi.error_counter
-                    udp_errs_msgs = i.adc_clk_err_msgs
-                    print(f'Slot {i.slot} got {n_clk_errs} ADC clock errors, {n_udp_errs} UDP communication errors')
-
-                    # Increment error counters if needed, and append relevant
-                    # information to err_tags:
-                    if (n_clk_errs != 0 and n_udp_errs == 0):
-                        clk_fails += 1
-                        err_tags.append({'Cycle': n,
+                        # Increment error counters if needed, and append relevant
+                        # information to err_tags:
+                        if n_clk_errs != 0:
+                            clk_fails += 1
+                            adc_err_tags.append({'Cycle': n,
                                          'ib': i,
                                          'n_clk_errs': n_clk_errs,
                                          'clk_err_msgs': clk_errs_msgs})
-                    elif (n_udp_errs != 0 and n_clk_errs == 0):
-                        udp_fails += 1
-                        err_tags.append({'Cycle': n,
+                        if n_udp_errs != 0:
+                            udp_fails += 1
+                            udp_err_tags.append({'Cycle': n,
                                          'ib': i,
                                          'n_udp_errs': n_udp_errs,
                                          'clk_err_msgs': clk_errs_msgs})
-                    elif (n_clk_errs != 0 and n_udp_errs != 0):
-                        clk_fails += 1
-                        udp_fails += 1
-                        err_tags.append({'Cycle': n,
-                                         'ib': i,
-                                         'n_clk_errs': n_clk_errs,
-                                         'clk_err_msgs': clk_errs_msgs,
-                                         'n_udp_errs': n_udp_errs,
-                                         'clk_err_msgs': clk_errs_msgs})
+
+                        # Now set all ADC delays and check for exceptions:
+                        try:
+                            i.set_adc_delays(compute_delays = 2, save_delays = False, check_sync_delays = 1, check_adc_delays = 20)
+                        except (RuntimeError, IOError, OSError) as e:
+                            print(f'set_adc_delays failed because of error {e!r}')
+                            delay_fails += 1
+                            delay_exception_tags.append({'Cycle': n,
+                                                    'ib': i,
+                                                    'exception': repr(e)})
+
+                    for i in self.ca.ib:
+                        # Close UDP communication with the iceboard to prevent errors:
+                        print(f'Closing UDP connection to slot {i.slot}')
+                        asyncio.run(i.close_async())
+
+                print(f'Errors so far at iteration {n + 1}/{n_cycles}: ADC clk errors={clk_fails}, UDP errors={udp_fails}')
+                print(f'init_exceptions={init_exception_fails}, delay_exceptions={delay_fails}, backplane errors={backplane_fails}')
                 
-                print(f'Errors so far at iteration {n + 1}/{n_cycles}: ADC clk errors:{clk_fails}, UDP errors={udp_fails}, exceptions={exception_fails}')
-
                 # Turn off crate and sleep before turning back on
                 # to allow it to cool down:
                 print('Turning OFF the crate')
@@ -547,13 +723,100 @@ class TestPreDeploymentCrate(TestUtils):
                 print(f'Letting the crate cool down for {t_cycle} seconds before repeating the test')
                 time.sleep(t_cycle)
 
-            assert (clk_fails <= n_fails_accept and udp_fails <= n_fails_accept and not exception_fails), f'Errors on: {err_tags}'
+            assert (max(init_exception_fails, clk_fails, udp_fails, delay_fails, backplane_fails) < n_fails_accept), f'ADC errors on: {adc_err_tags}, UDP errors on: {udp_err_tags}, Init exceptions on: {init_exception_tags}, Delay exceptions on: {delay_exception_tags}, Backplane errors on: {backplane_err_tags}'
             passed = True  # Yeh, we made it through
 
         finally:
             test_results.passed = passed
             xr.save_data(test_results)
             self.ps.set_output(state=False) # Turn off power supply
+           
+            
+    def check_bp_errs(self):
+        """
+        Check for backplane errors. This has been made into its own function so it can be called
+        in both the backplane error test as well as the power cycle test.
+
+        """
+        bp_errs = []
+        shuffle_mode = self.cfg.f_engine_tests.global_settings.fpga_array_params.mode
+
+        # Get corner turn engine status:
+        info = asyncio.run(self.ca.get_corner_turn_engine_status_async(reset_stats=True)) # reset stats for each check
+
+        # In shuffle256 mode, there should be no errors on any lanes on any subsystems on any motherboard.
+
+        if shuffle_mode == 'shuffle256':
+            for slot in np.arange(16)+1:
+                subsystems = info[0]['slots'][slot]['subsystems']
+                for ss in subsystems:
+                    idx = list(subsystems[ss]['lanes'].keys())
+                    for lane in idx:
+                        lane_info = subsystems[ss]['lanes'][lane]
+                        status = lane_info['status']
+                        label = lane_info['label']
+                        fields = lane_info['fields']
+                        # print(slot, ss, label, fields, status)
+                        if status == True:
+                            # if status == True, append info (True --> error)
+                            bp_errs.append([slot, ss, lane, status, label ,fields])
+
+        # In shuffle128 mode, it is expected that there will be errors associated with the slots that are not present.
+        # We need to iterate through the subsystems and determine what needs to be checked systematically, hence the
+        # many specific 'if' statements.
+
+        if shuffle_mode == 'shuffle128':
+            # First, need to identify which Tx/Rx pairs are expected to fail due to having only 8 boards:
+            slots = [i.slot-1 for i in self.ca.ib] # Subtract 1 to get 0-base
+            all_slots = np.arange(16) # 0-base
+            missing_slots = list(set(slots) ^ set(all_slots)) # Using XOR operator ^ to get slots uncommon to both lists
+            for slot in slots:
+                subsystems = info[0]['slots'][slot+1]['subsystems']
+                cb2_ignore_lanes = [] # Needed to tell 'CB2 FRAME #' which lanes to check.
+                for ss in subsystems:
+                    idx = list(subsystems[ss]['lanes'].keys())
+                    for lane in idx:
+                        lane_info = subsystems[ss]['lanes'][lane]
+                        status = lane_info['status']
+                        label = lane_info['label']
+                        fields = lane_info['fields']
+
+                        if ss == 'BP PCB':
+                            # Need to check the Tx/Rx pairs to see whether any are associated with a
+                            # slot number that is not present (i.e. one without a board).
+                            tx = fields['Tx']
+                            rx = fields['Rx']
+                            tx = [int(s) for s in re.findall(r'\b\d+\b', f'{tx}')] # convert pairs to lists of ints
+                            rx = [int(s) for s in re.findall(r'\b\d+\b', f'{rx}')]
+                            if len(list(set(tx) & set(slots))) == 2 and len(list(set(rx) & set(slots))) == 2:
+                                # We use the '&' operator to get the slot numbers common to both tx or rx and slots.
+                                # If the len of both lists is 2, then both the Tx and Rx pairs are from valid slots,
+                                # and we can check their status:
+                                if status == True:
+                                    bp_errs.append([slot, ss, lane, status, label ,fields])
+
+                        if ss == 'CB2 ALIGN':
+                            # Here, we need to check whether there is an 'IGNORE' in the field. If not,
+                            # check if there's an error. If yes, append the lane number to cb2_ignore_lanes
+                            # so that we know which lanes to check when we go through the 'CB2 FRAME #' subsystem
+                            if 'IGNORE' not in list(fields.keys()) and status == True:
+                                bp_errs.append([slot, ss, lane, status, label ,fields])
+                            if 'IGNORE' in list(fields.keys()):
+                                cb2_ignore_lane.append(lane)
+
+                        if ss == 'CB2 FRAME #':
+                            # Check the lanes with no 'IGNORE' in 'CB2 ALIGN'
+                            if lane not in cb2_ignore_lanes and status == True:
+                                bp_errs.append([slot, ss, lane, status, label ,fields])
+
+                        # The other subsystems are 'BP QSFP', 'CB2 BIN SEL', 'CB2 ALIGN', 'CB2 FRAME #', and 'CB3 BIN SEL'.
+                        # None of these should have any errors on any lane, so we can just check if all lanes are good:
+
+                        else:
+                            if status == True:
+                                bp_errs.append([slot, ss, lane, status, label ,fields])
+
+        return bp_errs
 
 
 if __name__ == '__main__':
