@@ -34,6 +34,13 @@ def _get_txt_field(tr, key):
 def match(target, value):
     return target == '*' or target == value
 
+def match_int(target, value):
+    """ Return True if target is the wildcard character or if the value match the target when both are converted to integers. Returns False if both cannot be coonverted to integers.
+    """
+    try:
+        return target == '*' or int(target) == int(value)
+    except (TypeError, ValueError):
+        return False
 
 def tuple_match(target, value):
     return match(target[0], value[0]) and match(target[1], value[1])
@@ -164,8 +171,6 @@ async def mdns_discover(
             bp_serial = _get_txt_field(tr, 'backplane-serial')
 
             # find the integer representation of the serial number if possible, in case the user specified them that way
-            int_bp_serial = _to_int(bp_serial)
-            int_ib_serial = _to_int(ib_serial)
             slot = _to_int(bp_slot)
 
             logger.debug(f"mdns_discover: Discovered motherboard {ib_part_number} SN{ib_serial} @{addr}:{port}"
@@ -174,13 +179,13 @@ async def mdns_discover(
             # Check if the motherboard matches the search criteria
             iceboard_match = ib_part_number and ib_serial and any(
                 match(target_model, ib_part_number)
-                and (match(target_serial, ib_serial) or match(target_serial, int_ib_serial))
+                and (match(target_serial, ib_serial) or match_int(target_serial, ib_serial))
                 for target_model, target_serial in iceboards)
 
             # Check if the backplane matches the search criteria
             icecrate_match = bp_part_number and bp_serial and any(
                 match(target_model, bp_part_number)
-                and (match(target_serial, bp_serial) or match(target_serial, int_bp_serial))
+                and (match(target_serial, bp_serial) or match_int(target_serial, bp_serial))
                 for target_model, target_serial in icecrates)
 
             if icecrate_match or iceboard_match:
