@@ -887,7 +887,7 @@ class FPGAArray(object):
             for ib in unresolved_iceboards:
                 self.logger.info(f'{self!r}: Unresolved {ib}'
                                  f'(part_number={ib.part_number}, serial={ib.serial}, hostname={ib.hostname})')
-            raise RuntimeError(f'Unresolved IceBoards {unresolved_iceboards}')
+            raise RuntimeError(f'Unresolved motherboards {unresolved_iceboards}')
 
         self.logger.info(f'{self!r}: Hardware map is complete')
 
@@ -1455,7 +1455,8 @@ class FPGAArray(object):
         #     return hw_table
 
         def to_int(s):
-            return (int(s) if isinstance(s, str) and s.isdigit() else s)
+            """ Returns string s as an integer if it represents an integer that is not previxed with '0', otherwise returns the original string"""
+            return (int(s) if isinstance(s, str) and s.isdigit() and not s.startswith('0') else s)
 
         def split_fields(s, n):
             fields = el.split(':')
