@@ -112,7 +112,7 @@ class TCPipe:
             else:
                 raise IOError(f'TCPipe I2C: Reply has error code {self.rx_buf[0]}')
         if rx_len != 1 + read_length:
-            raise IOError(f'TCPipe I2C: Receive {rx_len} bytes instead of {1+read_length} bytes')
+            raise IOError(f'TCPipe I2C: Receive {rx_len} bytes instead of {1+read_length} bytes (including status byte)')
         return self.rx_buf[1:read_length + 1]
 
     def i2c_write(self, addr, data):
