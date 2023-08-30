@@ -111,6 +111,7 @@ class CRS(Motherboard):
     # Define model number for hardware map management and discovery
     part_number = 'CRS'
     _ipmi_part_numbers = ['CRS']
+    SERIAL_NUMBER_LENGTH = 3  # number of digits in the serial number. Used to convert integers to a valid serial number.
 
     NUMBER_OF_CHANNELIZERS = 4
     REV0_SERIALS = ('0429,')  # hack to temporarily set the revision number
