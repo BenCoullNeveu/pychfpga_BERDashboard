@@ -39,6 +39,8 @@ class Motherboard(HardwareMap):
     part_number = None  # shall be a string in real classes
     _ipmi_part_numbers = None  # list of strings listing all models by which the board can be self-identified (via EEPROM, IPMI, mDNS etc)
 
+    SERIAL_NUMBER_LENGTH = 4  # number of digits in the serial number. Used to convert integers to a valid serial number.
+
     # _cached_repr = None  # Stores a pre-processed string representation of the board repr() for efficiency
 
     NUMBER_OF_FMC_SLOTS = 0  # Number of supported mezzanines
@@ -122,7 +124,7 @@ class Motherboard(HardwareMap):
 
         # Normalize the serial number
         if isinstance(serial, int):  # make sure serial is a string
-            serial = f'{serial:04d}'  # Motherboard serials have 4 digits
+            serial = f'{{:0{self.SERIAL_NUMBER_LENGTH}d}}'.format(serial)  # Convert integer serial number to N digits with 0 prefixes
 
 
         self.logger.debug(f"Motherboard: Creating {self.__class__.__name__}(serial={serial}, hostname={hostname}, slot={slot}, subarray={subarray}, kwargs={kwargs})")
