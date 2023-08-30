@@ -144,10 +144,14 @@ class CRS(Motherboard):
 
     async def open_platform_async(self, **kwargs):
 
-        if not self.serial:
-            raise RuntimeError('Cannot determine revision number form serial number')
-        self.revision = 0 if self.serial in self.REV0_SERIALS else 1
         self.logger.debug(f'{self!r}: open() is called')
+
+        if not self.serial:
+            raise RuntimeError('Cannot determine revision number: there is no serial number')
+        self.revision = 0 if self.serial in self.REV0_SERIALS else 1
+        self.pll_spi_port = 1 if self.revision >0 else 0  # PS SPI peripheral port on which the PLL is connected. This changed from Rev0 to Rev 1
+        self.logger.debug(f'{self!r}: Board revision is {self.revision}. PLL will be on SPI port {self.pll_spi_port}')
+
 
 
         # Open tcp communication with the board
@@ -160,31 +164,13 @@ class CRS(Motherboard):
         # create SPI interface
         self.spi = TCPipe_SPI(self.tcpipe)
 
-        # I2C0, Switch 0x20
-        # self.i2c0_switch = i2c0_switch = pca9544a(self.iic, address=0x75)
-        # self.i2c_gpio = tca6416a(self.iic, address=0x20, port=dict(port=0, switch=i2c0_switch, switch_params=None))
-        # self.i2c_ina226_0v85 = ina226(self.iic, address=0x41, port=dict(port=0, switch=i2c0_switch, switch_params=0))
-        # self.i2c_ina226_1v8 = ina226(self.iic, address=0x42, port=dict(port=0, switch=i2c0_switch, switch_params=0))
-        # self.i2c_ina226_vccintrf = ina226(self.iic, address=0x49, port=dict(port=0, switch=i2c0_switch, switch_params=0))
-        # self.i2c_ina226_mgt1v2 = ina226(self.iic, address=0x47, port=dict(port=0, switch=i2c0_switch, switch_params=0))
-        # self.i2c_ina226_vcc1v2 = ina226(self.iic, address=0x43, port=dict(port=0, switch=i2c0_switch, switch_params=0))
-        # self.i2c_ina226_dacavtt = ina226(self.iic, address=0x4A, port=dict(port=0, switch=i2c0_switch, switch_params=0))
-        # self.i2c_ina226_vadj = ina226(self.iic, address=0x45, port=dict(port=0, switch=i2c0_switch, switch_params=0))
-        # self.i2c_ina226_mgt1v8 = ina226(self.iic, address=0x48, port=dict(port=0, switch=i2c0_switch, switch_params=0))
-        # self.i2c_ina226_mgtavcc = ina226(self.iic, address=0x46, port=dict(port=0, switch=i2c0_switch, switch_params=0))
-        # self.i2c_ina226_dac_vccaux = ina226(self.iic, address=0x71, port=dict(port=0, switch=i2c0_switch, switch_params=0))
-        # self.i2c_ina226_adc_vccaux = ina226(self.iic, address=0x73, port=dict(port=0, switch=i2c0_switch, switch_params=0))
-        # self.i2c_ina226_adc_vcc = ina226(self.iic, address=0x4c, port=dict(port=0, switch=i2c0_switch, switch_params=0))
-        # self.i2c_ina226_dac_vcc = ina226(self.iic, address=0x4e, port=dict(port=0, switch=i2c0_switch, switch_params=0))
-
-        # self.i2_irps5401a = irps5401(self.iic, address=0x43, port=dict(port=0, switch=i2c0_switch, switch_params=2))
-        # self.i2_irps5401b = irps5401(self.iic, address=0x44, port=dict(port=0, switch=i2c0_switch, switch_params=2))
-        # self.i2_fpga_sysmon = zynq_sysmon(self.iic, address="TBD", port=dict(port=0, switch=i2c0_switch, switch_params=3))
+        # I2C0, Backplane
 
 
-        # I2C1, Switch 0x74: EEPROM, clocks
+        # I2C1: Motherboard internal bus
+        # I2C1 switch0 :EEPROM, clocks
         self.i2c1_switch = i2c1_switch = pca9546a(self.iic, address=0x70, port=1)
-        # Switch port 0 devices
+        # I2C1 Switch 0 port 0 devices
         self.i2c1_tmp421_5v0 = tmp421(self.iic, address=0x1C, port=(i2c1_switch, 0))
         self.i2c1_tmp421_3v3 = tmp421(self.iic, address=0x1D, port=(i2c1_switch, 0))
         self.i2c1_tmp421_2v5 = tmp421(self.iic, address=0x1E, port=(i2c1_switch, 0))
@@ -214,19 +200,20 @@ class CRS(Motherboard):
         self.i2c1_eeprom_data = eeprom(self.iic, address=0x57, bus_name=(i2c1_switch, 0), address_width=7, max_read_length=255, max_write_length=8, write_page_size=8)
         self.i2c1_eeprom_serial = eeprom(self.iic, address=0x5F, bus_name=(i2c1_switch, 0), address_width=8, max_read_length=255)  # must read 16 bytes from memory address 0x80
 
-        # Switch port 1 devices
+        # I2C1 Switch 0 port 1 devices
         #   0x18: DDR4 SODIMM Temp sensor
         #   0x3x: DDR4 SODIMM Write protect settings
         #   0x50: DDR4 SODIMM EEPROM
 
-        # Switch port 2 devices
+        # I2C1 Switch 0 port 2 devices
         #   0x35: NVMe Basic management command (BMC)
         #   0x53: NVMe Virtual Product Data (VPD)
 
-        # Switch port 3:
+        # I2C1 Switch 0 port 3 devices:
         #   External I2C header
 
-        self.i2c0_switch = i2c0_switch = pca9546a(self.iic, address=0x71, port=1)
+        # I2C1 Switch 1: SFP/QSFP
+        self.i2c1_switch1 = i2c1_switch1 = pca9546a(self.iic, address=0x71, port=1)
         # Switch port 0:
         #    QSFP26
         # Switch port 1-6
@@ -235,8 +222,6 @@ class CRS(Motherboard):
         # Switch port 7
         #   0x20: PCA9757 GPIO for SFP/QSFP
         #   0x21: PCA9757 GPIO for SFP/QSFP
-        # self.i2c_fmc0 = eeprom(self.iic, address=0x50, bus_name=dict(port=1, switch=i2c1_switch1, switch_params=7), address_width=8, max_read_length=255)
-        # self.i2c_fmc0a = eeprom(self.iic, address=0xAC//2, bus_name=dict(port=1, switch=i2c1_switch1, switch_params=7), address_width=8, max_read_length=255)
 
 
         # list of sensors
@@ -259,38 +244,9 @@ class CRS(Motherboard):
             d = info['device']
             d.init(r_shunt=info['rshunt'], i_typ=info['imax'], avg=3)
 
-        self.pll = hmc7044(self.spi, spi_port=1 if self.revision >0 else 0)
-        self.logger.info(f'Initializing programmable PLL')
-        fvco = 250e6*12
-        frfdc = fvco # divider: 1
-        fpl = frfdc / 8 # signal processing clock, typ. 375 MHz
-        fsys = 250e6 # system clock. Divider = 3000/250 = 12 (200 MHz is not possible because divider is odd)
-        fsysref = 10e6 # Divider = 300 
-
-        # SMP P22/P23 - 3rd from M2, OUT0_P/N, 25/50 MHz from fixed PLL
-        self.pll.init(
-            fref=10e6, # external 10 MHz reference from backplane or SMA
-            fosc=50e6, # on-board VCXO nominal frequency
-            fvco=fvco, 
-            fout={
-                0: frfdc,    # RF_CLK (FPGA RFDC 229)
-                1: fsys,     # DDR4_CLK (FPGA Bank 67 LVDS)- used as system clock
-                2: fsys,     # CLKOUT_SMP (SMP connector P2 - Back row, 1st from M2)- to SMP connector, for debugging
-                3: fsysref,  # SYSREF_SMP (SMP connector P27, Bak row, 2nd from M2)- to SMP connector, for debugging
-                4: fpl,      # PL_CLK (FPGA Bank 69 LVDS) - used as processing clock 
-                5: fsysref,  # PL_SYSREF (FPGA Bank 69 LVDS) - used as 10 MHz reference
-                6: fsys,     # GTY_CLK0_128 - not used
-                7: fsys,     # GTY_CLK0_130 - not used
-                8: frfdc,    # RF_CLK (FPGA RFDC)
-                9: frfdc,    # RF_CLK (FPGA RFDC)
-                10: frfdc,   # RF_CLK (FPGA RFDC)
-                11: frfdc,   # RF_CLK (FPGA RFDC)
-                12: frfdc,   # RF_CLK (FPGA RFDC)
-                13: fsysref, # RF_SYSCLK (FPGA RFDC)
-            })
+        self.pll = hmc7044(self.spi, spi_port=self.pll_spi_port) # programmable PLL, to be initialized when FPGA is programmed.
 
 
-        self.logger.info(f'Done programming PLL')
 
 
         # Print board voltages/currents
@@ -316,22 +272,66 @@ class CRS(Motherboard):
         self._is_open = False
 
 
+    async def pll_init_async(
+            self,
+            fref=10e6,  # external 10 MHz reference from backplane or SMA
+            fosc=50e6,  # on-board VCXO nominal frequency
+            fvco=250e6*12,
+            fsys=250e6, # system clock. Divider = 3000/250 = 12 (200 MHz is not possible because divider is odd)
+            fsysref=10e6 # Divider = 300 
+        ):
+        """ Initialize the Programmable PLL.
+         
+        Because initializing the PLL changes the board state and it not needed for platform operations (PHY has a fixed clock), the PLL init  
+        should be done just before we configure the firmware so the proper reset sequences can be performed when it starts. Furthermore, this 
+        allows us to set PLL frequencies based on the requested application-specific firmware.  
+        """
+        self.logger.info(f'Initializing programmable PLL')
+        frfdc = fvco # divider: 1
+        fpl = frfdc / 8 # signal processing clock, typ. 375 MHz
+
+        self.pll.init(
+            fref=fref, # external 10 MHz reference from backplane or SMA
+            fosc=fosc, # on-board VCXO nominal frequency
+            fvco=fvco, 
+            fout={
+                0: frfdc,    # RF_CLK (FPGA RFDC 229)
+                1: fsys,     # DDR4_CLK (FPGA Bank 67 LVDS)- used as system clock
+                2: fsys,     # CLKOUT_SMP (SMP connector P2 - Back row, 1st from M2)- to SMP connector, for debugging
+                3: fsysref,  # SYSREF_SMP (SMP connector P27, Bak row, 2nd from M2)- to SMP connector, for debugging
+                4: fpl,      # PL_CLK (FPGA Bank 69 LVDS) - used as processing clock 
+                5: fsysref,  # PL_SYSREF (FPGA Bank 69 LVDS) - used as 10 MHz reference
+                6: fsys,     # GTY_CLK0_128 - not used
+                7: fsys,     # GTY_CLK0_130 - not used
+                8: frfdc,    # RF_CLK (FPGA RFDC)
+                9: frfdc,    # RF_CLK (FPGA RFDC)
+                10: frfdc,   # RF_CLK (FPGA RFDC)
+                11: frfdc,   # RF_CLK (FPGA RFDC)
+                12: frfdc,   # RF_CLK (FPGA RFDC)
+                13: fsysref, # RF_SYSCLK (FPGA RFDC)
+            })
+
+
+        # Note: SMP connector P22/P23 (3rd/4th from M2 slot) are OUT0_P/N (25/50 MHz from fixed PLL)
+
+        self.logger.info(f'Done programming PLL')
+
     async def open_fpga_async(self, **kwargs):
         """ Open communication link with the FPGA. This creates the MMI interface, gather configuration information from the firmware, and instantiate the objects that will handle the firmware."""
 
 
-        if False:
-            # Before we start the firmware, make sure we have our clocks.
-            rf_pll_spi_port = 2
-            # Set SPI mux to route PLL output mux pin to I2C-SPI MISO input
-            self.i2c_gpio.select()
-            # self.i2c_gpio.write_reg('CFG1',0b000, mask=0b00000110)  # set GPIO mux pins to output
-            # self.i2c_gpio.write_reg('CFG1',rf_pll_spi_port << 1, mask=0b00000110)  # set mux pins to 0b10 (LMK04208)
-            self.i2c_spi.select()
-            self.i2c_rf_pll.init()
-            self.i2c_adc0_pll.init()
-            self.i2c_adc1_pll.init()
-            # self.i2c_dac_pll.init()
+        # if False:
+        #     # Before we start the firmware, make sure we have our clocks.
+        #     rf_pll_spi_port = 2
+        #     # Set SPI mux to route PLL output mux pin to I2C-SPI MISO input
+        #     self.i2c_gpio.select()
+        #     # self.i2c_gpio.write_reg('CFG1',0b000, mask=0b00000110)  # set GPIO mux pins to output
+        #     # self.i2c_gpio.write_reg('CFG1',rf_pll_spi_port << 1, mask=0b00000110)  # set mux pins to 0b10 (LMK04208)
+        #     self.i2c_spi.select()
+        #     self.i2c_rf_pll.init()
+        #     self.i2c_adc0_pll.init()
+        #     self.i2c_adc1_pll.init()
+        #     # self.i2c_dac_pll.init()
 
         # from .. import FreqCtr, GPIO
         # self.GPIO = GPIO.GPIO_base(self, self._SYSTEM_GPIO_BASE_ADDR)
@@ -376,15 +376,16 @@ class CRS(Motherboard):
         """
         # print(f'{self!r} Ping_async()')
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.logger.info(f'{self!r}: Pinging {self.hostname} at {self.socket.getsockname()}')
+        self.logger.info(f'{self!r}: Pinging {self.hostname} at {s.getsockname()}')
         s.settimeout(timeout)
+        s.setblocking(0)
         loop = asyncio.get_event_loop()
         try:
             await loop.sock_connect(s, (self.hostname, self.port))
             if_addr = s.getsockname()
             s.close()
         except (socket.timeout, Exception) as e:
-            self.log.warn('Could not establish a TCP connection with %s:%s. Error is:\n %s' % (addr[0], addr[1], e))
+            self.logger.warn(f'Could not establish a TCP connection with {self.hostname}.{self.port}. Error is:\n {e}')
             return False
         return True
 
@@ -466,6 +467,8 @@ class CRS(Motherboard):
         fw_cls, buf, fw_params = FPGAFirmware.get_firmware(self.part_number, firmware_mode, bitfile_override=bitfile_override)
         crc32 = buf.crc32
         bitstream = buf.raw_bitstream
+
+        await self.pll_init_async()  # add fw params here if we want to have mode/application-specific frequencies sent to the FPGA 
 
         self.logger.debug(f'{self!r}: Getting is_programmed')
         is_fpga_programmed = await self.is_fpga_programmed_async()
