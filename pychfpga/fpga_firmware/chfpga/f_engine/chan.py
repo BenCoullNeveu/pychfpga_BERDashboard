@@ -53,10 +53,13 @@ class Chan:
             fpga_instance,
             base_address + self.SCALER_OFFSET_ADDR * submodule_address_increment,
             instance_number)
-        self.PROBER = prober.PROBER(
-            fpga_instance,
-            base_address + self.PROBER_OFFSET_ADDR * submodule_address_increment,
-            instance_number)
+        if self.fpga.CAPTURE_TYPE == 'PROBER':
+            self.PROBER = prober.PROBER(
+                fpga_instance,
+                base_address + self.PROBER_OFFSET_ADDR * submodule_address_increment,
+                instance_number)
+        else:
+            self.PROBER = None
         self.FUNCGEN = funcgen.FUNCGEN(
             fpga_instance,
             base_address + self.FUNCGEN_OFFSET_ADDR * submodule_address_increment,
@@ -84,7 +87,8 @@ class Chan:
         # self.logger.debug('  - SCALER')
         self.SCALER.init()
         # self.logger.debug('  - PROBER')
-        self.PROBER.init()
+        if self.PROBER:
+            self.PROBER.init()
         # self.logger.debug('  - FUNCGEN')
         self.FUNCGEN.init()
         # self.logger.debug('  - INJECT')
