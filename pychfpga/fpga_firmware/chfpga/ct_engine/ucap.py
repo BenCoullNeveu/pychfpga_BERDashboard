@@ -27,10 +27,17 @@ class UCAP(MMI):
     USER_RESET       = BitField(CONTROL, 1, 7, doc='User reset')
     CH2              = BitField(CONTROL, 1, 0, width=3, doc='Channel #2 in 4-channel mode')
     CH3              = BitField(CONTROL, 1, 3, width=3, doc='Channel #3 in 4-channel mode')
-    CAPTURE_PERIOD   = BitField(CONTROL, 4, 0, width=24, doc='Number of frames between captures')
+    CAPTURE_PERIOD   = BitField(CONTROL, 4, 0, width=24, doc='Number of frames between captures for source 0')
+    CAPTURE_PERIOD2  = BitField(CONTROL, 7, 0, width=24, doc='Number of frames between captures for source 1')
+    SUB_PERIOD       = BitField(CONTROL, 8, 0, width=5, doc='Dynamic capture rate, 2**(N+1) frames')
+    SOURCE_SEL       = BitField(CONTROL, 9, 0, width=8, doc='Bit map selecting the source (0 or 1) for each channel (bit 0 = channel 0)')
 
     FIFO_OVERFLOW    = BitField(STATUS, 0, 0, doc='1 when dat FIFO has overflowed. Sticky flag.')
     OVERRUN          = BitField(STATUS, 0, 1, doc='1 when data transmission request was performed before the previous transmission was completed. Sticky flag.')
+    RST_MON = BitField(STATUS, 0, 2, doc='debug')
+    USER_RST_MON = BitField(STATUS, 0, 3, doc='debug')
+    PERIOD_CTR          = BitField(STATUS, 1, 0, width=8, doc='debug')
+    CAPTURE_CTR          = BitField(STATUS, 2, 0, width=8, doc='debug')
 
     def __init__(self, fpga_instance, base_address, address_increment, verbose=0):
         self.fpga = fpga_instance
