@@ -3115,7 +3115,7 @@ class chFPGA(FPGAFirmware):
 
             burst_period_in_seconds (float): Same as `period` or as a number of frames
 
-            burst_period_in-frames (int): Number of frames between captured bursts.
+            burst_period_in_frames (int): Number of frames between captured bursts.
 
             number_of_bursts (int): Number of bursts to send, after which the FPGA stops sending
                 data. If `number_of_bursts`=0, the transmission continues indefinitely, until
@@ -3205,24 +3205,29 @@ class chFPGA(FPGAFirmware):
         # Do not limit the transfer rate
         self.GPIO.HOST_FRAME_READ_RATE = 5
 
-        # Stop data capture on *ALL* channels
-        for chan in self.get_channelizers():
-            chan.PROBER.RESET = 1
+        if self.CAPTURE_TYPE == 'UCAP':
+            self.UCAP.SOURCE_SEL = set_data_source(source)
+            # self.UCAP.config_capture() # doesn't exist yet. fixme
+            # self.logger.debug # add some logging?
 
-        for chan in self.get_channelizers(channels):
-            chan.PROBER.SUB_PERIOD = 23  # disable sub period
-            chan.PROBER.set_data_source(source)
-            chan.PROBER.config_capture(
-                frames_per_burst=frames_per_burst,
-                burst_period=burst_period_in_frames,
-                number_of_bursts=number_of_bursts,
-                offset=offset,
-                send_delay=send_delay)
-            ch = chan.chan_number
-            self.logger.debug('%r: %s raw data capture on channel %i' % (
-                self,
-                ('Disabling', 'Enabling')[ch in channels], ch))
-            chan.PROBER.RESET = 0
+        if self.CAPTURE_TYPE =='PROBER':
+            # Stop data capture on *ALL* channels
+            for chan in self.get_channelizers():
+                chan.PROBER.RESET = 1
+            for chan in self.get_channelizers(channels):
+                chan.PROBER.SUB_PERIOD = 23  # disable sub period
+                chan.PROBER.set_data_source(source)
+                chan.PROBER.config_capture(
+                    frames_per_burst=frames_per_burst,
+                    burst_period=burst_period_in_frames,
+                    number_of_bursts=number_of_bursts,
+                    offset=offset,
+                    send_delay=send_delay)
+                ch = chan.chan_number
+                self.logger.debug('%r: %s raw data capture on channel %i' % (
+                    self,
+                    ('Disabling', 'Enabling')[ch in channels], ch))
+                chan.PROBER.RESET = 0
 
         # ** line below no longer supported by firmware *** enables data transmission if continuous mode is selected
         self.set_trig(1)
