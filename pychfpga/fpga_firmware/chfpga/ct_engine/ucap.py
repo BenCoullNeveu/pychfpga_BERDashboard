@@ -29,6 +29,8 @@ class UCAP(MMI):
     CH3              = BitField(CONTROL, 1, 3, width=3, doc='Channel #3 in 4-channel mode')
     CAPTURE_PERIOD   = BitField(CONTROL, 4, 0, width=24, doc='Number of frames between captures')
 
+    SOURCE_SEL       = BitField(CONTROL, 0, 9, doc="0 = source selector output (timestream), 1 = scaler output (spectrum)")
+
     FIFO_OVERFLOW    = BitField(STATUS, 0, 0, doc='1 when dat FIFO has overflowed. Sticky flag.')
     OVERRUN          = BitField(STATUS, 0, 1, doc='1 when data transmission request was performed before the previous transmission was completed. Sticky flag.')
 
@@ -43,6 +45,18 @@ class UCAP(MMI):
         """ Initializes UCAP module"""
         pass
 
+    DATA_SOURCE_TABLE = {
+        'adc': 0,
+        'scaler': 1}
+
+    def set_data_source(self, source):
+        # Set the data source (either 'adc' or 'scaler') in the control register
+        if isinstance(source, str):
+            if source in self.DATA_SOURCE_TABLE:
+                source = self.DATA_SOURCE_TABLE[source]
+            else:
+                ValueError("Unknown data capture source '%s'. Valid sources are %s." % (source, ','.join(self.DATA_SOURCE_TABLE.keys())))
+        self.SOURCE_SEL = source
 
     def get_data(self, flush_timeout=0.01):
 
