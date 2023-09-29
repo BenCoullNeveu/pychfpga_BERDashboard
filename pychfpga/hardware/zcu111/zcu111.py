@@ -109,6 +109,8 @@ class ZCU111(Motherboard):
     part_number = 'ZCU111'
     _ipmi_part_numbers = ['ZCU111']
 
+    SERIAL_NUMBER_LENGTH = 3  # number of digits in the serial number. Used to convert integers to a valid serial number.
+
     NUMBER_OF_FMC_SLOTS = 0
     NUMBER_OF_CHANNELIZERS = 4
 
