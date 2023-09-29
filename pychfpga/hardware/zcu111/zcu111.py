@@ -320,12 +320,9 @@ class ZCU111(Motherboard):
 
         Parameters:
 
-            firmware (str or FPGABitstream): The firmware to program into the FPGA
-
-                FPGABitstream: Use the specified bitstream object directly.
-
-                str: if `firmware` has no special characters ('.', '/' etc) it is treated as a generic name that will used to be look up the firmware filename in the PLATFORM_SUPPORT table of all registered FPGAFirmware classes.
-                Otherwise, the string is treated as a pathname and is passed to FPGABitstream directly.
+            firmware_mode (str): The desired operational mode. This will be
+                used to automatically select the proper bitstream file for
+                this platform and create the proper FPGAFirmware class.
 
             force (bool or None):
 
@@ -333,6 +330,10 @@ class ZCU111(Motherboard):
                 force = False: FPGA will be configured if it is not configured or
                         if its bitstream CRC differ from the provided bitstream
                 force = None: FPGA will be configured only if it is not configured
+
+            bitfile_override (str): Specifies the path to a folder in which to
+                search for the default bitstream file,  or the path to the
+                bitstream file to use instead of the default one.
 
         """
 
