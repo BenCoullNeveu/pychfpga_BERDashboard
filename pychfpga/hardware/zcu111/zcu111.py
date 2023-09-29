@@ -211,9 +211,9 @@ class ZCU111(Motherboard):
             # self.i2c_gpio.write_reg('CFG1',0b000, mask=0b00000110)  # set GPIO mux pins to output
             # self.i2c_gpio.write_reg('CFG1',rf_pll_spi_port << 1, mask=0b00000110)  # set mux pins to 0b10 (LMK04208)
             self.i2c_spi.select()
-            self.i2c_rf_pll.init("../zcu111/pll_config_files/LMK04208_375MHz.tcs")
-            self.i2c_adc0_pll.init("../zcu111/pll_config_files/LM2594_375MHz_in_3000MHz_out.tcs")
-            self.i2c_adc1_pll.init("../zcu111/pll_config_files/LM2594_375MHz_in_3000MHz_out.tcs")
+            self.i2c_rf_pll.init("../zcu111/pll_config_files/LMK04208_375MHz_LVPECL.tcs")
+            self.i2c_adc0_pll.init("../zcu111/pll_config_files/LM2594_375MHz_in_3000MHz_out_16mA.tcs")
+            self.i2c_adc1_pll.init("../zcu111/pll_config_files/LM2594_375MHz_in_3000MHz_out_16mA.tcs")
             # self.i2c_dac_pll.init()
 
         # from .. import FreqCtr, GPIO
