@@ -2,7 +2,7 @@
 """
 # Standard Python packages
 import logging
-from datetime import datetime, timedelta
+import datetime
 from calendar import timegm
 import time
 import struct
@@ -20,7 +20,7 @@ from wtl.metrics import Metrics
 
 from pychfpga.hardware import Motherboard
 from pychfpga.common import run_async, async_to_sync, Ccoll
-from pychfpga.hardware.interfaces import TCPipe, TCPipe_I2C
+from pychfpga.hardware.interfaces import TCPipe, TCPipe_I2C, ipmi_fru
 from pychfpga.fpga_firmware import FPGAFirmware
 
 from ..i2c_devices.pca9575 import pca9575  as tca9575a # I2C 16-bit IO Expander
@@ -109,6 +109,8 @@ class ZCU111(Motherboard):
     part_number = 'ZCU111'
     _ipmi_part_numbers = ['ZCU111']
 
+    SERIAL_NUMBER_LENGTH = 3  # number of digits in the serial number. Used to convert integers to a valid serial number.
+
     NUMBER_OF_FMC_SLOTS = 0
     NUMBER_OF_CHANNELIZERS = 4
 
@@ -173,7 +175,8 @@ class ZCU111(Motherboard):
 
         # I2C1, Switch 0x74: EEPROM, clocks
         self.i2c1_switch0 = i2c1_switch0 = tca9548a(self.iic, address=0x74)
-        self.i2c_eeprom = eeprom(self.iic, address=0x54, bus_name=dict(port=1, switch=i2c1_switch0, switch_params=0), address_width=8, max_read_length=255)
+        # EEPROM addresses: page 0: 0x54, page 1: 0x55, page 2: 0x56,  page 3: 0x57
+        self.i2c_eeprom = eeprom(self.iic, address=0x54, bus_name=dict(port=1, switch=i2c1_switch0, switch_params=0), address_width=8, write_page_size=16, max_read_length=255)
         self.i2c_fixed_clocks = si5341b(self.iic, address=0x36, port=dict(port=1, switch=i2c1_switch0, switch_params=1))
         self.i2c_fixed_clocks = si570(self.iic, address=0x5d, port=dict(port=1, switch=i2c1_switch0, switch_params=2))
         self.i2c_mgt_clocks = si570(self.iic, address=0x5d, port=dict(port=1, switch=i2c1_switch0, switch_params=3))
@@ -208,9 +211,9 @@ class ZCU111(Motherboard):
             # self.i2c_gpio.write_reg('CFG1',0b000, mask=0b00000110)  # set GPIO mux pins to output
             # self.i2c_gpio.write_reg('CFG1',rf_pll_spi_port << 1, mask=0b00000110)  # set mux pins to 0b10 (LMK04208)
             self.i2c_spi.select()
-            self.i2c_rf_pll.init("../zcu111/pll_config_files/LMK04208_375MHz.tcs")
-            self.i2c_adc0_pll.init("../zcu111/pll_config_files/LM2594_375MHz_in_3000MHz_out.tcs")
-            self.i2c_adc1_pll.init("../zcu111/pll_config_files/LM2594_375MHz_in_3000MHz_out.tcs")
+            self.i2c_rf_pll.init("../zcu111/pll_config_files/LMK04208_375MHz_LVPECL.tcs")
+            self.i2c_adc0_pll.init("../zcu111/pll_config_files/LM2594_375MHz_in_3000MHz_out_16mA.tcs")
+            self.i2c_adc1_pll.init("../zcu111/pll_config_files/LM2594_375MHz_in_3000MHz_out_16mA.tcs")
             # self.i2c_dac_pll.init()
 
         # from .. import FreqCtr, GPIO
@@ -317,12 +320,9 @@ class ZCU111(Motherboard):
 
         Parameters:
 
-            firmware (str or FPGABitstream): The firmware to program into the FPGA
-
-                FPGABitstream: Use the specified bitstream object directly.
-
-                str: if `firmware` has no special characters ('.', '/' etc) it is treated as a generic name that will used to be look up the firmware filename in the PLATFORM_SUPPORT table of all registered FPGAFirmware classes.
-                Otherwise, the string is treated as a pathname and is passed to FPGABitstream directly.
+            firmware_mode (str): The desired operational mode. This will be
+                used to automatically select the proper bitstream file for
+                this platform and create the proper FPGAFirmware class.
 
             force (bool or None):
 
@@ -330,6 +330,10 @@ class ZCU111(Motherboard):
                 force = False: FPGA will be configured if it is not configured or
                         if its bitstream CRC differ from the provided bitstream
                 force = None: FPGA will be configured only if it is not configured
+
+            bitfile_override (str): Specifies the path to a folder in which to
+                search for the default bitstream file,  or the path to the
+                bitstream file to use instead of the default one.
 
         """
 
@@ -411,6 +415,40 @@ class ZCU111(Motherboard):
 
     async def _write_motherboard_spi_eeprom_base64(self, *args, **kwargs):
         return None
+
+    def _eeprom_write_ipmi(self, serial_number, product_version):
+        """Write IPMI-formatted EEPROM.
+
+        These fields are read back and parsed by software, so you have
+        to get them right or things will misbehave. This method currently
+        expects the following formatting:
+
+            m._eeprom_write_ipmi(serial_number="004", product_version="2")
+
+        """
+
+        fru = ipmi_fru.FRU(
+            board=ipmi_fru.Board(
+                mfg_date=datetime.datetime.now(),
+                manufacturer="t0 technology",
+                product_name=self.part_number,
+                part_number=self.part_number,
+                serial_number=serial_number,
+                fru_file="",
+            ),
+            product=ipmi_fru.Product(
+                manufacturer="t0 technology",
+                product_name=self.part_number,
+                part_number=self.part_number,
+                product_version=product_version,
+                serial_number=serial_number,
+                asset_tag="",
+                fru_file="",
+            )
+        )
+        # Convert IPMI structures into a byte stream to be written 
+        ipmi_bytes = fru.encode()
+        self.i2c_eeprom.write(0, ipmi_bytes)
 
     ###################################
     # Backplane info methods
