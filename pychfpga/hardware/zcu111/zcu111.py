@@ -2,7 +2,7 @@
 """
 # Standard Python packages
 import logging
-from datetime import datetime, timedelta
+import datetime
 from calendar import timegm
 import time
 import struct
@@ -20,7 +20,7 @@ from wtl.metrics import Metrics
 
 from pychfpga.hardware import Motherboard
 from pychfpga.common import run_async, async_to_sync, Ccoll
-from pychfpga.hardware.interfaces import TCPipe, TCPipe_I2C
+from pychfpga.hardware.interfaces import TCPipe, TCPipe_I2C, ipmi_fru
 from pychfpga.fpga_firmware import FPGAFirmware
 
 from ..i2c_devices.pca9575 import pca9575  as tca9575a # I2C 16-bit IO Expander
@@ -173,7 +173,8 @@ class ZCU111(Motherboard):
 
         # I2C1, Switch 0x74: EEPROM, clocks
         self.i2c1_switch0 = i2c1_switch0 = tca9548a(self.iic, address=0x74)
-        self.i2c_eeprom = eeprom(self.iic, address=0x54, bus_name=dict(port=1, switch=i2c1_switch0, switch_params=0), address_width=8, max_read_length=255)
+        # EEPROM addresses: page 0: 0x54, page 1: 0x55, page 2: 0x56,  page 3: 0x57
+        self.i2c_eeprom = eeprom(self.iic, address=0x54, bus_name=dict(port=1, switch=i2c1_switch0, switch_params=0), address_width=8, write_page_size=16, max_read_length=255)
         self.i2c_fixed_clocks = si5341b(self.iic, address=0x36, port=dict(port=1, switch=i2c1_switch0, switch_params=1))
         self.i2c_fixed_clocks = si570(self.iic, address=0x5d, port=dict(port=1, switch=i2c1_switch0, switch_params=2))
         self.i2c_mgt_clocks = si570(self.iic, address=0x5d, port=dict(port=1, switch=i2c1_switch0, switch_params=3))
@@ -411,6 +412,40 @@ class ZCU111(Motherboard):
 
     async def _write_motherboard_spi_eeprom_base64(self, *args, **kwargs):
         return None
+
+    def _eeprom_write_ipmi(self, serial_number, product_version):
+        """Write IPMI-formatted EEPROM.
+
+        These fields are read back and parsed by software, so you have
+        to get them right or things will misbehave. This method currently
+        expects the following formatting:
+
+            m._eeprom_write_ipmi(serial_number="004", product_version="2")
+
+        """
+
+        fru = ipmi_fru.FRU(
+            board=ipmi_fru.Board(
+                mfg_date=datetime.datetime.now(),
+                manufacturer="t0 technology",
+                product_name=self.part_number,
+                part_number=self.part_number,
+                serial_number=serial_number,
+                fru_file="",
+            ),
+            product=ipmi_fru.Product(
+                manufacturer="t0 technology",
+                product_name=self.part_number,
+                part_number=self.part_number,
+                product_version=product_version,
+                serial_number=serial_number,
+                asset_tag="",
+                fru_file="",
+            )
+        )
+        # Convert IPMI structures into a byte stream to be written 
+        ipmi_bytes = fru.encode()
+        self.i2c_eeprom.write(0, ipmi_bytes)
 
     ###################################
     # Backplane info methods
