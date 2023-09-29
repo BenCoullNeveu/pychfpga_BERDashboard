@@ -1456,7 +1456,7 @@ class FPGAArray(object):
 
         def to_int(s):
             """ Returns string s as an integer if it represents an integer that is not previxed with '0', otherwise returns the original string"""
-            return (int(s) if isinstance(s, str) and s.isdigit() and not s.startswith('0') else s)
+            return (int(s) if isinstance(s, str) and s.isdigit() and not (len(s) > 1 and s.startswith('0')) else s)
 
         def split_fields(s, n):
             fields = el.split(':')

@@ -119,12 +119,14 @@ class Motherboard(HardwareMap):
 
         self.logger = logging.getLogger(__name__)
 
-        if not (serial or hostname):
-            raise ValueError(f'Must specify either a serial number or hostname for {self.__class__.__name__}')
 
         # Normalize the serial number
         if isinstance(serial, int):  # make sure serial is a string
             serial = f'{{:0{self.SERIAL_NUMBER_LENGTH}d}}'.format(serial)  # Convert integer serial number to N digits with 0 prefixes
+
+        if not (serial or hostname):
+            raise ValueError(f'Must specify either a serial number or hostname for {self.__class__.__name__}')
+
 
 
         self.logger.debug(f"Motherboard: Creating {self.__class__.__name__}(serial={serial}, hostname={hostname}, slot={slot}, subarray={subarray}, kwargs={kwargs})")
