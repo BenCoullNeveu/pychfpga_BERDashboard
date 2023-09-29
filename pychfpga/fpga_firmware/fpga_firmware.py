@@ -12,6 +12,9 @@ class FPGAFirmware():
         """ Keep track of all created firmware subclasses in __class_registry__"""
         super().__init_subclass__(**kwargs)
         cls._class_registry[cls.__name__] = cls
+        # Do not allow empty platform support tables
+        if not cls.PLATFORM_SUPPORT:
+            raise RuntimeError(f'Subclass {cls.__name__} must define a PLATFORM_SUPPORT table.')
 
     # @classmethod
     # def get_fpga_firmware_class_by_name(cls, name):
