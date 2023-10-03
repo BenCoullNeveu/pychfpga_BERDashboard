@@ -116,10 +116,14 @@ class chFPGA(FPGAFirmware):
         - TCPipe, TCP-based memory-map interface typically supported by the ZCU111
     """
 
-    # Define the motherboard models and operational modes supported by this class, and associate corresponding FPGA configuration bitstreams and initialization parameters
+    # Define the motherboard models and operational modes supported by this class, and associate corresponding FPGA
+    # configuration bitstreams and initialization parameters The 'clock_divider' is used to know when clock frequency
+    # to expect when we monitor the ADC clock with the frequency counter.This could be independent from the
+    # procrssing clock.For the CRS, the procssing clock is Fs/ 8 and the monitoring clock is Fs/ 16. For the
+    # IceBoard, it's both fs/4. (fs=sampling frequency)
     PLATFORM_SUPPORT = { # (platform_model, firmware_config, modes): {firmware_filename: <fw_fn>, <other platform parameters>}
         ("MGK7MB", "chFPGA", ("shuffle16", "shuffle128", "shuffle256", "shuffle512", "chan8", "chan4")): dict(firmware_url='chFPGA_MGK7MB_Rev2.bit', sampling_frequency=800e6, processing_frequency=200e6, adc_clock_divider=4),
-        ("MGK7MB", "siFPGA", ("corr16",)): dict(firmware_url='SIFPGA_MGK7MB.bit', sampling_frequency=800e6, processing_frequency = 200e6),
+        ("MGK7MB", "siFPGA", ("corr16",)): dict(firmware_url='SIFPGA_MGK7MB.bit', sampling_frequency=800e6, processing_frequency = 200e6, adc_clock_divider=16),
         ("MGK7MB", "chordFPGA", ("chord16",)): dict(firmware_url='chordFPGA_MGK7MB_Rev2.bit', sampling_frequency=1200e6, processing_frequency = 300e6),
         ("ZCU111", "siFPGA", ("corr4","corr8")): dict(firmware_url='sifpga_zcu111_wrapper.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
         ("CRS", "siFPGA", ("corr4","corr8", "chan8")): dict(firmware_url='sifpga_crs_wrapper.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=32),
