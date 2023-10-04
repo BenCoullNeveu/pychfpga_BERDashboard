@@ -2777,7 +2777,7 @@ class chFPGA(FPGAFirmware):
         is automatically selected and the waveform is set-up.
 
         This function resets the channelizers, even if only the function is
-        changed. user `setfuncgen_function()` if the function generator is
+        changed. Use `set_funcgen_function()` if the function generator is
         already active and you want to change only the waveform
         """
         data_sources = self.chan[0].FUNCGEN.DATA_SOURCE_NAMES.keys()
@@ -2794,6 +2794,10 @@ class chFPGA(FPGAFirmware):
                 chan.FUNCGEN.set_data_source(source)
             self.set_ant_reset(0)  # Reset is needed to resynchronize the system with the new data
         elif source in function_names:
+            logger = logging.getLogger(self.__name__)
+            logger.warning(
+                "Using set_data_source for setting FUNCGEN function is obsolete. Please use set_chanelizer instead."
+            )
             self.set_ant_reset(1)  # Reset is needed to resynchronize the system with the new data
             for chan in self.get_channelizers(channels):
                 chan.FUNCGEN.set_data_source('funcgen')
