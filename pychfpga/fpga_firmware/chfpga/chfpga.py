@@ -2668,6 +2668,10 @@ class chFPGA(FPGAFirmware):
             self.set_data_source(data_source, channels=channels)  # does a channelizer reset
 
         if function is not None:
+            logger = logging.getLogger(self.__name__)
+            logger.warning(
+                "Using 'function' parameter for setting FUNCGEN function is obsolete. Please use 'data_source' instead."
+            )
             # Handle special case where we set the output of the channelizer
             # with complex numbers that will give unique correlation products
             # (visibilities). There are 108 such numbers in a (4+4) bits
@@ -2794,10 +2798,6 @@ class chFPGA(FPGAFirmware):
                 chan.FUNCGEN.set_data_source(source)
             self.set_ant_reset(0)  # Reset is needed to resynchronize the system with the new data
         elif source in function_names:
-            logger = logging.getLogger(self.__name__)
-            logger.warning(
-                "Using set_data_source for setting FUNCGEN function is obsolete. Please use set_chanelizer instead."
-            )
             self.set_ant_reset(1)  # Reset is needed to resynchronize the system with the new data
             for chan in self.get_channelizers(channels):
                 chan.FUNCGEN.set_data_source('funcgen')
