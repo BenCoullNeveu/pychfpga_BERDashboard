@@ -3207,7 +3207,7 @@ class chFPGA(FPGAFirmware):
         self.GPIO.HOST_FRAME_READ_RATE = 5
 
         if self.CAPTURE_TYPE == 'UCAP':
-            self.UCAP.SOURCE_SEL = set_data_source(source)
+            self.UCAP.set_data_source(source)
             # self.UCAP.config_capture() # doesn't exist yet. fixme
             # self.logger.debug # add some logging?
 
