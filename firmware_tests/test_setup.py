@@ -2,9 +2,16 @@ from pychfpga.fpga_array import FPGAArray
 import logging
 import pytest
 from wtl.config import load_yaml_config
+from pathlib import Path
 
 CONN_CONFIG = load_yaml_config("connection_config")
 TEST_CONFIG = load_yaml_config("test_config")
+
+RESULT_DIR = Path("test_results")
+PLOT_DIR = RESULT_DIR / "comp_plots"
+
+if TEST_CONFIG['comp_plots']:
+    PLOT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @pytest.fixture(scope=TEST_CONFIG['conn_scope'])

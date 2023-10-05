@@ -8,3 +8,4 @@ test_config:
     logleveltest: "DEBUG"   # Log level during tests
     conn_scope: "class"     # Select "function" to re-establish connection for each test or
                             # "class" if you want to reuse connection.
+    comp_plots: True        # Generate comparison plots during tests

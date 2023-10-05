@@ -2,8 +2,8 @@ import logging
 import numpy as np
 import psutil
 import netifaces
-from test_setup import TEST_CONFIG, ice_conn
 from test_setup import ice_conn, setup_funcgen, TEST_CONFIG
+from utils import plot_comp_data
 
 
 class TestFW:
@@ -73,8 +73,6 @@ class TestFW:
         logger.info(f"Expected {len(count)} packages, received {len([p for p in count if p])}.")
         assert all(count), "Missing packages from ICE board. Check connection and system configuration."
 
-    def test_funcgen_control(self, ice_conn):
-        pass
     def _test_funcgen_output(self, ref_data: np.ndarray, function: str, period: float = 1, **func_kwargs):
         logger = self._get_logger()
         logger.debug("Starting data capture from ADC")
@@ -84,6 +82,10 @@ class TestFW:
         logger.debug("Initializing data receiver")
         receiver = self.board.get_data_receiver()
         timestamp, data, count = receiver.read_raw_frames()
+        if TEST_CONFIG['comp_plots']:
+            logger.debug("Generating plots")
+            plot_comp_data(f"funcgen_{function}", ref_data, data,
+                           title=f"Testing {function} funcgen ouput")
         for i, data_row in enumerate(data):
             assert np.all(np.isclose(data_row, ref_data)), \
                 f"Data row with index {i} does not match the reference data"
