@@ -2665,7 +2665,7 @@ class chFPGA(FPGAFirmware):
 
         # Set the date source and the function generator that feed the FFT
         if data_source is not None:
-            self.set_data_source(data_source, channels=channels)  # does a channelizer reset
+            self.set_data_source(data_source, channels=channels, **function_kwargs)  # does a channelizer reset
 
         if function is not None:
             logger = logging.getLogger(self.__name__)
