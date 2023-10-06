@@ -9,7 +9,6 @@ def plot_comp_data(fname: str, ref_data: np.ndarray, data: np.ndarray, x: np.nda
     if fname == 'funcgen_ab':
         crop_data_ind = 50
     elif fname == 'funcgen_real_ramp':
-        # crop_data_ind = 500
         crop_data_ind = 300
     bbox_props = dict(boxstyle='round', facecolor='white', alpha=0.9)
     caption_props = dict(horizontalalignment='left', verticalalignment='center')

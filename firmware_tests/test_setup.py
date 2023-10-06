@@ -15,7 +15,7 @@ if TEST_CONFIG['comp_plots']:
 
 
 @pytest.fixture(scope=TEST_CONFIG['conn_scope'])
-def ice_conn(request):
+def board_conn(request):
     conn_logger_name = FPGAArray.__name__.rsplit('.', 1)[0] if '.' in __name__ else ''
     logging.getLogger(conn_logger_name).setLevel(TEST_CONFIG['loglevelconn'])
 
@@ -26,7 +26,7 @@ def ice_conn(request):
 
 
 @pytest.fixture(scope=TEST_CONFIG['conn_scope'])
-def setup_funcgen(request, ice_conn):
+def setup_funcgen(request, board_conn):
     logger = logging.getLogger(request.cls.__name__)
     request.cls.FG_NS = request.cls.board.ADC_SAMPLES_PER_FRAME
     # Should throw an exception when ADC_BYTES_PER_FRAME not 1 or 2 but the connection does it itself
