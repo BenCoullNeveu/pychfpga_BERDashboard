@@ -2641,7 +2641,8 @@ class chFPGA(FPGAFirmware):
             scaler_bypass=None,
             gain=None,
             postscaler=None,
-            eight_bit_scaler=None,
+            scaler_eight_bit=None,
+            scaler_user_flags=None,
             offset_binary_encoding=None,
             local_sync=True,
             channels=None,
@@ -2735,8 +2736,13 @@ class chFPGA(FPGAFirmware):
         if scaler_bypass is not None:
             self.set_scaler_bypass(bypass_mode=scaler_bypass, channels=channels)
 
-        if eight_bit_scaler is not None:
-            self.set_eight_bit_scaler(eight_bit_scaler=eight_bit_scaler, channels=channels)
+        if scaler_eight_bit is not None:
+            scaler_user_flags = scaler_user_flags or False
+            self.set_scaler_eight_bit(
+                scaler_eight_bit=scaler_eight_bit,
+                scaler_user_flags=scaler_user_flags,
+                channels=channels,
+            )
 
         if gain is not None:
             self.set_gains(gain=gain, postscaler=postscaler, channels=channels)
@@ -4215,9 +4221,10 @@ class chFPGA(FPGAFirmware):
         except IOError:
             self.logger.warning("Gain file '%s' could not be saved for (crate,slot)=%r " % (gain_filename, self.get_id()))
 
-    def set_eight_bit_scaler(
+    def set_scaler_eight_bit(
             self,
-            eight_bit_scaler: bool,
+            scaler_eight_bit: bool,
+            scaler_user_flags: bool,
             channels: List[int],
     ):
         """
@@ -4225,7 +4232,9 @@ class chFPGA(FPGAFirmware):
 
             Parameters:
 
-                eight_bit_scaler (bool): If True - sets the channel to 8-bit mode, otherwise 4-bit mode:
+                scaler_eight_bit (bool): If True - sets the channel to 8-bit mode, otherwise 4-bit mode
+
+                scaler_user_flags (bool): If True, returns user flags in last 4 bits captured from scaler
 
                 channels (list of int): channels to which the specified mode is applied. The opposite mode will be
                 applied to all other unspecified channels. If 'channels' is None, it is applied to the default (active)
@@ -4235,13 +4244,16 @@ class chFPGA(FPGAFirmware):
 
 
             Examples:
-                set_eight_bit_scaler(True, [0,1,2,3])   # Sets first four channels to the 8-bit mode and all other to 4-bit
-                set_eight_bit_scaler(False, [5,6])      # Sets fifth and sixth channels to the 4-bit mode and all other to 8-bit
-                set_eight_bit_scaler(True)              # Sets active channels to the 4-bit mode and all other to 8-bit
+
+                set_eight_bit_scaler(True, False, [0,1,2,3])    # Sets first four channels to the 8-bit mode with data
+                                                                taking the whole byte
+                set_eight_bit_scaler(True, True)                # Sets active channels to the 4-bit mode, but last
+                                                                4-bits in each byte will be returned user flags
 
             History:
                 2023-10-10 V. Bidula: Added this function
             """
+
         if channels is None:
             channels = self.default_channels
 
@@ -4255,8 +4267,10 @@ class chFPGA(FPGAFirmware):
         for ch in range(len(self.chan)):
             if ch in channels:
                 self.logger.debug(f"Setting scaler of channel {ch} to 8-bit mode.")
-                self.chan[ch].SCALER.FOUR_BITS = False
-
+                self.chan[ch].SCALER.FOUR_BITS = not scaler_eight_bit
+                if not scaler_user_flags:
+                    self.logger.debug(f"Extending scaler data of channel {ch} to 8-bit.")
+                    self.chan[ch].PROBER.SCALER_USER_FLAGS = False
 
     def set_gains(
             self,
