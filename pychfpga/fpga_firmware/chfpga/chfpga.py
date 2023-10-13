@@ -21,6 +21,7 @@ import socket
 import __main__
 import asyncio
 import traceback
+from typing import List
 
 # PyPi external packages
 import numpy as np
@@ -2640,6 +2641,7 @@ class chFPGA(FPGAFirmware):
             scaler_bypass=None,
             gain=None,
             postscaler=None,
+            eight_bit_scaler=None,
             offset_binary_encoding=None,
             local_sync=True,
             channels=None,
@@ -2732,6 +2734,9 @@ class chFPGA(FPGAFirmware):
         # Set Scaler parameters
         if scaler_bypass is not None:
             self.set_scaler_bypass(bypass_mode=scaler_bypass, channels=channels)
+
+        if eight_bit_scaler is not None:
+            self.set_eight_bit_scaler(eight_bit_scaler=eight_bit_scaler, channels=channels)
 
         if gain is not None:
             self.set_gains(gain=gain, postscaler=postscaler, channels=channels)
@@ -4068,7 +4073,7 @@ class chFPGA(FPGAFirmware):
 
     def set_offset_binary_encoding(self, offset=True, channels=None, sync=True):
         """
-        Set the output to be encoded in offset binary instead of 2's compliment
+        Set the output to be encoded in offset binary instead of 2's complement
         if sync is true, perform a sync afterward.  Necessary for data to continue flowing
 
         Parameters:
@@ -4210,6 +4215,49 @@ class chFPGA(FPGAFirmware):
         except IOError:
             self.logger.warning("Gain file '%s' could not be saved for (crate,slot)=%r " % (gain_filename, self.get_id()))
 
+    def set_eight_bit_scaler(
+            self,
+            eight_bit_scaler: bool,
+            channels: List[int],
+    ):
+        """
+            Sets the scaler to 8-bit/4bit mode. The mode will be set individually for each channelizer.
+
+            Parameters:
+
+                eight_bit_scaler (bool): If True - sets the channel to 8-bit mode, otherwise 4-bit mode:
+
+                channels (list of int): channels to which the specified mode is applied. The opposite mode will be
+                applied to all other unspecified channels. If 'channels' is None, it is applied to the default (active)
+                channels (see set_default_channels()).
+
+            Notes:
+
+
+            Examples:
+                set_eight_bit_scaler(True, [0,1,2,3])   # Sets first four channels to the 8-bit mode and all other to 4-bit
+                set_eight_bit_scaler(False, [5,6])      # Sets fifth and sixth channels to the 4-bit mode and all other to 8-bit
+                set_eight_bit_scaler(True)              # Sets active channels to the 4-bit mode and all other to 8-bit
+
+            History:
+                2023-10-10 V. Bidula: Added this function
+            """
+        if channels is None:
+            channels = self.default_channels
+
+        eb_support = [chan.SCALER.EIGHT_BIT_SUPPORT for chan in self.chan]
+        if not all(eb_support):
+            raise RuntimeError(
+                f"The scaler of channelizers {[ch for ch in range(len(self.chan)) if not eb_support[ch]]} "
+                f"does not support 8-bit mode."
+            )
+
+        for ch in range(len(self.chan)):
+            if ch in channels:
+                self.logger.debug(f"Setting scaler of channel {ch} to 8-bit mode.")
+                self.chan[ch].SCALER.FOUR_BITS = False
+
+
     def set_gains(
             self,
             gain=None,
@@ -4242,7 +4290,6 @@ class chFPGA(FPGAFirmware):
 
                     - ``Glin_scalar`` is a real or complex number. The real and imaginary part of the linear
                     gain are integer values ranging from -32768 to 32767.
-
                     - ``Glog`` is the postscaler factor. This is a binary scaling factor, which is an integer
                           between 0 and 31 representing a power of two that multiplies the linear
                           gain. It is common to every bin.
