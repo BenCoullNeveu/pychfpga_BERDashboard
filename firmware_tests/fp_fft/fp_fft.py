@@ -68,21 +68,7 @@ def butterfly_r2(d_real, d_imag, stage, stages, fptype_in, fptype_out, fptype_tw
     if shift:
         fptype_tbtw.bin_point += 1
 
-    print(fptype_tbtw)
-    breal = f"{out_real[0]:>0{fptype_tbtw.bit_width}b}"
-    print(out_real[0])
-    print(breal)
-    print(breal[:-fptype_tbtw.bin_point], breal[-fptype_tbtw.bin_point:])
-
     out_real = fptype_out.round(out_real, fptype_tbtw)
-
-    print(fptype_out)
-    breal = f"{out_real[0]:>0{fptype_out.bit_width}b}"
-    print(out_real[0])
-    print(breal)
-    print(breal[:-fptype_out.bin_point], breal[-fptype_out.bin_point:])
-    assert 0==1
-    print("==============")
     out_imag = fptype_out.round(out_imag, fptype_tbtw)
     return out_real, out_imag
 
