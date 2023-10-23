@@ -88,6 +88,7 @@ class FUNCGEN(MMI):
         v[1::2] = v_imag
         return v
 
+
     FUNCTION_NAMES = {  # key : (function number, buffer generator fn)
 
         # The following define the patterns we can program in the waveform buffer
@@ -227,7 +228,7 @@ class FUNCGEN(MMI):
             data = data.view(np.uint8)
 
         if len(data) != self.NB:
-            raise ValueError(f'data must repreent {self.NS} samples and {self.NB} bytes')
+            raise ValueError(f'data must represent {self.NS} samples and {self.NB} bytes')
 
         if self.buffer_cache is None:
             self.buffer_cache = np.zeros(self.NB, np.uint8)
