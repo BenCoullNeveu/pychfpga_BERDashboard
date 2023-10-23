@@ -21,7 +21,7 @@ import socket
 import __main__
 import asyncio
 import traceback
-from typing import List
+from typing import List, Literal
 
 # PyPi external packages
 import numpy as np
@@ -39,7 +39,7 @@ from pychfpga.hardware.interfaces import TCPipe_BSB_MMI, FPGAMmi
 from pychfpga.fpga_firmware import FPGAFirmware
 
 from .chFPGA_receiver import chFPGA_receiver
-
+from .f_engine.scaler import SCALER
 
 # FPGA subsystems handlers
 from .system import spi
@@ -2642,7 +2642,8 @@ class chFPGA(FPGAFirmware):
             gain=None,
             postscaler=None,
             scaler_eight_bit=None,
-            scaler_user_flags=None,
+            scaler_rounding_mode=None,
+            prober_user_flags=None,
             offset_binary_encoding=None,
             local_sync=True,
             channels=None,
@@ -2736,11 +2737,16 @@ class chFPGA(FPGAFirmware):
         if scaler_bypass is not None:
             self.set_scaler_bypass(bypass_mode=scaler_bypass, channels=channels)
 
+        if scaler_rounding_mode is not None:
+            self.set_scaler_rounding_mode(
+                scaler_rounding_mode=scaler_rounding_mode,
+                channels=channels,
+            )
+
         if scaler_eight_bit is not None:
-            scaler_user_flags = scaler_user_flags or False
             self.set_scaler_eight_bit(
                 scaler_eight_bit=scaler_eight_bit,
-                scaler_user_flags=scaler_user_flags,
+                prober_user_flags=prober_user_flags,
                 channels=channels,
             )
 
@@ -4224,7 +4230,7 @@ class chFPGA(FPGAFirmware):
     def set_scaler_eight_bit(
             self,
             scaler_eight_bit: bool,
-            scaler_user_flags: bool,
+            prober_user_flags: bool,
             channels: List[int],
     ):
         """
@@ -4234,11 +4240,10 @@ class chFPGA(FPGAFirmware):
 
                 scaler_eight_bit (bool): If True - sets the channel to 8-bit mode, otherwise 4-bit mode
 
-                scaler_user_flags (bool): If True, returns user flags in last 4 bits captured from scaler
+                prober_user_flags (bool): If True, returns user flags in last 4 bits captured from scaler
 
-                channels (list of int): channels to which the specified mode is applied. The opposite mode will be
-                applied to all other unspecified channels. If 'channels' is None, it is applied to the default (active)
-                channels (see set_default_channels()).
+                channels (list of int): channels to which the specified mode is applied. If 'channels' is None, it is
+                applied to the default (active) channels (see set_default_channels()).
 
             Notes:
 
@@ -4251,7 +4256,7 @@ class chFPGA(FPGAFirmware):
                                                                 4-bits in each byte will be returned user flags
 
             History:
-                2023-10-10 V. Bidula: Added this function
+                2023-10-10 Vadym B.: Added this function
             """
 
         if channels is None:
@@ -4268,9 +4273,50 @@ class chFPGA(FPGAFirmware):
             if ch in channels:
                 self.logger.debug(f"Setting scaler of channel {ch} to 8-bit mode.")
                 self.chan[ch].SCALER.FOUR_BITS = not scaler_eight_bit
-                if not scaler_user_flags:
-                    self.logger.debug(f"Extending scaler data of channel {ch} to 8-bit.")
-                    self.chan[ch].PROBER.SCALER_USER_FLAGS = False
+
+                self.logger.debug(
+                    f"{'Adding' if prober_user_flags else 'Removing'} user flags from scaler data of channel {ch}."
+                )
+                if prober_user_flags is not None:
+                    self.chan[ch].PROBER.PROBER_USER_FLAGS = prober_user_flags
+
+    def set_scaler_rounding_mode(
+            self,
+            scaler_rounding_mode: Literal[1, 2, 3],
+            channels: List[int],
+    ):
+        """
+            Sets the rounding mode of the scaler. The mode will be set individually for each channelizer.
+
+            Parameters:
+
+                scaler_rounding_mode (int): 0 - truncation, 1 - rounding, 2 - convergent rounding
+
+                channels (list of int): channels to which the specified mode is applied. If 'channels' is None, it is
+                applied to the default (active) channels (see set_default_channels()).
+
+            History:
+                2023-10-23 Vadym B.: Added this function
+            """
+
+        rounding_options = {
+            0: ("truncation", SCALER.ROUNDING_MODE_TRUNCATE),
+            1: ("rounding", SCALER.ROUNDING_MODE_ROUND),
+            2: ("convergent_rounding", SCALER.ROUNDING_MODE_CONVERGENT_ROUND),
+        }
+
+        if scaler_rounding_mode not in rounding_options.keys():
+            raise ValueError(f"Invalid rounding mode requested. Available options: {list(rounding_options.keys())}")
+
+        rm_name, rm_code = rounding_options[scaler_rounding_mode]
+
+        if channels is None:
+            channels = self.default_channels
+
+        for ch in range(len(self.chan)):
+            if ch in channels:
+                self.logger.debug(f"Setting rounding mode of scaler in channel {ch} to {rm_name}.")
+                self.chan[ch].SCALER.ROUNDING_MODE = not rm_code
 
     def set_gains(
             self,
