@@ -6,9 +6,9 @@ from test_setup import PLOT_DIR
 def plot_comp_data(fname: str, ref_data: np.ndarray, data: np.ndarray, x: np.ndarray = None, title: str = None, crop_data_ind: int = -1):
     data = np.atleast_2d(data)
     x = x or np.arange(ref_data.size)
-    if fname == 'funcgen_ab':
+    if fname == 'test_funcgen_ab':
         crop_data_ind = 50
-    elif fname == 'funcgen_real_ramp':
+    elif fname == 'test_funcgen_real_ramp':
         crop_data_ind = 300
     bbox_props = dict(boxstyle='round', facecolor='white', alpha=0.9)
     caption_props = dict(horizontalalignment='left', verticalalignment='center')
