@@ -30,7 +30,9 @@ class SCALER(MMI):
     USE_OFFSET_BINARY     = BitField(CONTROL, 0x01, 6, doc="When '1', offset binary encoding is used.")
     # USE_GAIN_TABLE        = BitField(CONTROL, 0x01, 5, doc="When '1', the gain tables are used to apply a bin-by-bin complex gain. Otherwise, the fixed complex gain is used for all bins.")
     READ_COEFF_BANK       = BitField(CONTROL, 0x01, 4, doc="Target gain coefficients bank to be used by the scaler")
-    WRITE_COEFF_BANK      = BitField(CONTROL, 0x01, 0, width=4, doc="Indicates in which data page the gain coefficients are being written to. Page 0-7 are coefficients fri bank0, Page 8-15 are for Bank 1 coefficients.")
+    WRITE_COEFF_BANK_A    = BitField(CONTROL, 0x01, 0, width=4, doc="Indicates in which data page the gain coefficients are being written to. Page 0-7 are coefficients for bank0, Page 8-15 are for Bank 1 coefficients.")
+    WRITE_COEFF_BANK_B    = BitField(CONTROL, 0x01, 5, doc="")
+    WRITE_COEFF_BANK_C    = BitField(CONTROL, 0x01, 7, doc="")
 
     STATS_CAPTURE         = BitField(CONTROL, 0x02, 7, doc="When '1', New saturation/overflow stats are captured")
     SATURATE_ON_MINUS_7   = BitField(CONTROL, 0x02, 6, doc="When '1', Values will saturate at -7 instead of -8.")
@@ -45,12 +47,13 @@ class SCALER(MMI):
     STATS_READY            = BitField(STATUS, 0x00, 7, doc="Indicates that new stats results are ready")
     CURRENT_GAIN_BANK      = BitField(STATUS, 0x00, 6, doc="Currently active gain bank.")
     EIGHT_BIT_SUPPORT      = BitField(STATUS, 0x00, 5, doc="'1' when the SCALER supports 8-bit output")
-    CHAN_FIFO_OVERFLOW      = BitField(STATUS, 0x00, 4, doc="'Channel FIFO overflow flag, sticky")
+    CHAN_FIFO_OVERFLOW     = BitField(STATUS, 0x00, 4, doc="'Channel FIFO overflow flag, sticky")
+    USE_COMPLEX_GAINS      = BitField(STATUS, 0x00, 3, doc="Indicates whether complex gains are used")
 
     STATS_SCALER_OVERFLOWS = BitField(STATUS, 0x02, 0, width=16, doc="Stats result: number of scaler overflows")
     STATS_ADC_OVERFLOWS    = BitField(STATUS, 0x04, 0, width=16, doc="Stats result: number of ADC overflows")
     FRAME_CTR              = BitField(STATUS, 0x05, 0, width=8, doc="Free running frame counter (last 8 bits)")
-    DELAY_CTR = BitField(STATUS, 0x07, 0, width=16, doc="Debug: Delay counter")
+    DELAY_CTR              = BitField(STATUS, 0x07, 0, width=16, doc="Debug: Delay counter")
 
 
     ROUNDING_MODE_TRUNCATE         = 0b00
@@ -121,7 +124,7 @@ class SCALER(MMI):
                 if `gain_list` is a 1024-element list or ndarray, the numeric
                 gains therein are applied to each bin.
 
-                if `gains_list is a scalar int, fload or complex numbers, all
+                if `gains_list is a scalar int, float or complex numbers, all
                 bins are set to that scalar value.
 
                 if `gain_list` is `None`, no gains are set.
@@ -138,50 +141,83 @@ class SCALER(MMI):
             return
 
         total_bins = self.fpga.NUMBER_OF_FREQUENCY_BINS
-        if np.isscalar(gain_list):
-            gains = np.ones(total_bins, dtype=complex) * gain_list
-        else:
-            gains = np.array(gain_list)
 
-        if any(gains.real < -32768) or any(gains.real > 32767) or any(gains.real != gains.real.astype('<i2')) or \
-           any(gains.imag < -32768) or any(gains.imag > 32767) or any(gains.imag != gains.imag.astype('<i2')):
-            raise ValueError('All real or imaginary parts of the gains must be integers between -32768 and 32767')
+        if self.USE_COMPLEX_GAINS:
 
-        if len(gains) != total_bins:
-            raise ValueError('Either a scalar gain or a 1024 element gain vector must be provided')
+            if np.isscalar(gain_list):
+                gains = np.ones(total_bins, dtype=complex) * gain_list
+            else:
+                gains = np.array(gain_list)
 
-        self.cached_gain_table[bank] = gains
-        self.cached_gain_timestamp[bank] = time.time() if gain_timestamp is None else gain_timestamp
+            if any(gains.real < -32768) or any(gains.real > 32767) or any(gains.real != gains.real.astype('<i2')) or \
+               any(gains.imag < -32768) or any(gains.imag > 32767) or any(gains.imag != gains.imag.astype('<i2')):
+                raise ValueError('All real or imaginary parts of the gains must be integers between -32768 and 32767')
 
-        gain_string = np.reshape(np.vstack((gains.imag, gains.real)).T, 2 * total_bins).astype('<i2').tobytes()
+            if len(gains) != total_bins:
+                raise ValueError(f'Either a scalar gain or a {total_bins} element gain vector must be provided')
 
-        # if timestamp is None:
-        #     self.SYNCHRONIZE_GAIN_BANK = 0
-        # else:
-        #     self.SYNCHRONIZE_GAIN_BANK = 1
-        #     self.GAIN_BANK_SWITCH_FRAME_NUMBER = timestamp
+            self.cached_gain_table[bank] = gains
+            self.cached_gain_timestamp[bank] = time.time() if gain_timestamp is None else gain_timestamp
 
-        if bank < 0 or bank is None:
-            bank = self.CURRENT_GAIN_BANK ^ 1
+            gain_string = np.reshape(np.vstack((gains.imag, gains.real)).T, 2 * total_bins).astype('<i2').tobytes()
 
-        # page_table = np.zeros(512, np.int8)
+            if bank < 0 or bank is None:
+                bank = self.CURRENT_GAIN_BANK ^ 1
 
-        for page in range(8):  # there are 8 pages of coefficients per bank
-            self.WRITE_COEFF_BANK = 8 * bank + page
-            self.write_ram(0, gain_string[512 * page: 512 * (page + 1)])
-            # there are 128 coefficients per page ( 4 byte per coefficient = 512 bytes total per page)
-            # for ix in range(128):
-            #     bin = page*128 + ix
-            #     gain = gain_list[bin]
-            #     page_table[4*ix:4*ix+4] = np.fromstring(struct.pack('<hh', gain.imag, gain.real), np.int8)
+            pages_per_bank = 2*2*total_bins//512 # there are 8 pages of coefficients per bank: 2 bytes/bin * (1 real + 1 imag) * total_bins / 512 bytes
+            for page in range(pages_per_bank):  
+                self.WRITE_COEFF_BANK_A = pages_per_bank * bank + page # only need to write the first bank
+                self.write_ram(0, gain_string[512 * page: 512 * (page + 1)])
 
-            # print page_table
-            # self.write_ram(0, np.uint8(page_table))
+        else: # if not self.USE_COMPLEX_GAINS
+
+            if np.isscalar(gain_list):
+                gains = np.ones(total_bins, dtype='<i2') * gain_list
+            else:
+                gains = np.array(gain_list) #, dtype='<i2')
+
+            if any(gains < -32768) or any(gains > 32767) or any(gains != gains.astype('<i2')):
+                raise ValueError('All gains must be integers between -32768 and 32767')
+
+            gains = np.array(gains, dtype = '<i2')
+
+            if len(gains) != total_bins:
+                raise ValueError(f'Either a scalar gain or a {total_bins} element gain vector must be provided')
+
+            self.cached_gain_table[bank] = gains
+            self.cached_gain_timestamp[bank] = time.time() if gain_timestamp is None else gain_timestamp
+
+            # gain_string = np.reshape(np.vstack((gains.imag, gains.real)).T, 2 * total_bins).astype('<i2').tobytes()
+            gain_string = gains.tobytes() # gains should already be type '<i2'
+            print(gain_string[:64].hex(':'))
+
+            if bank < 0 or bank is None:
+                bank = self.CURRENT_GAIN_BANK ^ 1
+
+            pages_per_bank = 2*total_bins//512 # there are 32 pages of coefficients per bank: 2 bytes/bin * (1 real) * total_bins / 512 bytes
+            for page in range(pages_per_bank): 
+                """
+                Now that we have more gains than could fit in the A coefficient bank,
+                we need to decide which bank will be written.
+
+                The multiplication (pages_per_bank * bank) defines whether bank 0 or bank 1 is written
+                (i.e., it functions as an offset).
+                """
+
+                abs_page = pages_per_bank * bank + page
+
+                self.WRITE_COEFF_BANK_A = abs_page & 0b1111
+                self.WRITE_COEFF_BANK_B = (abs_page >> 4) & 1
+                self.WRITE_COEFF_BANK_C = (abs_page >> 5) & 1
+
+                # print(self.WRITE_COEFF_BANK_A, self.WRITE_COEFF_BANK_B, self.WRITE_COEFF_BANK_C)
+                print(bin(self.WRITE_COEFF_BANK_C), bin(self.WRITE_COEFF_BANK_B), bin(self.WRITE_COEFF_BANK_A))
+                self.write_ram(0, gain_string[512 * page: 512 * (page + 1)]) # does the address need to change?
 
         # self.READ_COEFF_BANK = bank
 
     def get_gain_table(self, bank=0, use_cache=False):
-        """Gets the scaler's complex gain table for the specified bank. Converts to numpy complex array.
+        """Gets the scaler's complex gain table for the specified bank. Converts to numpy array.
 
         Args:
 
@@ -189,19 +225,40 @@ class SCALER(MMI):
 
         Returns:
 
-            Gain table, as a list of 1024 complex values, where the real and imaginary parts are 16 bit integers.
+            Gain table, as a list of self.fpga.NUMBER_OF_FREQUENCY_BINS values. If self.USE_COMPLEX_GAINS == True, we
+            have complex values, where the real and imaginary parts are 16 bit integers. If self.USE_COMPLEX_GAINS == False,
+            we just have real gains.
         """
         if use_cache and bank in self.cached_gain_table:
             return self.cached_gain_table[bank]
 
         page_table = np.zeros(512, np.int8)
         gain_table = []   # np.zeros(self.fpga.NUMBER_OF_FREQUENCY_BINS, np.complex)
-        for page in range(8):  # there are 8 pages of coefficients per bank
-            self.WRITE_COEFF_BANK = 8 * bank + page  # Sets which page/bank being read? Not sure if will work...
-            page_table = self.read_ram(0, length=512)
-            for ix in range(128):  # there are 128 coefficients per page (4 byte per coeff = 512 bytes total per page)
-                g_imag, g_real = struct.unpack('<hh', page_table[4 * ix: 4 * ix + 4])
-                gain_table.append(g_real + 1j * g_imag)  # [bin] = g_real +1j*g_imag
+
+        if self.USE_COMPLEX_GAINS:
+            pages_per_bank = 8
+            for page in range(pages_per_bank):  # there are 8 pages of coefficients per bank
+                self.WRITE_COEFF_BANK = pages_per_bank * bank + page  # Sets which page/bank being read? Not sure if will work...
+                page_table = self.read_ram(0, length=512)
+                for ix in range(128):  # there are 128 coefficients per page (4 byte per coeff = 512 bytes total per page)
+                    g_imag, g_real = struct.unpack('<hh', page_table[4 * ix: 4 * ix + 4])
+                    gain_table.append(g_real + 1j * g_imag)  # [bin] = g_real +1j*g_imag
+
+        else: # if not self.USE_COMPLEX_GAINS
+            pages_per_bank = 32
+            for page in range(32):  # there are 32 pages of coefficients per bank
+                
+                abs_page = pages_per_bank * bank + page
+
+                self.WRITE_COEFF_BANK_A = abs_page & 0b1111
+                self.WRITE_COEFF_BANK_B = (abs_page >> 4) & 1
+                self.WRITE_COEFF_BANK_C = (abs_page >> 5) & 1
+
+                page_table = self.read_ram(0, length=512/2, type = '<i2')
+                # for ix in range(256):  # there are 256 coefficients per page (2 bytes per coeff = 512 bytes total per page)
+                #     g = struct.unpack('<hh', page_table[2 * ix: 2 * ix + 2])
+                gain_table.append(page_table.tolist()) 
+
         return gain_table
 
     def get_gains_timestamp(self, bank=0):
