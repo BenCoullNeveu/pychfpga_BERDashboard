@@ -32,7 +32,7 @@ def _get_txt_field(tr, key):
 
 
 def match(target, value):
-    return target == '*' or target == value
+    return target == '*' or target.upper() == value.upper()
 
 def match_int(target, value):
     """ Return True if target is the wildcard character or if the value match the target when both are converted to integers. Returns False if both cannot be coonverted to integers.
@@ -190,7 +190,7 @@ async def mdns_discover(
 
             if icecrate_match or iceboard_match:
                 if ib_part_number and ib_serial:
-                    ib_cls = Motherboard.get_class_by_ipmi_part_number(ib_part_number)
+                    ib_cls = Motherboard.get_class_by_ipmi_part_number(ib_part_number.upper())
                     if not ib_cls:
                         raise RuntimeError(f'mdns discover: cannot find a class for motherboard with part number {ib_part_number}. Make sure the class is registered.')
                     ib_obj = ib_cls.get_unique_instance(serial=ib_serial, hostname=addr)
