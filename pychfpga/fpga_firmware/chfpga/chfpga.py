@@ -1675,12 +1675,11 @@ class chFPGA(FPGAFirmware):
 
         Does not change the target MAC or IP address.
         """
-        if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
-            if port != self._ZCU111_LOCAL_DATA_PORT_NUMBER:
-                raise ValueError(f'Cannot current set data port number to {port} on this platform.')
-            return
-        word = await self.fpga_core_reg_read_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR)
-        await self.fpga_core_reg_write_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR, (word & 0xFFFF0000) | (port & 0xFFFF))
+        if self.PLATFORM_ID in (self._PLATFORM_ID_ZCU111, self._PLATFORM_ID_CRS):
+            self.mb.tcpipe.core_reg_write(self.mb.tcpipe.CORE_REG_UDP_DATA_PORT, port)
+        else: 
+            word = await self.fpga_core_reg_read_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR)
+            await self.fpga_core_reg_write_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR, (word & 0xFFFF0000) | (port & 0xFFFF))
 
     async def get_local_data_port_number_async(self):
         """ Return the port number to which the FPGA is sending its captured data stream on the control network.
@@ -1688,8 +1687,8 @@ class chFPGA(FPGAFirmware):
         This method uses MMI interface to access the FPGA core registers.
 
         """
-        if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
-            return self._ZCU111_LOCAL_DATA_PORT_NUMBER
+        if self.PLATFORM_ID in (self._PLATFORM_ID_ZCU111, self._PLATFORM_ID_CRS):
+            return self.mb.tcpipe.core_reg_read(self.mb.tcpipe.CORE_REG_UDP_DATA_PORT)
         else:
             return (await self.fpga_core_reg_read_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR)) & 0xFFFF
 
