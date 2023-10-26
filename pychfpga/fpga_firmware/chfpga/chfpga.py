@@ -3002,13 +3002,20 @@ class chFPGA(FPGAFirmware):
             return self.recv
         if threaded:
             # Old threaded data receiver
+            if self.CAPTURE_TYPE != "PROBER":
+                raise RuntimeError('The old threaded receiver is supported only by PROBER')
             chFPGA_config = run_async(self.get_config_async(basic=True))  # get only the info needed to start the receiver
             self.recv = chFPGA_receiver(chFPGA_config, verbose=verbose)
             self.logger.debug('Started data receiver threads on %s:%i' % (self.recv.host_ip, self.recv.port_number))
             run_async(self.set_local_data_port_number_async(self.recv.port_number))
-        else:
+        elif self.CAPTURE_TYPE == "PROBER":
             sock = self.get_data_socket()
             self.recv = prober.RawFrameReceiver(sock)
+        elif self.CAPTURE_TYPE == "UCAP":
+            sock = self.get_data_socket()
+            self.recv = self.UCAP.get_data_receiver(sock)
+        else:
+            raise RuntimeError("Unknown capture engine type")
 
         return self.recv
 
