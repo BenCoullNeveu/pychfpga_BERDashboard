@@ -1,3 +1,5 @@
+import os
+
 from .fpga_bitstream import FPGABitstream
 
 class FPGAFirmware():
@@ -113,7 +115,7 @@ class FPGAFirmware():
             raise RuntimeError(f'Found multiple matches for firmware mode {mode} and platform {platform_name}')
         fw_cls, pf_info = fw[0]
         # bs = cls.get_bitstream_object(bitfile_override or pf_info.pop('firmware_url'), folder=folder_override)
-        if bitfile_override is not None and os.path.isdir(bitfile):
+        if bitfile_override is not None and os.path.isdir(bitfile_override):
             if folder_override is None:
                 folder_override =  bitfile_override
                 bitfile_override = None
