@@ -20,6 +20,11 @@ class TCPipe:
     RPC_IIC_WRITE_READ = 0x02
     RPC_IIC_READ = 0x03
     RPC_SPI_WRITE_READ = 0x04
+    RPC_CORE_REG_READ = 0x05
+    RPC_CORE_REG_WRITE = 0x06
+
+    CORE_REG_UDP_DATA_PORT = 2
+    
     opened_sockets = {}
 
     def __init__(self, hostname, port=7, timeout=2):
@@ -242,6 +247,45 @@ class TCPipe:
 
     def is_fpga_programmed(self):
         return True
+
+    def core_reg_read(self, reg):
+        tx_len = 5
+        self.tx_view[0] = self.RPC_PREFIX
+        self.tx_view[1] = self.RPC_CORE_REG_READ
+        self.tx_view[2] = 1 
+        self.tx_view[3] = 0
+        self.tx_view[4] = reg # register number
+
+        # print(f'Sending {self.tx_buf[:tx_len + len(data) + read_length]}')
+        self.sock.sendall(self.tx_view[:tx_len])    
+        rx_len = self.sock.recv_into(self.rx_buf)
+        if self.rx_buf[0]:
+            raise IOError(f'core_reg_read reply has error code {self.rx_buf[0]}')
+        if rx_len != 5:
+            raise IOError(f'core_reg_read received {rx_len} bytes instead of {5} bytes')
+        # print(f'received {self.rx_buf[:rx_len]}, returning {self.rx_buf[rx_len-read_length:rx_len]}')
+
+        return int.from_bytes(self.rx_buf[1:5], 'little')
+
+    def core_reg_write(self, reg, value):
+        tx_len = 4+1+4
+        self.tx_view[0] = self.RPC_PREFIX
+        self.tx_view[1] = self.RPC_CORE_REG_WRITE
+        self.tx_view[2] = 5 # register + value word 
+        self.tx_view[3] = 0
+        self.tx_view[4] = reg # register number
+        self.tx_view[5: 9] = value.to_bytes(4, 'little');
+
+        # print(f'Sending {self.tx_buf[:tx_len + len(data) + read_length]}')
+        self.sock.sendall(self.tx_view[:tx_len])    
+        rx_len = self.sock.recv_into(self.rx_buf)
+        if self.rx_buf[0]:
+            raise IOError(f'core_reg_read reply has error code {self.rx_buf[0]}')
+        if rx_len != 1:
+            raise IOError(f'core_reg_read received {rx_len} bytes instead of {1} byte')
+        # print(f'received {self.rx_buf[:rx_len]}, returning {self.rx_buf[rx_len-read_length:rx_len]}')
+
+
 
 class TCPipe_I2C:
     """

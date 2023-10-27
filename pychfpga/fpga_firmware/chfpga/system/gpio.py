@@ -320,10 +320,16 @@ class GPIO(MMI):
         self.CORR_RESET = 1
         # self.USER_RESET = 0
 
-        if self.PLATFORM_ID in (self.fpga._PLATFORM_ID_ZCU111, self.fpga._PLATFORM_ID_CRS):
-            self.BUCK_CLK_DIV = 17
+        # Buck sync is enabled by default and starts immediately when the FPGA is programmed
 
-        self.logger.info(f'Buck switching frequency is set at {200/16/self.BUCK_CLK_DIV:.3f} MHz')
+        # The commented code below was for the CRS platform before platform-specific freqs and enable status could be set in firmware
+        # it is started by software 
+        # if self.PLATFORM_ID == self.fpga._PLATFORM_ID_CRS:
+            # self.BUCK_CLK_DIV = 24
+            # self.logger.info(f'Enabling CRS Buck sync at {200/16/self.BUCK_CLK_DIV:.3f} MHz NOW!')
+            # self.BUCK_SYNC_ENABLE = 1
+
+        self.logger.info(f'Buck switching frequency is set at {200/16/self.BUCK_CLK_DIV:.3f} MHz. Status: {"Enabled" if self.BUCK_SYNC_ENABLE else "DISABLED"}')
 
         # In the alternate code below, we do not use self.ANT_RESET=1 to reset
         # the antenna because this implies reading the control register, and

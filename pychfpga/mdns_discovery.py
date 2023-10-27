@@ -31,8 +31,8 @@ def _get_txt_field(tr, key):
     return value
 
 
-def match(target, value):
-    return target == '*' or target.upper() == value.upper()
+def match(target, value, case_sensitive=True):
+    return target == '*' or ((target==value) if case_sensitive else (target.upper() == value.upper()))
 
 def match_int(target, value):
     """ Return True if target is the wildcard character or if the value match the target when both are converted to integers. Returns False if both cannot be coonverted to integers.
@@ -64,7 +64,8 @@ async def mdns_discover(
         iceboards=None,
         timeout=None,
         inter_reply_timeout=None,
-        clear_hwm=False):
+        clear_hwm=False,
+        case_sensitive=False):
     """ Automatically detect IceBoards and IceCrates on the network using mDNS
     and add them to the hardware map.
 
@@ -107,7 +108,7 @@ async def mdns_discover(
             replies to come in a burst after some long delay. The search will
             still stop after `timeout` even if the burst has started. This feature is disabled if `inter_reply_timeout` is `None`.
 
-
+        case_sensitive (bool): If true, motherboard and crate model names matching will be case sensitive. 
 
     """
     logger = logging.getLogger(__name__)
@@ -178,19 +179,21 @@ async def mdns_discover(
 
             # Check if the motherboard matches the search criteria
             iceboard_match = ib_part_number and ib_serial and any(
-                match(target_model, ib_part_number)
-                and (match(target_serial, ib_serial) or match_int(target_serial, ib_serial))
+                match(target_model, ib_part_number, case_sensitive=case_sensitive)
+                and (match(target_serial, ib_serial, case_sensitive=case_sensitive) or match_int(target_serial, ib_serial))
                 for target_model, target_serial in iceboards)
 
             # Check if the backplane matches the search criteria
             icecrate_match = bp_part_number and bp_serial and any(
-                match(target_model, bp_part_number)
-                and (match(target_serial, bp_serial) or match_int(target_serial, bp_serial))
+                match(target_model, bp_part_number, case_sensitive=case_sensitive)
+                and (match(target_serial, bp_serial, case_sensitive=case_sensitive) or match_int(target_serial, bp_serial))
                 for target_model, target_serial in icecrates)
 
             if icecrate_match or iceboard_match:
                 if ib_part_number and ib_serial:
-                    ib_cls = Motherboard.get_class_by_ipmi_part_number(ib_part_number.upper())
+
+                    ib_cls = Motherboard.get_class_by_ipmi_part_number(ib_part_number if case_sensitive else ib_part_number.upper())
+
                     if not ib_cls:
                         raise RuntimeError(f'mdns discover: cannot find a class for motherboard with part number {ib_part_number}. Make sure the class is registered.')
                     ib_obj = ib_cls.get_unique_instance(serial=ib_serial, hostname=addr)

@@ -114,7 +114,10 @@ class CRS(Motherboard):
     SERIAL_NUMBER_LENGTH = 3  # number of digits in the serial number. Used to convert integers to a valid serial number.
 
     NUMBER_OF_CHANNELIZERS = 4
-    REV0_SERIALS = ('0429,')  # hack to temporarily set the revision number
+    # List serial numbers of Rev 0 boards. This is a temporary hack that is used to properly select the SPI port of the PLL.
+    # One day we'll be able to query the board directly.
+    REV0_SERIALS = ('429', '0429', # returned by SN003 with old TCPipe firmware that didn't read the EEPROM and used the FPGA DNA 
+                    '003',)  
 
     port = 7  # port number on which to access the platform `hostname`
 
