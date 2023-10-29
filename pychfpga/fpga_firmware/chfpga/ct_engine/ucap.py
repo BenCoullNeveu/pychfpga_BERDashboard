@@ -96,8 +96,8 @@ class UCAP(MMI):
 
         return b[:64, 5:]
 
-    def get_data_receiver(self):
-        return RawFrameReceiver(self.fpga.get_data_socket())
+    def get_data_receiver(self, sock=None):
+        return RawFrameReceiver(sock or self.fpga.get_data_socket())
 
 class RawFrameReceiver(object):
     """

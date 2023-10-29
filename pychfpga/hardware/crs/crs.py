@@ -241,13 +241,14 @@ class CRS(Motherboard):
             '1v2b': dict(device=self.i2c1_ina231_1v2b, rshunt=0.01, imax=16),
         }
 
-        # return
+        self.pll = hmc7044(self.spi, spi_port=self.pll_spi_port) # programmable PLL, to be initialized when FPGA is programmed.
+
+        return
         self.logger.info(f'Initializing Voltage/current monitor chips')
         for name, info in self.i2c1_ina231_list.items():
             d = info['device']
             d.init(r_shunt=info['rshunt'], i_typ=info['imax'], avg=3)
 
-        self.pll = hmc7044(self.spi, spi_port=self.pll_spi_port) # programmable PLL, to be initialized when FPGA is programmed.
 
 
 
