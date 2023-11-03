@@ -301,7 +301,7 @@ class RawFrameReceiver(object):
             bix = sid_map.get(self.buf_stream_id[i] & 0x7, None)
             subframe = self.buf_subframe[i] & 0x3
             frame = (self.buf_stream_id[i] >> 12) & 0x0F
-            print(f'Ch={bix}, frame={frame}, subframe={subframe}')
+            # print(f'Ch={bix}, frame={frame}, subframe={subframe}')
             if bix is not None:
                 x = frame * self.FRAME_SIZE + subframe*self.DATA_SIZE
                 self.data[bix][x:x+self.DATA_SIZE] = self.buf_data[i]

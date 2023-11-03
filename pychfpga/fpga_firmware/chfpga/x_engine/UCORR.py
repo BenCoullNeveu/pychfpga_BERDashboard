@@ -130,7 +130,7 @@ class UCorrFrameReceiver(object):
         self.NPACKETS = packets_per_chunk
         self.NCORR = NCORR
         self.NPROD = NCHAN * (NCHAN + 1) // 2  # Total number of products per correlator frame
-        self.NPROD = NCHAN   # Autocorrelation-only Total number of products per correlator frame
+        # self.NPROD = NCHAN   # Autocorrelation-only Total number of products per correlator frame
         self.NBINS = Nbins
         self.NBYTES_PER_HEADER = 10
         self.NBYTES_PER_PROD = 5

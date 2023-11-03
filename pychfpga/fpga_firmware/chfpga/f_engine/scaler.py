@@ -161,7 +161,7 @@ class SCALER(MMI):
                 raise ValueError('All real or imaginary parts of the gains must be integers between -32768 and 32767')
 
             if len(gains) != total_bins:
-                raise ValueError('Either a scalar gain or a 1024 element gain vector must be provided')
+                raise ValueError(f'Either a scalar gain or a {total_bins} element gain vector must be provided')
 
             self.cached_gain_table[bank] = gains
             self.cached_gain_timestamp[bank] = time.time() if gain_timestamp is None else gain_timestamp
@@ -177,10 +177,10 @@ class SCALER(MMI):
 
             print(f'gains= {gains}')
             if any(gains < -32768) or any(gains > 32767) or any(gains != gains.astype('<i2')):
-                raise ValueError('All real or imaginary parts of the gains must be integers between -32768 and 32767')
+                raise ValueError('All gains must be integers between -32768 and 32767')
 
             if len(gains) != total_bins:
-                raise ValueError('Either a scalar gain or a 1024 element gain vector must be provided')
+                raise ValueError(f'Either a scalar gain or a {total_bins} element gain vector must be provided')
 
             self.cached_gain_table[bank] = gains
             self.cached_gain_timestamp[bank] = time.time() if gain_timestamp is None else gain_timestamp
