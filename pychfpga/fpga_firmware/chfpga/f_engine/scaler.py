@@ -185,7 +185,7 @@ class SCALER(MMI):
             self.cached_gain_table[bank] = gains
             self.cached_gain_timestamp[bank] = time.time() if gain_timestamp is None else gain_timestamp
 
-            gain_string = gains.astype('>i2').tobytes()
+            gain_string = gains.astype('<i2').tobytes()
 
         # page_table = np.zeros(512, np.int8)
         n_pages = len(gain_string) // 512
@@ -244,7 +244,7 @@ class SCALER(MMI):
         #         print(bin(self.WRITE_COEFF_BANK_C), bin(self.WRITE_COEFF_BANK_B), bin(self.WRITE_COEFF_BANK_A))
         #         self.write_ram(0, gain_string[512 * page: 512 * (page + 1)]) # does the address need to change?
 
-        # self.READ_COEFF_BANK = bank
+        self.READ_COEFF_BANK = bank
 
     def get_gain_table(self, bank=0, use_cache=False):
         """Gets the scaler's complex gain table for the specified bank. Converts to numpy array.
