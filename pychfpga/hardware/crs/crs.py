@@ -242,7 +242,7 @@ class CRS(Motherboard):
         }
 
         self.pll = hmc7044(self.spi, spi_port=self.pll_spi_port) # programmable PLL, to be initialized when FPGA is programmed.
-
+ 
         return
         self.logger.info(f'Initializing Voltage/current monitor chips')
         for name, info in self.i2c1_ina231_list.items():
