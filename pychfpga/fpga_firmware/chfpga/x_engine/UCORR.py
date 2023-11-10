@@ -59,6 +59,10 @@ class UCORR(MMI):
     def status(self):
         """Displays the status of al the correlator blocks"""
         print('======= CORR.core[%i] =============' % self.instance_number)
+        print(f' Don\'t accumulate: {self.NO_ACCUM}')
+        print(f' Autocorrelation only: {self.AUTOCORR_ONLY}')
+        print(f' Firmware integration period: {self.INTEGRATION_PERIOD} frames')
+        print(f' Overrun in one of the register cores: {self.OVERRUN}')
 
 
     def start_correlator(self, *args, **kwargs):
@@ -98,7 +102,7 @@ class UCorrFrameReceiver(object):
     by setting ib.GPIO.HOST_FRAME_READ_RATE = rate. rate=16 limits to about
     260 Mbps but is slow enough to allow python to process the data with a
     small standard UDP buffer. ``rate``=15 is good for about 500 Mbps, and
-    ``rate``=16 is good for the full Gigabit bandwidth. The latetr two require
+    ``rate``=16 is good for the full Gigabit bandwidth. The latetr two requireabs(vis[0, :, 0])
     bigger UDP buffers. See below::
 
         ib.GPIO.HOST_FRAME_READ_RATE = 14
@@ -108,10 +112,10 @@ class UCorrFrameReceiver(object):
         sudo ifconfig eno1 mtu 9000
 
     The UDP buffers shall be increased to reduce packet loss to a minimum::
-        sudo sysctl -w net.core.rmem_max=26214400
-        sudo sysctl -w net.core.rmem_default=26214400
-        sudo sysctl -w net.ipv4.udp_mem='26214400 26214400 26214400'
-        sudo sysctl -w net.ipv4.udp_rmem_min=26214400
+        sudo sysctl -w net.core.rmem_max=262144000
+        sudo sysctl -w net.core.rmem_default=262144000
+        sudo sysctl -w net.ipv4.udp_mem='26214400 26214400 262144000'
+        sudo sysctl -w net.ipv4.udp_rmem_min=262144000
 
     Check udp buffers::
         sysctl -a | grep mem
@@ -317,6 +321,8 @@ class UCorrFrameReceiver(object):
         # case. We cannot thereofre use a complex64 value (float32+float32),
         # and thereofre use a complex128 format.
         self.data = np.zeros((number_of_results, self.NBINS, self.NPROD), dtype=np.complex128)
+        
+        # self.bin_ = [] # used for debugging missing bins
 
         # packets_per_chunk = corr_frames_per_chunk * NCORR * NCMAC
 
@@ -423,7 +429,7 @@ class UCorrFrameReceiver(object):
         self.data.real = self.acc_re
         self.data.imag = self.acc_im
         if return_format == 'raw':
-            return (self.data, self.count, self.sat_cplx)
+            return (self.data, self.count, self.sat_cplx) #, self.bin_)
         elif return_format == 'matrix':
             m = self.raw_to_matrix_map
             matrix = self.data[:, m[0], m[1], m[2]]
@@ -451,6 +457,11 @@ class UCorrFrameReceiver(object):
         # hh = h[:n]
 
         bin_ = self.buf_stream_id[:number_of_packets]
+        # if len(bin_) != len(np.unique(bin_)):
+            # print(bin_)
+            # print(np.unique(bin_))
+            # raise ValueError(f'Received {len(bin_)} frequency bins, but there are only {len(np.unique(bin_))} unique bins. Some bins are repeated.')
+        # self.bin_.append(bin_)
         # cmac = self.buf_cmac[:number_of_packets]
         # print 'corr=', corr
         # print 'cmac=', cmac
