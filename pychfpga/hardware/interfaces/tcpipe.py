@@ -16,9 +16,10 @@ class TCPipe:
 
     RPC_PREFIX = 0xCC
     RPC_BSB_WRITE_READ = 0x00
-    RPC_IIC_WRITE = 0x01
+    # RPC_IIC_WRITE = 0x01
+    RPC_GET_RPC_FUNCTIONS = 0x01
     RPC_IIC_WRITE_READ = 0x02
-    RPC_IIC_READ = 0x03
+    # RPC_IIC_READ = 0x03
     RPC_SPI_WRITE_READ = 0x04
     RPC_CORE_REG_READ = 0x05
     RPC_CORE_REG_WRITE = 0x06
@@ -178,7 +179,7 @@ class TCPipe:
         return self.rx_buf[:rx_len]
 
     def spi_write_read(self, spi_device, data, read_length):
-        """ Writes `data` to SPI address `spi_device` while reading, and return  the last `read_length` bytes transaction.
+        """ Writes `data` to SPI address `spi_device` while reading the same number of bytes, and return  the last `read_length` bytes transaction.
 
         Parameters:
 
@@ -194,28 +195,27 @@ class TCPipe:
         """
         if not isinstance(data, (bytes, bytearray)):
             data = bytes(data)
-        # cmd = bytes((self.RPC_PREFIX, self.RPC_SPI_WRITE_READ, 2 + len(data) + read_length, 0, spi_device, read_length))
         tx_len = 6
         self.tx_view[0] = self.RPC_PREFIX
         self.tx_view[1] = self.RPC_SPI_WRITE_READ
-        self.tx_view[2] = 2 + len(data)  # SPI port, read_length & data length
+        self.tx_view[2] = 1+1 + len(data) # SPI port, write bytes + read padding bytes
         self.tx_view[3] = 0 # data length assumed to be < 256-2
         self.tx_view[4] = spi_device # SPI port
-        self.tx_view[5] = read_length # number of bytes to read fter the write
+        self.tx_view[5] = read_length
 
         self.tx_view[tx_len: tx_len + len(data)] = data
         self.tx_view[tx_len + len(data): tx_len + len(data) + read_length] = b'\x00' * read_length
 
-        # print(f'Sending {self.tx_buf[:tx_len + len(data) + read_length]}')
+        print(f'TCPIPE SPI: Sending {self.tx_buf[:tx_len + len(data) + read_length]}')
         self.sock.sendall(self.tx_view[:tx_len + len(data) + read_length])
         rx_len = self.sock.recv_into(self.rx_buf)
         if self.rx_buf[0]:
             raise IOError(f'SPI Reply has error code {self.rx_buf[0]}')
         if rx_len != 1 + len(data) + read_length:
-            raise IOError(f'SPI Received {rx_len} bytes instead of {1+read_length} bytes')
+            raise IOError(f'SPI Received {rx_len} bytes instead of {1 + len(data) + read_length} bytes')
         # print(f'received {self.rx_buf[:rx_len]}, returning {self.rx_buf[rx_len-read_length:rx_len]}')
 
-        return self.rx_buf[rx_len-read_length:rx_len]
+        return self.rx_buf[rx_len - read_length: rx_len]
 
     def set_fpga_bitstream(self, data, crc=0, timeout=40):
         """ Programs the FPGA with the provided bitstream.
@@ -227,7 +227,7 @@ class TCPipe:
 
         print(f'TCPipe: Programming FPGA with {len(data)} bytes')
 
-        assert len(data) == 34437356, "ZU28 bitstream should be 34437356 bytes long"
+        assert len(data) == 34437356, "ZU27/28/47/48 bitstream should be 34437356 bytes long"
 
         old_timeout = self.sock.gettimeout()
         try:
