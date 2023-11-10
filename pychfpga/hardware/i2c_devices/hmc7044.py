@@ -166,6 +166,7 @@ class hmc7044(object):
             val = self.regs[reg] & (~mask) | (val & mask)
         self.regs[reg] = val
         spi_data = bytes([reg >> 8, reg & 0xFF, val]) # r/w=0, W1=0, W0=0
+        # print(f'write_reg: sending {len(spi_data)} bytes')
         self.spi.write_read(self.spi_port, spi_data, read_length=0)
 
     def write_regs(self, regs):
