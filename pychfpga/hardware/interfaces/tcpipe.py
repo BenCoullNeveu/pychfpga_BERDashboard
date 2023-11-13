@@ -241,7 +241,7 @@ class TCPipe:
         tx_len = 6
         self.tx_view[0] = self.RPC_PREFIX
         self.tx_view[1] = self.RPC_SPI_WRITE_READ
-        self.tx_view[2] = 2 + len(data)  # SPI port, read_length & data length
+        self.tx_view[2] = 2 + len(data) + read_length  # SPI port, read_length & data length
         self.tx_view[3] = 0 # data length assumed to be < 256-2
         self.tx_view[4] = spi_device # SPI port
         self.tx_view[5] = read_length # number of bytes to read fter the write
