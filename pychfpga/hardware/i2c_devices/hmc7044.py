@@ -57,7 +57,7 @@ class hmc7044(object):
         self.spi_port = spi_port
         self.regs = {}  # image of latest values written
 
-    def init(self, fref=10e6, fosc=50e6, fvco=3200e6, fout={}, filename=None):
+    def init(self, fref=10e6, fosc=50e6, fvco=3200e6, fout={}, filename=None, check=1):
         """Initializes the PLL.
 
         Parameters:
@@ -70,6 +70,10 @@ class hmc7044(object):
 
             fout (dict): Frequency of each of the the PLL2's outputs. These should be a submultiples of fvco.
 
+            filename (str): file from which to read a PLL config file. If specified, all otherPLL  parameters are ignored.
+
+            check (bool): if True, the registers will be read back after every write to confirm their values 
+
         """
 
         # Reset the PLL
@@ -81,6 +85,7 @@ class hmc7044(object):
             regs = self.load_config_file(filename)
             self.write_regs(regs)
 
+        self.check = check
 
         # Initialize basic registers not handled below
         self.init_registers()
@@ -168,6 +173,10 @@ class hmc7044(object):
         spi_data = bytes([reg >> 8, reg & 0xFF, val]) # r/w=0, W1=0, W0=0
         # print(f'write_reg: sending {len(spi_data)} bytes')
         self.spi.write_read(self.spi_port, spi_data, read_length=0)
+        if self.check:
+            read_val = self.read_reg(reg)
+            if read_val != val:
+                print(f'Warning: Readback on register 0x{reg:04x} is 0x{read_val:02x} instead of 0x{val:02x}')
 
     def write_regs(self, regs):
         """Write a list of (register, value) tuples to the PLL.
@@ -343,13 +352,13 @@ class hmc7044(object):
 
             # Alarms
             # --------
-            (0x70, 0x0),
-            (0x71, 0x10),
+            (0x70, 0x0), # PLL1 alarm control register
+            (0x71, 0x10), # Alarm mask control: 4: sync req, 3:PLL1/2 lock detect, 2: clk out phase status, 1: sysref sync status, 0: pll2 lock detect
 
-            (0x7B, 0x1),
-            (0x7C, 0x1F),
-            (0x7D, 0x13),
-            (0x7E, 0x7F),
+            (0x7B, 0x1), # Alarm readback register (read only)
+            (0x7C, 0x1F), # PLL1 alarm readback (read only)
+            (0x7D, 0x13), # Alarm readback (read only)
+            (0x7E, 0x7F), # Latched alarm readback (read only)
 
             # Reserved values recommended by Analog Devices. See Table 74 of datasheet Rev C.
             (0x96, 0x0),
@@ -790,8 +799,8 @@ class hmc7044(object):
             if not f_vco:
                 raise RuntimeError(f'f_vco must be specified if f_out is specified.')
             divider = f_vco / f_out
-            if f_vco > 1000e6:
-                print(f'Setting output {output_number}to LVPECL')
+            if f_out > 1000e6:
+                print(f'Forcing output {output_number} mode to LVPECL because fout is high')
                 driver_mode = 1
         if divider != int(divider):
             raise RuntimeError(f'Output {output_number} divider={divider} is not an integer')
