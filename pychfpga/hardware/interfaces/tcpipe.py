@@ -1,6 +1,9 @@
 # Standard Python packages
 import logging
 import socket
+import re
+import textwrap
+
 
 from .bsb_mmi import BSB_MMI
 
@@ -49,6 +52,46 @@ class TCPipe:
         print(f'Closing TCPipe socket at {self.sock.getsockname()}')
         self.sock.close()
         self.sock = None
+
+    def get_rpc_functions(self):
+        """ Fetches the list of functions provided by the platform processor.
+
+
+        Parameters: None
+
+
+        """
+        tx_len = 4 # RPC header, I2C address, read length,  excluding data
+        self.tx_view[0] = self.RPC_PREFIX
+        self.tx_view[1] = 1
+        self.tx_view[2] = 0   # I2C addr, read_length & data
+        self.tx_view[3] = 0
+
+        # print(f'Sending {bytes(self.tx_view[:tx_len_data]).hex(":")}')
+        self.sock.sendall(self.tx_view[:tx_len])
+
+        b = bytearray()
+        funcs = {}
+        # read TCP stream until we encounter 3 consecutive nulls indicting the end of the list
+        while True:
+            b += self.sock.recv(1024)
+            if b.endswith(b'\x00\x00\x00'):
+                break
+        # extract function id byte, and the name and docs null-terminated strings
+        f=re.findall('(.)([^\x00]*\x00)([^\x00]*\x00)',b.decode())
+        for (func_id, name, docs) in f:
+            if len(name) > 1: # exclude terminator, which has an empty null-terminated name string
+                funcs[ord(func_id)] = dict(
+                    name=name.strip('\x00'), 
+                    docs=re.sub(r'\t(\t*)',r'\n\1',docs.strip('\x00')).strip() #replace first tab of a sequence of tabs by a newline, and remove leading/trailing newlines/empty lines
+                    )
+        return funcs
+
+    def print_rpc_functions(self):
+        for fid,info in self.get_rpc_functions().items():
+            print(f'{fid:3d} : {info["name"]}(...)')
+            print(textwrap.indent(info['docs'], '\t'))
+
 
     def i2c_read(self, addr, read_length, no_error=False):
         return self.i2c_write_read(addr, data=b'', read_length=read_length, no_error=no_error)
