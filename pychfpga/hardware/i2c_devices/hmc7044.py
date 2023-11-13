@@ -798,8 +798,8 @@ class hmc7044(object):
             if not f_vco:
                 raise RuntimeError(f'f_vco must be specified if f_out is specified.')
             divider = f_vco / f_out
-            if f_vco > 1000e6:
-                print(f'Setting output {output_number}to LVPECL')
+            if f_out > 1000e6:
+                print(f'Forcing output {output_number} mode to LVPECL because fout is high')
                 driver_mode = 1
         if divider != int(divider):
             raise RuntimeError(f'Output {output_number} divider={divider} is not an integer')
