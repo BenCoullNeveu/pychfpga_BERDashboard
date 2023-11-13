@@ -177,25 +177,7 @@ class TCPipe:
 
         """
         self.i2c_write_read(addr, data, read_length=0)
-        # if not isinstance(data, (bytes, bytearray)):
-        #     data = bytes(data)
-        # tx_len = 5 # RPC hader + I2C address, excluding data
-        # tx_len_data = tx_len + len(data)
-        # self.tx_view[0] = self.RPC_PREFIX
-        # self.tx_view[1] = self.RPC_IIC_WRITE
-        # self.tx_view[2] = 1 + len(data)
-        # self.tx_view[3] = 0 # data length assumed to be < 256
-        # self.tx_view[4] = addr # I2C address
-
-
-        # self.tx_view[tx_len:tx_len_data] = data
-        # self.sock.sendall(self.tx_view[:tx_len_data])
-        # rx_len = self.sock.recv_into(self.rx_buf)
-        # if self.rx_buf[0]:
-        #     raise IOError(f'Reply has error code {self.rx_buf[0]}')
-        # if rx_len != 1:
-        #     raise IOError(f'Receive {rx_len} bytes instead of 1 byte')
-
+ 
     def bsb_write_read(self, data):
         """ Writes `data` to the FPGA firmware Byte-serial bus and return reply.
 
