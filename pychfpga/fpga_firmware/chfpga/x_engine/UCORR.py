@@ -122,7 +122,7 @@ class UCorrFrameReceiver(object):
 
     Monitor UDP buffer::
 
-        watch -cd -n .5 "grep :A6  /proc/net/udp"
+        watch -cd -n .5 "cat  /proc/net/udp"
     """
 
     def __init__(self, socket, N=NCHAN, Nbins=NBINS_TOTAL, Ncorr=4, packets_per_chunk=10*NBINS_TOTAL, ignore_packet_size=False):
@@ -252,7 +252,7 @@ class UCorrFrameReceiver(object):
             filename=None,
             flush=True,
             align=True,
-            data_timeout=0.001,
+            data_timeout=0.1,
             flush_timeout=0.001,
             return_format='raw',
             verbose=0):
@@ -322,7 +322,9 @@ class UCorrFrameReceiver(object):
         # and thereofre use a complex128 format.
         self.data = np.zeros((number_of_results, self.NBINS, self.NPROD), dtype=np.complex128)
         
-        # self.bin_ = [] # used for debugging missing bins
+        # lists for debugging
+        self.bin_ = [] # used for debugging missing bins
+        tt = []
 
         # packets_per_chunk = corr_frames_per_chunk * NCORR * NCMAC
 
@@ -338,18 +340,28 @@ class UCorrFrameReceiver(object):
             self.flush(flush_timeout)
 
         # Make sure we have at least one packet in the buffer so we have a reference timestamp
-        if not self.n:
-            while True:
-                try:
-                    s = self.socket.recv_into(self.buf[0])
-                    if self.buf_cookie[0] != 0xcf:
-                        continue
-                    self.n = 1
-                    break
-                except socket.timeout:
+        self.last_ts = None
+        self.socket.settimeout(data_timeout)
+        # if not self.n:
+        while True:
+            try:
+                s = self.socket.recv_into(self.buf[0])
+                if self.buf_cookie[0] != 0xcf:
                     continue
+                ts = self.buf_ts[0] & self.ts_mask
+                
+                if  ts != self.last_ts:
+                    if self.last_ts is None:
+                        self.last_ts = ts
+                    else:
+                        self.last_ts = ts
+                        self.n = 1
+                        break
+                print(f'Waiting for new frame')
+            except socket.timeout:
+                continue
         # get the timestamp
-        self.last_ts = self.buf_ts[self.n-1] & self.ts_mask
+        # self.last_ts = self.buf_ts[self.n-1] & self.ts_mask
 
         self.first_ts = 0
         # Wait for a new timestamp that is the first of an integ period
@@ -410,6 +422,9 @@ class UCorrFrameReceiver(object):
                 self.n = 0
             else:
                 self.n += 1
+                
+            tt.append(ts)
+
             # packets += n
             # chunks += 1
             # packets_per_chunk += n
@@ -429,7 +444,7 @@ class UCorrFrameReceiver(object):
         self.data.real = self.acc_re
         self.data.imag = self.acc_im
         if return_format == 'raw':
-            return (self.data, self.count, self.sat_cplx) #, self.bin_)
+            return (self.data, self.count, self.sat_cplx, tt, self.bin_)
         elif return_format == 'matrix':
             m = self.raw_to_matrix_map
             matrix = self.data[:, m[0], m[1], m[2]]
@@ -461,7 +476,7 @@ class UCorrFrameReceiver(object):
             # print(bin_)
             # print(np.unique(bin_))
             # raise ValueError(f'Received {len(bin_)} frequency bins, but there are only {len(np.unique(bin_))} unique bins. Some bins are repeated.')
-        # self.bin_.append(bin_)
+        self.bin_.append(bin_)
         # cmac = self.buf_cmac[:number_of_packets]
         # print 'corr=', corr
         # print 'cmac=', cmac
@@ -480,7 +495,7 @@ class UCorrFrameReceiver(object):
 
         self.acc_re[integ_number, bin_] += self.temp32[:number_of_packets]
 
-        # Extract the real part (in bits 17:0 of the data_l).
+        # Extract the imag part (in bits 17:0 of the data_l).
         np.copyto(self.temp32, self.buf_data_l)
         np.left_shift(self.temp32, 14, self.temp32)
         np.right_shift(self.temp32, 14, self.temp32)
