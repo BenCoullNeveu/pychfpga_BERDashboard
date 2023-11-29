@@ -115,7 +115,7 @@ class hmc7044(object):
         # submultiple of the lower output channel frequency). Set the
         # pulse generator mode configuration, for example, selecting
         # level sensitive option and the number of pulses desired.
-        # self.set_sysref()
+        self.set_sysref_timer()
 
         # Program the output channels. Set the output buffer modes
         # (for example, LVPECL, CML, and LVDS). Set the divide
@@ -247,7 +247,18 @@ class hmc7044(object):
         return regs
 
 
-    def init_registers(self):
+    def init_registers(self, 
+        sync_mode=1, 
+        clkin1_as_vco=0, 
+        clkin0_as_rfsync=0, 
+        input_enable=0b1111,
+        disable_sync_at_lock=0,
+        rf_reseeder_enable=1,
+        vco_selection=1,
+        sysref_timer_enable=1,
+        pll1_enable=1,
+        pll2_enable=1
+       ):
         """ Initialize global registers and reserved control registers to the value recommended by Analog Device.
 
 
@@ -259,6 +270,34 @@ class hmc7044(object):
         The value of the reserved registers values are taken from the ADI HMC7044 Evaluation software, and
         matches the default reset values listed in the datasheet Rev C except
         for the listed exceptions.
+
+        Parameters:
+
+            sync_mode (int): Selects SYNC Pin mode config with respect to PLL2 (Reg 0x0005 [7:6]):
+
+                - 0: Disabled
+                - 1: Rising edge on SYNC is carried through PLL2. Useful for multichip synchronization
+                - 2: Pulse generator: request a pulse generator stream from any channel configured for dynamic startup.
+                - 3: Causes SYNC if alarm exists, otherwise causes pulse generator
+
+            clkin1_as_vco (int): If 1, clkin1 is used for external VCO(Reg 0x0005 [5])
+
+            clkin0_as_rfsync (int): If 1, clkin0 is used for external RF sync (Reg 0x0005 [4])
+
+            input_enable (int): 4-bit PLL1 Reference path enables. Bits 0-3 enables the CLKIN0-3 input paths.
+
+            disable_sync_at_lock (int): If 1, PLL2 will not send a sync event up to N2 when lock is acheived  (Reg 0x0009[0])
+
+            rf_reseeder_enable (int): If 1, the output stages can reset the output dividers. Must be set fo SYNC to work.
+
+            vco_selection (int): Select the VCO. 0: disabled (use external); 1: high freq (3.2 GHz), 2: low freq
+
+            sysref_timer_enable (int): Enables SYSREF timer. Required for SYNC to work. 
+
+            pll1_enable (int): If 1, PLL1 is enabled
+
+            pll2_enable (int): If 1, PLL2 is enabled
+     
 
         """
 
@@ -283,20 +322,21 @@ class hmc7044(object):
             # glbl_cfg1_ena_sysr[2:2] = 0x0
             # glbl_cfg2_ena_vcos[4:3] = 0x1
             # glbl_cfg1_ena_sysri[5:5] = 0x0
-            (0x3, 0xB),
+            # Reg 0x0003 bits are also set by set_pll1(), set_pll2() and set_sysref_timer().
+            (0x3, (rf_reseeder_enable << 1) | (vco_selection << 3) | (sysref_timer_enable << 2) | (pll2_enable << 1) | (pll1_enable << 0)),
             # glbl_cfg7_ena_clkgr[6:0] = 0x7F
             (0x4, 0x7F),
             # glbl_cfg4_ena_rpath[3:0] = 0xF
             # dist_cfg1_refbuf0_as_rfsync[4:4] = 0x0
             # dist_cfg1_refbuf1_as_extvco[5:5] = 0x0
-            # pll2_cfg2_syncpin_modesel[7:6] = 0x0
-            (0x5, 0xF),
+            # pll2_cfg2_syncpin_modesel[7:6] = 0x0 
+            (0x5, (sync_mode << 6) | (clkin1_as_vco << 5) | (clkin0_as_rfsync << 4) | input_enable), # SYNC Pin mode = 01 (rising edge carried through PLL2); CLKIN0-3 input path enabled
             # glbl_cfg1_clear_alarms[0:0] = 0x0
             (0x6, 0x0),
             # glbl_reserved[0:0] = 0x0
             (0x7, 0x0),
             # glbl_cfg1_dis_pll2_syncatlock[0:0] = 0x0
-            (0x9, 0x0),
+            (0x9, disable_sync_at_lock),
 
             # GPI/GPOs/SDATA
             # --------------
@@ -308,42 +348,33 @@ class hmc7044(object):
             (0x47, 0x0),
             # glbl_cfg5_gpi3_en[0:0] = 0x0
             # glbl_cfg5_gpi3_sel[4:1] = 0x4
-            (0x48, 0x8),
+            (0x48, 0x0),
             # glbl_cfg5_gpi4_en[0:0] = 0x0
             # glbl_cfg5_gpi4_sel[4:1] = 0x8
-            (0x49, 0x10),
+            (0x49, 0x0),
+
+
             # glbl_cfg8_gpo1_en[0:0] = 0x1
             # glbl_cfg8_gpo1_mode[1:1] = 0x1
             # glbl_cfg8_gpo1_sel[7:2] = 0x7
-            (0x50, 0x1F),
+            (0x50, (0b000111 << 2) | 0b11),
             # glbl_cfg8_gpo2_en[0:0] = 0x1
             # glbl_cfg8_gpo2_mode[1:1] = 0x1
             # glbl_cfg8_gpo2_sel[7:2] = 0xA
-            (0x51, 0x2B),
+            (0x51, (0b001010 << 2) | 0b11),
             # glbl_cfg8_gpo3_en[0:0] = 0x1
             # glbl_cfg8_gpo3_mode[1:1] = 0x1
             # glbl_cfg8_gpo3_sel[7:2] = 0xD
-            (0x52, 0x37),
+            (0x52, (0b001110 << 2) | 0b11),
             # glbl_cfg8_gpo4_en[0:0] = 0x1
             # glbl_cfg8_gpo4_mode[1:1] = 0x1
             # glbl_cfg8_gpo4_sel[7:2] = 0x0
-            (0x53, 0x3),
+            (0x53, (0b001100 << 2) | 0b11),
+
+
             # glbl_cfg2_sdio_en[0:0] = 0x1
             # glbl_cfg2_sdio_mode[1:1] = 0x1
             (0x54, 0x3),
-
-            # PULSE/SYNC/SYSREF
-            # sysr_cfg3_pulsor_mode[2:0] = 0x1
-            (0x5A, 0x1),
-            # sysr_cfg1_synci_invpol[0:0] = 0x0
-            # sysr_cfg1_pll2_carryup_sel[1:1] = 0x0
-            # sysr_cfg1_ext_sync_retimemode[2:2] = 0x1
-            (0x5B, 0x4),
-            # sysr_cfg16_divrat_lsb[7:0] = 0x0
-            (0x5C, 0x0),
-            # sysr_cfg16_divrat_msb[3:0] = 0x6
-            (0x5D, 0x6),
-            # 0x005E reserved - not programmed by GUI
 
             # Clock distribution Network
             # --------------------------
@@ -660,7 +691,7 @@ class hmc7044(object):
         # regs[0x3C] = 0x0 # is not present in the software tool output
 
         # Global enable control register
-        # Program VCO range and enable
+        # Program VCO range and enable PLL2
         self.write_reg(0x0003, (vco_sel<<3) | (enable << 1), mask=0b00011010)
 
         # configure R2, N2 etc.
@@ -681,8 +712,8 @@ class hmc7044(object):
                    output_number,
                    enable=1,
                    hi_perf=1,
-                   sync_enable=0,
-                   slip_enable=0,
+                   sync_enable=1,
+                   slip_enable=1,
                    startup_mode=0,
                    multislip_enable=0,
                    divider=None,
@@ -828,7 +859,7 @@ class hmc7044(object):
         # clkgrp1_div1_cfg1_slipmask[5:5] = 0x1
         # clkgrp1_div1_cfg1_reseedmask[6:6] = 0x1
         # clkgrp1_div1_cfg1_hi_perf[7:7] = 0x1
-        regs[0x00C8 + output_number * 10] = (hi_perf << 7) | (sync_enable << 6) | (slip_enable << 5) | (startup_mode << 2) | (multislip_enable <<1) | enable
+        regs[0x00C8 + output_number * 10] = (hi_perf << 7) | (sync_enable << 6) | (slip_enable << 5) | (1 << 4) | (startup_mode << 2) | (multislip_enable <<1) | enable
 
 
         # clkgrp1_div1_cfg12_divrat_lsb[7:0] = 0x1
@@ -862,6 +893,70 @@ class hmc7044(object):
         regs[0x00D0 + output_number * 10] = ((mute & 3) << 6) | (dynamic_driver << 5) | ((driver_mode & 3) << 3) | ((driver_impedance & 3) << 0)
 
         self.write_regs(regs)
+
+    def set_sysref_timer(self,
+            pulse_generator_mode=1,
+            sync_retime=0,
+            sync_through_pll2=1,
+            sync_pol=0,
+            sysref_timer=1200,
+            rf_seeder_enable=1,
+            sysref_timer_enable=1
+     ):
+        """
+
+        Parameters:
+
+            pulse_generator_mode (int): SYSREF output enable with pulse generator
+                - 0: level sensivive
+                - 1: 1 pulse
+                - 2: 2 pulses
+                - 3: 4 pulses
+                - 4: 8 pulses
+                - 5: 16 pulses
+                - 6: 16 pulses
+                - 7: COntinuous mode (50% duty cycle)
+
+            sync_retime (int): If 1, the external SYNC is retimed using Reference 0. 
+
+            sync_through_pll2 (int): When 1, allows a reseed event to be through PLL2
+
+            sync_pol (int): 0=positive, 1=Negative. Must be 0 if not using CLKIN0 as input.
+
+            sysref_timer (int): 12-bit SYSREF timer. This sets the internal beat frequency of the
+                master timer, which controls synchronization and pulse generator events. Set the
+                12-bit timer to a submultiple of te lowest SYSREF frequency, and program it to be no
+                faster than 4 MHz.
+
+            rf_seeder_enable (int): When 1, enables the RF seeder to the outputs. Must be set for SYNC to work
+
+            sysref_timer_enable (int): When 1, the SYSREF timer is enabled. Must be set for SYNC to work
+
+
+        Notes:
+
+            - https://ez.analog.com/clock_and_timing/f/q-a/570739/hmc7044-rf-reseed-request-clarification/496287
+        """
+        if sysref_timer < 1 or sysref_timer>2**12-1:
+            raise RuntimeError('Sysref timer value out of range')
+
+        regs = [
+            # PULSE/SYNC/SYSREF
+            # sysr_cfg3_pulsor_mode[2:0] = 0x1
+            (0x5A, pulse_generator_mode),
+            # sysr_cfg1_synci_invpol[0:0] = 0x0
+            # sysr_cfg1_pll2_carryup_sel[1:1] = 0x0
+            # sysr_cfg1_ext_sync_retimemode[2:2] = 0x1
+            (0x5B, (sync_retime << 2) | (sync_through_pll2 << 1) | (sync_pol)), # reserved; SYNC retime; SYNC through PLL2; SYNC pol 
+            # sysr_cfg16_divrat_lsb[7:0] = 0x0
+            (0x5C, sysref_timer & 0xFF),
+            # sysr_cfg16_divrat_msb[3:0] = 0x6
+            (0x5D, sysref_timer >> 8),
+            # 0x005E reserved - not programmed by GUI
+            ]
+        self.write_regs(regs)
+        # Enable RF Reseeded and SYSREF timer, otherwise SYNC events won't work.
+        self.write_reg(0x0003, (rf_seeder_enable << 5) | (sysref_timer_enable << 2), mask=0b00100100)
 
 
     def get_product_id(self):
