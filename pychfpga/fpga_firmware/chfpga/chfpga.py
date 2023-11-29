@@ -702,6 +702,8 @@ class chFPGA(FPGAFirmware):
 
             self._NUMBER_OF_FMC_SLOTS = self.mb.NUMBER_OF_FMC_SLOTS
 
+            self.NUMBER_OF_ADCS = self.GPIO.NUMBER_OF_ADCS
+
             # Set platform/implementation-specific features & constants based on a local table
             if self.PLATFORM_ID in (self._PLATFORM_ID_ZCU111, self._PLATFORM_ID_CRS):
                 assert self.mb.part_number == "ZCU111" or self.mb.part_number == "CRS", 'This version of the firmware is meant to operate on the ZCU111 only'
@@ -714,6 +716,7 @@ class chFPGA(FPGAFirmware):
                 self.GPU_LINK_TYPE = "100GE"
                 self.CAPTURE_TYPE = "UCAP"
                 self.CORR_TYPE = "UCORR44"
+                self.ADC_FREQS_TO_CHECK = range(self.NUMBER_OF_ADCS)
 
             elif self.PLATFORM_ID in (self._PLATFORM_ID_MGK7MB_REV0, self._PLATFORM_ID_MGK7MB_REV2):
                 assert self.mb.part_number == "MGK7MB", 'This version of the firmware is meant to operate on the MGK7MB (IceBoard) only'
@@ -726,6 +729,7 @@ class chFPGA(FPGAFirmware):
                 self.GPU_LINK_TYPE = "10GE"
                 self.CAPTURE_TYPE = "PROBER"
                 self.CORR_TYPE = "CORR44"
+                self.ADC_FREQS_TO_CHECK = (0,4,8,12)
             else:
                 raise RuntimeError(f'Unknown feature list for PLATFORM_ID = {self.PLATFORM_ID}')
 
@@ -753,7 +757,6 @@ class chFPGA(FPGAFirmware):
             # Identify the number of channelizers and their properties
             self.CHANNELIZERS_CLOCK_SOURCE = self.GPIO.CHANNELIZERS_CLOCK_SOURCE
             self.NUMBER_OF_CHANNELIZERS = self.GPIO.NUMBER_OF_CHANNELIZERS
-            self.NUMBER_OF_ADCS = self.GPIO.NUMBER_OF_ADCS
             self.NUMBER_OF_ANTENNAS_WITH_FFT = self.GPIO.NUMBER_OF_CHANNELIZERS_WITH_FFT
             self.LIST_OF_ANTENNAS_WITH_FFT = list(range(self.NUMBER_OF_ANTENNAS_WITH_FFT))
 
@@ -1198,8 +1201,8 @@ class chFPGA(FPGAFirmware):
         target_frequency = self._sampling_frequency/self.adc_clock_divider
 
         for trial in range(10):
-            freqs = [self.FreqCtr.read_frequency(f'ADC_CLK{i}', gate_time=0.001) for i in (0,4,8,12)] # ***JFC debug
-            err = any(abs(f-target_frequency) > 2.1e3 for f in freqs)
+            freqs = [self.FreqCtr.read_frequency(f'ADC_CLK{i}', gate_time=0.001) for i in self.ADC_FREQS_TO_CHECK] # ***JFC debug
+            err = any(abs(f - target_frequency) > 2.1e3 for f in freqs)
             msg = f'{self!r}: ADC output frequencies at stage {stage} are {[f/1e6 for f in freqs]} (check #{trial+1}) {"ERROR!" if err else ""}'
             if err:
                 self.logger.warn(msg)
@@ -1209,7 +1212,7 @@ class chFPGA(FPGAFirmware):
                 self.logger.debug(msg)
                 break
         if err:
-            msg = f'{self!r}: some ADCs are not generating a proper clock at stage "{stage}". Frequencies are {freqs} MHz. ' \
+            msg = f'{self!r}: some ADCs are not generating a proper clock at stage "{stage}". Frequencies are {[f/1e6 for f in freqs]} MHz. ' \
                   f'Expected frequency is {target_frequency/1e6:.6f} MHz. Deltas = {[(f-target_frequency)/1e6 for f in freqs]}'
             self.logger.error(msg)
             pass
