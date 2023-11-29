@@ -26,6 +26,8 @@ class TCPipe:
     RPC_SPI_WRITE_READ = 0x04
     RPC_CORE_REG_READ = 0x05
     RPC_CORE_REG_WRITE = 0x06
+    RPC_ADC_SYNC = 0x07
+
 
     CORE_REG_UDP_DATA_PORT = 2
     
@@ -231,7 +233,7 @@ class TCPipe:
         self.tx_view[tx_len: tx_len + len(data)] = data
         self.tx_view[tx_len + len(data): tx_len + len(data) + read_length] = b'\x00' * read_length
 
-        print(f'TCPIPE SPI: Sending {self.tx_buf[:tx_len + len(data) + read_length]}')
+        # print(f'TCPIPE SPI: Sending {self.tx_buf[:tx_len + len(data) + read_length]}')
         self.sock.sendall(self.tx_view[:tx_len + len(data) + read_length])
         rx_len = self.sock.recv_into(self.rx_buf)
         if self.rx_buf[0]:
@@ -310,7 +312,23 @@ class TCPipe:
             raise IOError(f'core_reg_read received {rx_len} bytes instead of {1} byte')
         # print(f'received {self.rx_buf[:rx_len]}, returning {self.rx_buf[rx_len-read_length:rx_len]}')
 
+    def adc_sync(self):
+        """ Synchronizes the ADCs.
 
+        Parameters: None
+
+        """
+        tx_len = 4 # RPC header, I2C address, read length,  excluding data
+        self.tx_view[0] = self.RPC_PREFIX
+        self.tx_view[1] = self.RPC_ADC_SYNC
+        self.tx_view[2] = 0   # I2C addr, read_length & data
+        self.tx_view[3] = 0
+
+        # print(f'Sending {bytes(self.tx_view[:tx_len_data]).hex(":")}')
+        self.sock.sendall(self.tx_view[:tx_len])
+
+        b = self.sock.recv(1024)
+        return b
 
 class TCPipe_I2C:
     """
