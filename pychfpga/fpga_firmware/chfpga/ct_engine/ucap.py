@@ -30,14 +30,14 @@ class UCAP(MMI):
     CAPTURE_PERIOD   = BitField(CONTROL, 4, 0, width=24, doc='Number of frames between captures for source 0')
     CAPTURE_PERIOD2  = BitField(CONTROL, 7, 0, width=24, doc='Number of frames between captures for source 1')
     SUB_PERIOD       = BitField(CONTROL, 8, 0, width=5, doc='Dynamic capture rate, 2**(N+1) frames')
-    SOURCE_SEL       = BitField(CONTROL, 9, 0, width=8, doc='Bit map selecting the source (0 or 1) for each channel (bit 0 = channel 0)')
+    SOURCE_SEL       = BitField(CONTROL, 9, 0, width=8, doc='0 = source selector output (timestream), 255 = scaler output (spectrum)')
 
     FIFO_OVERFLOW    = BitField(STATUS, 0, 0, doc='1 when dat FIFO has overflowed. Sticky flag.')
     OVERRUN          = BitField(STATUS, 0, 1, doc='1 when data transmission request was performed before the previous transmission was completed. Sticky flag.')
-    RST_MON = BitField(STATUS, 0, 2, doc='debug')
-    USER_RST_MON = BitField(STATUS, 0, 3, doc='debug')
-    PERIOD_CTR          = BitField(STATUS, 1, 0, width=8, doc='debug')
-    CAPTURE_CTR          = BitField(STATUS, 2, 0, width=8, doc='debug')
+    RST_MON          = BitField(STATUS, 0, 2, doc='debug')
+    USER_RST_MON     = BitField(STATUS, 0, 3, doc='debug')
+    PERIOD_CTR       = BitField(STATUS, 1, 0, width=8, doc='debug')
+    CAPTURE_CTR      = BitField(STATUS, 2, 0, width=8, doc='debug')
 
     def __init__(self, fpga_instance, base_address, address_increment, verbose=0):
         self.fpga = fpga_instance
@@ -50,6 +50,18 @@ class UCAP(MMI):
         """ Initializes UCAP module"""
         pass
 
+    DATA_SOURCE_TABLE = {
+        'adc': 0,
+        'scaler': 255} # 255: set data source for all 8 channels (11111111 = 255 for unsigned 8-bit bin)
+
+    def set_data_source(self, source):
+        # Set the data source (either 'adc' or 'scaler') in the control register
+        if isinstance(source, str):
+            if source in self.DATA_SOURCE_TABLE:
+                source = self.DATA_SOURCE_TABLE[source]
+            else:
+                ValueError(f'Unknown data capture source \'{source}\'. Valid sources are {self.DATA_SOURCE_TABLE.keys()}')
+        self.SOURCE_SEL = source
 
     def get_data(self, flush_timeout=0.01):
 
@@ -81,7 +93,8 @@ class UCAP(MMI):
         # sid_ok = all(b[:,1]>>8 == np.arange(b.shape[0], dtype=np.uint8) & 63)
         # if not sid_ok:
         #     raise RuntimeError('Missing packets')
-        return b[:63, 5:]
+
+        return b[:64, 5:]
 
     def get_data_receiver(self, sock=None):
         return RawFrameReceiver(sock or self.fpga.get_data_socket())
@@ -288,7 +301,7 @@ class RawFrameReceiver(object):
             bix = sid_map.get(self.buf_stream_id[i] & 0x7, None)
             subframe = self.buf_subframe[i] & 0x3
             frame = (self.buf_stream_id[i] >> 12) & 0x0F
-            print(f'Ch={bix}, frame={frame}, subframe={subframe}')
+            # print(f'Ch={bix}, frame={frame}, subframe={subframe}')
             if bix is not None:
                 x = frame * self.FRAME_SIZE + subframe*self.DATA_SIZE
                 self.data[bix][x:x+self.DATA_SIZE] = self.buf_data[i]
@@ -296,4 +309,3 @@ class RawFrameReceiver(object):
 
         ts = self.buf_ts[0]
         return ts, self.data, self.data_count
-

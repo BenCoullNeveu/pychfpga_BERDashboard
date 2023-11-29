@@ -101,7 +101,7 @@ class FUNCGEN(MMI):
         'arb':            (0, lambda data, self=None: data),  # Arbitrary waveform stored in buffer
         'a':              (1, lambda self, a: np.full(self.NS, a)),  # All bytes are Byte A. 16-bit friendly
         'b':              (2, lambda self, b: np.full(self.NS, b)),  # All bytes are Byte B
-        'ab':             (3, lambda self, a, b, : np.tile((a , b ), seld.NS // 2)),  # Bytes alternate between A and B.
+        'ab':             (3, lambda self, a, b, : np.tile((a , b ), self.NS // 2)),  # Bytes alternate between A and B.
         'ramp':           (4, lambda self, **kwargs: np.arange(self.NS)),  # 
         'real_ramp':      (5, lambda self, **kwargs: np.ravel([(i,0) for i in range(self.NS//2)])),  # Generates the ramp: 0,0,1,0,2,0... If the data is read as (8+8)-bit complex value pairs, we obtain (0,0j), (1+0j)... (255+0j)
         '4bit_ramp':      (6, lambda self, **kwargs: np.arange(self.NS) << (self.Nbits - 4)),  # Generates the ramp in the upper 4 bits of the ADC sample (e.g for 8 bits: 0x00, 0x10, 0x20, ... 0xF0.)

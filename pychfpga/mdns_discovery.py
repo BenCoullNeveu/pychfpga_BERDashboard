@@ -191,7 +191,9 @@ async def mdns_discover(
 
             if icecrate_match or iceboard_match:
                 if ib_part_number and ib_serial:
+
                     ib_cls = Motherboard.get_class_by_ipmi_part_number(ib_part_number if case_sensitive else ib_part_number.upper())
+
                     if not ib_cls:
                         raise RuntimeError(f'mdns discover: cannot find a class for motherboard with part number {ib_part_number}. Make sure the class is registered.')
                     ib_obj = ib_cls.get_unique_instance(serial=ib_serial, hostname=addr)
