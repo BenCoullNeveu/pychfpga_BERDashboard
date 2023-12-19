@@ -185,13 +185,18 @@ class RawFrameReceiver(object):
         self.buf_ts_dirty = self.buf_struct['header']['ts'][:, 0]
         self.buf_data = self.buf_struct['data']
         self.ts_mask = np.uint64(0xFFFFFFFFFFFF)  # just keep the last 48 bits
+        NCHAN_MAX = 8
+        FRAMES_PER_CHANNEL_MAX = 16
+        self.cookie = cookie = 0xa0
 
     def flush(self, timeout, verbose=0):
             # Read packets until timeout
+            flushed = 0
             self.socket.settimeout(timeout)
             while True:
                 try:
                     s = self.socket.recv_into(self.buf[0])
+                    flushed += 1
                     if verbose:
                         print(f'flushing packet len={s} cookie=0x{self.buf_cookie[0]:02x} ts={self.buf_ts[0] & self.ts_mask}')
 
@@ -199,11 +204,14 @@ class RawFrameReceiver(object):
                     break
             # We assume the buffer might have overflowed and contains partial
             # timestamp. We flush until we gen a new timestamp.
+            return flushed
     def wait_for_new_timestamp(self, cookie, timeout, verbose=0):
             self.socket.settimeout(timeout)
+            flushed = 0
             while True:
                 try:
                     s = self.socket.recv_into(self.buf[0])
+                    flushed += 1
                     if self.buf_cookie[0] & 0xfe != cookie:
                         continue
                     ts = self.buf_ts[0] & self.ts_mask
@@ -219,6 +227,8 @@ class RawFrameReceiver(object):
                     break
                 except socket.timeout:
                     continue
+            return flushed
+
     def receive_packets(self, cookie, verbose=0):
         """ Receive some packets into the buffer until there is a timeout or the buffer is full
         """
@@ -228,7 +238,7 @@ class RawFrameReceiver(object):
             try:
                 s = self.socket.recv_into(self.buf[self.n])
                 # check if the packet has the right cookie
-                if verbose:
+                if verbose >= 2:
                     print(f'got packet len={s} cookie=0x{self.buf_cookie[self.n]:02x} ts={self.buf_ts[self.n] & self.ts_mask}')
                 if self.buf_cookie[self.n] & 0xfe != cookie:
                     continue
@@ -248,64 +258,128 @@ class RawFrameReceiver(object):
             except socket.timeout:  # we have a timeout, so we probably have time to process data
                 if self.n:  # continue if we don't have any data to process
                     print('timeout')
-                    break
+                    continue
         # we get here if there is a timeout, a timestamp change, or if the buffer is full
-        print(f'got {self.n} packets')
+        if verbose:
+            print(f'got {self.n} packets, delta_ts={ts-self.last_ts}')
+        self.last_ts = ts
 
     def read_raw_frames(
             self,
             stream_ids=range(8),
             flush=True,
-            data_timeout=0.01,
+            data_timeout=1,
             flush_timeout=0.001,
+            format='8',
+            ncap = None,
+            split = False,
             verbose=0):
-        """ Reads the specified number of raw data frames.
+        """ Capture raw data frames sent by UCAP.
 
         Parameters:
 
-            channels (list of int): List of channels to capture
+            stream_ids (list of int): List of channels to capture
 
-            number_of_frames (int): number of frames to capture for each channel.
+            flush (bool): If True, the UDP buffer will be emptied and capture will be realigned to the next full new timestamp.
+
+            data_timeout (float): Amount of time (in seconds) to wait for data. Does not affect the data capture,
+                but a value larger that the max amount of time we expect to reasonably wait for data
+                packets will be slightly more efficient.
+
+            flush_timeout (float): Amount of time (in seconds) to wait until we decide there are no
+                longer packets in the UDP buffers. Must be smaller than the time between packets,
+                otherwise the buffer will never be emptied. number_of_frames (int): number of frames
+                to capture for each channel.
+
+            format (str): output data format:
+
+                '8': return the data as array of bytes (int8)
+                '16': return the data as array of 16-bit signed integers. Use when capturing the output of the FUNCGEN.
+                '16+16': return the data as an array of (16+16) bit complex numbers. Use for data at the output of the SCALER (unless the FFT is bypassed)
 
         Returns:
-        {timestamp:{channel:data}}
+         (timestamp, data, count) tuple where:
+
+            timestamp (int): timestamp of the captured packet
+
+            data (ndarray): Nc*Ns array, where Nc is the number of channels, and Ns is the number of
+                samples. Ns depends on the capture mode used by UCAP (it is determined from the
+                packet contents)
+
+            count (ndarray): number of packets received for each channel
 
 
         use flush=true is we expect the UDP buffer to contain old data tht needs to be discarded.
         """
         sid_map = {sid:ix for ix, sid in enumerate(stream_ids)}
-        self.cookie = cookie = 0xa0
 
         if flush:
-            self.flush(flush_timeout, verbose=verbose)
-            self.wait_for_new_timestamp(cookie, data_timeout, verbose=verbose)
-        print(f'finished flushing')
-        self.last_ts = None
+            flushed = self.flush(flush_timeout, verbose=verbose)
+            print(f'Flushed {flushed} packets while emptying UDP buffers')
+            self.last_ts = None
+            flushed = self.wait_for_new_timestamp(self.cookie, data_timeout, verbose=verbose)
+            print(f'Skipped {flushed} packets while waiting for a fresh timestamp')
         self.socket.settimeout(data_timeout)
-        self.receive_packets(cookie=cookie)
 
-        # Determine the capture mode
-        print(f'sf={self.buf_subframe[:self.n]}')
-        mode = list(set((self.buf_subframe[:self.n] >> 2) & 0x3))
-        if len(mode) != 1:
-            raise(RuntimeError(f'Unknown capture mode. Got packets with modes {mode}'))
-        mode = mode[0]
+        if not self.n:
+            raise RuntimeError('There is no initial data in the buffer. Run with Flush=True first')
+        return_multiple_captures = ncap
+        ncap = ncap or 1
+
+        # Determine the capture mode based in the first packet in the buffer
+        mode = (self.buf_subframe[0] >> 2) & 0x3
         frames_per_channel = 2 * 2**(mode)
-        print(f"mode={mode}")
-        # FRAMES_PER_CHANNEL = 2
-        self.data = np.zeros((len(sid_map), self.FRAME_SIZE*frames_per_channel), dtype=np.int8)
-        self.data_count = np.zeros((len(sid_map),), dtype=np.int8)
+        nchan = min(len(sid_map), 16 // frames_per_channel)
+        print(f"mode={mode}, {nchan} channel(s), {frames_per_channel} frames per channel, {ncap} captures")
+
+        # Allocate destination buffer
+
+        data = np.zeros((nchan, ncap, self.FRAME_SIZE*frames_per_channel), dtype=np.int8)
+        data_count = np.zeros((nchan, ncap), dtype=np.uint16)
+        ts = np.zeros((ncap,), dtype=np.uint64)
 
 
-        for i in range(self.n):
-            bix = sid_map.get(self.buf_stream_id[i] & 0x7, None)
-            subframe = self.buf_subframe[i] & 0x3
-            frame = (self.buf_stream_id[i] >> 12) & 0x0F
-            # print(f'Ch={bix}, frame={frame}, subframe={subframe}')
-            if bix is not None:
-                x = frame * self.FRAME_SIZE + subframe*self.DATA_SIZE
-                self.data[bix][x:x+self.DATA_SIZE] = self.buf_data[i]
-                self.data_count[bix] += 1
+        for n in range(ncap):
+            # Get packets until a new timestamp
+            self.receive_packets(cookie=self.cookie, verbose=verbose)
 
-        ts = self.buf_ts[0]
-        return ts, self.data, self.data_count
+            if verbose >=2:
+                print(f'sf={self.buf_subframe[:self.n]}')
+
+
+            for i in range(self.n-1):
+                bix = sid_map.get(self.buf_stream_id[i] & 0x7, None)
+                subframe = self.buf_subframe[i] & 0x3
+                frame = (self.buf_stream_id[i] >> 12) & 0x0F
+                # print(f'Ch={bix}, frame={frame}, subframe={subframe}')
+                if bix is not None:
+                    x = frame * self.FRAME_SIZE + subframe*self.DATA_SIZE
+                    data[bix, n, x:x+self.DATA_SIZE] = self.buf_data[i]
+                    data_count[bix, n] += 1
+
+            ts[n] = self.buf_ts[0] & self.ts_mask
+
+            self.buf[0] = self.buf[self.n-1]
+            self.n = 1
+
+        for i in range(nchan):
+            print(f'Chan {i}: {data_count[i].sum()-ncap*16*4 or "no"} missing packets')
+
+        if ncap > 1:
+            print(f'Timestamp differences: {set(np.diff(ts))}')
+
+        if format == "16":
+            data = data.view('>i2')
+        elif format == "16+16":
+            data = data.view('>i2')
+            data = data[:, :, ::2] + 1j*data[:, :, 1::2]
+        elif format != '8':
+            raise ValueError('Invalid format')
+
+        if split:
+            data = data.reshape((nchan, ncap*frames_per_channel,-1))
+
+        if return_multiple_captures:
+            return ts, data, data_count
+        else:
+            return ts, data[:,0], data_count[:,0]
