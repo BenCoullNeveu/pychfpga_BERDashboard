@@ -177,13 +177,13 @@ class SCALER(MMI):
             gain_string = np.reshape(np.vstack((gains.imag, gains.real)).T, 2 * total_bins).astype('<i2').tobytes()
 
         else: # use real gains
-            print(f'Setting gains to {gain_list}')
+            # print(f'Setting gains to {gain_list}')
             if np.isscalar(gain_list):
                 gains = np.ones(total_bins) * gain_list
             else:
                 gains = np.array(gain_list)
 
-            print(f'gains= {gains}')
+            # print(f'gains= {gains}')
             if any(gains < -32768) or any(gains > 32767) or any(gains != gains.astype('<i2')):
                 raise ValueError('All gains must be integers between -32768 and 32767')
 
@@ -201,56 +201,6 @@ class SCALER(MMI):
             self.set_page(page + bank*n_pages)
             # self.WRITE_COEFF_BANK = 8 * bank + page
             self.write_ram(0, gain_string[512 * page: 512 * (page + 1)])
-            # there are 128 coefficients per page ( 4 byte per coefficient = 512 bytes total per page)
-            # for ix in range(128):
-            #     bin = page*128 + ix
-            #     gain = gain_list[bin]
-            #     page_table[4*ix:4*ix+4] = np.fromstring(struct.pack('<hh', gain.imag, gain.real), np.int8)
-
-        # else: # if not self.USE_COMPLEX_GAINS
-
-        #     if np.isscalar(gain_list):
-        #         gains = np.ones(total_bins, dtype='<i2') * gain_list
-        #     else:
-        #         gains = np.array(gain_list) #, dtype='<i2')
-
-        #     if any(gains < -32768) or any(gains > 32767) or any(gains != gains.astype('<i2')):
-        #         raise ValueError('All gains must be integers between -32768 and 32767')
-
-        #     gains = np.array(gains, dtype = '<i2')
-
-        #     if len(gains) != total_bins:
-        #         raise ValueError(f'Either a scalar gain or a {total_bins} element gain vector must be provided')
-
-        #     self.cached_gain_table[bank] = gains
-        #     self.cached_gain_timestamp[bank] = time.time() if gain_timestamp is None else gain_timestamp
-
-        #     # gain_string = np.reshape(np.vstack((gains.imag, gains.real)).T, 2 * total_bins).astype('<i2').tobytes()
-        #     gain_string = gains.tobytes() # gains should already be type '<i2'
-        #     print(gain_string[:64].hex(':'))
-
-        #     if bank < 0 or bank is None:
-        #         bank = self.CURRENT_GAIN_BANK ^ 1
-
-        #     pages_per_bank = 2*total_bins//512 # there are 32 pages of coefficients per bank: 2 bytes/bin * (1 real) * total_bins / 512 bytes
-        #     for page in range(pages_per_bank): 
-        #         """
-        #         Now that we have more gains than could fit in the A coefficient bank,
-        #         we need to decide which bank will be written.
-
-        #         The multiplication (pages_per_bank * bank) defines whether bank 0 or bank 1 is written
-        #         (i.e., it functions as an offset).
-        #         """
-
-        #         abs_page = pages_per_bank * bank + page
-
-        #         self.WRITE_COEFF_BANK_A = abs_page & 0b1111
-        #         self.WRITE_COEFF_BANK_B = (abs_page >> 4) & 1
-        #         self.WRITE_COEFF_BANK_C = (abs_page >> 5) & 1
-
-        #         # print(self.WRITE_COEFF_BANK_A, self.WRITE_COEFF_BANK_B, self.WRITE_COEFF_BANK_C)
-        #         print(bin(self.WRITE_COEFF_BANK_C), bin(self.WRITE_COEFF_BANK_B), bin(self.WRITE_COEFF_BANK_A))
-        #         self.write_ram(0, gain_string[512 * page: 512 * (page + 1)]) # does the address need to change?
 
         self.READ_COEFF_BANK = bank
 
