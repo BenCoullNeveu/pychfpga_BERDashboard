@@ -3193,28 +3193,19 @@ class chFPGA(FPGAFirmware):
         #       ('for a total of %i bursts' % number_of_bursts) )
         if verbose:
             self.logger.debug(
-                "%r: Configuring channelizer %r to capture " % (self, channels) +
-                '%i frame every %i frames (i.e .every %.3f ms) ' % (
-                   frames_per_burst,
-                   burst_period_in_frames,
-                   burst_period_in_frames * self.FRAME_PERIOD * 1000) +
-                'with first frame offset of %i frames (%.3f ms) ' % (
-                    offset,
-                    offset * self.FRAME_PERIOD * 1000) +
-                'and a send delay factor of %i (%.3f ms).' % (
-                    send_delay,
-                    send_delay * 65536 / 125e6 * 1000))
+                f'{self!r}: Configuring channelizer {channels} to capture '
+                f'{frames_per_burst} frame every {burst_period_in_frames} frames (i.e .every {burst_period_in_frames * self.FRAME_PERIOD * 1000:.3f} ms) '
+                f'with first frame offset of {offset} frames ({offset * self.FRAME_PERIOD * 1000:.3f} ms)'
+                f'and a send delay factor of {send_delay} ({send_delay * 65536 / 125e6 * 1000:.3f} ms).')
 
             frames_per_second = frames_per_burst * 1.0 / self.FRAME_PERIOD / burst_period_in_frames
             packet_size_in_bits = (self.FRAME_LENGTH + 10 + 42) * 8  # 10 header bytes, 42 Ethernet/IP/UDP overhead
-            self.logger.debug(
-                '%r: Data rates are:\n' % (self) +
-                '    1 board, 1 channel: %.3f Mbits/s\n' % (frames_per_second * packet_size_in_bits / 1e6) +
-                '    1 board, %i channels: %.3f Mbit/s\n' % (
-                    len(channels),
-                    len(channels) * frames_per_second * packet_size_in_bits / 1e6) +
-                '    1 crate: %.3f Mbits/s' % (16 * 16 * frames_per_second * packet_size_in_bits / 1e6)
-                )
+            self.logger.debug('\n'.join((
+                f'{self!r}: Data rates are:',
+                f'    1 board, 1 channel: {frames_per_second * packet_size_in_bits / 1e6:.3f} Mbits/s',
+                f'    1 board, {len(channels)} channels: {len(channels) * frames_per_second * packet_size_in_bits / 1e6:.3f} Mbit/s',
+                f'    1 crate: {16 * 16 * frames_per_second * packet_size_in_bits / 1e6:.3f} Mbits/s'
+                )))
 
         # stop data from going into the PROBER and MASTER to minimize the risk
         # of malformed packets and unstable communications
@@ -3230,6 +3221,8 @@ class chFPGA(FPGAFirmware):
             self.UCAP.set_data_source(source)
             # self.UCAP.config_capture() # doesn't exist yet. fixme
             # self.logger.debug # add some logging?
+            self.UCAP.CAPTURE_PERIOD = burst_period_in_frames-1
+            self.UCAP.CAPTURE_PERIOD2 = burst_period_in_frames-1
 
         if self.CAPTURE_TYPE =='PROBER':
             # Stop data capture on *ALL* channels
