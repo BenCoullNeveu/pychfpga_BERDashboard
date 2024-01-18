@@ -61,6 +61,7 @@ class GPIO(MMI):
 
     HOST_FRAME_READ_RATE       = BitField(CONTROL, 4, 0, width=5, doc='Indicates how often the host UDP buffers are read. Used to throttle data transmision. Period = 2/125MHz*2^value ')
     BUCK_PHASE                 = BitField(CONTROL, 12, 0, width=64, doc='Phase of each of the 16 Buck sync lines. There are 16 possible phase values for each line. Bits 3:0 is for phase of line 0, bits 7:4 for phase of line 1 etc.')
+    ADC_CAL_FREEZE             = BitField(CONTROL, 13, 0, width=8, doc='ADC calibration control')
     # TARGET_MAC_ADDR            = BitField(CONTROL, 18, 0, width=48, doc='NETWORK_CONFIG_SOURCE=0: destination MAC address for outgoing data on UDP channel 1. NETWORK_CONFIG_SOURCE=1,2: unused.  NETWORK_CONFIG_SOURCE=3, FPGA listening MAC address to be loaded on the rising edge of TARGET_LOAD when TARGET_FPGA_SERIAL_NUMBER matches the actual FPGA serial number.')
     # TARGET_IP_ADDR             = BitField(CONTROL, 22, 0, width=32, doc='NETWORK_CONFIG_SOURCE=0: destination IP address for outgoing data on UDP channel 1.  NETWORK_CONFIG_SOURCE=1,2 and3: FPGA listening IP address of the FPGA to be loaded on the rising edge of TARGET_LOAD when TARGET_FPGA_SERIAL_NUMBER matches the actual FPGA serial number.')
     # TARGET_IP_PORT             = BitField(CONTROL, 24, 0, width=16, doc='NETWORK_CONFIG_SOURCE=0: unused; NETWORK_CONFIG_SOURCE=1,2,3: FPGA listening port number to be loaded on the rising edge of TARGET_LOAD when TARGET_FPGA_SERIAL_NUMBER matches the actual FPGA serial number.')
@@ -125,6 +126,8 @@ class GPIO(MMI):
     CHANNELIZERS_CLOCK_SOURCE  = BitField(STATUS, 24, 0, width=8, doc='Indicates which ADC is used to provide the clock from all channelizers.')
     NUMBER_OF_ADCS             = BitField(STATUS, 25, 0, width=8, doc='Number of ADCs inputs')
     ADC_BITS_PER_SAMPLE        = BitField(STATUS, 26, 0, width=8, doc='Number of bits in a ADC sample')
+    ADC_CAL_FROZEN             = BitField(STATUS, 27, 0, width=8, doc='ADC calibration frozen')
+    ADC_CAL_SIGNAL_DETECT      = BitField(STATUS, 28, 0, width=8, doc='ADC calibration dignal detect')
     ADC_PLL_LOCK0              = BitField(STATUS, 33, 6,  doc='Lock status of the ADC PLL in FMC0')
     ADC_PLL_LOCK1              = BitField(STATUS, 33, 7,  doc='Lock status of the ADC PLL in FMC1')
     CMD_RPLY_PACKET_COUNTERS   = BitField(STATUS, 35, 0, width=16, doc='Number of reply packets received since last FPGA configuration. MSB=Commands, LSB=Replies')
