@@ -189,6 +189,7 @@ class UCorrFrameReceiver(object):
         # raw integrated results (Nresults, NCORR, NPROD) into more palatable
         # arrays
         # self.raw_to_matrix_map, self.raw_to_vector_map = get_raw_corr_map(N=N, Nbins=Nbins, Ncorr=Ncorr)
+        self.firmware_integ_period = 16384  # ToDo: fetch value automatically or get it via param
 
     def flush(self, timeout=0.001, max_flush_time=2, verbose=0):
         """ Flush the UDP buffer (read packets until timeout).
@@ -214,7 +215,7 @@ class UCorrFrameReceiver(object):
             print(f'Stopped flushing after {max_flush_time} s: packets are arriving faster that the specified timeout period of {timeout} s')
         print(f'Flushed {flushed_packets} packets')
 
-    def align(self):
+    def align(self, integ_period):
         """
         Flush packets until we receive the packet that is part of the first
         frame of the specified integration period.
@@ -226,7 +227,7 @@ class UCorrFrameReceiver(object):
         if self.n and not ((self.buf_ts[0] & self.ts_mask) % self.soft_integ_period):
             print("align: We're already aligned, no need to flush packets!")
             return
-
+        
         print('Waiting for first frame of the specified integration period')
         while True:
             try:
@@ -236,11 +237,11 @@ class UCorrFrameReceiver(object):
                 ts = self.buf_ts[0] & self.ts_mask
                 if ts != self.last_ts:  # we have a new timestamp
                     self.last_ts = ts
-                    integ_index = ts % self.soft_integ_period
+                    integ_index = ts % integ_period
                     if integ_index == 0:  # if the new frame is on an integration period
                         self.n = 1
                         break
-                    print(f'   Discarding correlator timestamp {ts:012X} (integration index {integ_index}/{self.soft_integ_period})')
+                    print(f'   Discarding correlator timestamp {ts:012X} (integration index {integ_index}/{integ_period})')
             except socket.timeout:
                 continue
 
@@ -333,6 +334,8 @@ class UCorrFrameReceiver(object):
         # chunks = 0
         timeouts = 0
 
+        integ_period = self.soft_integ_period * self.firmware_integ_period
+
         # Flush the UDP buffer by reading data until we timeout. We assume
         # here that we can read the data fast enough to empty the buffer and
         # that no new will come  for the timeout period.
@@ -343,6 +346,8 @@ class UCorrFrameReceiver(object):
         self.last_ts = None
         self.socket.settimeout(data_timeout)
         # if not self.n:
+
+        # wait for a new timestamp to make sure we start at the beginning of a new firmware integration 
         while True:
             try:
                 s = self.socket.recv_into(self.buf[0])
@@ -357,7 +362,7 @@ class UCorrFrameReceiver(object):
                         self.last_ts = ts
                         self.n = 1
                         break
-                print(f'Waiting for new frame')
+                # print(f'Waiting for new frame')
             except socket.timeout:
                 continue
         # get the timestamp
@@ -366,11 +371,11 @@ class UCorrFrameReceiver(object):
         self.first_ts = 0
         # Wait for a new timestamp that is the first of an integ period
         if align:
-            self.align()
+            self.align(integ_period)
         else:
             self.first_ts = self.last_ts
 
-        current_integ = (self.last_ts - self.first_ts) // self.soft_integ_period
+        current_integ = (self.last_ts - self.first_ts) // integ_period
         integ_number = 0
         packets = 0
         timeouts = 0
@@ -398,7 +403,7 @@ class UCorrFrameReceiver(object):
             # buffer.
             if ts != self.last_ts:
                 if verbose > 1:
-                    print(f'new timestamp {self.last_ts} => {ts}, n={self.n} ')
+                    print(f'new timestamp {self.last_ts} => {ts}, n={self.n}')
                 if self.n:
                     self.accumulate_data(self.n, integ_number, self.last_ts, verbose=verbose)
                     self.buf[0, :] = self.buf[self.n, :]
@@ -407,7 +412,9 @@ class UCorrFrameReceiver(object):
                 # If the timestamp change imply and integration period change,
                 # increase the counter, and exit if we have all the
                 # integration periods we wanted.
-                integ = (ts - self.first_ts) // self.soft_integ_period
+                integ = (ts - self.first_ts) // integ_period
+                if verbose > 1:
+                    print(f'integ number = {integ}, current_integ={current_integ}')
                 # if the packet belongs to another integration period, update the integration ts and count
                 if integ != current_integ:
                     integ_number += 1
