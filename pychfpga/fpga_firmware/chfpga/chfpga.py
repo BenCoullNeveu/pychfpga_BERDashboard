@@ -124,8 +124,8 @@ class chFPGA(FPGAFirmware):
         ("MGK7MB", "chordFPGA", ("chord16",)): dict(firmware_url='chordFPGA_MGK7MB_Rev2.bit', sampling_frequency=1200e6, processing_frequency = 300e6),
         ("ZCU111", "siFPGA", ("corr4", "corr8")): dict(firmware_url='sifpga_zcu111_wrapper.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
         ("ZCU111", "chFPGA", ("chan8",)): dict(firmware_url='chfpga_zcu111.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
-        ("CRS",    "siFPGA", ("corr4","corr8")): dict(firmware_url='chfpga_crs_corr.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=32),
-        ("CRS",    "siFPGA", ("chan8", "shuffle8")): dict(firmware_url='chfpga_crs_chord.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=32),
+        ("CRS",    "siFPGA", ("corr4","corr8")): dict(firmware_url='chfpga_crs_corr.bit', sampling_frequency=3000e6, processing_frequency = 3000e6/8, adc_clock_divider=32),
+        ("CRS",    "siFPGA", ("chan8", "shuffle8")): dict(firmware_url='chfpga_crs_ct.bit', sampling_frequency=3000e6, processing_frequency = 3000e6/8, adc_clock_divider=32),
     }
 
 
