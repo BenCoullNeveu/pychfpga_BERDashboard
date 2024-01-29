@@ -23,16 +23,14 @@ from pychfpga.common import run_async, async_to_sync, Ccoll
 from pychfpga.hardware.interfaces import TCPipe, TCPipe_I2C, TCPipe_SPI, ipmi_fru
 from pychfpga.fpga_firmware import FPGAFirmware
 
-# from ..i2c_devices.pca9575 import pca9575  as tca9575a # I2C 16-bit IO Expander
+from ..i2c_devices.pca9575 import pca9575 # I2C 16-bit IO Expander
 from ..i2c_devices.pca9546a import pca9546a  # I2C switch
 from ..i2c_devices.pca8574 import PCA8574
 from ..i2c_devices.tmp421 import tmp421  # Temperature sensor
 from ..i2c_devices.ina230 import ina230 as ina231  # Temperature sensor
-# from ..i2c_devices.sc18is602b import sc18is602b # I2C-to-SPI bridge
-# from ..i2c_devices.tca6416a import tca6416a
-# from ..i2c_devices.lmk04208spi import lmk04208spi # RF dual PLL
-# from ..i2c_devices.lmx2594spi import lmx2594spi # ADC/DAC PLL
 from ..i2c_devices.eeprom import eeprom
+from ..i2c_devices.qsfp import QSFP as qsfp
+from ..i2c_devices.gpio import GPIO
 from ..i2c_devices.hmc7044 import hmc7044  # Dual PLL
 
 
@@ -172,36 +170,36 @@ class CRS(Motherboard):
 
         # I2C1: Motherboard internal bus
         # I2C1 switch0 :EEPROM, clocks
-        self.i2c1_switch = i2c1_switch = pca9546a(self.iic, address=0x70, port=1)
+        self.i2c1_switch0 = i2c1_switch0 = pca9546a(self.iic, address=0x70, port=1)
         # I2C1 Switch 0 port 0 devices
-        self.i2c1_tmp421_5v0 = tmp421(self.iic, address=0x1C, port=(i2c1_switch, 0))
-        self.i2c1_tmp421_3v3 = tmp421(self.iic, address=0x1D, port=(i2c1_switch, 0))
-        self.i2c1_tmp421_2v5 = tmp421(self.iic, address=0x1E, port=(i2c1_switch, 0))
-        self.i2c1_tmp421_1v8 = tmp421(self.iic, address=0x1F, port=(i2c1_switch, 0))
+        self.i2c1_tmp421_5v0 = tmp421(self.iic, address=0x1C, port=(i2c1_switch0, 0))
+        self.i2c1_tmp421_3v3 = tmp421(self.iic, address=0x1D, port=(i2c1_switch0, 0))
+        self.i2c1_tmp421_2v5 = tmp421(self.iic, address=0x1E, port=(i2c1_switch0, 0))
+        self.i2c1_tmp421_1v8 = tmp421(self.iic, address=0x1F, port=(i2c1_switch0, 0))
 
-        self.i2c1_tmp421_1v2a = tmp421(self.iic, address=0x2A, port=(i2c1_switch, 0))
+        self.i2c1_tmp421_1v2a = tmp421(self.iic, address=0x2A, port=(i2c1_switch0, 0))
 
-        self.i2c1_ina231_vbp = ina231(self.iic, address=0x40, port=(i2c1_switch, 0))
-        self.i2c1_ina231_0v85a = ina231(self.iic, address=0x41, port=(i2c1_switch, 0))
-        self.i2c1_ina231_0v85b = ina231(self.iic, address=0x42, port=(i2c1_switch, 0))
-        self.i2c1_ina231_5v0 = ina231(self.iic, address=0x43, port=(i2c1_switch, 0))
-        self.i2c1_ina231_3v3 = ina231(self.iic, address=0x44, port=(i2c1_switch, 0))
-        self.i2c1_ina231_2v5 = ina231(self.iic, address=0x45, port=(i2c1_switch, 0))
-        self.i2c1_ina231_1v8 = ina231(self.iic, address=0x46, port=(i2c1_switch, 0))
-        self.i2c1_ina231_1v2a = ina231(self.iic, address=0x47, port=(i2c1_switch, 0))
-        self.i2c1_ina231_1v4 = ina231(self.iic, address=0x4A, port=(i2c1_switch, 0))
-        self.i2c1_ina231_1v2b = ina231(self.iic, address=0x4B, port=(i2c1_switch, 0))
+        self.i2c1_ina231_vbp = ina231(self.iic, address=0x40, port=(i2c1_switch0, 0))
+        self.i2c1_ina231_0v85a = ina231(self.iic, address=0x41, port=(i2c1_switch0, 0))
+        self.i2c1_ina231_0v85b = ina231(self.iic, address=0x42, port=(i2c1_switch0, 0))
+        self.i2c1_ina231_5v0 = ina231(self.iic, address=0x43, port=(i2c1_switch0, 0))
+        self.i2c1_ina231_3v3 = ina231(self.iic, address=0x44, port=(i2c1_switch0, 0))
+        self.i2c1_ina231_2v5 = ina231(self.iic, address=0x45, port=(i2c1_switch0, 0))
+        self.i2c1_ina231_1v8 = ina231(self.iic, address=0x46, port=(i2c1_switch0, 0))
+        self.i2c1_ina231_1v2a = ina231(self.iic, address=0x47, port=(i2c1_switch0, 0))
+        self.i2c1_ina231_1v4 = ina231(self.iic, address=0x4A, port=(i2c1_switch0, 0))
+        self.i2c1_ina231_1v2b = ina231(self.iic, address=0x4B, port=(i2c1_switch0, 0))
 
-        self.i2c1_tmp421_1v4 = tmp421(self.iic, address=0x4C, port=(i2c1_switch, 0))
-        self.i2c1_tmp421_1v2b = tmp421(self.iic, address=0x4D, port=(i2c1_switch, 0))
-        self.i2c1_tmp422_0v85 = tmp421(self.iic, address=0x4f, port=(i2c1_switch, 0))
+        self.i2c1_tmp421_1v4 = tmp421(self.iic, address=0x4C, port=(i2c1_switch0, 0))
+        self.i2c1_tmp421_1v2b = tmp421(self.iic, address=0x4D, port=(i2c1_switch0, 0))
+        self.i2c1_tmp422_0v85 = tmp421(self.iic, address=0x4f, port=(i2c1_switch0, 0))
 
         if self.revision > 0:
-            self.i2c1_disp = PCA8574(self.iic, address=0x22, port=(i2c1_switch, 0))
+            self.i2c1_disp = PCA8574(self.iic, address=0x22, port=(i2c1_switch0, 0))
         else:
             self.i2c1_disp = None
-        self.i2c1_eeprom_data = eeprom(self.iic, address=0x57, bus_name=(i2c1_switch, 0), address_width=7, max_read_length=255, max_write_length=8, write_page_size=8)
-        self.i2c1_eeprom_serial = eeprom(self.iic, address=0x5F, bus_name=(i2c1_switch, 0), address_width=8, max_read_length=255)  # must read 16 bytes from memory address 0x80
+        self.i2c1_eeprom_data = eeprom(self.iic, address=0x57, bus_name=(i2c1_switch0, 0), address_width=7, max_read_length=255, max_write_length=8, write_page_size=8)
+        self.i2c1_eeprom_serial = eeprom(self.iic, address=0x5F, bus_name=(i2c1_switch0, 0), address_width=8, max_read_length=255)  # must read 16 bytes from memory address 0x80
 
         # I2C1 Switch 0 port 1 devices
         #   0x18: DDR4 SODIMM Temp sensor
@@ -217,15 +215,22 @@ class CRS(Motherboard):
 
         # I2C1 Switch 1: SFP/QSFP
         self.i2c1_switch1 = i2c1_switch1 = pca9546a(self.iic, address=0x71, port=1)
-        # Switch port 0:
-        #    QSFP26
-        # Switch port 1-6
-        #    SFP26
+        # Switch port 7: GPIOs
+        self.i2c1_gpio0 = pca9575(self.iic, address=0x20, port=(i2c1_switch1, 7)) #   0x20: PCA9757 GPIO for SFP/QSFP
+        self.i2c1_gpio1 = pca9575(self.iic, address=0x21, port=(i2c1_switch1, 7)) #   0x21: PCA9757 GPIO for SFP/QSFP
+        self.i2c1_gpio0.init(cfg0_def=0b11110010, out0_default=0b11110111)
+        self.i2c1_gpios = GPIO(gpio_table={ 
+            # name : (io_expander_object, byte, LSB bit, width)
+            'QSFP_ModPrsL': (self.i2c1_gpio0, 0, 1, 1),
+            'QSFP_ResetL': (self.i2c1_gpio0, 0, 2, 1),
+            'QSFP_IntL': (self.i2c1_gpio0, 0, 4, 1),
+            'QSFP_LPMode': (self.i2c1_gpio0, 0, 3, 1),
+            'QSFP_ModSelL': (self.i2c1_gpio0, 0, 0, 1),
+            })
 
-        # Switch port 7
-        #   0x20: PCA9757 GPIO for SFP/QSFP
-        #   0x21: PCA9757 GPIO for SFP/QSFP
-
+        # Switch port 0: QSFP
+        self.i2c1_qsfp = qsfp(self.iic, bus_name=(i2c1_switch1, 0), gpio_prefix='QSFP_', gpio=self.i2c1_gpios, address=0x50)
+        # Switch port 1-6: SFPs
 
         # list of sensors
         self.i2c1_ina231_list = {
