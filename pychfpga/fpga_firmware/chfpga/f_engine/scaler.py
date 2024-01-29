@@ -47,7 +47,7 @@ class SCALER(MMI):
     DATA_TYPE             = BitField(CONTROL, 0x0A, 0, width=2, doc=" Selects the output data in conjunction with Bypass.\n"
                                 "   BYPASS=0, DATA_TYPE=0: Send normal scaled data in 4 or 8 bit mode\n"
                                 "   BYPASS=0, DATA_TYPE=1: Send (1+0j) if there is a saturation on either Re or Im\n"
-                                "   BYPASS=0, DATA_TYPE=3: Send (1+0j) if Re has a positive saturation and (0+1j) if it has a negative saturation\n"
+                                "   BYPASS=0, DATA_TYPE=2: Send (1+0j) if Re has a positive saturation and (0+1j) if it has a negative saturation\n"
                                 "   BYPASS=0, DATA_TYPE=3: Send (1+0j) if Im has a positive saturation and (0+1j) if it has a negative saturation\n"
                                 "   BYPASS=1, DATA_TYPE=0: Send the most significant bits of the FFT input to the scaler\n"
                                 "   BYPASS=1, DATA_TYPE=1: Send the most significant bits of the 34-bit left-shifted gain product, saturated to the word limits\n"
