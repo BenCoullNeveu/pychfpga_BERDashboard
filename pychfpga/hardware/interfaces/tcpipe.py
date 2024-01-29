@@ -123,7 +123,16 @@ class TCPipe:
     #     txv[3] = 0
     #     txv[4:4+len(header)] = header
     #     txv[4+len(header):4+len(header)+len(data)] = data
-
+    I2C_ERROR_CODES = {
+        0x01: 'DONE', # should never happen
+        0x02: 'Not started',
+        0x04: 'Timeout',
+        0x08: 'Arb Lost',
+        0x10: 'Nack',
+        0x20: 'Rx Overflow',
+        0x40: 'Tx Overflow',
+        0x80: 'Rx Underflow'
+    }
     def i2c_write_read(self, addr, data, read_length, no_error=False):
         """ Writes `data` to I2C address `addr`, perform a restart, and read `read_length` from the same device.
 
@@ -161,7 +170,7 @@ class TCPipe:
             if no_error:
                 return b''
             else:
-                raise IOError(f'TCPipe I2C: Reply has error code {self.rx_buf[0]}')
+                raise IOError(f'TCPipe I2C: Reply has error code {self.rx_buf[0]} ({", ".join(e for v,e in self.I2C_ERROR_CODES.items() if self.rx_buf[0] & v)})')
         if rx_len != 1 + read_length:
             raise IOError(f'TCPipe I2C: Receive {rx_len} bytes instead of {1+read_length} bytes (including status byte)')
         return self.rx_buf[1:read_length + 1]
