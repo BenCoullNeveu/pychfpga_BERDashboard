@@ -42,15 +42,15 @@ class FixedPointType:
             assert (data.dtype == np.int32)
             return (data << (32 - bit_width)) >> (32 - bit_width)
 
-    # def _mask_bitwidth(self, data, bit_width=None):
-    #     """
-    #     Rewritten to fix automatic sign change when shifting left to the limit (because integer was keeping its sign
-    #     after shifting back to the right).
-    #     """
-    #     if bit_width is None:
-    #         bit_width = self.bit_width
-    #     mask = (1 << bit_width) - 1
-    #     return data & mask
+    def _mask_bitwidth_safe(self, data, bit_width=None):
+        """
+        Rewritten to fix automatic sign change when shifting left to the limit (because integer was keeping its sign
+        after shifting back to the right).
+        """
+        if bit_width is None:
+            bit_width = self.bit_width
+        mask = (1 << bit_width) - 1
+        return data & mask
 
     def _downshift(self, data, bin_point=None):
         if bin_point is None:
@@ -92,6 +92,34 @@ class FixedPointType:
                 data = self._downshift(data, fpt_in.bin_point - self.bin_point)
             else:
                 data = data << (self.bin_point - fpt_in.bin_point)
+        data = self._mask_bitwidth(data)
+        if self.bit_width <= 32:
+            data = data.astype(np.int32)  # drop extra digits if unneeded
+        return data
+
+    def cast_safe(self, data, fpt_in=None):
+        '''Cast the provided integer or numpy integer array into
+        the fixed-point representation corresponding to this data type.
+        Optionally provide the fixed-point data type of the orignal array
+        to get the binary point right.'''
+        if self.bit_width > 32:
+            data = data.astype(np.int64)  # promote to enough digits
+        if fpt_in is not None:
+            if fpt_in.bin_point > self.bin_point:
+                data = self._downshift(data, fpt_in.bin_point - self.bin_point)
+            else:
+                data = data << (self.bin_point - fpt_in.bin_point)
+        data = self._mask_bitwidth_safe(data)
+        if self.bit_width <= 32:
+            data = data.astype(np.int32)  # drop extra digits if unneeded
+        return data
+
+    def cast_lsb(self, data, fpt_in=None):
+        '''Cast the provided integer or numpy integer array into
+        the fixed-point representation corresponding to this data type,
+        but keeps only N least significant bits.'''
+        if self.bit_width > 32:
+            data = data.astype(np.int64)  # promote to enough digits
         data = self._mask_bitwidth(data)
         if self.bit_width <= 32:
             data = data.astype(np.int32)  # drop extra digits if unneeded
