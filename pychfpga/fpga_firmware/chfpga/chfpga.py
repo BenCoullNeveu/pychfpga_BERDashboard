@@ -1187,7 +1187,8 @@ class chFPGA(FPGAFirmware):
             self.get_data_receiver()
 
     def check_adc_frequencies(self, stage):
-
+        # TODO: disable if mezzanine is not attached
+        # if self.mezzanine.atta
         target_frequency = self._sampling_frequency/self.adc_clock_divider
 
         for trial in range(10):
@@ -6284,76 +6285,6 @@ class chFPGA(FPGAFirmware):
         return metrics
 
 
-
-
-    #########################################################################
-    #
-    #   FIRMARE CORRELATOR
-    #
-    #########################################################################
-    # def start_corr_capture(
-    #         self,
-    #         integration_period=1.0,
-    #         capture_period=None,
-    #         corr_to_use=None,
-    #         verbose=1):
-    #     """
-    #     Instructs chFPGA to starts integrating and capturing the correlator
-    #     outputs at the specified period. The captures data is sent over the
-    #     Ethernet interface.
-
-    #     The capture period can be optionnaly specified independently from the
-    #     integration period. If not specified, it is equal to the integration
-    #     period.
-
-    #     This function does not receive the frames from the ethernet port. This
-    #     has to be done separately.
-
-    #     corr_to_use -> if not None, is a list specifying which to correlators to use
-
-    #     History:
-    #         2012-10-02 JFC: Created
-    #         2013-03-25 KMB
-    #     """
-
-    #     if not self._last_init_time:
-    #         self.logger.warning('%r: The system is not initialized. This might not work.' % self)
-
-    #     if capture_period is None:
-    #         capture_period = integration_period
-
-    #     capture_period_in_frames = int(capture_period / self.FRAME_PERIOD)
-    #     integration_period_in_frames = int(integration_period / self.FRAME_PERIOD)
-
-    #     self.set_ant_reset(1)
-    #     self.set_corr_reset(1)
-    #     if corr_to_use is None:
-    #         corrs = self.LIST_OF_IMPLEMENTED_CORRELATORS
-    #         corrs_not_used = []
-    #     else:
-    #         corrs = corr_to_use
-    #         corrs_not_used = list(set(self.LIST_OF_IMPLEMENTED_CORRELATORS).difference(corr_to_use))
-    #     for corr_num in corrs:
-    #         corr = self.CORR[corr_num]
-    #         self.logger.debug(
-    #             '%r: Configuring correlator %i to integrate '
-    #             'over %f seconds (%i frames) '
-    #             'and transmit data every %f seconds (%i frames)' % (
-    #                 self,
-    #                 corr.instance_number,
-    #                 integration_period,
-    #                 integration_period_in_frames,
-    #                 capture_period,
-    #                 capture_period_in_frames))
-    #         corr.ACC.RESET = 0
-    #         corr.ACC.config(integration_period=integration_period_in_frames, capture_period=capture_period_in_frames)
-    #     for corr_num in corrs_not_used:
-    #         self.logger.debug('%r: Disabling correlator %i' % (self, corr.instance_number))
-    #         corr = self.CORR[corr_num]
-    #         corr.ACC.RESET = 1
-    #     self.set_corr_reset(0)
-    #     self.set_ant_reset(0)
-    #     #self.sync()
 
     def get_correlator_params(self):
         """ Returns the correlator geometry and configuration """

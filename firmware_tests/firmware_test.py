@@ -188,6 +188,7 @@ class TestFW:
             fft_bypass=1,
             scaler_bypass=1,
             scaler_eight_bit=1,
+            prober_user_flags=0,
         )
         self.board.set_channelizer(**chan_params)
         self.board.start_data_capture(period=1, source='scaler')
