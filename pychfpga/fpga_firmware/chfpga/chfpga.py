@@ -126,8 +126,10 @@ class chFPGA(FPGAFirmware):
         ("MGK7MB", "chFPGA", ("shuffle16", "shuffle128", "shuffle256", "shuffle512", "chan8", "chan4")): dict(firmware_url='chFPGA_MGK7MB_Rev2.bit', sampling_frequency=800e6, processing_frequency=200e6, adc_clock_divider=4),
         ("MGK7MB", "siFPGA", ("corr16",)): dict(firmware_url='SIFPGA_MGK7MB.bit', sampling_frequency=800e6, processing_frequency = 200e6, adc_clock_divider=4),
         ("MGK7MB", "chordFPGA", ("chord16",)): dict(firmware_url='chordFPGA_MGK7MB_Rev2.bit', sampling_frequency=1200e6, processing_frequency = 300e6),
-        ("ZCU111", "siFPGA", ("corr4","corr8")): dict(firmware_url='sifpga_zcu111_wrapper.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
-        ("CRS", "siFPGA", ("corr4","corr8", "chan8")): dict(firmware_url='sifpga_crs_wrapper.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=32),
+        ("ZCU111", "siFPGA", ("corr4", "corr8")): dict(firmware_url='sifpga_zcu111_wrapper.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
+        ("ZCU111", "chFPGA", ("chan8",)): dict(firmware_url='chfpga_zcu111.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
+        ("CRS",    "siFPGA", ("corr4","corr8")): dict(firmware_url='chfpga_crs_corr.bit', sampling_frequency=3200e6, processing_frequency = 3200e6/8, adc_clock_divider=32),
+        ("CRS",    "chFPGA", ("chan8", "shuffle8")): dict(firmware_url='chfpga_crs_ct.bit', sampling_frequency=3200e6, processing_frequency = 3200e6/8, adc_clock_divider=32),
     }
 
 
@@ -306,7 +308,8 @@ class chFPGA(FPGAFirmware):
         self.FRAME_PERIOD = None
         self._FMC_present = []  # indicates if the FMC board is present. If not, the modules will act accordingly.
         self._last_init_time = None
-        self.recv = None
+        self.recv = None # raw data capture receiver object
+        self.corr_recv = None # correlator data receiver object
         self.mmi = None
 
         self.PLATFORM_ID = None # Platform will be identified once communication is established with the FPGA. Might be called by get_metrics() before that.
@@ -703,6 +706,8 @@ class chFPGA(FPGAFirmware):
 
             self._NUMBER_OF_FMC_SLOTS = self.mb.NUMBER_OF_FMC_SLOTS
 
+            self.NUMBER_OF_ADCS = self.GPIO.NUMBER_OF_ADCS
+
             # Set platform/implementation-specific features & constants based on a local table
             if self.PLATFORM_ID in (self._PLATFORM_ID_ZCU111, self._PLATFORM_ID_CRS):
                 assert self.mb.part_number == "ZCU111" or self.mb.part_number == "CRS", 'This version of the firmware is meant to operate on the ZCU111 only'
@@ -714,6 +719,8 @@ class chFPGA(FPGAFirmware):
                 self.CROSSBAR1_TYPE = "URAM"
                 self.GPU_LINK_TYPE = "100GE"
                 self.CAPTURE_TYPE = "UCAP"
+                self.CORR_TYPE = "UCORR44"
+                self.ADC_FREQS_TO_CHECK = range(self.NUMBER_OF_ADCS)
 
             elif self.PLATFORM_ID in (self._PLATFORM_ID_MGK7MB_REV0, self._PLATFORM_ID_MGK7MB_REV2):
                 assert self.mb.part_number == "MGK7MB", 'This version of the firmware is meant to operate on the MGK7MB (IceBoard) only'
@@ -725,6 +732,8 @@ class chFPGA(FPGAFirmware):
                 self.CROSSBAR1_TYPE = "BRAM"
                 self.GPU_LINK_TYPE = "10GE"
                 self.CAPTURE_TYPE = "PROBER"
+                self.CORR_TYPE = "CORR44"
+                self.ADC_FREQS_TO_CHECK = (0,4,8,12)
             else:
                 raise RuntimeError(f'Unknown feature list for PLATFORM_ID = {self.PLATFORM_ID}')
 
@@ -752,7 +761,6 @@ class chFPGA(FPGAFirmware):
             # Identify the number of channelizers and their properties
             self.CHANNELIZERS_CLOCK_SOURCE = self.GPIO.CHANNELIZERS_CLOCK_SOURCE
             self.NUMBER_OF_CHANNELIZERS = self.GPIO.NUMBER_OF_CHANNELIZERS
-            self.NUMBER_OF_ADCS = self.GPIO.NUMBER_OF_ADCS
             self.NUMBER_OF_ANTENNAS_WITH_FFT = self.GPIO.NUMBER_OF_CHANNELIZERS_WITH_FFT
             self.LIST_OF_ANTENNAS_WITH_FFT = list(range(self.NUMBER_OF_ANTENNAS_WITH_FFT))
 
@@ -769,6 +777,8 @@ class chFPGA(FPGAFirmware):
             self.NUMBER_OF_CORRELATORS = self.GPIO.NUMBER_OF_CORRELATORS
             self.LIST_OF_IMPLEMENTED_CORRELATORS = list(range(self.NUMBER_OF_CORRELATORS))
             self.NUMBER_OF_INPUTS_TO_CORRELATE = self.GPIO.NUMBER_OF_CHANNELIZERS_TO_CORRELATE
+            if not self.NUMBER_OF_CORRELATORS:
+                self.CORR_TYPE = None
 
             self.default_channels = list(range(self.NUMBER_OF_CHANNELIZERS))
 
@@ -875,12 +885,16 @@ class chFPGA(FPGAFirmware):
                 self.CROSSBAR3 = None
 
             if self.NUMBER_OF_CORRELATORS:
-                self.logger.debug('%r: === Instantiating CORR' % self)
-                self.CORR = CORR.CORR(self, self._CORR_BASE_ADDR, self._CORR_ADDR_INCREMENT) # Correlator (XMUL, ACC) for each correlator
+                if self.CORR_TYPE == "CORR44":
+                    self.logger.debug('%r: === Instantiating CORR' % self)
+                    self.CORR = CORR.CORR(self, self._CORR_BASE_ADDR, self._CORR_ADDR_INCREMENT) # Correlator (XMUL, ACC) for each correlator
+                elif self.CORR_TYPE == "UCORR44":
+                    self.logger.debug('%r: === Instantiating UCORR44' % self)
+                    self.CORR = UCORR.UCORR(self, self._CORR_BASE_ADDR, self._CORR_ADDR_INCREMENT) # Correlator (XMUL, ACC) for each correlator
             else:
                 self.CORR = None
 
-            if self.NUMBER_OF_GPU_LINKS or self.GPU_LINK_TYPE=='100GE':
+            if self.NUMBER_OF_GPU_LINKS:
                 self.logger.debug(f'{self!r}: === Instantiating GPU LINK(S), Type={self.GPU_LINK_TYPE}')
                 if self.GPU_LINK_TYPE=='10GE':
                     self.GPU = gpu.GPU(self, self._GPU_LINK_BASE_ADDR, self._GPU_LINK_ADDR_INCREMENT)
@@ -1192,8 +1206,8 @@ class chFPGA(FPGAFirmware):
         target_frequency = self._sampling_frequency/self.adc_clock_divider
 
         for trial in range(10):
-            freqs = [self.FreqCtr.read_frequency(f'ADC_CLK{i}', gate_time=0.001) for i in (0,4,8,12)] # ***JFC debug
-            err = any(abs(f-target_frequency) > 2.1e3 for f in freqs)
+            freqs = [self.FreqCtr.read_frequency(f'ADC_CLK{i}', gate_time=0.001) for i in self.ADC_FREQS_TO_CHECK] # ***JFC debug
+            err = any(abs(f - target_frequency) > 2.1e3 for f in freqs)
             msg = f'{self!r}: ADC output frequencies at stage {stage} are {[f/1e6 for f in freqs]} (check #{trial+1}) {"ERROR!" if err else ""}'
             if err:
                 self.logger.warn(msg)
@@ -1203,7 +1217,7 @@ class chFPGA(FPGAFirmware):
                 self.logger.debug(msg)
                 break
         if err:
-            msg = f'{self!r}: some ADCs are not generating a proper clock at stage "{stage}". Frequencies are {freqs} MHz. ' \
+            msg = f'{self!r}: some ADCs are not generating a proper clock at stage "{stage}". Frequencies are {[f/1e6 for f in freqs]} MHz. ' \
                   f'Expected frequency is {target_frequency/1e6:.6f} MHz. Deltas = {[(f-target_frequency)/1e6 for f in freqs]}'
             self.logger.error(msg)
             pass
@@ -1679,12 +1693,11 @@ class chFPGA(FPGAFirmware):
 
         Does not change the target MAC or IP address.
         """
-        if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
-            if port != self._ZCU111_LOCAL_DATA_PORT_NUMBER:
-                raise ValueError(f'Cannot current set data port number to {port} on this platform.')
-            return
-        word = await self.fpga_core_reg_read_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR)
-        await self.fpga_core_reg_write_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR, (word & 0xFFFF0000) | (port & 0xFFFF))
+        if self.PLATFORM_ID in (self._PLATFORM_ID_ZCU111, self._PLATFORM_ID_CRS):
+            self.mb.tcpipe.core_reg_write(self.mb.tcpipe.CORE_REG_UDP_DATA_PORT, port)
+        else:
+            word = await self.fpga_core_reg_read_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR)
+            await self.fpga_core_reg_write_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR, (word & 0xFFFF0000) | (port & 0xFFFF))
 
     async def get_local_data_port_number_async(self):
         """ Return the port number to which the FPGA is sending its captured data stream on the control network.
@@ -1692,8 +1705,8 @@ class chFPGA(FPGAFirmware):
         This method uses MMI interface to access the FPGA core registers.
 
         """
-        if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
-            return self._ZCU111_LOCAL_DATA_PORT_NUMBER
+        if self.PLATFORM_ID in (self._PLATFORM_ID_ZCU111, self._PLATFORM_ID_CRS):
+            return self.mb.tcpipe.core_reg_read(self.mb.tcpipe.CORE_REG_UDP_DATA_PORT)
         else:
             return (await self.fpga_core_reg_read_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR)) & 0xFFFF
 
@@ -3026,13 +3039,20 @@ class chFPGA(FPGAFirmware):
             return self.recv
         if threaded:
             # Old threaded data receiver
+            if self.CAPTURE_TYPE != "PROBER":
+                raise RuntimeError('The old threaded receiver is supported only by PROBER')
             chFPGA_config = run_async(self.get_config_async(basic=True))  # get only the info needed to start the receiver
             self.recv = chFPGA_receiver(chFPGA_config, verbose=verbose)
             self.logger.debug('Started data receiver threads on %s:%i' % (self.recv.host_ip, self.recv.port_number))
             run_async(self.set_local_data_port_number_async(self.recv.port_number))
-        else:
+        elif self.CAPTURE_TYPE == "PROBER":
             sock = self.get_data_socket()
             self.recv = prober.RawFrameReceiver(sock)
+        elif self.CAPTURE_TYPE == "UCAP":
+            sock = self.get_data_socket()
+            self.recv = self.UCAP.get_data_receiver(sock)
+        else:
+            raise RuntimeError("Unknown capture engine type")
 
         return self.recv
 
@@ -3141,7 +3161,7 @@ class chFPGA(FPGAFirmware):
 
             burst_period_in_seconds (float): Same as `period` or as a number of frames
 
-            burst_period_in-frames (int): Number of frames between captured bursts.
+            burst_period_in_frames (int): Number of frames between captured bursts.
 
             number_of_bursts (int): Number of bursts to send, after which the FPGA stops sending
                 data. If `number_of_bursts`=0, the transmission continues indefinitely, until
@@ -3198,28 +3218,19 @@ class chFPGA(FPGAFirmware):
         #       ('for a total of %i bursts' % number_of_bursts) )
         if verbose:
             self.logger.debug(
-                "%r: Configuring channelizer %r to capture " % (self, channels) +
-                '%i frame every %i frames (i.e .every %.3f ms) ' % (
-                   frames_per_burst,
-                   burst_period_in_frames,
-                   burst_period_in_frames * self.FRAME_PERIOD * 1000) +
-                'with first frame offset of %i frames (%.3f ms) ' % (
-                    offset,
-                    offset * self.FRAME_PERIOD * 1000) +
-                'and a send delay factor of %i (%.3f ms).' % (
-                    send_delay,
-                    send_delay * 65536 / 125e6 * 1000))
+                f'{self!r}: Configuring channelizer {channels} to capture '
+                f'{frames_per_burst} frame every {burst_period_in_frames} frames (i.e .every {burst_period_in_frames * self.FRAME_PERIOD * 1000:.3f} ms) '
+                f'with first frame offset of {offset} frames ({offset * self.FRAME_PERIOD * 1000:.3f} ms)'
+                f'and a send delay factor of {send_delay} ({send_delay * 65536 / 125e6 * 1000:.3f} ms).')
 
             frames_per_second = frames_per_burst * 1.0 / self.FRAME_PERIOD / burst_period_in_frames
             packet_size_in_bits = (self.FRAME_LENGTH + 10 + 42) * 8  # 10 header bytes, 42 Ethernet/IP/UDP overhead
-            self.logger.debug(
-                '%r: Data rates are:\n' % (self) +
-                '    1 board, 1 channel: %.3f Mbits/s\n' % (frames_per_second * packet_size_in_bits / 1e6) +
-                '    1 board, %i channels: %.3f Mbit/s\n' % (
-                    len(channels),
-                    len(channels) * frames_per_second * packet_size_in_bits / 1e6) +
-                '    1 crate: %.3f Mbits/s' % (16 * 16 * frames_per_second * packet_size_in_bits / 1e6)
-                )
+            self.logger.debug('\n'.join((
+                f'{self!r}: Data rates are:',
+                f'    1 board, 1 channel: {frames_per_second * packet_size_in_bits / 1e6:.3f} Mbits/s',
+                f'    1 board, {len(channels)} channels: {len(channels) * frames_per_second * packet_size_in_bits / 1e6:.3f} Mbit/s',
+                f'    1 crate: {16 * 16 * frames_per_second * packet_size_in_bits / 1e6:.3f} Mbits/s'
+                )))
 
         # stop data from going into the PROBER and MASTER to minimize the risk
         # of malformed packets and unstable communications
@@ -3231,24 +3242,31 @@ class chFPGA(FPGAFirmware):
         # Do not limit the transfer rate
         self.GPIO.HOST_FRAME_READ_RATE = 5
 
-        # Stop data capture on *ALL* channels
-        for chan in self.get_channelizers():
-            chan.PROBER.RESET = 1
+        if self.CAPTURE_TYPE == 'UCAP':
+            self.UCAP.set_data_source(source)
+            # self.UCAP.config_capture() # doesn't exist yet. fixme
+            # self.logger.debug # add some logging?
+            self.UCAP.CAPTURE_PERIOD = burst_period_in_frames-1
+            self.UCAP.CAPTURE_PERIOD2 = burst_period_in_frames-1
 
-        for chan in self.get_channelizers(channels):
-            chan.PROBER.SUB_PERIOD = 23  # disable sub period
-            chan.PROBER.set_data_source(source)
-            chan.PROBER.config_capture(
-                frames_per_burst=frames_per_burst,
-                burst_period=burst_period_in_frames,
-                number_of_bursts=number_of_bursts,
-                offset=offset,
-                send_delay=send_delay)
-            ch = chan.chan_number
-            self.logger.debug('%r: %s raw data capture on channel %i' % (
-                self,
-                ('Disabling', 'Enabling')[ch in channels], ch))
-            chan.PROBER.RESET = 0
+        if self.CAPTURE_TYPE =='PROBER':
+            # Stop data capture on *ALL* channels
+            for chan in self.get_channelizers():
+                chan.PROBER.RESET = 1
+            for chan in self.get_channelizers(channels):
+                chan.PROBER.SUB_PERIOD = 23  # disable sub period
+                chan.PROBER.set_data_source(source)
+                chan.PROBER.config_capture(
+                    frames_per_burst=frames_per_burst,
+                    burst_period=burst_period_in_frames,
+                    number_of_bursts=number_of_bursts,
+                    offset=offset,
+                    send_delay=send_delay)
+                ch = chan.chan_number
+                self.logger.debug('%r: %s raw data capture on channel %i' % (
+                    self,
+                    ('Disabling', 'Enabling')[ch in channels], ch))
+                chan.PROBER.RESET = 0
 
         # ** line below no longer supported by firmware *** enables data transmission if continuous mode is selected
         self.set_trig(1)
@@ -6360,6 +6378,14 @@ class chFPGA(FPGAFirmware):
             raise RuntimeError('The FPGA firmware does not contain a correlator core')
 
         self.CORR.stop_correlator()
+
+    def get_corr_receiver(self, verbose=1):
+        if self.corr_recv:
+            return self.corr_recv
+        sock = self.get_data_socket()
+        self.corr_recv = self.CORR.get_data_receiver(sock)
+        return self.corr_recv
+
 
     def compute_corr_output(self, data, integration_period=16384):
         """

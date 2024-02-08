@@ -61,6 +61,8 @@ class FreqCtr(MMI):
     'SFP_REFCLK': 35,  #
     'CLK10': 36,  #
     'MGT_CLK125': 37,  #
+    'BP_SHUFFLE_REFCLK1': 38,  #
+    'PLL_OSCOUT': 39,  #
     }
 
     # Create local variables for page numbers tomake the table more readable

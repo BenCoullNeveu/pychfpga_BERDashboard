@@ -133,7 +133,7 @@ class FPGABitstream(object):
         self.logger.info(f'{self!r}: Bitstream size is {len(data)/1e6:0.3f} MBytes')
 
         if len(data) < 1e6:
-            raise(f'Bitstream at {self.url} is too small. Is it a git LFS pointer? If so, make sure LFS is installed and then pull the binaries.')
+            raise RuntimeError(f'Bitstream at {self.url} is too small (length = {len(data)/1e6:0.3f} MBytes). Is it a git LFS pointer? If so, make sure LFS is installed and then pull the binaries.')
 
         # Process if the headers if we see the header prefix pattern
         if data.startswith(HEADER_COOKIE):

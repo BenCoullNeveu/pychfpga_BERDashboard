@@ -99,9 +99,11 @@ class BSB_MMI:
                 space. The control/status/RAM pages are determined from the high
                 bits of the address. 
 
-            type (``int``, str or dtype): If `type` is the ``int`` object, a single
-                integer of `length` bytes is read as a big endian and is returned. Otherwise, 
-                a numpy array of `length` numpy objects of dtype `type` is returned.
+            type (``int``, str or dtype): Selects the type of returned object
+
+                - ``int`` object: a single integer of `length` bytes is read as a **big endian** and is returned. 
+                - ``bytes`` or ``bytearray`` object: A ``bytearray`` is returned.
+                - dtype or string representing a dtype: Returns a numpy array of `length` numpy objects of dtype `type`.
 
 
             length (int): Indicates the number of bytes (if type==int) or the number of numpy elements of dtype==type to read.  
@@ -160,6 +162,10 @@ class BSB_MMI:
 
         if type is int:
             return int.from_bytes(rx_buf, 'big', signed=length < 0)
+        elif type is bytes:
+            return bytes(rx_buf)
+        elif type is bytearray:
+            return rx_buf
         else:
             dout = np.frombuffer(rx_buf, dtype=np.dtype(type))
             return dout

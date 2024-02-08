@@ -251,9 +251,10 @@ class FPGAArray(object):
 
                     - 'corr4'
 
-            bitfile (str): Overrides the filename of the bitfile file to used
-                to program the FPGAs. If not specified, the bitfile is
-                determined based on `mode`.
+            bitfile (str): If `bitfile` points to a folder, use that folder to look for the default
+                FPGA bitstream base don the platform/mode. If `bitfile` points to a file, use that
+                file as a bitstream (but mode is still required to properly initialize the python
+                object and firmware)
 
             prog (int): Overrides the FPGA configuration level. If `mode` is specified, `prog` defaults to `prog=2` otherwise `prog=0`.
 
@@ -1179,7 +1180,10 @@ class FPGAArray(object):
 
             mode (str): operational mode. Is needed to find the proper bitstream for the platform
 
-            bitfile (FPGABitstream): If specified, overrides the bitstream selection
+            bitfile (str): If `bitfile` is a path pointing to a directory, override the bitstream
+                 search path (but still uses the default bitstream filename). If `bitfile`  is a
+                 path to a file, use this specific bitstream (mode still has to be specified to
+                 properly initialize the python objects and firmware)
 
             max_trials (int): Maximun allowed number of reprogramming and retrials before raising an error.
 
@@ -1456,7 +1460,7 @@ class FPGAArray(object):
 
         def to_int(s):
             """ Returns string s as an integer if it represents an integer that is not previxed with '0', otherwise returns the original string"""
-            return (int(s) if isinstance(s, str) and s.isdigit() and not s.startswith('0') else s)
+            return (int(s) if isinstance(s, str) and s.isdigit() and not (len(s) > 1 and s.startswith('0')) else s)
 
         def split_fields(s, n):
             fields = el.split(':')
@@ -1725,6 +1729,9 @@ class FPGAArray(object):
                     self.corner_turn_stream_ids[ib.get_id(lane)] = stream_id
             # Sync board(s)
             self.sync()
+
+        elif mode in ['shuffle8']:
+            pass
 
         elif mode in ['shuffle256', 'shuffle512', 'shuffle16', 'shuffle128', 'chord16']:
             if not all(self.ib.CROSSBAR2) or not all(self.ib.CROSSBAR3):
@@ -5210,7 +5217,7 @@ def add_fpga_array_arguments(parser):
                         '--prog 0: do not program the FPGA (even if --mode is specified), '
                         '--prog or prog 1: programs the FPGA only if not already programmed (requires --mode). '
                         '--prog 2: always program the FPGA (requires --mode).')
-    parser.add_argument('-b', '--bitfile',   type=str, help='Filename of the bitfile used to to program the FPGAs')
+    parser.add_argument('-b', '--bitfile',   type=str, help='Folder in which to search for FPGA bitstream or full path to a bistream to use explicitely (mode must still be specified)')
     parser.add_argument('-m', '--mode',      type=str, help="Operational mode ('shuffle16', 'shuffle256', etc.). When specified, the FPGA is programmed with the proper firmware bitstream (unless blocked with --prog 0) and the mode is initialized (unless blocked with -open 0). If not specified, only a connection to the platform is established")
     parser.add_argument('--init',      type=int, nargs='?', const=None,
                         help='Overrides FPGA initialization level'
@@ -5382,7 +5389,11 @@ def create_fpga_array(args=None):
 
         ping: Keep only boards that respond to requests
 
-        bitfile: pathname of the file containing the CHIME FPGA bitstream
+        bitfile: path of the folder in which to search for default FPGA
+            bitstream files (based on the platform and mode), or full pathname
+            to a FPGA bitstream to use (mode must still be specified to allow
+            proper initialization)
+
 
         prog: Overrides the default FPGA bitstream configuration level. 0=Do not program, 1=program if needed, 2=always program.
 

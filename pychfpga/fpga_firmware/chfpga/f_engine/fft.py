@@ -28,7 +28,7 @@ class FFT(MMI):
     OVERFLOW_FORCE = BitField(CONTROL, 0x00, 3, doc="Force the overflow counter to count (for debugging).")
     # DLY_RESET      = BitField(CONTROL, 0x00, 1, doc="Reset the computation of the CASPER block pipelining delay. When released, the block will re-learn the block latency once a CASPER SYNC has passed through the block.")
     BYPASS         = BitField(CONTROL, 0x00, 0, doc="Bypass the FFT")
-    FFT_SHIFT      = BitField(CONTROL, 0x02, 0, width=11, doc="FFT shift enable bit for each of the FFT stage")
+    FFT_SHIFT      = BitField(CONTROL, 0x02, 0, width=14, doc="FFT shift enable bit for each of the FFT stage")
     SYNC_PERIOD    = BitField(CONTROL, 0x04, 0, width=16, doc="Number of clock cycles between SYNC pulses. See CASPER documentation for minimum SYNC spacing.")
     PIPELINE_DELAY = BitField(CONTROL, 0x06, 0, width=16, doc="Latency (in number of clocks) of the CASPER PFB/FFT")
 
@@ -47,7 +47,12 @@ class FFT(MMI):
         # self.BYPASS = 0
         # self.SYNC_PERIOD *= 2
         # self.FFT_SHIFT= 2**3 - 1
-        self.PIPELINE_DELAY = 3230
+        # self.FFT_SHIFT = 0b11111111111111
+        # self.PIPELINE_DELAY = 3230
+        self.PIPELINE_DELAY = 12533 # self.MEASURED_PIPELINE_DELAY # try
+        # meas_pipeline_delay = self.MEASURED_PIPELINE_DELAY
+        # self.PIPELINE_DELAY = meas_pipeline_delay
+        # print('set delay, meas delay', self.PIPELINE_DELAY, self.MEASURED_PIPELINE_DELAY)
         # if self.PIPELINE_DELAY != self.MEASURED_PIPELINE_DELAY:
         #    raise Exception('FFT pipeline delay is not set to the measured value!')
 

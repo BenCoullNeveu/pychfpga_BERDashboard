@@ -64,11 +64,29 @@ class QSFP(object):
     }
 
     def __init__(self, i2c, bus_name, gpio_prefix, gpio, address=0x50, parent=None):
-        """ Create a QSFP object.
+        """ Create a QSFP object that allows read/write of the QSFP's hardware control lines and internal registers.
 
-        `control_bits` is a dictionary defining:
+        Parameters:
 
-            {control_bit_name: (io_expander_object, register_number, bit_number, default), ... }
+            i2c (object): I2C interface object through which I2C communications will be performed. Must support the methods ``select_bus()`` and ``write_read()``. 
+
+            bus_name (int, tuple, dict): Parameter that is passed to i2c.select_bus() to enable access to this device
+
+            gpio_prefix (str): String that is prefixed to the GPIO names to access GPIOs provided by the `gpio` object
+
+            gpio (GPIO): GPIO-class object that provides read() and write() methods to access the QSFP hardware control lines. 
+                The object must define the following GPIOs:
+
+                    - <prefix>ModPrsL
+                    - <prefix>ResetL
+                    - <prefix>IntL
+                    - <prefix>ModSelL
+                    - <prefix>LPMode
+                    - <prefix>Led: Optional. Used in set/get_led only.
+
+            address (int): 7-bit I2C address of the QSFP
+
+            parent: Used in repr() of this QSFP object to clarify to which object this one is dependent from             
 
         Valid control bit names are: 'ModPrsL', 'ResetL', 'IntL', 'ModSelL', 'LPMode', 'Led'
         """

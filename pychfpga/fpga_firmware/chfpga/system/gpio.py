@@ -43,21 +43,25 @@ class GPIO(MMI):
 
     BUCK_CLK_DIV     = BitField(CONTROL, 0x01, 0, width=8, doc='Clock divider to set the BUCK SYNC frequency (2-255), where freq = 200 MHz/BUCK_CLK_DIV/2.')
 
-    LCD_E    = BitField(CONTROL, 0x02, 7, doc='LCD Enable')
-    LCD_RS   = BitField(CONTROL, 0x02, 6, doc='LCD RS (0=command, 1=data)')
-    LCD_RW   = BitField(CONTROL, 0x02, 5, doc='LCD Read/Write flag (0=write, 1=read)')
-    LCD_DATA = BitField(CONTROL, 0x02, 0, width=4, doc='LCD 4-bit data bus')
+    LCD_E    = BitField(CONTROL, 0x02, 7, doc='LCD Enable (ML605 board)')
+    LCD_RS   = BitField(CONTROL, 0x02, 6, doc='LCD RS (0=command, 1=data) (ML605 board)')
+    LCD_RW   = BitField(CONTROL, 0x02, 5, doc='LCD Read/Write flag (0=write, 1=read) (ML605 board)')
+    LCD_DATA = BitField(CONTROL, 0x02, 0, width=4, doc='LCD 4-bit data bus (ML605 board)')
 
     BLINKER_RESET              = BitField(CONTROL, 3, 7, doc='When active, stops the LED blinker')
     ANT_RESET                  = BitField(CONTROL, 3, 6, doc='Antenna processing pipeline reset')
     CORR_RESET                 = BitField(CONTROL, 3, 5, doc='Correlator reset')
     CTRL_RESET_TRIG            = BitField(CONTROL, 3, 4, doc='low-to-hich transition generates a ctrl_rst pulse')
     SYSMON_RESET               = BitField(CONTROL, 3, 3, doc='SYSMON reset')
+    CLK10_SEL                  = BitField(CONTROL, 3, 2, doc='Selects 10 MHz reference source; 0: Motherboard; 1: Backplane (CRS board)')
+    PLL_SYNC                   = BitField(CONTROL, 3, 1, doc='Sets the SYNC line of the external PLL (CRS board)')
     # CORR_IP_PORT_OFFSET        = BitField(CONTROL, 3, 2, width=2, doc='Correlator output data IP port offset from the base port')
     # DATA_IP_PORT_OFFSET        = BitField(CONTROL, 3, 0, width=2, doc='Captured data IP port offset from the base port')
     # USER_RESET                 = BitField(CONTROL, 3, 0, doc='system reset')
+
     HOST_FRAME_READ_RATE       = BitField(CONTROL, 4, 0, width=5, doc='Indicates how often the host UDP buffers are read. Used to throttle data transmision. Period = 2/125MHz*2^value ')
     BUCK_PHASE                 = BitField(CONTROL, 12, 0, width=64, doc='Phase of each of the 16 Buck sync lines. There are 16 possible phase values for each line. Bits 3:0 is for phase of line 0, bits 7:4 for phase of line 1 etc.')
+    ADC_CAL_FREEZE             = BitField(CONTROL, 13, 0, width=8, doc='ADC calibration control')
     # TARGET_MAC_ADDR            = BitField(CONTROL, 18, 0, width=48, doc='NETWORK_CONFIG_SOURCE=0: destination MAC address for outgoing data on UDP channel 1. NETWORK_CONFIG_SOURCE=1,2: unused.  NETWORK_CONFIG_SOURCE=3, FPGA listening MAC address to be loaded on the rising edge of TARGET_LOAD when TARGET_FPGA_SERIAL_NUMBER matches the actual FPGA serial number.')
     # TARGET_IP_ADDR             = BitField(CONTROL, 22, 0, width=32, doc='NETWORK_CONFIG_SOURCE=0: destination IP address for outgoing data on UDP channel 1.  NETWORK_CONFIG_SOURCE=1,2 and3: FPGA listening IP address of the FPGA to be loaded on the rising edge of TARGET_LOAD when TARGET_FPGA_SERIAL_NUMBER matches the actual FPGA serial number.')
     # TARGET_IP_PORT             = BitField(CONTROL, 24, 0, width=16, doc='NETWORK_CONFIG_SOURCE=0: unused; NETWORK_CONFIG_SOURCE=1,2,3: FPGA listening port number to be loaded on the rising edge of TARGET_LOAD when TARGET_FPGA_SERIAL_NUMBER matches the actual FPGA serial number.')
@@ -122,6 +126,8 @@ class GPIO(MMI):
     CHANNELIZERS_CLOCK_SOURCE  = BitField(STATUS, 24, 0, width=8, doc='Indicates which ADC is used to provide the clock from all channelizers.')
     NUMBER_OF_ADCS             = BitField(STATUS, 25, 0, width=8, doc='Number of ADCs inputs')
     ADC_BITS_PER_SAMPLE        = BitField(STATUS, 26, 0, width=8, doc='Number of bits in a ADC sample')
+    ADC_CAL_FROZEN             = BitField(STATUS, 27, 0, width=8, doc='ADC calibration frozen')
+    ADC_CAL_SIGNAL_DETECT      = BitField(STATUS, 28, 0, width=8, doc='ADC calibration dignal detect')
     ADC_PLL_LOCK0              = BitField(STATUS, 33, 6,  doc='Lock status of the ADC PLL in FMC0')
     ADC_PLL_LOCK1              = BitField(STATUS, 33, 7,  doc='Lock status of the ADC PLL in FMC1')
     CMD_RPLY_PACKET_COUNTERS   = BitField(STATUS, 35, 0, width=16, doc='Number of reply packets received since last FPGA configuration. MSB=Commands, LSB=Replies')
@@ -320,10 +326,16 @@ class GPIO(MMI):
         self.CORR_RESET = 1
         # self.USER_RESET = 0
 
-        if self.PLATFORM_ID in (self.fpga._PLATFORM_ID_ZCU111, self.fpga._PLATFORM_ID_CRS):
-            self.BUCK_CLK_DIV = 17
+        # Buck sync is enabled by default and starts immediately when the FPGA is programmed
 
-        self.logger.info(f'Buck switching frequency is set at {200/16/self.BUCK_CLK_DIV:.3f} MHz')
+        # The commented code below was for the CRS platform before platform-specific freqs and enable status could be set in firmware
+        # it is started by software 
+        # if self.PLATFORM_ID == self.fpga._PLATFORM_ID_CRS:
+            # self.BUCK_CLK_DIV = 24
+            # self.logger.info(f'Enabling CRS Buck sync at {200/16/self.BUCK_CLK_DIV:.3f} MHz NOW!')
+            # self.BUCK_SYNC_ENABLE = 1
+
+        self.logger.info(f'Buck switching frequency is set at {200/16/self.BUCK_CLK_DIV:.3f} MHz. Status: {"Enabled" if self.BUCK_SYNC_ENABLE else "DISABLED"}')
 
         # In the alternate code below, we do not use self.ANT_RESET=1 to reset
         # the antenna because this implies reading the control register, and

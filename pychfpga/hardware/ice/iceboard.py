@@ -766,23 +766,20 @@ class IceBoard(Motherboard, TuberIceBoardBase):
 
         Parameters:
 
-            firmware_mode (str): Describes the functionnality that is required
-                from the FPGA, which is used to  lookup the PLATFORM_SUPPORT
-                table of every registered FPGAFirmware object to find which
-                bitstream file to use.
+            firmware_mode (str): The desired operational mode. This will be
+                used to automatically select the proper bitstream file for
+                this platform and create the proper FPGAFirmware class.
 
+            force (bool or None):
 
-            force (bool or None): Determines when the FPGA is configured:
-
-
-                force = True: FPGA will always be configured
+                force = True: FPGA will always be configured independent of the signature of the currently programmed firmware
                 force = False: FPGA will be configured if it is not configured or
-                        if the CRC of the selected bitstream differs from the CRC in the FPGA
+                        if its bitstream CRC differ from the provided bitstream
                 force = None: FPGA will be configured only if it is not configured
 
-            bitfile_override (str): pathname of a bitsream file to be used
-                instead of the bitstream automatically selected from the
-                firmware mode.
+            bitfile_override (str): Specifies the path to a folder in which to
+                search for the default bitstream file,  or the path to the
+                bitstream file to use instead of the default one.
 
         """
 
