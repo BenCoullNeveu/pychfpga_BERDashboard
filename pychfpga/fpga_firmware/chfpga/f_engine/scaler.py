@@ -161,8 +161,8 @@ class SCALER(MMI):
         if use_complex_gains:
             if np.isscalar(gain_list):
                 gains = np.ones(total_bins, dtype=complex) * gain_list
-
-            gains = np.array(gain_list, dtype=complex)
+            else:
+                gains = np.array(gain_list, dtype=complex)
 
             if any(gains.real < -32768) or any(gains.real > 32767) or any(gains.real != gains.real.astype('<i2')) or \
                any(gains.imag < -32768) or any(gains.imag > 32767) or any(gains.imag != gains.imag.astype('<i2')):
