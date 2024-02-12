@@ -324,8 +324,8 @@ class UCorrFrameReceiver(object):
         self.data = np.zeros((number_of_results, self.NBINS, self.NPROD), dtype=np.complex128)
         
         # lists for debugging
-        self.bin_ = [] # used for debugging missing bins
-        tt = []
+        # self.bin_ = [] # used for debugging missing bins
+        # tt = []
 
         # packets_per_chunk = corr_frames_per_chunk * NCORR * NCMAC
 
@@ -430,8 +430,6 @@ class UCorrFrameReceiver(object):
             else:
                 self.n += 1
                 
-            tt.append(ts)
-
             # packets += n
             # chunks += 1
             # packets_per_chunk += n
@@ -451,7 +449,7 @@ class UCorrFrameReceiver(object):
         self.data.real = self.acc_re
         self.data.imag = self.acc_im
         if return_format == 'raw':
-            return (self.data, self.count, self.sat_cplx, tt, self.bin_)
+            return (self.data, self.count, self.sat_cplx) #, tt, self.bin_)
         elif return_format == 'matrix':
             m = self.raw_to_matrix_map
             matrix = self.data[:, m[0], m[1], m[2]]
@@ -479,11 +477,11 @@ class UCorrFrameReceiver(object):
         # hh = h[:n]
 
         bin_ = self.buf_stream_id[:number_of_packets]
-        # if len(bin_) != len(np.unique(bin_)):
+        if len(bin_) != len(np.unique(bin_)):
             # print(bin_)
             # print(np.unique(bin_))
-            # raise ValueError(f'Received {len(bin_)} frequency bins, but there are only {len(np.unique(bin_))} unique bins. Some bins are repeated.')
-        self.bin_.append(bin_)
+            raise ValueError(f'Received {len(bin_)} frequency bins, but there are only {len(np.unique(bin_))} unique bins. Some bins are repeated.')
+        # self.bin_.append(bin_)
         # cmac = self.buf_cmac[:number_of_packets]
         # print 'corr=', corr
         # print 'cmac=', cmac
