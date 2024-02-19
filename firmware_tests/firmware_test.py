@@ -145,8 +145,9 @@ class TestFW:
     @compare_plot_data
     def test_funcgen_sin(self, board_conn, setup_funcgen):
         sin_freq = 1
+        # np.sin(np.arange(self.NS) * 2 * np.pi / self.NS * freq) * (ampl if ampl is not None else (1 << (self.Nbits - 1) - 1))))
         ref_data = (np.sin(np.arange(self.FG_NS) * 2 * np.pi / self.FG_NS * sin_freq) * 127).astype("i1")
-        data = self._set_capture_funcgen('sin', freq=sin_freq)
+        data = self._set_capture_funcgen('sin', freq=sin_freq, ampl=127)
         return data, ref_data
 
     @compare_plot_data
@@ -159,7 +160,7 @@ class TestFW:
         return data, ref_data
 
     @compare_plot_data
-    def test_funcgen_a(self, board_conn, setup_funcgen):
+    def test_funcgen_const(self, board_conn, setup_funcgen):
         a = 13 << self.FG_LSHIFT
         ref_data = np.full(self.FG_NS, a, self.FG_DTYPE).view('u1')
         data = self._set_capture_funcgen('a', a=a)
@@ -185,6 +186,7 @@ class TestFW:
         chan_params = dict(
             data_source='sin',
             freq=sin_freq,
+            ampl=127,
             fft_bypass=1,
             scaler_bypass=1,
             scaler_eight_bit=1,
