@@ -2686,7 +2686,7 @@ class chFPGA(FPGAFirmware):
             self.set_data_source(data_source, channels=channels, **function_kwargs)  # does a channelizer reset
 
         if function is not None:
-            logger = logging.getLogger(self.__name__)
+            logger = logging.getLogger(self.__class__.__name__)
             logger.warning(
                 "Using 'function' parameter for setting FUNCGEN function is obsolete. Please use 'data_source' instead."
             )
@@ -4511,7 +4511,7 @@ class chFPGA(FPGAFirmware):
 
                 # Set the postscaler value
                 if Glog is not None:
-                    self.chan[ch].SCALER.SHIFT_LEFT = Glog
+                    self.chan[ch].SCALER.SHIFT_LEFT = int(Glog)
 
                 if use_fixed_gain:
                     if not np.isscalar(Glin):

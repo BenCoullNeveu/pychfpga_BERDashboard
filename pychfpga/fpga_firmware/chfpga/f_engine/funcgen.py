@@ -108,7 +108,7 @@ class FUNCGEN(MMI):
         '4bit_ramp':      (6, lambda self, **kwargs: np.arange(self.NS) << (self.Nbits - 4)),  # Generates the ramp in the upper 4 bits of the ADC sample (e.g for 8 bits: 0x00, 0x10, 0x20, ... 0xF0.)
         '4bit_real_ramp': (7, lambda self, **kwargs: np.ravel([(i,0) for i in range(self.NS//2)]) << (self.Nbits - 4)),  # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
          # '4bit_split_ramp': (0, FN_BUFFER, ),  # Generates 0x0000, 0x0010, 0x0020, .. 0x00F0, 0x1000, 0x1010 ...
-        'sin':            (8, lambda self, freq=1, ampl=None: (np.sin(np.arange(self.NS) * 2 * np.pi / self.NS * freq) * (ampl if ampl is not None else (1<<(self.Nbits-1)-1)))),  # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
+        'sin':            (8, lambda self, freq=1, ampl=None: (np.sin(np.arange(self.NS) * 2 * np.pi / self.NS * freq) * (ampl if ampl is not None else ((1 << (self.Nbits - 1)) - 1) ))),  # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
         'crate_slot':     (9, lambda self: np.tile(self.fpga.get_id()[:2], self.NS // 2) << (self.Nbits - 4)),  # Bytes alternate between crate number and slot number (in upper 4 bits). If FFT and scaler are bypassed, then the complex data has the crate number in the real part and slot number in imag part.
         #'crate':          (10, lambda self, N=BUFFER_SIZE: np.tile(np.array([self.get_id()[0]<<4, 0], np.uint8), N / 2)),  # Bytes alternate between crate number (in upper 4 bits) and 0. If FFT and scaler are bypassed, then the complex data has the crate number in the real part.
         'freq_test':      (10, freq_test),
