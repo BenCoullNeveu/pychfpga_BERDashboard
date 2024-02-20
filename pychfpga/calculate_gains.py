@@ -338,7 +338,7 @@ class GainCalc(object):
         # it, which is rounded up so we keep our headroom of at least 4.
         #
         # glog has one less dimension than `g`.
-        glog = np.clip((np.ceil(np.log2(np.ma.median(np.abs(g) / target_glin, axis=-1)))).astype(np.int), 0, 31)
+        glog = np.clip((np.ceil(np.log2(np.ma.median(np.abs(g) / target_glin, axis=-1)))).astype(np.int32), 0, 31)
         # ma.median will result in a masked value if all elements are masked. In
         # these cases, give to glog the the median glog from all channels
         # (hopefully there is at lease one good glog) .
