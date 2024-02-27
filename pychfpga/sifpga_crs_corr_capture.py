@@ -1,5 +1,4 @@
 """
-
 Module for capturing and writing raw corelated data from an RFSoC.
 
 The script can be run within an ipython session.
@@ -12,7 +11,6 @@ Run from ipython with
     
 If you want to change some parameters, write them directly in the file. Command-line
 arguments are not yet supported.
-
 """
 
 # Import common packages
@@ -78,7 +76,11 @@ class CRS_CORR_CAPTURE:
             
             # Configure each FFT
             fft = self.i.chan[n].FFT
-            fft.FFT_SHIFT = 0b11111111111111 # Start with an aggressive shift schedule. This can be adjusted with optimize_fft_shift
+            # fft.FFT_SHIFT = 0b11111111111111 # Start with an aggressive shift schedule. This can be adjusted with optimize_fft_shift
+            # fft.FFT_SHIFT = 0b11111000000000 # less aggressive shift schedule
+            # fft.FFT_SHIFT = 0b11111110000000
+            # fft.FFT_SHIFT = 0b11111111100000
+            fft.FFT_SHIFT = 0b11111111111000
             fft.PIPELINE_DELAY = fft.MEASURED_PIPELINE_DELAY # set pipeline delay equal to measured delay
             print(fft.status())
             
@@ -411,6 +413,7 @@ class CRS_CORR_CAPTURE:
             self.corr.AUTOCORR_ONLY = 0 # 0: all products
             self.corr.NO_ACCUM = 0 # 0: do accumulate
             self.NCORR_PROD = int(self.NPOLS*(self.NPOLS + 1) // 2)
+            self.corr.INTEGRATION_PERIOD = 16384 - 1 # 32768 - 1 # 65536 - 1 # 32768 - 1 # Default: 16384 - 1, maximimum: 65536 - 1
             
             # Update corr_is_configured
             self.corr_is_configured = True
@@ -448,6 +451,9 @@ class CRS_CORR_CAPTURE:
         None.
 
         """
+
+        # First, set the most aggressive shift schedule.
+        # <Insert here>
 
         # I found at that if you want to create a list of an N-bit number that flips one bit at a time, there's a funny
         # Fibonacci-like pattern that describes the decimal value of the binary shift schedule!
@@ -519,7 +525,7 @@ class CRS_CORR_CAPTURE:
     def compute_gains(self,
                       gain_type = 'smooth', 
                       number_of_fft_averages = 100,
-                      rms_accuracy_tol = 5, # %
+                      rms_accuracy_tol = None, # %
                       save_gains = False
                       ):
         """
@@ -535,16 +541,40 @@ class CRS_CORR_CAPTURE:
         None.
 
         """
+
+        # Capture ncap FFT frames of data, checking for FFT overflows. If there are any, start the FFT capture again
+        # until we have a clean set of data.
         
-        # ==================
-        # Capture 100 FFT frames of data and compute their RMS for each bin (computing
-        # real and imag parts separately)
-        fft_data = self.read_fft_frames(period = 0.02,
-                                        data_source = 'adc',
-                                        ncap = int(number_of_fft_averages/self.n_frames_per_capture),
-                                        split = True,
-                                        verbose = 0)
-        fft_data *= 4 # multiply by 4 since we only capture 16+16 bits of the FFT, and need to shift to 18+18
+        ctr = 0
+        while True:
+            print(f'Gain computation trial {ctr}')
+            ctr += 1
+
+            fft_overflows = np.zeros(self.NPOLS)
+
+            for n in range(self.NPOLS):
+                # Pulse FFT overflow reset
+                self.i.chan[n].FFT.OVERFLOW_RESET = 1
+                self.i.chan[n].FFT.OVERFLOW_RESET = 0
+            
+            # ==================
+            # Capture ncap FFT frames of data
+            fft_data = self.read_fft_frames(period = 0.02,
+                                            data_source = 'adc',
+                                            ncap = int(number_of_fft_averages/self.n_frames_per_capture),
+                                            split = True,
+                                            verbose = 0)
+
+            for n in range(self.NPOLS):
+                # Check FFT overflow status on each pol, and pulse the reset again.
+                fft_overflows[n] = self.i.chan[n].FFT.OVERFLOW_COUNT
+                self.i.chan[n].FFT.OVERFLOW_RESET = 1
+                self.i.chan[n].FFT.OVERFLOW_RESET = 0
+
+            print(f'FFT Overflows: {fft_overflows}')
+
+            if all(fft_overflows == 0):
+                break
         
         # Compute FFT RMS. The np.abs just converts the np.complex128 to np.float64, since the magnitude is real-valued
         fft_rms = np.sqrt(np.mean(np.abs(fft_data*np.conj(fft_data)), axis = 1))
@@ -560,14 +590,14 @@ class CRS_CORR_CAPTURE:
 
         # Treat any possible infinities
         gain[gain == np.inf] = 2**31 
-        print(np.where(gain == np.inf))
+        # print(np.where(gain == np.inf))
 
         # Break down the raw gains into linear and log gains, where gain = lin * 2**log
 
         # IMPORTANT! let the linear gains absorb some of the bits that would otherwise 
         # be used in the log gains so that we have better linear gain resolution.
-        print('log2 gain', np.log2(gain)) # need to make a loop to check best log
-        trim_bits = 13 # need a way to cycle through the number that preserves the largest linear gain
+        # print('log2 gain', np.log2(gain)) # need to make a loop to check best log
+        trim_bits = 12 # need a way to cycle through the number that preserves the largest linear gain
 
         # Compute the log gains. Take log2 of the raw gains so that we get an idea of how many bit shifts
         # we need to do (plus some decimal shifting that will be absorbed in the linear gains). Take its
@@ -578,21 +608,17 @@ class CRS_CORR_CAPTURE:
 
         # Allocate the remainder of the raw gains to the linear gains. 
         lin = (gain / 2**np.repeat(log.reshape(self.NPOLS, 1), self.NBINS, axis = 1)) + 0.5 # add 0.5 for rounding
-        
-        # Convert linear gains to np.int16. Check for truncation (just a printout for now)
-        print('lin before np.int16', lin)
-        lin = lin.astype(np.int16) # check trunc/round
-        print('lin after np.int16', lin)
-        print('Number of zeros after int16', len(np.where(lin < 0)[0]))
 
         # ==================
         # Now that we have our raw gains, we can apply some additional processing.
         if gain_type == 'raw':
-            self.set_gains(lin, [int(n) for n in log]) # cast log gains to int
+            print('Setting gains to raw')
+            # self.set_gains(lin, [int(n) for n in log]) # cast log gains to int
 
         elif gain_type == 'flat':
-            lin_flat = np.mean(lin[:, np.where(self.f > 300)[0]], axis = 1) # Determine the mean of the linear gains, ignoring frequencies below 300 MHz.
-            self.set_gains(lin_flat, [int(n) for n in log]) # cast log gains to int
+            print('Setting gains to flat')
+            lin = np.mean(lin[:, np.where(self.f > 300)[0]], axis = 1) # Determine the mean of the linear gains, ignoring frequencies below 300 MHz.
+            # self.set_gains(lin_flat, [int(n) for n in log]) # cast log gains to int
 
         elif gain_type == 'smooth':
 
@@ -620,25 +646,33 @@ class CRS_CORR_CAPTURE:
             print('Smoothing gains...')
 
             # The following is hardcoded for now.
-            order = 4
+            order = 8
             lin_smooth = np.zeros((self.NPOLS, len(self.f)))
             for n in range(self.NPOLS):
                 # Trim first 300 MHz when running the fit
-                m = lstsqr_fit(x = self.f[np.where(self.f > 300)[0]], 
-                               y = lin[n, np.where(self.f > 300)[0]], 
-                               sigma = np.repeat(10, len(self.f[np.where(self.f > 300)[0]])), # 10 is just a guess
+                m = lstsqr_fit(x = self.f, # [np.where(self.f > 50)[0]], 
+                               y = lin[n], # , np.where(self.f > 50)[0]], 
+                               sigma = np.repeat(10, len(self.f)), # 10 is just a guess
+                               # sigma = np.repeat(10, len(self.f[np.where(self.f > 50)[0]])), # 10 is just a guess
                                order = order) 
                 lin_smooth[n] = make_poly(x = self.f, coeffs = m)
-            lin_smooth = lin_smooth.astype(np.int16) # cast to np.int16
+            # lin_smooth = lin_smooth.astype(np.int16) # cast to np.int16
 
-            self.set_gains(lin_smooth, [int(n) for n in log]) # cast log gains to int
+            # Set lin = lin_smooth
+            print('Setting gains to smooth')
+            lin = lin_smooth
+            # self.set_gains(lin_smooth, [int(n) for n in log]) # cast log gains to int
+
+        lin = lin.astype(np.int16)
+        self.set_gains(lin, [int(n) for n in log]) # cast log gains to int
 
         # ==================
         # If rms_accuracy_tol is not None, capture SCALER data and check that they are at or near the target
 
         if rms_accuracy_tol is not None:
+            print('Checking RMS of Scaler output is within the specified tolerance.')
             scaler_data = self.read_scaler_frames(data_source = 'adc', ncap = 100)
-            scaler_data_rms = np.sqrt(abs(np.mean((scaler_data / 2**12) * (scaler_data / 2**12).conj(), axis = 1)))
+            scaler_data_rms = np.sqrt(abs(np.mean(scaler_data * scaler_data.conj(), axis = 1)))
             mean_abs_rms = np.mean(scaler_data_rms, axis = 1)
 
             tol = (rms_accuracy_tol/100) * (target / 2**31) # Calculate 
@@ -657,6 +691,7 @@ class CRS_CORR_CAPTURE:
                                    The mean values on these channels are {out_of_tol_mean_rms} LSBs RMS.')
 
         else:
+            print('Skipping Scaler tolerance check.')
             scaler_data = None
 
         if save_gains:
@@ -798,6 +833,15 @@ class CRS_CORR_CAPTURE:
             print('')
             final_shift = self.optimize_fft_shift()
             print('')
+        else:
+            shifts = np.zeros(self.NPOLS)
+            for n in range(self.NPOLS):
+                shifts[n] = self.i.chan[n].FFT.FFT_SHIFT
+            unique_shifts = np.unique(shifts)
+            if len(unique_shifts) == 1:
+                final_shift = unique_shifts[0]
+            # else:
+                # raise ValueError('')
 
         # ===========
         # Compute gains.
@@ -811,6 +855,7 @@ class CRS_CORR_CAPTURE:
             print('')
             self.compute_gains(gain_type = gain_type, 
                                number_of_fft_averages = number_of_fft_averages, 
+                               rms_accuracy_tol = None, # let's just ignore this parameter for now
                                save_gains = True)
             print('Gain computation completed!')
             print('')
@@ -984,7 +1029,11 @@ class CRS_CORR_CAPTURE:
                     for m in range(self.NPOLS):
                     
                         # FFT stats
-                        fft_overflows_buf[n, m] = ccc.i.chan[m].FFT.OVERFLOW_COUNT
+                        self.i.chan[m].FFT.OVERFLOW_RESET = 1
+                        self.i.chan[m].FFT.OVERFLOW_RESET = 0
+                        fft_overflows_buf[n, m] = self.i.chan[m].FFT.OVERFLOW_COUNT
+                        self.i.chan[m].FFT.OVERFLOW_RESET = 1
+                        self.i.chan[m].FFT.OVERFLOW_RESET = 0
 
                         # SCALER stats
                         scaler = ccc.i.chan[m].SCALER
@@ -1012,14 +1061,14 @@ class CRS_CORR_CAPTURE:
                                                                 data_timeout = 0.1,
                                                                 flush_timeout = 0.01,
                                                                 return_format = 'raw',
-                                                                verbose = 1,
+                                                                verbose = 0,
                                                                 corr_is_configured = self.corr_is_configured)
 
                     t_buf[n] = t
                     vis_buf[n] = vis[0] # vis is a 3D array even if we only request 1 result
                     counts_buf[n] = counts[0] # counts is 2D, but 0 axis has length of just 1
                     sat_buf[n] = sat
-                    
+                
                 # Once the loop is complete, write the numpy buffers to disk
                 print('')
                 print('=================================')
@@ -1048,7 +1097,7 @@ class CRS_CORR_CAPTURE:
         return
     
 # Sandbox mode:
-# ccc = CRS_CORR_CAPTURE(hwm = 'crs 0011',
+# ccc = CRS_CORR_CAPTURE(hwm = 'crs 0016',
 #                        stderr_log_level = 'debug',
 #                        prog = 2,
 #                        mode = 'corr8',
@@ -1058,31 +1107,33 @@ class CRS_CORR_CAPTURE:
 # fft_data, fft_rms, gain, lin, log, scaler_data  = ccc.compute_gains(1000)
 
 # Observation mode:
-ccc = CRS_CORR_CAPTURE(hwm = 'crs 0011',
+ccc = CRS_CORR_CAPTURE(hwm = 'crs 0016',
                        stderr_log_level = 'debug',
                        prog = 2,
                        mode = 'corr8',
                        make_directories = True,
-                       data_path = '/home/ih/d3a/rfsoc_data')
+                       data_path = '/home/chiveremote/D3A_acq/data')
 
 ccc.observe(n_vis_per_file = 5,
-            integration_time = 10,
-            optimize_shift = True,
-            compute_gains = True,
-            number_of_fft_averages = 1000,
-            gain_type = 'smooth',
-            capture_adc_bursts = True,
-            n_adc_bursts = 5,
-            capture_fft_bursts = True,
-            n_fft_bursts = 5
-            )
+           integration_time = 10,
+           optimize_shift = False,
+           compute_gains = True,
+           number_of_fft_averages = 1000,
+           gain_type = 'raw',
+           capture_adc_bursts = True,
+           n_adc_bursts = 5,
+           capture_fft_bursts = True,
+           n_fft_bursts = 5
+           )
 
 # ccc.observe(n_vis_per_file = 256,
 #             integration_time = 10,
-#             optimize_shift = True,
+#             optimize_shift = False,
 #             compute_gains = True,
 #             number_of_fft_averages = 1000,
-#             gain_type = 'smooth',
+#             gain_type = 'raw', # 'smooth',
 #             capture_adc_bursts = True,
-#             capture_fft_bursts = True
+#             n_adc_bursts = 5,
+#             capture_fft_bursts = True,
+#             n_fft_bursts = 5
 #             )
