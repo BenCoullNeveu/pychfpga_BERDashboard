@@ -30,7 +30,7 @@ ca = FPGAArray(**config)
 b = ca.ib[0]
 b.set_adc_delays()
 
-b.set_channelizer(adc_mode="ramp")
+# b.set_channelizer(adc_mode="ramp")
 b.start_data_capture(period=1, source='adc')
 
 for ch in b.chan:
