@@ -327,7 +327,7 @@ DLITE:
         <<: *default_fpga
         fpga_array_params:
             <<: *default_fpga_array_params
-            hwm: 'mb 498' # ID of the board used. Can also use a direct IP
+            hwm: 'mb 498:1' # ID of the board used. Can also use a direct IP
             mode: corr16  # shuffle 256 and 512 require crate numbers
             prog: 1
             sync_method: local #  distributed_time # <-- For R232. Change to --> sync_method: distributed_time <-- for D3A. #local_soft_trigger
@@ -380,7 +380,7 @@ DLITE:
             baseline_capture_rate: 10  # Frame per second. 0 = disable.
             tmux_factor: 3
 
-        initial_gains:  # overwritten by load initial gains and comput gains if enabled
+        initial_gains:  # overwritten by load initial gains and compute gains if enabled
             - [['*'], [0.0, 20]]
 
         load_initial_gains: True
@@ -436,7 +436,8 @@ DLITE:
             hdf5_capture_folder: '%(run_folder)s/corr/%(hdf5_start_time)s'
             hdf5_capture_filename: '%(file_number)04d' #'data'
             hdf5_capture_duration: 0 #300 # number of seconds during which data is captured. 0= forver (until stopped), null = Do not write hdf5 data start
-            hdf5_capture_elements_per_file: 256 # 256 elements=7Mbytes
+#            hdf5_capture_elements_per_file: 256 # 256 elements=7Mbytes
+            hdf5_capture_elements_per_file: 8 # 256 elements=7Mbytes
             hdf5_capture_n_inputs: 16
 #    gps:
 #        servers:

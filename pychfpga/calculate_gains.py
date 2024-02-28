@@ -411,7 +411,7 @@ class GainCalc(object):
                 filtered_mask_signal[filtered_mask_signal.mask] = signal[filtered_mask_signal.mask]
         else:
             raise ValueError
-        filtered_mask_signal = (filtered_mask_signal.real).astype(np.int).astype(np.complex)
+        filtered_mask_signal = (filtered_mask_signal.real).astype(np.int32).astype(np.complex64)
         return filtered_mask_signal
 
     def fourier_filter(self, signal, num_components):
@@ -441,7 +441,7 @@ class GainCalc(object):
         # We eliminate all high frequency beyond num_components
         f_signal[..., num_components: -num_components] = 0
         filtered = np.fft.ifft(f_signal, axis=-1)[..., signal_length // 2: -signal_length // 2 + 1]
-        filtered = (filtered.real).astype(np.int).astype(np.complex)
+        filtered = (filtered.real).astype(np.int32).astype(np.complex64)
         return filtered
 
     def mask_rfi(self, signal, filtered_signal, threshold):
