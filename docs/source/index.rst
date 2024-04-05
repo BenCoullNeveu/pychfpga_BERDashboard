@@ -24,6 +24,7 @@ The ``pychfpga`` package is the Python framework that is used to operate the FPG
    script_documentation
    installation
    quick_start
+   howto/pocket_correlator
 
 .. toctree::
    :maxdepth: 1
