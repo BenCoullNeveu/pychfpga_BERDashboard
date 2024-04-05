@@ -54,7 +54,7 @@ from .f_engine import prober  # needed to access RawFrameReceiver
 
 # FPGA Corner-turn Engine
 from .ct_engine import chan_crossbar
-from .ct_engine import ultract
+from .ct_engine import ucorn
 from .ct_engine import shuffle_crossbar
 from .ct_engine import shuffle
 from .ct_engine import gpu
@@ -269,7 +269,7 @@ class chFPGA(FPGAFirmware):
 
         Parameters:
 
-            motherboard (Motherboard subclass): Motherboard platform on which the FPGA is located. 
+            motherboard (Motherboard subclass): Motherboard platform on which the FPGA is located.
 
             **fw_params (dict): Extra parameters to be associated with this
                   version of the firmware. Those are obtained from the platform
@@ -294,7 +294,7 @@ class chFPGA(FPGAFirmware):
         self.logger.debug(f"{self!r}: Creating chFPGA FPGAFirmware object")
 
 
-        # Firmware attributes provided by PLATFORM_SUPPORT. Those will be used later by `init_async`. 
+        # Firmware attributes provided by PLATFORM_SUPPORT. Those will be used later by `init_async`.
         self.fw_params = fw_params
 
         # Firmware attributes that will be intialized later by `init_async`
@@ -305,7 +305,7 @@ class chFPGA(FPGAFirmware):
         self._FMC_present = []  # indicates if the FMC board is present. If not, the modules will act accordingly.
         self._last_init_time = None
         self.recv = None # raw data capture receiver object
-        self.corr_recv = None # correlator data receiver object 
+        self.corr_recv = None # correlator data receiver object
         self.mmi = None
 
         self.PLATFORM_ID = None # Platform will be identified once communication is established with the FPGA. Might be called by get_metrics() before that.
@@ -736,7 +736,7 @@ class chFPGA(FPGAFirmware):
 
             # Set platform/implementation-specific features & constants based on values reported by the FPGA GPIO module
             #
-            # Get frame size info, i.e number of samples per frame 
+            # Get frame size info, i.e number of samples per frame
             self._LOG2_FRAME_LENGTH = self.GPIO.LOG2_FRAME_LENGTH
             self.FRAME_LENGTH = 2**self._LOG2_FRAME_LENGTH  # 2**11 = 2048 time samples per frame
             self.ADC_SAMPLES_PER_FRAME = self.FRAME_LENGTH  # more explicit name
@@ -844,7 +844,7 @@ class chFPGA(FPGAFirmware):
                     self._CROSSBAR1_BASE_ADDR,
                     self._CROSSBAR_ADDR_INCREMENT)  # CROSSBAR block
             elif self.CROSSBAR1_TYPE == "URAM":
-                self.CROSSBAR = ultract.UltraCT(
+                self.CROSSBAR = ucorn.UCorn(
                     self,
                     self._CROSSBAR1_BASE_ADDR,
                     self._CROSSBAR_ADDR_INCREMENT)
@@ -906,7 +906,7 @@ class chFPGA(FPGAFirmware):
                 self.UCAP = ucap.UCAP(self, self._UCAP_BASE_ADDR, 0)
             elif self.CAPTURE_TYPE !='PROBER':
                 raise RuntimeError(f'Unknown Data capture type {self.CAPTURE_TYPE}')
-   
+
             self.logger.debug('%r: This motherboard has %i FMC slots' % (self, self._NUMBER_OF_FMC_SLOTS))
 
             # ---------------------------------------------------------------------
@@ -992,7 +992,7 @@ class chFPGA(FPGAFirmware):
              adc_delay_table (dict): initial setting of the ADC delays. see `set_adc_delays`.
                  A default delay table is used if none is provided.
 
-             adc_clock_divider (float): ratio between the ADC sampling frequency and the measured ADC clock speed. If `None`, the platform/mode default is used. 
+             adc_clock_divider (float): ratio between the ADC sampling frequency and the measured ADC clock speed. If `None`, the platform/mode default is used.
 
              data_width (int): 4 or 8. Indicate of the channelizer output is in (4+4)bit or (8+8
                  bit) mode
@@ -1005,7 +1005,7 @@ class chFPGA(FPGAFirmware):
 
              verbose (int): verbose level
 
-             kwargs (dict): Any other arguments. These are not used. 
+             kwargs (dict): Any other arguments. These are not used.
 
         Returns:
             None
@@ -1690,7 +1690,7 @@ class chFPGA(FPGAFirmware):
         """
         if self.PLATFORM_ID in (self._PLATFORM_ID_ZCU111, self._PLATFORM_ID_CRS):
             self.mb.tcpipe.core_reg_write(self.mb.tcpipe.CORE_REG_UDP_DATA_PORT, port)
-        else: 
+        else:
             word = await self.fpga_core_reg_read_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR)
             await self.fpga_core_reg_write_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR, (word & 0xFFFF0000) | (port & 0xFFFF))
 
@@ -3416,7 +3416,7 @@ class chFPGA(FPGAFirmware):
             save_delays=True,
             check_sync_delays=False,
             check_adc_delays=20,
-            delay_table_folder=ADC_DELAY_TABLE_FOLDER, 
+            delay_table_folder=ADC_DELAY_TABLE_FOLDER,
             verbose=1,
             retry=5):
         """
@@ -3682,7 +3682,7 @@ class chFPGA(FPGAFirmware):
 
         """
         self.REFCLK.set_sync_delays(sync_delays)
-         
+
 
     def _set_adc_delays(self, delay_table):
         """
@@ -4669,7 +4669,7 @@ class chFPGA(FPGAFirmware):
 
         Parameters:
 
-            value (int): The value sof the user bits 
+            value (int): The value sof the user bits
         """
         self.GPIO.set_user_bits(value)
 
