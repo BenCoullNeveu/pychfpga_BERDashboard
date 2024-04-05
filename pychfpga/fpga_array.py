@@ -1731,7 +1731,9 @@ class FPGAArray(object):
             self.sync()
 
         elif mode in ['shuffle8']:
-            pass
+            # For use with the CRS
+            for mb in self.ib:
+                mb.set_corr_reset(0)
 
         elif mode in ['shuffle256', 'shuffle512', 'shuffle16', 'shuffle128', 'chord16']:
             if not all(self.ib.CROSSBAR2) or not all(self.ib.CROSSBAR3):
@@ -5407,7 +5409,7 @@ def create_fpga_array(args=None):
 
         sampling_frequency: Specifies the sampling frequency of the CHIME ADC mezzanine, in Hz (typically 800 MHz). If `None`, the platform/firmware mode default is used.
 
-        reference_frequency: Specifies the frequency of the system's reference clock in Hz (typically 10 MHz). If `None`, the platform/firmware mode default is used. 
+        reference_frequency: Specifies the frequency of the system's reference clock in Hz (typically 10 MHz). If `None`, the platform/firmware mode default is used.
 
         data_width: Bit width used after the channelizer's scaler (4 or 8)
 
