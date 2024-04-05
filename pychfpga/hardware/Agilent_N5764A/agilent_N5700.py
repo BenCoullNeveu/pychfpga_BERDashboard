@@ -179,7 +179,7 @@ class agilent_N5700(GPIB.GPIB):
         return setpoint
 
     def set_power_on_state(self, state, voltage=None, current=None):
-        """ Sets the power-on state of the power supply, either in reset (RST) or last stored value (AUTO), 
+        """ Sets the power-on state of the power supply, either in reset (RST) or last stored value (AUTO),
         and can optionally set the voltage and current limits as a convenience.
 
         Parameters:
@@ -213,9 +213,9 @@ class agilent_N5700(GPIB.GPIB):
 
         Returns:
 
-        string: "RST" or "AUTO.
+        string: "RST" or "AUTO".
         """
-        return query('OUTP:PON:STAT?')
+        return self.query('OUTP:PON:STAT?')
 
     def set_voltage(self, voltage=None):
         """
@@ -235,7 +235,7 @@ class agilent_N5700(GPIB.GPIB):
 
             current (float): current limit to set, in Amps
 
-            ocp (bool): If not None, sets the Over-Current Protection to the specified state 
+            ocp (bool): If not None, sets the Over-Current Protection to the specified state
         """
 
         if ocp is not None:
