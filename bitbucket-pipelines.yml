@@ -3,7 +3,7 @@
 # Only use spaces to indent your .yml configuration.
 # -----
 # You can specify a custom docker image from Docker Hub as your build environment.
-image: python:3.7
+image: python:3.8
 
 pipelines:
   default:
@@ -16,14 +16,15 @@ pipelines:
           - DOC_SPHINX_ROOT_FOLDER='docs'
           - DOC_BUILD_FOLDER='build'
           - DOC_PUBLISH_FOLDER='pychfpga/'$BITBUCKET_BRANCH
-          # - pip install -r requirements.txt
-          - pip install -e . # git+ssh://git@bitbucket.org/winterlandcosmology/wtl-sphinx-paramlinks.git#egg=wtl_sphinx_paramlinks
+          - git lfs install  # debug. Is needed?
+          - pip install -e .
           - cd $DOC_SPHINX_ROOT_FOLDER
           - pip install -r requirements.txt
           - echo 'Building for '$BITBUCKET_REPO_SLUG/$BITBUCKET_BRANCH
           - make html
           - cd $DOC_BUILD_FOLDER
           - git clone $DOC_REPO_URL
+          - git lfs pull  # debug - make sure we have the binaries
           - rm -rf $DOC_REPO/$DOC_PUBLISH_FOLDER/*
           - mkdir -p $DOC_REPO/$DOC_PUBLISH_FOLDER
           - cp -r html/* $DOC_REPO/$DOC_PUBLISH_FOLDER/
