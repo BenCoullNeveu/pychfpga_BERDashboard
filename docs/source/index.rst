@@ -15,29 +15,18 @@ The ``pychfpga`` package is the Python framework that is used to operate the FPG
 .. toctree::
    :maxdepth: 1
 
+   installation
    howto/setup_python
    howto/takeData
    howto
-   pychfpga
-   pychfpga.core
-   ch_acq
-   script_documentation
-   installation
    quick_start
 
 .. toctree::
    :maxdepth: 1
-   :caption: Main modules
+   :caption: API Reference
+   :hidden:
 
-   fpga_master
-   raw_acq
-   fpga_array
-   pychfpga.core.chFPGA_controller
-   chFPGA_controller
-   ps
-   gps
-   firmware
-
+   _autosummaries/pychfpga
 
 CHIME-specific modules:
 
@@ -45,11 +34,7 @@ CHIME-specific modules:
    :maxdepth: 1
    :caption: CHIME-specific modules
 
-   chime/kotekan
-   chime/kotekan_master
    chime/networking_configuration
-   chime/weather
-   chime/index
 
 
 External modules

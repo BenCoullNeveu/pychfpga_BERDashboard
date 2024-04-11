@@ -44,7 +44,7 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
-    'wtl.sphinx_paramlinks',
+    # 'wtl.sphinx_paramlinks',
     'sphinx.ext.mathjax',
     # 'sphinx.ext.viewcode'
     ]
@@ -62,7 +62,7 @@ source_suffix = '.rst'
 # directories to ignore when looking for source files.
 # This patterns also effect to html_static_path and html_extra_path
 # exclude_patterns = []
-exclude_patterns = ['_unused/ChimeMaster.rst']
+exclude_patterns = ['**/_unused/*']
 
 # The master toctree document.
 master_doc = 'index'
@@ -122,7 +122,7 @@ html_theme_options = {
 
 # HTML additional options
 
-html_logo = "images/chime_logo_bw.svg"
+html_logo = "images/pychfpga_logo_v3.svg"
 html_favicon = "images/chime_favicon.png"
 html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 

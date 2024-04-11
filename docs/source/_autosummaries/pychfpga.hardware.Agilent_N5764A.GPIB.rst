@@ -1,0 +1,117 @@
+
+
+
+
+:py:mod:`GPIB` *module*
+=======================
+
+.. currentmodule:: pychfpga.hardware.Agilent_N5764A
+
+.. .. note::
+
+..    | template = custom_module-template.rst
+..    | Module=pychfpga.hardware.Agilent_N5764A,
+..    | FULLNAME=pychfpga.hardware.Agilent_N5764A.GPIB,
+..    | name==GPIB
+..    | modules = 
+..    | classes = ['GPIB']
+
+.. automodule:: pychfpga.hardware.Agilent_N5764A.GPIB
+
+   .. *** Insert submodule summary
+
+   
+   
+   
+
+   .. *** Insert attribute summary
+
+   
+   
+   
+
+   .. *** Insert exception summary
+
+   
+   
+   .. container:: autosummary_block
+
+      .. rubric:: Module exceptions summary
+
+      .. autosummary::
+         :toctree:
+
+         
+         GPIBException
+   
+   
+
+
+   .. *** Insert function summary
+
+   
+   
+   
+
+   .. *** Insert class summary
+
+   
+   
+
+   .. container:: autosummary_block
+
+      .. rubric:: Module classes summary
+
+      .. autosummary::
+         :nosignatures:
+
+         
+         GPIB
+   
+   
+
+
+
+.. *** Insert attribute descriptions
+
+
+
+
+
+.. *** Insert exceptions descriptions
+
+
+
+----
+
+.. rubric:: Exceptions
+
+
+.. autoexception:: GPIBException
+
+
+----
+
+
+.. *** Insert function descriptions
+
+
+
+
+.. *** Insert class descriptions
+
+
+
+----
+
+.. rubric:: Module classes
+
+
+.. autoclass:: GPIB
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :inherited-members:
+   :special-members: __call__, __init__
+
+
