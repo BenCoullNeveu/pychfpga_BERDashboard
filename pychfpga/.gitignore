@@ -1,3 +1,4 @@
 *.db
 *.db-journal
 iceboard_list.txt
+_version_scm.py
