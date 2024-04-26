@@ -10,6 +10,9 @@ The ``:orphan:`` metadata field at the beginning of this file tells Sphinx not t
    :template: custom-module-template.rst
 
 	pychfpga
+   wtl.rest
+   wtl.metrics
+   wtl.config
 
 
 
