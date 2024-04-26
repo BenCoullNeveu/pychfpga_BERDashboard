@@ -19,16 +19,12 @@ pipelines:
           - DOC_SPHINX_ROOT_FOLDER='docs'
           - DOC_BUILD_FOLDER='build'
           - DOC_PUBLISH_FOLDER='pychfpga/'$BITBUCKET_BRANCH
-          # - apt install git-lfs
-          # - git-lfs install  # debug. Is needed?
-          - pip install -e .
+          - pip install -e .[docs]
           - cd $DOC_SPHINX_ROOT_FOLDER
-          - pip install -r requirements.txt
           - echo 'Building for '$BITBUCKET_REPO_SLUG/$BITBUCKET_BRANCH
           - make html
           - cd $DOC_BUILD_FOLDER
           - git clone $DOC_REPO_URL
-          # - git-lfs pull  # debug - make sure we have the binaries
           - rm -rf $DOC_REPO/$DOC_PUBLISH_FOLDER/*
           - mkdir -p $DOC_REPO/$DOC_PUBLISH_FOLDER
           - cp -r html/* $DOC_REPO/$DOC_PUBLISH_FOLDER/
