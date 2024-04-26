@@ -73,19 +73,19 @@ The GPS server configuration is a Python dictionary that is typically loaded fro
 
 Python Module Summary
 *********************
-.. currentmodule:: gps
-.. automodule:: gps
+.. .. currentmodule:: gps
+.. .. automodule:: gps
 
-.. autosummary::
+.. .. autosummary::
 
-	gps.SpectrumInstrumentsTM4D
-	gps.GPSAsyncRESTServer
-	gps.GPSAsyncRESTClient
+.. 	gps.SpectrumInstrumentsTM4D
+.. 	gps.GPSAsyncRESTServer
+.. 	gps.GPSAsyncRESTClient
 
 GPS REST Server
 ***************
 
-..	autoclass:: gps.GPSAsyncRESTServer
+..	.. autoclass:: gps.GPSAsyncRESTServer
 
 	.. rubric:: REST Endpoint handlers
 
@@ -99,19 +99,19 @@ GPS REST Server
 GPS REST Client
 ***************
 
-.. autoclass:: gps.GPSAsyncRESTClient
-   :members:
-   :undoc-members:
-..   .. automethod:: PowerSupplyAsyncRESTClient.start
+.. .. autoclass:: gps.GPSAsyncRESTClient
+..    :members:
+..    :undoc-members:
+.. ..   .. automethod:: PowerSupplyAsyncRESTClient.start
 
-..   .. automethod:: stop
+.. ..   .. automethod:: stop
 
 GPS interface object
 ********************
 
-.. autoclass:: gps.SpectrumInstrumentsTM4D
-   :members:
-   :undoc-members:
+.. .. autoclass:: gps.SpectrumInstrumentsTM4D
+..    :members:
+..    :undoc-members:
 
 
 Design

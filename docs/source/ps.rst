@@ -85,19 +85,12 @@ The power supply server configuration is a Python dictionary that is typically l
 
 Python Module Summary
 *********************
-.. currentmodule:: ps
-.. automodule:: ps
 
-.. autosummary::
-
-	ps.AgilentN5700
-	ps.PowerSupplyAsyncRESTServer
-	ps.PowerSupplyAsyncRESTClient
 
 Power Supply REST Server
 ************************
 
-..	autoclass:: ps.PowerSupplyAsyncRESTServer
+..	.. autoclass:: ps.PowerSupplyAsyncRESTServer
 
 	.. rubric:: REST Endpoint handlers
 
