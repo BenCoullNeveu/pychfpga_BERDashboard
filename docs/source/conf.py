@@ -19,13 +19,13 @@
 import os
 import sys
 import sphinx_rtd_theme
-from pychfpga._version import get_versions
+from pychfpga import __version__
 
 # sys.path.insert(0, os.path.abspath('.'))
 
 sys.path.insert(0, os.path.abspath("../../")) # pychfpga
 sys.path.insert(1, os.path.abspath("../../pychfpga/"))  # pychfpga/pychfpga
-sys.path.insert(2, os.path.abspath("./"))  # pychfpga/docs/source (for TuberMethods.py)
+# sys.path.insert(2, os.path.abspath("./"))  # pychfpga/docs/source (for TuberMethods.py)
 
 # -- General configuration ------------------------------------------------
 
@@ -62,7 +62,7 @@ source_suffix = '.rst'
 # directories to ignore when looking for source files.
 # This patterns also effect to html_static_path and html_extra_path
 # exclude_patterns = []
-exclude_patterns = ['**/_unused/*']
+exclude_patterns = ['_unused/*', "*/unused/*"]
 
 # The master toctree document.
 master_doc = 'index'
@@ -72,14 +72,14 @@ master_doc = 'index'
 # copyright = u'2017, CHIME Team'
 author = u'J.-F. Cliche, Sean Griffin'
 project = u'pychfpga User Manual'
-copyright = u'2019 McGill University'
+copyright = u'2024 McGill University'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
 # built documents.
 #
 # The short X.Y version.
-version = str(get_versions()['version'])
+version = __version__
 # The full version, including alpha/beta/rc tags.
 release = version
 
@@ -158,8 +158,8 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'pychfpga.tex', u'ch\\_acq Documentation',
-     u'CHIME Team', 'manual'),
+    (master_doc, 'pychfpga.tex', u'pychfpga Documentation',
+     u'McGill Cosmology Lab', 'manual'),
 ]
 
 
