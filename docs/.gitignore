@@ -3,3 +3,4 @@
 *.tmp
 *.~vsd
 /build/
+_autosummaries
