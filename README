@@ -1,22 +1,67 @@
 .. Use UTF-8 encoding
 
-pychfpga: FPGA array control package for radioastronomy
-=======================================================
+
+Introduction
+============
+
+The ``pychfpga`` package is a Python framework for operating arrays of FPGA boards used in implementing radiotelescope arrays or various sizes, from a single-board desktop correlator up to arrays of hundreds of crate-mounted boards forming a multi-thousand element interferometers.
+
+`pychfpga` operates on a number of boards featuring Xilinx/AMD FPGAs, and that operate the `chFPGA` FPGA firmware, including off-the-shelf evaluation platforms such as KC705 (Kintex 7), ZU111 (Ultrascale+ RfSoC), and custom boards that are friendlier to large arrays such as the IceBoard (Kintex 7) and CRS (Ultrascale+ RfSoC).
+
+The `chFPGA` FPGA firmware implements ADC data acquisition, F-Engine (channelizer), Corner-turn engine, an optional on-board X-Engine (N^2 4-bit correlator) or 40- or 100 Gbps Ethernet real-time data offload to an external X-Engine farm.
+
+`pychfpga` is currently used to operate telescopes such as CHIME, CHORD, HIRAX, various outriggers of the previous telescopes, and a number of small portable interferometer-based experiments.
+
+.. p self-contained correlator up to thousand element interferometers tha tinterfaces with . , corner-turn and optional firmware-basd X-engine that is used for a number of big and small interferometer radio telescopes, including the Canadian Hydrogen Intensity Mapping Experiment (CHIME).
+
+Features
+========
+
+- Manages a hardware map that describes all the boards, crates and mezzanine boards in an array.
+- FPGA boards can be specified explicitely by IP address, or can be automatically be found on the local network using mDNS based on the board or crate serial numbers.
+- The array manager can perform operations on mutiple boards at the same time using asynchronous coroutine to maximize performance.
+- Provides method to perform array-wide data acquisition synchronizaiton based on GPS-provided timestamps
+- Supports multiple operational modes (corner-turn, correlator, or direct data streaming)
+- Supports multiple hardware platforms
+- Selects the proper FPGA firmware for the desired operational mode and platform, and uploads the firmware to the FPGAs at initialization
+- Supports both interactive or automated operations:
+
+  	- Interactive: The :class:`fpga_array` object can be created in ipython or Jupyter notebooks to allow on-the-fly system configuration, data acqusition and processing
+	- Automated: The :class:`fpma_master` module automatically identifies and initializes the array based on a YAML configuration file, and provides a Web server that:
+
+		# continuously publish system metrics (temperatures, voltages, data overflows etc) that can be scraped by data logging software like Prometheus
+		# Provide a REST command interface that allows a client to start or stop operation of the array and perform a number of on-the-fly data gathering and operational changes.
+- Can be operated as a Docker container
+
+Requirements
+============
 
 
+Repository Access
+-----------------
 
-Prerequisites for installation and manual operations
-----------------------------------------------------
+``pychfpga`` and many of its dependencies are hosted in a private git repository on ``bitbucket``.
 
-Before you start, you need:
+Before you start, you therefore need:
 
-- A bitbucket account (https://bitbucket.org)
-- A `ssh` key loaded in `ssh_agent` that allows you to access your bitbucket account::
+- A bitbucket (free) account (https://bitbucket.org)
+- A ssh private/public key pair, with the public key attached to your bitbucket account
+- Permissions to the pychfpga and dependencies repositories. Ask McGill administrator.
+
+SSH keys
+--------
+
+In order to be able to pull the package and its dependencies from bitbucket, you need setup your command shell such that ``git`` can  provide the proper ``ssh`` key to the repository servers. One way to do this is to load your private key into your local ssh agent::
 
 	    eval `ssh-agent -s`
 	    ssh-add path_to_bitbucket_key
 
-- Permissions to the pychfpga and dependent repositories in bitbucket. Ask McGill administrator.
+You can also use key forwarding or make specific ``ssh`` config entries for bitbucket.
+
+
+System requirements
+-------------------
+
 - The following programs should be installed
 	- git LFS (git >1.8.2 includes LFS by default)
 	- Python >=3.7 (Python 2.7 no longer supported). The code was tested on Python 3.7.9.
@@ -25,10 +70,23 @@ Before you start, you need:
 
 	sudo apt install  pythonX.X-dev  # on Ubuntu
 
+- Install Prometheus and Grafana if you want to view the system status graphs published by `fpga_master`. The appropriate Prometheus config file and grafana panels need to be installed.
+
+
+- If you expect to receive raw ADC, FFT or correlator packets from the IceBoard (using `raw_acq.py`, for example), you need to enable jumbo frames and increase buffer size. The following commands do that for the current session. You might want to make those changes permanent (not shown here)::
+
+	sudo ifconfig eth0 mtu 9000 # replace "eth0" with your interface name
+   sudo sysctl -w net.core.rmem_max=26214400
+   sudo sysctl -w net.core.rmem_default=26214400
+
+
+FPGA hardware requirements
+--------------------------
+
 To operate a board, You also need the following:
 
 - One or multiple Iceboards, in a crate or on the benchtop
-- A generic IceBoard SD card installed in each board (the card contains the ARM linux system). The SD card image that works with the current release is in ``./pychfpga/arm_firmware`.
+- A generic IceBoard SD card installed in each board (the card contains the ARM linux system). The SD card image that works with the current release is in ``./pychfpga/arm_firmware``.
 - A SFP+ to RJ45 adapter connected in the SFP+ cage of each IceBoard
 - Power supply to power the board(s) or crate(s)
 - Proper cooling (fans) on the FPGA and some airflow over the ADCs mezzanines
@@ -47,10 +105,26 @@ To operate a board, You also need the following:
 
 
 
+Configuring the hardware
+------------------------
+
+- Install the SD card in the ICE Board
+- Set-up the appropriate reference clock source (jumper)
+- If required, connect the clock and IRIG-B. WATCH OUT FOR THE LEVELS OF ANY EXTERNAL SIGNALS.
+- Connect the power supply
+- Power up the board. The 2 PLL LEDs at the bottom of the front panel shall turn on immediately to indicate there is a clock. After about 25 seconds, the upper leds will blink then stay on to show that the ARM has acquired an IP address and had finished booting.
 
 
-Obtaining and installing pychfpga
----------------------------------
+Two Ethernet cables need to be connected between the IceBoard and the 1G Ethernet switch or router that connects to your control PC:
+
+   - One cable connects to the ARM Ethernet port on the dual RJ-45 connectors. That port works at any speed.
+   - One cable connects to the FPGA Ethernet port through the SFP+ cage using a SFP-to-RJ45 1G Adapter.  That port operates supports **only** 1G Ethernet.
+
+
+
+
+Installation
+============
 
 Get the ``pychfpga`` repository::
 
@@ -70,39 +144,16 @@ If you want to operate the Quality Control (QC) test scripts, you can ask for th
 
 	$ pip install -e ./pychfpga[qc]  # install in-place with the QC dependencies
 
-Build Docker Image
-------------------
-In order to build the docker image for `pychfpga` you need to have access to ssh-identity with read permissions to this and other `wtl` repositories.
-
-- Environemt Parameter DOCKER_BUILDKIT=1 is required to be set, before the build.
-- In order to build the image execute the following command if the correct ssh-identity is already loaded into the `ssh-agent` 
-	$ docker build -f Dockerfile -t chimefrb/pychfpga:latest --ssh github_ssh_key=$SSH_AUTH_SOCK .
-- Alternatively, if you have the private key, you can use:
-        $ docker build -f Dockerfile -t chimefrb/pychfpga:latest --ssh github_ssh_key=/path/to/id_rsa .
-
-
-Configuring the hardware
-------------------------
-
-- Install the SD card in the ICE Board
-- Set-up the appropriate reference clock source (jumper)
-- If required, connect the clock and IRIG-B. WATCH OUT FOR THE LEVELS OF ANY EXTERNAL SIGNALS.
-- Connect the power supply
-- Power up the board. The 2 PLL LEDs at the bottom of the front panel shall turn on immediately to indicate there is a clock. After about 25 seconds, the upper leds will blink then stay on to show that the ARM has acquired an IP address and had finished booting.
-
-
-Connections
------------
-
-Two Ethernet cables need to be connected between the IceBoard and the 1G Ethernet switch or router that connects to your control PC:
-
-   - One cable connects to the ARM Ethernet port on the dual RJ-45 connectors. That port works at any speed.
-   - One cable connects to the FPGA Ethernet port through the SFP+ cage using a SFP-to-RJ45 1G Adapter.  That port operates supports **only** 1G Ethernet.
 
 
 
-Manual operation (using fpga_array)
------------------------------------
+
+
+
+
+
+Manual operation (using :mod:`fpga_array`)
+==========================================
 
 `fpga_array` creates an object that represents any number of ICEBoards and ICECrates and allows their initialization. Once started, it returns control to you. (See `fpga_master` for a full stand-alone automated server).
 
@@ -136,19 +187,7 @@ Server-based operation
 `raw_acq` is another stand-alone server that is run in parallel with `fpga_master` to receive, analyze and store the raw ADC, FFT or *firmware* correlator data that is captured periodically and sent by the IceBoards over the FPGA SFP+ 1G Ethernet link. This server does *not* process the real-time post-corner-turn-but-not-correlated data coming out of the IceBoard's QSFP+ links; those are meant to go directly to high-performance correlator nodes.
 
 
-Prerequisites
--------------
-
-- If you expect to receive raw ADC, FFT or correlator packets from the IceBoard (using `raw_acq.py`, for example), you need to enable jumbo frames and increase buffer size. The following commands do that for the current session. You might want to make those changes permanent (not shown here)::
-
-	sudo ifconfig eth0 mtu 9000 # replace "eth0" with your interface name
-    sudo sysctl -w net.core.rmem_max=26214400
-    sudo sysctl -w net.core.rmem_default=26214400
-
-
-- Install Prometheus and Grafana if you want to view the system status graphs published by `fpga_master`. The appropriate Prometheus config file and grafana panels need to be installed.
-
-- You need a YAML configuration file that instructs fpga_master what board(s) to include and how to set them up.
+You need a YAML configuration file that instructs fpga_master what board(s) to include and how to set them up.
 
 Operation
 ---------
@@ -168,8 +207,9 @@ To start the fpga_master server::
 
 	./fpga_master.py path_to_config_file:jfc.drao
 
-Docker
-------
+Docker operation
+================
+
 
 pychfpga is also available as a docker image, with all system and Python dependencies already installed.
 
@@ -179,3 +219,15 @@ Build:
 export DOCKER_BUILDKIT=1
 export BUILDKIT_PROGRESS=plain
 docker build --no-cache -t pychfpga:jfc_dev .
+
+Building the Docker Image
+-------------------------
+
+In order to build the docker image for `pychfpga` you need to have access to ssh-identity with read permissions to this and other `wtl` repositories.
+
+- Environemt Parameter DOCKER_BUILDKIT=1 is required to be set, before the build.
+- In order to build the image execute the following command if the correct ssh-identity is already loaded into the `ssh-agent`
+	$ docker build -f Dockerfile -t chimefrb/pychfpga:latest --ssh github_ssh_key=$SSH_AUTH_SOCK .
+- Alternatively, if you have the private key, you can use:
+        $ docker build -f Dockerfile -t chimefrb/pychfpga:latest --ssh github_ssh_key=/path/to/id_rsa .
+
