@@ -3,57 +3,54 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
+.. raw:: html
 
-.. role:: ul
-    :class: underline
+    <meta http-equiv="refresh" content="0;URL=home.html"/>
 
-Welcome to pychfpga's documentation!
-====================================
-
-The ``pychfpga`` package is the Python framework that is used to operate the FPGA-based F-engine hardware, corner-turn and optional firmware-basd X-engine that is used for a number of big and small interferometer radio telescopes, including the Canadian Hydrogen Intensity Mapping Experiment (CHIME).
 
 .. toctree::
-   :maxdepth: 1
+   :hidden:
+   :maxdepth: 4
+   :caption: Home
 
-   installation
-   howto/setup_python
+   home
+
+.. toctree::
+   :hidden:
+   :maxdepth: 4
+   :caption: Old Home
+
+   Old installation <installation>
+   Old setup <howto/setup_python>
    howto/takeData
    howto
    quick_start
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 3
    :caption: API Reference
    :hidden:
 
    _autosummaries/pychfpga
 
+.. toctree::
+   :maxdepth: 3
+   :caption: External module docs
+   :hidden:
+
+   _autosummaries/wtl.metrics
+   _autosummaries/wtl.rest
+
 CHIME-specific modules:
 
 .. toctree::
    :maxdepth: 1
-   :caption: CHIME-specific modules
+   :caption: CHIME-specific docs
+   :hidden:
 
-   chime/networking_configuration
-
-
-External modules
-
-.. toctree::
-   :maxdepth: 1
-   :caption: External modules
-
-   external_packages/metrics
-   external_packages/rest
+   chime/index
 
 
-.. include:: ../../README
-
-Indices and tables
-------------------
-
-* :ref:`genindex`
-* :ref:`search`
 
 
 
