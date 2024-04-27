@@ -1,9 +1,8 @@
 #!/usr/bin/python
 
-"""
-pca9698: Implememnts access to a PCA9698 I2C switch.
+""" Interface for the PCA9698 I2C switch.
 
-History:
+.. History:
      2013-08-08 : JFC : Created
      2014-02-23 JFC: Added register table, select(), masked write.
      2014-03-04 JM: Added default I/O pin configuration at init()
@@ -73,12 +72,24 @@ class pca9698(object):
     def __init__(self, i2c_interface, address, port='BP', verbose=0):
         """
         Creates an object that interfaces the PCA9698 I2C IO Extender.
-        Access is done through the I2C object 'i2c_interface' at I2C address 'address' and on port 'port'.
-        The i2c interface must provide the following methods:
-            set_port()
-            write_read()
 
-        Valid backplane addresses are: 0b0100000 (QSFPsetA 0x20), 0b0100010 (QSFPsetB, 0x22), 0b0100100 (Resets, 0x24)
+        Access is done through the I2C object 'i2c_interface' at I2C address 'address' and on port 'port'.
+
+        Parameters:
+
+            i2c_interface: Object that provides access to the I2C interface; it must provide
+                the following methods:
+
+                - set_port()
+                - write_read()
+
+            address (int): I2C address of the switch.
+
+                For the ICE system, valid backplane addresses are:
+
+                - 0b0100000 (QSFPsetA, 0x20)
+                - 0b0100010 (QSFPsetB, 0x22)
+                - 0b0100100 (Resets, 0x24)
         """
 
         self.i2c = i2c_interface

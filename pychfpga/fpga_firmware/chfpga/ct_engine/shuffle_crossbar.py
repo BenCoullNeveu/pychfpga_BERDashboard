@@ -128,9 +128,15 @@ class ShuffleCrossbar(MMI):
     def set_data_width(self, width):
         """
         Sets the number of bits expected at the input of the crossbar.
+
         All crossbars are set to the new setting.
-            width=4: data is 4 bits Real + 4 bits Imaginary
-            width=8: data is 8 bits Real + 8 bits Imaginary
+
+        Parameters:
+
+            width (int): Data width to be used:
+
+                - width=4: data is 4 bits Real + 4 bits Imaginary
+                - width=8: data is 8 bits Real + 8 bits Imaginary
         """
 
         if width == 4:
@@ -243,9 +249,23 @@ class ShuffleCrossbar(MMI):
     def map(self, data):
         """
         Returns a crossbar map that describes the contents of each bin selector.
-        input: {lane:[elements ...], ...}
-        returns: {lane: [elements], ...}
-        format:
+
+        Parameters:
+
+            data (dict): input data, in the format::
+
+                {lane:[elements ...], ...}
+
+        Returns:
+
+            dict: Output data, in the format::
+
+                {lane: [elements], ...}
+
+        .. todo:: Clarify output format
+
+        format::
+
             {lane_number: {channels:[channel numbers...], bins:[bin numbers ...], stream_id:x, ...}, ...}
         """
 

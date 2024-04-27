@@ -140,9 +140,9 @@ class FPGAArray(object):
         """ Create a hardware map describing CHIME hardware and optionally
         initialize the hardware.
 
-        Parameters:
+        .. centered:: **Hardware map creation parameters**
 
-            --------------------Category: **Hardware map creation**--------------------
+        Parameters:
 
             hwm (str, list or HardwareMap): Describes the hardware
                 map, which lists the IceBoards, IceCrates and Mezzanines
@@ -150,9 +150,9 @@ class FPGAArray(object):
                 map creation depending on the type of the `hwm` parameter.
 
                 - *str* or *list of str* : A string or list of strings that describes the hardware to be
-                  added to the hardware map in the format:
+                  added to the hardware map in the format::
 
-                  ``hwm := {board_descriptors | crate_descriptors | mezzanine_descriptors} ...``
+                      hwm := {board_descriptors | crate_descriptors | mezzanine_descriptors} ...
 
                   where
 
@@ -172,7 +172,7 @@ class FPGAArray(object):
                   ``subarray`` criteria.
 
 
-            iceboards (list of str) : Iceboard to add to the hardware map,
+            iceboards (list of str): Iceboard to add to the hardware map,
                 specified as an IP address, hostname, or serial number. The
                 boards specified here are added to the hardware map specified
                 in `hwm` parameter. When a serial number is used, the IceBoard
@@ -180,14 +180,14 @@ class FPGAArray(object):
                 "003 007"`` is equivalent to adding ``"MGK7MB 003 007"`` to
                 the `hwm` parameter.
 
-            exclude_iceboards (list of str) : Serial numbers of Iceboards to be
+            exclude_iceboards (list of str): Serial numbers of Iceboards to be
                 excluded in case of autodiscovered boards. Can be useful to specify a
                 crate but exclude a few boards.
 
             icecrates (list of str): Adds all the iceboards from the crates that have the
                 serial numbers specified in the provided list of strings.
 
-                Examples
+                Examples::
 
                     ``icecrates='003'`` or ``icecrates=['003']`` will discover and select all boards from crate SN003
 
@@ -195,21 +195,29 @@ class FPGAArray(object):
 
                     ``icecrates=[]`` will select all boards on the network
 
-            ----------Category: **Hardware map filtering**----------
 
-            subarrays : List of integers describing the subarrays to include in
+
+        .. centered:: **Hardware map filtering parameters**
+
+        Parameters:
+
+
+            subarrays (list): List of integers describing the subarrays to include in
                 the default IceBoard set. If None, all
                 Iceboards in the hardware map will be selected. Affects only the
                 boards specified in the hardware map specified with the ``hwm`` parameter.
 
-            ping : If ``ping=1``, The connection to Iceboards is checked
+            ping (int): If ``ping=1``, The connection to Iceboards is checked
                 by sending a dummy Tuber (http) request to their ARM processors. If a
                 YAML-specified iceboards fails, it is simply removed from the
                 ``hwm`` hardware map, but an exception is raised if a board listed
                 explicitely fails. If ``ping`` is false, the presence of boards is not
                 checked.
 
-            ----------Category: **Configuration & initialization**----------
+
+        .. centered:: **Configuration & initialization parameters**
+
+        Parameters:
 
             mode (str): Operational mode of required from the Motherboard
                 array.
@@ -221,8 +229,7 @@ class FPGAArray(object):
                 full initialization level (init=2) is implied, unless specifically
                 modified by the prog and init commands.
 
-
-                 The following modes are supported:
+                The following modes are supported:
 
                 - Ice hardware platform
 
@@ -256,11 +263,12 @@ class FPGAArray(object):
                 file as a bitstream (but mode is still required to properly initialize the python
                 object and firmware)
 
-            prog (int): Overrides the FPGA configuration level. If `mode` is specified, `prog` defaults to `prog=2` otherwise `prog=0`.
+            prog (int): Overrides the FPGA configuration level. If `mode` is specified, `prog`
+                defaults to `prog` =2 otherwise `prog` =0.
 
                 - prog=0 or None: The FPGAs are not configured
                 - prog=1: the FPGAs are configured only if they are not already configured with the same
-                firmware.
+                  firmware.
                 - prog=2: The FPGAs are always configured, ensuring a clean-state start.
 
             init (int): Sets the array initialization level. Defaults to ``init=3`` if `mode` is specified, otherwise defaults to ``init=0``
@@ -274,7 +282,8 @@ class FPGAArray(object):
                   objects representing the firmware modules.
                 - init=3: full initialization of the FPGA in the specified `mode` is performed
 
-            open (int): Alternate method to set the initialization level:
+            open (int): Alternate method to set the initialization
+                level:
 
                 - open=None: Use the default init level
                 - open=0: sets init=1 (do not open communication with FPGA firmware; only connect to the platform)
@@ -298,8 +307,8 @@ class FPGAArray(object):
                 ``a.b.c.d`` corresponds to the IP address of the IceBoard ARM
                 processor.
 
-                   - '(a,b,3,d)': Uses the IP address of the ARM but replaces the third byte by ``3``
-                   - '(a,b,c+1,d)': Uses the IP address of the ARM but adds 1 to the third byte
+                - '(a,b,3,d)': Uses the IP address of the ARM but replaces the third byte by ``3``
+                - '(a,b,c+1,d)': Uses the IP address of the ARM but adds 1 to the third byte
 
 
             sync_method (str): Method used to synchronize (to sync) the data acquisition on an array of boards:
@@ -310,19 +319,19 @@ class FPGAArray(object):
 
             sync_source (str): Source of the signal that is used to synchronize each board
 
-                'bp_trig',
+                - 'bp_trig'
 
-            sync_master=None,
+            sync_master (): =None,
 
-            sync_master_time_source=None,
+            sync_master_time_source (): =None,
 
             max_sync_time_difference (int): Maximum time difference, in
                 nanoseconds, between the time of frame 0 of each board in an
                 array.
 
+        .. centered:: **Corner-turn engine parameters**
 
-            ----------Category: **Corner-turn engine parameters**----------
-
+        Parameters:
 
             frames_per_packet (int): Number of frames that are grouped in each
                 packets at the output of the corner turn engine. Default is 2.
@@ -356,22 +365,29 @@ class FPGAArray(object):
                 remapping, 1: 3rd crossbar only, 2: crossbars 2 and 3, 3: all
                 crossbars.
 
-            ----------Category: **Firmware corelator parameters (if implemented in the FPGA)**----------
+        .. centered:: **Firmware correlator parameters**
 
-            integration_period=None,
+        Parameters:
+
+            integration_period (int): =None,
 
 
-            ----------Category: **Logging parameters**----------
+        .. centered:: **Logging parameters**
 
-            If logging is not set up by the top level application, you can
-            optionally specify the folowing arguments to create syslog and stderr
-            handlers to help interactive operations. If a handler already exists,
-            its log level is simply updated to prevent duplication of handlers.
-            Log levels can be strings or numerical log levels.
+        Parameters:
 
-            syslog_log_level: sets up a SYSLOG handler
+            stderr_log_level (str): sets up a handler that prints logs of specified log level on stderr.
 
-            stderr_log_level: sets up a handler that prints on stderr
+            syslog_log_level (str): sets up a SYSLOG handler
+
+
+        Logging
+        -------
+
+        You can optionally specify log level arguments to create syslog and stderr handlers to help interactive operations. If a
+        handler already exists, its log level is simply updated to prevent duplication of
+        handlers. Log levels can be strings or numerical log levels.
+
 
 
         Example:
@@ -1313,7 +1329,7 @@ class FPGAArray(object):
 
         Returns:
 
-            hardware map dict in the format:
+            hardware map dict in the format::
 
                 'crate': {'number':n, 'model':m, 'serial':s,
                     'iceboards': [
@@ -1356,8 +1372,9 @@ class FPGAArray(object):
 
         Parameters:
 
-            hwm (list): list containing hardware items, each of which is in
-                the form:
+            hwm (list): list containing hardware items, each of which is in the form
+
+                ::
 
                    {"class": class_name, "arg1":arg1, ...}
 
@@ -1374,14 +1391,14 @@ class FPGAArray(object):
 
         Notes:
 
-        Hardware map objects can be generic base objects ('Motherboard',
-        'Crate' etc.).  In this case, their class will be updated based on
-        self-discovery.
+            Hardware map objects can be generic base objects ('Motherboard',
+            'Crate' etc.).  In this case, their class will be updated based on
+            self-discovery.
 
-        'IceBoard'-type of objects can take the additional ``crate_number``
-        object, which will link to an existing crate object with the same
-        number, or will create a generic one that will be resolved in the
-        self-discovery process.
+            'IceBoard'-type of objects can take the additional ``crate_number``
+            object, which will link to an existing crate object with the same
+            number, or will create a generic one that will be resolved in the
+            self-discovery process.
         """
         self.logger.debug(f'{self!r}: Creating Hardware Map from list {hwm}')
         # self.hwm = []  # Create empty hardware map
@@ -2663,77 +2680,79 @@ class FPGAArray(object):
 
         Parameters:
 
-        method: (string)
-            - 'distributed_time' or 'irig-b' or 'irigb': All boards receive and decode IRIG-B time
-              signal and trigger a SYNC event at a target time sent to every
-              board in the array.
+            method (string): Specifies the synchronization method:
 
-              The IRIG-B time signal can come from either of the backplane
-              SMAs TRIG (``source='bp_trig'``) or TIME (``source='bp_time'``).
-              If ``source='bp_gpio_int'``, a master board must be specified
-              and the internal GPIO_INT backplane line is used to send the
-              master's board IRIG-B signal to all boards in the crate.
+                - 'distributed_time' or 'irig-b' or 'irigb': All boards receive and decode IRIG-B time
+                  signal and trigger a SYNC event at a target time sent to every
+                  board in the array.
 
-
-              If a master board ``master`` is specified, the master board is
-              configured to output an IRIG-B signal on its SMA connector or on
-              the backplane GPIO_INT line depending on the value of
-              ``source``. ``master_time_source`` determines the source of the
-              IRIG-B signal provided by the master board, which can come from one of
-              the backplane SMAs or from its IRIG-B test signal generator.
-
-              If no master board is specified, the IRIG_B must be generated by
-              an external source (like a GPS receiver) and must be connected
-              to the specified backplane SMA.
+                  The IRIG-B time signal can come from either of the backplane
+                  SMAs TRIG (``source='bp_trig'``) or TIME (``source='bp_time'``).
+                  If ``source='bp_gpio_int'``, a master board must be specified
+                  and the internal GPIO_INT backplane line is used to send the
+                  master's board IRIG-B signal to all boards in the crate.
 
 
-            - 'centralized_time_trigger': All boards receive a SYNC trigger
-              from the master board when its IRIG-B decoder reaches the target
-              time.
+                  If a master board ``master`` is specified, the master board is
+                  configured to output an IRIG-B signal on its SMA connector or on
+                  the backplane GPIO_INT line depending on the value of
+                  ``source``. ``master_time_source`` determines the source of the
+                  IRIG-B signal provided by the master board, which can come from one of
+                  the backplane SMAs or from its IRIG-B test signal generator.
 
-              Depending on ``source``, the trigger signal can be received from
-              the backplane SMA connectors or the BP_GPIO_INT backplane line.
-
-              A master board ``master`` must be specified and is configured to
-              generate the time-based trigger signal on its BP_GPIO_INT line
-              or on its SMA connector (in which case a cable must connect the
-              master board and the backplane). The master board's IRIG-B
-              signal source is set by ``master_time_source`` and can be set to
-              come from the backplane or its internal test generator.
-
-            - 'centralized_soft_trigger': All boards receive a SYNC trigger
-              from the master when it receives a software command to do so.
-              The trigger signal is received from the backplane SMA input
-              connectors. The master board is configured to generate this
-              trigger signal on its SMA connector.
-
-            - 'local_soft_trigger' or 'local': Each board generates its own
-              SYNC trigger when it receives a software command to do so.
+                  If no master board is specified, the IRIG_B must be generated by
+                  an external source (like a GPS receiver) and must be connected
+                  to the specified backplane SMA.
 
 
-        source: (string): source of the time or trigger signal for the slave
-            boards, and destination for the time or trigger signal generated
-            by the master board (if used).
+                - 'centralized_time_trigger': All boards receive a SYNC trigger
+                  from the master board when its IRIG-B decoder reaches the target
+                  time.
 
-            - 'bp_gpio_int': the signal comes from the internal backplane
-              GPIO_INT line. The master board must be specified, and will be
-              configured to generate the time or trigger signal on the BP_GPIO_INT line.
-            - 'bp_time': the signal comes from the backplane TIME SMA. If a master board is
-              specified, it it configured to send the time or trigger signal through the SMA port.
-            - 'bp_trig': the signal comes from the backplane TRIG SMA. If a master board is
-              specified, it it configured to send the time or trigger signal through the SMA port.
+                  Depending on ``source``, the trigger signal can be received from
+                  the backplane SMA connectors or the BP_GPIO_INT backplane line.
 
-        master (IceBoard object or string): IceBoard that is to be configured to generate the time
-            or trigger signals. Can be omitted if an external IRIG-B source
-            is used (like a GPS receiver).
+                  A master board ``master`` must be specified and is configured to
+                  generate the time-based trigger signal on its BP_GPIO_INT line
+                  or on its SMA connector (in which case a cable must connect the
+                  master board and the backplane). The master board's IRIG-B
+                  signal source is set by ``master_time_source`` and can be set to
+                  come from the backplane or its internal test generator.
 
-        master_time_source: (string): source of the time signal that the
-            master board will use to generate the time or trigger signal.
-            Not applicable for soft trigger, must be specified for centralized
-            time triggers, and may be specified for distributed time syncing.
-            - 'bp_time': the time signal comes from the backplane TIME SMA.
-            - 'bp_trig': the time signal comes from the backplane TRIG SMA.
-            - 'irigb_gen': the time signal comes from the internal IRIG-B test signal generator.
+                - 'centralized_soft_trigger': All boards receive a SYNC trigger
+                  from the master when it receives a software command to do so.
+                  The trigger signal is received from the backplane SMA input
+                  connectors. The master board is configured to generate this
+                  trigger signal on its SMA connector.
+
+                - 'local_soft_trigger' or 'local': Each board generates its own
+                  SYNC trigger when it receives a software command to do so.
+
+
+            source: (string): source of the time or trigger signal for the slave
+                boards, and destination for the time or trigger signal generated
+                by the master board (if used).
+
+                - 'bp_gpio_int': the signal comes from the internal backplane
+                  GPIO_INT line. The master board must be specified, and will be
+                  configured to generate the time or trigger signal on the BP_GPIO_INT line.
+                - 'bp_time': the signal comes from the backplane TIME SMA. If a master board is
+                  specified, it it configured to send the time or trigger signal through the SMA port.
+                - 'bp_trig': the signal comes from the backplane TRIG SMA. If a master board is
+                  specified, it it configured to send the time or trigger signal through the SMA port.
+
+            master (IceBoard object or string): IceBoard that is to be configured to generate the time
+                or trigger signals. Can be omitted if an external IRIG-B source
+                is used (like a GPS receiver).
+
+            master_time_source: (string): source of the time signal that the
+                master board will use to generate the time or trigger signal.
+                Not applicable for soft trigger, must be specified for centralized
+                time triggers, and may be specified for distributed time syncing.
+
+                - 'bp_time': the time signal comes from the backplane TIME SMA.
+                - 'bp_trig': the time signal comes from the backplane TRIG SMA.
+                - 'irigb_gen': the time signal comes from the internal IRIG-B test signal generator.
 
 
 
@@ -2743,13 +2762,14 @@ class FPGAArray(object):
         to occur between two reference clock edges in order to guarantee
         detection on the same edge across the entire array.
 
+        ::
 
-          Sync Method                         source                           master     master_time_source
-        ------------------------          -------------------------------   ------------  -----------------------------
-        distributed_time (ext source)     bp_time | bp_trig                  Not needed           ---
-        distributed_time (master source)  bp_time | bp_trig | bp_gpio_int      Needed     bp_time | bp_trig | irigb_gen
-        centralized_time_trigger          bp_time | bp_trig | bp_gpio_int      Needed     bp_time | bp_trig | irigb_gen
-        centralized_soft_trigger          bp_time | bp_trig | bp_gpio_int      Needed             ---
+              Sync Method                         source                           master     master_time_source
+            ------------------------          -------------------------------   ------------  -----------------------------
+            distributed_time (ext source)     bp_time | bp_trig                  Not needed           ---
+            distributed_time (master source)  bp_time | bp_trig | bp_gpio_int      Needed     bp_time | bp_trig | irigb_gen
+            centralized_time_trigger          bp_time | bp_trig | bp_gpio_int      Needed     bp_time | bp_trig | irigb_gen
+            centralized_soft_trigger          bp_time | bp_trig | bp_gpio_int      Needed             ---
 
         """
         if isinstance(master, str):
@@ -3359,8 +3379,8 @@ class FPGAArray(object):
 
                 where:
                      ``chan_id`` is a (crate, slot, channel) tuple that uniquely identifies a channel
-                     ``crate``= int or str or None
-                     ``slot``= int or str
+                     ``crate`` = int or str or None
+                     ``slot`` = int or str
                      ``glin` = array of 1024 (int16 + 1j* int16) linear gain components
                      ``glog`` = post-scaler factor (applies additional gain of 2**glog to all bins)
 
@@ -3382,15 +3402,15 @@ class FPGAArray(object):
 
         Returns:
 
-            Timestamp of thd digital gains, in a channel-indexed dict, in the format::
+            Timestamp of the digital gains, in a channel-indexed dict, in the format::
 
                 {chan_id: timestamp, ...}
 
                 where:
                      ``chan_id`` is a (crate, slot, channel) tuple that uniquely identifies a channel
-                     ``crate``= int or str or None
-                     ``slot``= int or str
-                     ``timestamp` = is a time.time() value. None if the gain was not set.
+                     ``crate`` = int or str or None
+                     ``slot`` = int or str
+                     ``timestamp`` = is a time.time() value. None if the gain was not set.
         """
         timestamps = {}
         for ib in self.ib:
@@ -3400,36 +3420,47 @@ class FPGAArray(object):
         return (timestamps)
 
     async def set_gains_async(self, gains, bank=-1, when='now', gain_timestamps=None):
-        """ Set the gains on the boards in the array.
+        """ Set the on-board post-FFT digital gains for specified board/channel.
 
         Parameters:
-            'gains': dictionary of gains specified as either:
-                - {board_id: {chan: (glin, glog), ...}, ...}
-                - {chan_id: (glin, glog), ...}
-                where:
-                     ``board_id`` is a (crate, slot) tuple that uniquely identifies a board
-                     ``channel_id`` is a (crate, slot, channel) tuple that uniquely identifies a channel
-                     ``crate``= int or str or None
-                     ``slot``= int or str
-                     ``glin` = array of 1024 (int16 + 1j* int16) linear gain components
-                     ``glog`` = post-scaler factor (applies additional gain of 2**glog to all bins)
 
-            `bank`: gain bank in which the gains are written. If `bank`=-1 or is None, gains are
+            gains (dict): dictionary of gains specified as either:
+
+                - ``{board_id: {chan: (glin, glog), ...}, ...}``
+                - ``{chan_id: (glin, glog), ...}``
+
+                where:
+
+                - ``board_id`` is a (crate, slot) tuple that uniquely identifies a board
+
+                - ``channel_id`` is a (crate, slot, channel) tuple that uniquely identifies a channel
+
+                - ``crate`` int or str or None
+
+                - ``slot`` int or str
+
+                - ``glin`` array of 1024 ``(int16 + 1j* int16)`` linear gain components
+
+                - ``glog`` post-scaler factor (applies additional gain of ``2**glog`` to all bins)
+
+            bank (int): gain bank in which the gains are written. If `bank` =-1 or is None, gains are
                     written in the inactive bank (which can be activated later using set_gain_bank()).
 
-            `when`: if `when` is 'now' or a negative integer, the target gains
-                    are made active immediately.
+            when (int, str or None): Specifies when the new gain table must be made active:
 
-                    If `when` is None, the gains are written in the specified
-                    bank but the bank switching is not activated.
+                    - If `when` is the string 'now' or a negative integer, the target gains
+                      are made active immediately.
 
-                    If `when` is an integer, the gains will be activated starting on
-                    the target timestamp specified by `when`.
+                    - If `when` is None, the gains are written in the specified
+                      bank but the bank switching is not activated.
 
-            `gain_timestamps`: dictionary of unix timestamps with same key format as `gains`
-                               or single unix timestamp that is applied to all channels.
+                    - If `when` is an integer, the gains will be activated starting on the target
+                      timestamp specified by `when`.
 
-                               If not provided, then defaults to current time.
+            gain_timestamps (dict): dictionary of unix timestamps with same key format as `gains` or
+                   single unix timestamp that is applied to all channels.
+
+                   If not provided, then defaults to current time.
 
         """
         # make sure we have a board-id-based gain table
@@ -4477,6 +4508,7 @@ class FPGAArray(object):
         """ Gather info on the status of the corner-turn engine for all boards of the array installed in crates.
 
         The information includes status info on every lane of  the following corner turn subsystems:
+
             - Every lane (16) of the backplane PCB shuffle (shuffle between boards in a crate)
             - Every lane (8)  of the backplane QSFP shuffle (shuffle between crates)
             - Every lane (16) of crossbar 2
@@ -4488,7 +4520,7 @@ class FPGAArray(object):
 
         Returns:
 
-            A list of dict containing the corner-turn engine status flags for each crate, each dist following the schema:
+            A list of dict containing the corner-turn engine status flags for each crate, each dist following the schema::
 
                 "ic": <crate_object>: # Crate object
                 "slots":
@@ -4517,10 +4549,12 @@ class FPGAArray(object):
 
         Example:
 
-            info[0]['slots'][2]['subsystems']['BP PCB']['status']
-            info[0]['slots'][2]['subsystems']['BP PCB']['lanes'][3]['status']
+            ::
 
-            Print the summary of every lanes of every subsystem for every slot:
+                info[0]['slots'][2]['subsystems']['BP PCB']['status']
+                info[0]['slots'][2]['subsystems']['BP PCB']['lanes'][3]['status']
+
+            Print the summary of every lanes of every subsystem for every slot::
 
                 info = await ca.get_corner_turn_engine_status_async(reset_stats=True)
                 [f"Crate {c} Slot {slot_number} {sub_name} { [lane['status'] for lane in sub['lanes'].values()]}"
@@ -4528,7 +4562,7 @@ class FPGAArray(object):
                    for slot_number, slot in c['slots'].items()
                    for sub_name, sub in slot['subsystems'].items()]
 
-            Get the status of the first crate as a dict ``{slot_number:{subsystem:status, ...}, ...}``:
+            Get the status of the first crate as a dict ``{slot_number:{subsystem:status, ...}, ...}``::
 
                 status =  {slot_number:{sub_name:sub['status'] for sub_name, sub in slot['subsystems'].items()}
                            for c in info[0] for slot_number, slot in c['slots'].items()}
@@ -4860,11 +4894,12 @@ class FPGAArray(object):
         """ Get the monitoring information on the backplanes & boards that are accessible from the ARM.
 
         Includes:
+
             - Backplane metrics, as measured from one board in each crate
             - Iceboard hardware metrics (voltages, temperatures), which also includes mezzanines voltage/current.
 
         Returns:
-            A :cls:`Metrics` object.
+            A :class:`Metrics` object.
         """
 
         # IceCrate metrics
@@ -4884,10 +4919,11 @@ class FPGAArray(object):
         """ Get the monitoring information on the FPGA firmware status across the array.
 
         Includes:
+
             - Backplane receiver/transmitter status with packet statistics for both the PCB and QSFP links.
 
         Returns:
-            A :cls:`Metrics` object.
+            A :class:`Metrics` object.
         """
 
         # Shuffle status
@@ -4964,12 +5000,12 @@ class FPGAArray(object):
 
             delay (int):
 
-            tx_power (int). transmit power to be set on the GTX. Ranges from
+            tx_power (int): transmit power to be set on the GTX. Ranges from
                 0-15. If ``None``, TX power levels ar enot changed.
 
-            tx_precursor=None,
+            tx_precursor: None,
 
-            tx_postcursor=None
+            tx_postcursor: None
 
             lpm (bool): If true, enables Low Power Mode in the GTX. Requires a dfe_reset.
 
@@ -4977,7 +5013,7 @@ class FPGAArray(object):
                 to allow it to find a new equalization solution. Is needed
                 when power levels or operaiton mode are changed
 
-            stop_on_errors=2,
+            stop_on_errors : =2,
 
             verbose=1
         """
@@ -5318,16 +5354,18 @@ def create_fpga_array(args=None):
     network using mDNS.
 
     Examples:
-        create_fpga_array --iceboards 10.10.10.5 10.10.10.6   # Creates  an array of 2 boards at specified IP addresses
-        create_fpga_array --iceboards iceboard0005.local iceboard0006.local   # Creates  an array of 2 boards at specified hostname (assuming the host computer runs a mDNS client)
-        create_fpga_array --iceboards 0005 0006   # Creates  an array of 2 boards with specified serial numbers (resolved using a mDNS request on the network)
-        create_fpga_array --iceboards 5 6   # Same as above. Works only with purely numeric serial numbers.
-        create_fpga_array --icecrates MGK7BP16_003 MGK7BP16_007  # Load all boards in crate serial number 003 and 007
-        create_fpga_array --icecrates 3 7  # Same as above. MGK7BP16-type backplane is assumed by default
+
+    - create_fpga_array --iceboards 10.10.10.5 10.10.10.6   # Creates  an array of 2 boards at specified IP addresses
+    - create_fpga_array --iceboards iceboard0005.local iceboard0006.local   # Creates  an array of 2 boards at specified hostname (assuming the host computer runs a mDNS client)
+    - create_fpga_array --iceboards 0005 0006   # Creates  an array of 2 boards with specified serial numbers (resolved using a mDNS request on the network)
+    - create_fpga_array --iceboards 5 6   # Same as above. Works only with purely numeric serial numbers.
+    - create_fpga_array --icecrates MGK7BP16_003 MGK7BP16_007  # Load all boards in crate serial number 003 and 007
+    - create_fpga_array --icecrates 3 7  # Same as above. MGK7BP16-type backplane is assumed by default
 
     In the configuration file, some parameters are grouped in the following sub-dictionaries:
 
-    root object:
+    root object::
+
         logging:     # Contains all the parameters related to logging
         fpga_array:  # Contains all the parameters related to the creation and
                      # initialization of the FPGA motherboards, crates and mezzanines
@@ -5336,7 +5374,8 @@ def create_fpga_array(args=None):
         power_supply_array:  # Contains all the parameters related to the creation
                              # and initialization of the power supplies
 
-    Example:
+    Example::
+
         my_config:
             fpga_array:
                 iceboards: ["10.10.10.5", "10.10.10.6"]  # or any other syntax accepted by the comamnd line
@@ -5347,7 +5386,7 @@ def create_fpga_array(args=None):
             ...
 
     Generic parameters (root dict)
-    ------------------
+    ------------------------------
 
     yaml: Name of a YAML configuration file to load. One or more root object
        can be specified, in which case the filename and the list of root
@@ -5359,7 +5398,8 @@ def create_fpga_array(args=None):
        separator. An object starting with '.' starts at the same node level as
        the previous object.
 
-    Example:
+    Example::
+
         --yaml file1.yaml # Load config from the top node of the file
         --yaml file1.yaml:site1 # Load  config from the site1 element
         --yaml file1.yaml:site1 site2# Load config by combining the elements of site1 and site2 objects
@@ -5367,79 +5407,83 @@ def create_fpga_array(args=None):
 
 
     FPGA array parameters (``fpga_array`` sub-dict)
-    ---------------------
+    -----------------------------------------------
+
     Here is a summary of the FPGA array creation parameters. Detailed
     description of each parameter is profided in the ``FPGAArray`` object.
 
-        hwm: Contains a hardware map object (config file only, created with HardwareMap! object)
+    - hwm: Contains a hardware map object (config file only, created with HardwareMap! object)
 
-        iceboards: List of IceBoards (IP, hostnames or serial numbers) to add
-            to the hardware map. Their connected IceCrate and Mezzanine is
-            also automatically added.
+    - iceboards: List of IceBoards (IP, hostnames or serial numbers) to add
+        to the hardware map. Their connected IceCrate and Mezzanine is
+        also automatically added.
 
-        icecrates: List of IceCrates (serial numbers) to add to the hardware map. Adds all IceBoards in them.
+    - icecrates: List of IceCrates (serial numbers) to add to the hardware map. Adds all IceBoards in them.
 
-        exclude_iceboards: Remove the specified IceBoards (serial numbers) from the hardware map.
+    - exclude_iceboards: Remove the specified IceBoards (serial numbers) from the hardware map.
 
-        mdns_timeout: Time to wait for motherboards to responds to mDNS queries
+    - mdns_timeout: Time to wait for motherboards to responds to mDNS queries
 
-        no_mezz: Do not discover nor initialize the mezzanine on the motherboards
+    - no_mezz: Do not discover nor initialize the mezzanine on the motherboards
 
-        subarrays: Keep only iceboards that are in the specified subarrays
-            (applicable only to objects created explicitely in the
-            configuration file)
+    - subarrays: Keep only iceboards that are in the specified subarrays
+        (applicable only to objects created explicitely in the
+        configuration file)
 
-        ping: Keep only boards that respond to requests
+    - ping: Keep only boards that respond to requests
 
-        bitfile: path of the folder in which to search for default FPGA
-            bitstream files (based on the platform and mode), or full pathname
-            to a FPGA bitstream to use (mode must still be specified to allow
-            proper initialization)
+    - bitfile: path of the folder in which to search for default FPGA
+        bitstream files (based on the platform and mode), or full pathname
+        to a FPGA bitstream to use (mode must still be specified to allow
+        proper initialization)
 
 
-        prog: Overrides the default FPGA bitstream configuration level. 0=Do not program, 1=program if needed, 2=always program.
+    - prog: Overrides the default FPGA bitstream configuration level. 0=Do not program, 1=program if needed, 2=always program.
 
-        init: Overrides the array initialization level. 0=just connect to platform, 1= program FPGA, 2= connect to firmware and configure firmware object, 3=initialize firmware indesired mode.
+    - init: Overrides the array initialization level. 0=just connect to platform, 1= program FPGA, 2= connect to firmware and configure firmware object, 3=initialize firmware indesired mode.
 
-        open: Alternate way of specified init. 0: just connect to platform, 1: program FPGA, connect to firmware and configure objects and initialize operational mode.
+    - open: Alternate way of specified init. 0: just connect to platform, 1: program FPGA, connect to firmware and configure objects and initialize operational mode.
 
-        if_ip: address of the interface used to communicate with the FPGA. If
-            not specified, the same interface as the one used for communicate
-            with the ARM processor is used.
+    - if_ip: address of the interface used to communicate with the FPGA. If
+        not specified, the same interface as the one used for communicate
+        with the ARM processor is used.
 
-        sampling_frequency: Specifies the sampling frequency of the CHIME ADC mezzanine, in Hz (typically 800 MHz). If `None`, the platform/firmware mode default is used.
+    - sampling_frequency: Specifies the sampling frequency of the CHIME ADC mezzanine, in Hz (typically 800 MHz). If `None`, the platform/firmware mode default is used.
 
-        reference_frequency: Specifies the frequency of the system's reference clock in Hz (typically 10 MHz). If `None`, the platform/firmware mode default is used.
+    - reference_frequency: Specifies the frequency of the system's reference clock in Hz (typically 10 MHz). If `None`, the platform/firmware mode default is used.
 
-        data_width: Bit width used after the channelizer's scaler (4 or 8)
+    - data_width: Bit width used after the channelizer's scaler (4 or 8)
 
-        sync_method: string describing the method used to synchronize all the boards in the array
+    - sync_method: string describing the method used to synchronize all the boards in the array
 
-        sync_source: string describing the source of the synchronization signal.
+    - sync_source: string describing the source of the synchronization signal.
 
 
     Power Supply Array parameters (``ps_array`` sub_dict)
-    -----------------------------
-        power_supplies: list of GPU nodes (IP addresses or hostnames) for which power supply objects are to be created.
+    -----------------------------------------------------
+
+    - power_supplies: list of GPU nodes (IP addresses or hostnames) for which power supply objects are to be created.
 
     Logging parameters: (``logging`` sub-dict)
-    -------------------
-        log_target : String indicating the logging target (default = 'syslog'). May be
-            - 'stream' : logs on stdout (not recommended in interactive sessions)
-            - 'syslog': logs on Syslog on localhost
-            - any other string: logs to a file specified by the string
+    ------------------------------------------
 
-        log_level : String indicating the logging level. May be 'info',
-            'error', 'warning' , 'debug'. default is 'debug'.
+    - log_target : String indicating the logging target (default = 'syslog'). May be
 
-        sql_log_level : String indicating SQLAlchemy logging level. Same
-            values as ``log_level``. Defaults to 'warning'.
+        - 'stream' : logs on stdout (not recommended in interactive sessions)
+        - 'syslog': logs on Syslog on localhost
+        - any other string: logs to a file specified by the string
 
-        stderr_log_level : String indicating what messages to log on stderr
-           (usually the console) in addition to the main log target. Is usually
-           used to make sure that important messages (warnings and errors) are
-           seen immediately by the interactive operator. Values are the same as
-           ``log_level``. Defaults to 'warning'.
+    - log_level : String indicating the logging level. May be 'info',
+        'error', 'warning' , 'debug'. default is 'debug'.
+
+    - sql_log_level : String indicating SQLAlchemy logging level. Same
+        values as ``log_level``. Defaults to 'warning'.
+
+    - stderr_log_level : String indicating what messages to log on stderr
+       (usually the console) in addition to the main log target. Is usually
+       used to make sure that important messages (warnings and errors) are
+       seen immediately by the interactive operator. Values are the same as
+       ``log_level``. Defaults to 'warning'.
 
     """
     # -------------------------------

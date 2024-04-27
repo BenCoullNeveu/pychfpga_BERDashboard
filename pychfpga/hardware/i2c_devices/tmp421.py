@@ -1,9 +1,8 @@
 #!/usr/bin/python
 
-"""
-tmp421: Implememnts access to a TEMP100 I2C temperature sensor.
+"""Implememnts the interface to a TEMP100 I2C temperature sensor.
 
- History:
+.. History:
  2014-03-04 JM: created
  2014-03-18 JM: Fixed read function to allow reading by register name, not only by register address
                 Fixed masking in write function

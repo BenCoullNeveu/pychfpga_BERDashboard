@@ -70,7 +70,7 @@ class UCAP(MMI):
         # if s:
         #     self.sock = s
         # if self.sock is None:
-        #     self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); 
+        #     self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM);
         #     self.sock.bind(("0.0.0.0",41000))
         #     __main__.ucap_sock = self.sock
         # Flush the UDP  buffers by reading and discarding data until we timeout
@@ -84,12 +84,12 @@ class UCAP(MMI):
                 break
         self.sock.settimeout(2)
         print('Capturing data')
-        for bb in b: 
+        for bb in b:
             self.sock.recv_into(bb)
         print(f'got stream_IDs: {b[:, 1] >> 8}')
         for bb in b:
             print(bb[:5].tobytes().hex(':'))
-        # sid = 
+        # sid =
         # sid_ok = all(b[:,1]>>8 == np.arange(b.shape[0], dtype=np.uint8) & 63)
         # if not sid_ok:
         #     raise RuntimeError('Missing packets')
@@ -122,8 +122,8 @@ class RawFrameReceiver(object):
     The transmit rate must be fast enough to accommodate the desired bandwidth
     by setting ib.GPIO.HOST_FRAME_READ_RATE = rate. rate=16 limits to about
     260 Mbps but is slow enough to allow python to process the data with a
-    small standard UDP buffer. ``rate``=15 is good for about 500 Mbps, and
-    ``rate``=16 is good for the full Gigabit bandwidth. The latetr two require
+    small standard UDP buffer. ``rate`` =15 is good for about 500 Mbps, and
+    ``rate`` =16 is good for the full Gigabit bandwidth. The later two require
     bigger UDP buffers. See below::
 
         ib.GPIO.HOST_FRAME_READ_RATE = 14
@@ -133,12 +133,14 @@ class RawFrameReceiver(object):
         sudo ifconfig eno1 mtu 9000
 
     The UDP buffers shall be increased to reduce packet loss to a minimum::
+
         sudo sysctl -w net.core.rmem_max=26214400
         sudo sysctl -w net.core.rmem_default=26214400
         sudo sysctl -w net.ipv4.udp_mem='26214400 26214400 26214400'
         sudo sysctl -w net.ipv4.udp_rmem_min=26214400
 
     Check udp buffers::
+
         sysctl -a | grep mem
 
     Monitor UDP buffer::

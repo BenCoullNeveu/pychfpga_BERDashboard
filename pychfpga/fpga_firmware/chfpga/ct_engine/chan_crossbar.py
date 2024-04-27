@@ -74,11 +74,16 @@ class ChanCrossbar(MMI):
         #     bs.select_bins(bin_list)
 
     def set_data_width(self, width):
-        """
-        Sets the number of bits expected at the input of the crossbar.
+        """ Sets the number of bits expected at the input of the crossbar.
+
         All crossbars are set to the new setting.
-            width=4: data is 4 bits Real + 4 bits Imaginary
-            width=8: data is 8 bits Real + 8 bits Imaginary
+
+        Parameters:
+
+            width (int): data widths:
+
+                - width=4: data is 4 bits Real + 4 bits Imaginary
+                - width=8: data is 8 bits Real + 8 bits Imaginary
         """
 
         if width == 4:

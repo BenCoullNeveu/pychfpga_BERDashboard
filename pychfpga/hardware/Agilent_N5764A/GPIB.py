@@ -16,11 +16,25 @@ class GPIB(object):
         Other commands are sent to the instrument through GPIB.
         In this case, the CR or LF is removed from the command and the terminator set with the set_terminator() method is appended to the string.
 
-        interface:
-            'lan': direct lan interface at specified 'ip_addr' and 'ip_port'
-            'eth': GPIB connection through an ethernet-based Prologix adapter on 'ip_port' at GPIB address 'gpib_addr'
-            'usb': GPIB connection through an USB-based Prologix adapter on serial port 'usb_port' at GPIB address 'gpib_addr'
-        """
+        Parameters:
+
+            interface (str): type of interface:
+
+                - 'lan': direct lan interface at specified 'ip_addr' and 'ip_port'
+                - 'eth': GPIB connection through an ethernet-based Prologix adapter on 'ip_port' at GPIB address 'gpib_addr'
+                - 'usb': GPIB connection through an USB-based Prologix adapter on serial port 'usb_port' at GPIB address 'gpib_addr'
+
+            gpib_addr (int):
+
+            ip_addr (str):
+
+            ip_port (int):
+
+            usb_port:
+
+            timeout (float):
+
+            """
         GPIBException = GPIBException
         def __init__(self, interface=None, gpib_addr=None, ip_addr=None,  ip_port = 1234, usb_port=None, timeout=0.5):
                 #self.interface = interface
@@ -159,10 +173,23 @@ class GPIB(object):
         def read(self, wait_for_eoi=None, terminator='\n', timeout=None, verbose=0):
             """
             Reads data from the GPIB instrument until the terminator character is encounter.
-            'terminator' determines when the buffer is stopped being read
-                terminator ='' stops reading as soon as the first ethernat packet is Received
-                terminator = char stops when 'char' is encountered *at the end of the received ethernet packet*
-                terminator = 'timeout' stops when the timeout period has expired and rises no timeout Exception
+
+            Parameters:
+
+                wait_for_eoi:
+
+                terminator (str): determines when the buffer is stopped being read
+
+                    - terminator ='' stops reading as soon as the first ethernat packet is Received
+                    - terminator = char stops when 'char' is encountered *at the end of the received ethernet packet*
+                    - terminator = 'timeout' stops when the timeout period has expired and rises no timeout Exception
+
+                terminator:
+
+                verbose (int):
+
+            Returns:
+                str: string containing the data that was read.
 
             """
             if self.use_prologix:

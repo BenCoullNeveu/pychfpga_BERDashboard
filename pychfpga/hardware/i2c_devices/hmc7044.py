@@ -62,9 +62,9 @@ class hmc7044(object):
 
         Parameters:
 
-            fref (float): reference clock frequency, in Hz. The 50 MHz VCXO of the first PLL will be locked to this reference. 
+            fref (float): reference clock frequency, in Hz. The 50 MHz VCXO of the first PLL will be locked to this reference.
 
-            fosc (float): Frequency of the VCXO, in Hz. 
+            fosc (float): Frequency of the VCXO, in Hz.
 
             fvco (float): Frequency of the PLL2's VCO, in Hz.
 
@@ -72,7 +72,7 @@ class hmc7044(object):
 
             filename (str): file from which to read a PLL config file. If specified, all otherPLL  parameters are ignored.
 
-            check (bool): if True, the registers will be read back after every write to confirm their values 
+            check (bool): if True, the registers will be read back after every write to confirm their values
 
         """
 
@@ -122,7 +122,7 @@ class hmc7044(object):
         # ratio, channel start-up mode, coarse/analog delays, and
         # performance modes.
         for output, freq in fout.items():
-            self.set_output(output, f_vco=fvco, f_out=freq) 
+            self.set_output(output, f_vco=fvco, f_out=freq)
 
         # print(f'reg[0x0001]=0x{self.read_reg(0x1):02X}')
 
@@ -247,10 +247,10 @@ class hmc7044(object):
         return regs
 
 
-    def init_registers(self, 
-        sync_mode=1, 
-        clkin1_as_vco=0, 
-        clkin0_as_rfsync=0, 
+    def init_registers(self,
+        sync_mode=1,
+        clkin1_as_vco=0,
+        clkin0_as_rfsync=0,
         input_enable=0b1111,
         disable_sync_at_lock=0,
         rf_reseeder_enable=1,
@@ -292,12 +292,12 @@ class hmc7044(object):
 
             vco_selection (int): Select the VCO. 0: disabled (use external); 1: high freq (3.2 GHz), 2: low freq
 
-            sysref_timer_enable (int): Enables SYSREF timer. Required for SYNC to work. 
+            sysref_timer_enable (int): Enables SYSREF timer. Required for SYNC to work.
 
             pll1_enable (int): If 1, PLL1 is enabled
 
             pll2_enable (int): If 1, PLL2 is enabled
-     
+
 
         """
 
@@ -329,7 +329,7 @@ class hmc7044(object):
             # glbl_cfg4_ena_rpath[3:0] = 0xF
             # dist_cfg1_refbuf0_as_rfsync[4:4] = 0x0
             # dist_cfg1_refbuf1_as_extvco[5:5] = 0x0
-            # pll2_cfg2_syncpin_modesel[7:6] = 0x0 
+            # pll2_cfg2_syncpin_modesel[7:6] = 0x0
             (0x5, (sync_mode << 6) | (clkin1_as_vco << 5) | (clkin0_as_rfsync << 4) | input_enable), # SYNC Pin mode = 01 (rising edge carried through PLL2); CLKIN0-3 input path enabled
             # glbl_cfg1_clear_alarms[0:0] = 0x0
             (0x6, 0x0),
@@ -752,11 +752,10 @@ class hmc7044(object):
                 dynamic start-up. Note that this must be set to asynchronous
                 mode if the channel is unused.
 
-
-                0: Asynchronous
-                1: reserved
-                2: reserved
-                3: Dynamic
+                - 0: Asynchronous
+                - 1: reserved
+                - 2: reserved
+                - 3: Dynamic
 
             divider (int or float): 12-bit channel divider setpoint LSB. The
                 divider supports even divide ratios from 2 to 4094. The
@@ -790,35 +789,35 @@ class hmc7044(object):
                set to 0 for even and 1 for off channel numbers, i.e. CLK
                outputs use CLK divider and SCLK output uses SCLK dividers.
 
-                0: Channel divider output.
-                1: Analog delay output.
-                2: Other channel of the clock group pair.
-                3: Input VCO clock (fundamental). Fundamental can also
+               - 0: Channel divider output.
+               - 1: Analog delay output.
+               - 2: Other channel of the clock group pair.
+               - 3: Input VCO clock (fundamental). Fundamental can also
                    be generated with 12-Bit Channel Divider[11:0] = 1.
 
             mute (int): Idle at Logic 0 selection (pulse generator mode only). Force to Logic 0 or Vcm .
 
-                0: Normal mode (selection for DCLK).
-                1: Reserved.
-                2: Force to Logic 0.
-                3: Reserved.
+                - 0: Normal mode (selection for DCLK).
+                - 1: Reserved.
+                - 2: Force to Logic 0.
+                - 3: Reserved.
 
             dynamic_driver (int): Dynamic driver enable (pulse generator mode
                 only). Driver is enabled/disabled with channel enable bit
 
             driver_mode (int): Output driver mode selection.
 
-                0: CML mode.
-                1: LVPECL mode.
-                2: LVDS mode.
-                3: CMOS mode.
+                - 0: CML mode.
+                - 1: LVPECL mode.
+                - 2: LVDS mode.
+                - 3: CMOS mode.
 
             driver_impedance (int): Output driver impedance selection for CML mode olny.
 
-                0: Internal resistor disable.
-                1: Internal 100 Ω resistor enable per output pin.
-                2: Reserved.
-                3: Internal 50 Ω resistor enable per output pin.
+                - 0: Internal resistor disable.
+                - 1: Internal 100 Ω resistor enable per output pin.
+                - 2: Reserved.
+                - 3: Internal 50 Ω resistor enable per output pin.
 
 
         """
@@ -917,7 +916,7 @@ class hmc7044(object):
                 - 6: 16 pulses
                 - 7: COntinuous mode (50% duty cycle)
 
-            sync_retime (int): If 1, the external SYNC is retimed using Reference 0. 
+            sync_retime (int): If 1, the external SYNC is retimed using Reference 0.
 
             sync_through_pll2 (int): When 1, allows a reseed event to be through PLL2
 
@@ -947,7 +946,7 @@ class hmc7044(object):
             # sysr_cfg1_synci_invpol[0:0] = 0x0
             # sysr_cfg1_pll2_carryup_sel[1:1] = 0x0
             # sysr_cfg1_ext_sync_retimemode[2:2] = 0x1
-            (0x5B, (sync_retime << 2) | (sync_through_pll2 << 1) | (sync_pol)), # reserved; SYNC retime; SYNC through PLL2; SYNC pol 
+            (0x5B, (sync_retime << 2) | (sync_through_pll2 << 1) | (sync_pol)), # reserved; SYNC retime; SYNC through PLL2; SYNC pol
             # sysr_cfg16_divrat_lsb[7:0] = 0x0
             (0x5C, sysref_timer & 0xFF),
             # sysr_cfg16_divrat_msb[3:0] = 0x6

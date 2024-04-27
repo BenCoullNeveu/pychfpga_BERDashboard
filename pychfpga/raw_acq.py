@@ -1117,7 +1117,7 @@ class RawPacketProcessor(object):
 
                 hdf5_last_time (ctime): which file's last time to use (options: self.hdf5_last_time or
                     self.hdf5_aux_last_time)
-                
+
                 hdf5_refresh_time (ctime): which file's rerfresh time to use (options: self.hdf5_refresh_time
                     or self.hdf5_aux_refresh_time)
 
@@ -1313,50 +1313,47 @@ class RawPacketProcessor(object):
         # self.current_crate[j][chan] = crate_number
         # self.current_slot[j][chan] = slot_number
 
-    def process_adc_frame_capture(self, buf_ix, ix):
-        """
+    # def process_adc_frame_capture(self, buf_ix, ix):
+    #     """ Capture a full set of data with the same timestamp
+    #     #########################################
+    #     # Accumulate packets in a buffer. Settarget timestamp from the highest
+    #     # timestamp of a packet that contains multiple timestamps
+    #     """
+    #     pass
+    #     # if self.capture:
+    #     #     self.buf_ts[buf_ix] = self.buf_ts[buf_ix] & 0xFFFFFFFFFFFF  # 48 bit timestamp. Mask extra bits.
+    #     #     if self.capture_timestamp is None:
+    #     #         max_timestamp = np.max(buf_ts[buf_ix])
+    #     #         if self.capture_last_timestamp is None:
+    #     #             self.capture_last_timestamp = max_timestamp
+    #     #         elif self.capture_last_timestamp != max_timestamp:
+    #     #             self.capture_timestamp = max_timestamp
+    #     #         self.capture_last_timestamp = max_timestamp
+    #     #     # We have a potentially updated self.capture_timestamp
+    #     #     if self.capture_timestamp is not None:
+    #     #         ts_match = self.buf_ts[buf_ix] == self.capture_timestamp
+    #     #         bix = buf_ix[ts_match]
+    #     #         if not bix.size: # no more packets with the target timestamp
+    #     #             self.capture = False
+    #     #             self.capture_done = True
+    #     #         else:
+    #     #             cix = ix[ts_match]
+    #     #             self.capture_data[cix] = self.buf_data[bix]
+    #     #             self.capture_valid[cix] = True
 
-        #########################################
-        # Capture a full set of data with the same timestamp
-        #########################################
-        # Accumulate packets in a buffer. Settarget timestamp from the highest
-        # timestamp of a packet that contains multiple timestamps
-        """
-        pass
-        # if self.capture:
-        #     self.buf_ts[buf_ix] = self.buf_ts[buf_ix] & 0xFFFFFFFFFFFF  # 48 bit timestamp. Mask extra bits.
-        #     if self.capture_timestamp is None:
-        #         max_timestamp = np.max(buf_ts[buf_ix])
-        #         if self.capture_last_timestamp is None:
-        #             self.capture_last_timestamp = max_timestamp
-        #         elif self.capture_last_timestamp != max_timestamp:
-        #             self.capture_timestamp = max_timestamp
-        #         self.capture_last_timestamp = max_timestamp
-        #     # We have a potentially updated self.capture_timestamp
-        #     if self.capture_timestamp is not None:
-        #         ts_match = self.buf_ts[buf_ix] == self.capture_timestamp
-        #         bix = buf_ix[ts_match]
-        #         if not bix.size: # no more packets with the target timestamp
-        #             self.capture = False
-        #             self.capture_done = True
-        #         else:
-        #             cix = ix[ts_match]
-        #             self.capture_data[cix] = self.buf_data[bix]
-        #             self.capture_valid[cix] = True
-
-        # Capture a full timestamp set if self_capture = True
-        # if self.capture_start:
-        #     self.all_ts[port][chan] = timestamp
-        #     self.all_data[port][chan, :] = adc_data
-        #     if (timestamp == self.old_timestamp):
-        #         self.n_ant_rec += 1
-        #     else:
-        #         self.old_timestamp = timestamp
-        #         self.n_ant_rec = 1
-        #     if self.n_ant_rec >= self.N_CHANNELS - 1:
-        #         self.n_ant_rec = 0
-        #         self.old_timestamp = None
-        #         self.capture_start = False
+    #     # Capture a full timestamp set if self_capture = True
+    #     # if self.capture_start:
+    #     #     self.all_ts[port][chan] = timestamp
+    #     #     self.all_data[port][chan, :] = adc_data
+    #     #     if (timestamp == self.old_timestamp):
+    #     #         self.n_ant_rec += 1
+    #     #     else:
+    #     #         self.old_timestamp = timestamp
+    #     #         self.n_ant_rec = 1
+    #     #     if self.n_ant_rec >= self.N_CHANNELS - 1:
+    #     #         self.n_ant_rec = 0
+    #     #         self.old_timestamp = None
+    #     #         self.capture_start = False
 
     async def get_data_async(self):
         """

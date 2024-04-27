@@ -129,34 +129,33 @@ class SCALER(MMI):
 
     def set_gain_table(self, gain_list, bank=0, gain_timestamp=None):
         """
-        Sets the scaler's complex gain table for the specified bank.
+        Sets the scaler's digital gain table for the specified bank.
 
 
         Parameters:
 
-            gain_list: gains to set.
+            gain_list: gains to set:
 
-                if `gain_list` is a 1024-element list or ndarray, the numeric
-                gains therein are applied to each bin.
+                - if `gain_list` is a 1024-element list or ndarray, the numeric gains therein are
+                  applied to each bin.
 
-                if `gains_list is a scalar int, float or complex numbers, all
-                bins are set to that scalar value.
+                - if `gains_list is a scalar int, float or complex numbers, all bins are set to that
+                  scalar value.
 
-                if `gain_list` is `None`, no gains are set.
+                - if `gain_list` is `None`, no gains are set.
 
-            bank (int): The bank in which the gains are to be written. If
-                ``bank`` is None or is -1, the currently inactive bank is
-                used. The method does not set the active bank.
+            bank (int): The bank in which the gains are to be written. If ``bank`` is None or is -1,
+                the currently inactive bank is used. The method does not set the active bank.
 
-            gain_timestamp : unix timestamp when the gains were calculated.
-                If not provided, defaults to current time.
+            gain_timestamp: unix timestamp when the gains were calculated. If not provided, defaults
+                to current time.
         """
 
         if gain_list is None:
             return
 
         total_bins = self.fpga.NUMBER_OF_FREQUENCY_BINS
-        use_complex_gains = self.USE_COMPLEX_GAINS 
+        use_complex_gains = self.USE_COMPLEX_GAINS
 
         if use_complex_gains:
             if np.isscalar(gain_list):
@@ -235,7 +234,7 @@ class SCALER(MMI):
         else: # if not self.USE_COMPLEX_GAINS
             pages_per_bank = 32
             for page in range(32):  # there are 32 pages of coefficients per bank
-                
+
                 abs_page = pages_per_bank * bank + page
 
                 self.WRITE_COEFF_BANK_A = abs_page & 0b1111
@@ -245,7 +244,7 @@ class SCALER(MMI):
                 page_table = self.read_ram(0, length=512/2, type = '<i2')
                 # for ix in range(256):  # there are 256 coefficients per page (2 bytes per coeff = 512 bytes total per page)
                 #     g = struct.unpack('<hh', page_table[2 * ix: 2 * ix + 2])
-                gain_table.append(page_table.tolist()) 
+                gain_table.append(page_table.tolist())
 
         return gain_table
 

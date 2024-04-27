@@ -696,9 +696,9 @@ class FPGAMaster(object):
 
         Parameters:
 
-            targets: list of tuples (or dict) describing the (crate, board,
-                channel) (or {crate:c, board:b, channel:ch}) whose gains needs
-                to be recomputed. Missing elements, `None` or ``"*"`` are treated
+            targets: list of tuples (or dict) describing the ``(crate, board,
+                channel)`` or ``{crate:c, board:b, channel:ch}`` whose gains needs
+                to be recomputed. Missing elements, ``None`` or ``"*"`` are treated
                 as a wildcard.  List will be iterated over and the channels matching
                 each element of the list will have their gains computed in parallel.
                 If not provided, then will default to  a list of the crates.
@@ -1516,7 +1516,7 @@ class FPGAMaster(object):
               valid slot number.
             - slot_zero_based (int): slot number, indexed from 0. Is 0 of
               there is no valid slot number.
-            - slot_zero_based_str (str): If slot is defined, 2-digit slot number as a string, indexed from 0. Otherwise the string representation of slot (e.g. the model/serial) is returned. 
+            - slot_zero_based_str (str): If slot is defined, 2-digit slot number as a string, indexed from 0. Otherwise the string representation of slot (e.g. the model/serial) is returned.
             - chan (int):hardware  channel number, as used by fpga_array
             - input (int): application specific channel number, which
               represent how the channels are labeled in the field. The

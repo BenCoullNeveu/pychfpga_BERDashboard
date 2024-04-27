@@ -14,7 +14,7 @@ class Shuffle(xglink.XGLinkArray):
     and the backplane QSFP links (between boards in two different crates) are
     included.
 
-    As opposed to the base class `XGLinkArray', this class is aware of the
+    As opposed to the base class :class:`XGLinkArray`, this class is aware of the
     crate in which the board is located, and how the links are connected
     through PBC lanes or QSFP cables.
     """
@@ -213,15 +213,15 @@ class Shuffle(xglink.XGLinkArray):
 
         Returns:
 
-            A dictionary in the format:
+            dict: A dictionary in the format::
 
-                {backplane_link_id: logical_link_id, ...}
+                    {backplane_link_id: logical_link_id, ...}
 
-            where
+                where
 
-                ``backplane_link_id`` is a ('qsfp', (crate, slot, bp_lane)) tuple that
-            refers to the backplane link
-                ``logical_link_id`` is a ('qsfp', (crate, slot, logical_lane)) that refer to a logical link.
+                - ``backplane_link_id`` is a ``('qsfp', (crate, slot, bp_lane))`` tuple that
+                refers to the backplane link
+                - ``logical_link_id`` is a ``('qsfp', (crate, slot, logical_lane))`` that refer to a logical link.
 
         """
 

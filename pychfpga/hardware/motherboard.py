@@ -385,20 +385,22 @@ class Motherboard(HardwareMap):
         Returns:
             A (crate_id, slot_or_board_id) tuple, where:
 
-             - crate_id is the first of the following:
+            - crate_id is the first of the following:
                 - ``numeric_crate_number`` (int) if there is a crate and the crate number is known
                 - `default_crate` if `default_crate` is not `None`
                 - ``crate_model_serial_string`` (str) model and serial number string if those exist
                 - `None` if none  of the above is true
 
-             - slot_or_board_id is the first of the following:
+            - slot_or_board_id is the first of the following:
                 - ``zero_based_slot_number`` (int) zero-based slot number if there is a valid slot
                   number (i.e. bool(self.slot) is True), whether or not there is a crate;
                 - `default_slot` if  `default_slot` is not None;
                 - ``board_model_serial_string`` (str) if the board has a valid model and serial number;
                 - ``hostname`` (str) hostname if the board has a known hostname;
                 - ``None`` if none of the above is true.
+
         Notes:
+
             - A board is always represented by a 2-element tuple. A crate is always represented by a
               one-element tuple, and a channel/lane is a 3-element tuple.
             - The user is responsible for handling all possible types of crate (int, str, None) or
@@ -412,9 +414,10 @@ class Motherboard(HardwareMap):
             - the id must be unique, even if we have multiple stand-alone boards. There should at
               least a non-None crate or slot field (i.e. no (None, None) tuple) Examples:
 
-            Examples:
+        Examples:
 
             Board in a crate/backplane:
+
             - (2, 3): board on 4th slot of backplane with crate number 2
             - (2, 0): board on crate number 2 without slot number, and default_slot=0
             - (2, None): board on crate number 2 without slot information, and default_slot=None
@@ -426,6 +429,7 @@ class Motherboard(HardwareMap):
               backplane)
 
             Stand-alone board (no backplane/crate):
+
             - (0, 0): No backplane, crate number nor slot_number, with default_crate=0 and
               default_slot=0
             - (None, 3): No backplane, but the board slot number was manually set to  self.slot=4
@@ -606,7 +610,7 @@ class Motherboard(HardwareMap):
         """ Get the backplane hardware monitoring information.
 
         Returns:
-            a :cls:`Metrics` object.
+            a :class:`Metrics` object.
         """
         metrics = Metrics(
             type='GAUGE',

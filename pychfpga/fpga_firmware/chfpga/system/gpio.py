@@ -2,11 +2,9 @@
 # Disable pylint Line too long (=C0301)
 # pylint: disable=C0301
 
-"""
-GPIO.py module
- Implements SYSTEM-level interface
-#
-# History:
+""" Implements the interface to the GPIO FPGA module
+
+.. History:
     2011-08-25 JFC : Created
     2011-08-30 JFC: Added read_bitstream_* functions and status()
     2011-09-08 JFC: Added TIMESTAMP_VALID and ADC_SYNC_READBACK in field definitions
@@ -329,7 +327,7 @@ class GPIO(MMI):
         # Buck sync is enabled by default and starts immediately when the FPGA is programmed
 
         # The commented code below was for the CRS platform before platform-specific freqs and enable status could be set in firmware
-        # it is started by software 
+        # it is started by software
         # if self.PLATFORM_ID == self.fpga._PLATFORM_ID_CRS:
             # self.BUCK_CLK_DIV = 24
             # self.logger.info(f'Enabling CRS Buck sync at {200/16/self.BUCK_CLK_DIV:.3f} MHz NOW!')

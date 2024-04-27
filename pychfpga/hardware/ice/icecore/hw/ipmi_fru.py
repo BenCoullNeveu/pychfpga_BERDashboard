@@ -9,7 +9,7 @@ This data is mandated, for example, in the FPGA Mezzanine Card (FMC) standard.
 Since we run into similar requirements elsewhere, we re-use this structure
 where it makes sense.
 
-You can create a fully-populated (if meaningless) FRU as follows:
+You can create a fully-populated (if meaningless) FRU as follows::
 
     x = FRU(
         Internal("internal_data"),
@@ -348,14 +348,15 @@ class Multi(object):
 class MultiDict(object):
     """ Represents a dictionary into a number of Multi records encoded in Json format.
 
-    Typical Usage:
-    x = FRU(
-        Internal(...),
-        Chassis(...),
-        Board(...),
-        Product(...),
-        MultiDict(user_dictionary)
-    )
+    Typical Usage::
+
+        x = FRU(
+            Internal(...),
+            Chassis(...),
+            Board(...),
+            Product(...),
+            MultiDict(user_dictionary)
+        )
 
     All Multi blocks are type ID=0xC0.
 

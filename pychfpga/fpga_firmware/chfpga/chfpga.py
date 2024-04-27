@@ -110,11 +110,12 @@ class chFPGA(FPGAFirmware):
 
     This class supports two methods to access the FPGA firmware:
 
-        - Ethernet/UDP-based
-          Memory-mapped Interface (MMI) implemented directly by the FPGA, typically used by the IceBoard motherboard. The class provides SPI-based Memory-mapped Interface to the
-      FPGA, which is used to configure the networking parameters in the FPGA via the on-board ARM processor.
+    - Ethernet/UDP-based Memory-mapped Interface (MMI) implemented directly by the FPGA,
+      typically used by the IceBoard motherboard. The class provides SPI-based Memory-mapped
+      Interface to the FPGA, which is used to configure the networking parameters in the FPGA
+      via the on-board ARM processor.
 
-        - TCPipe, TCP-based memory-map interface typically supported by the ZCU111
+    - TCPipe, TCP-based memory-map interface typically supported by the ZCU111
     """
 
     # Define the motherboard models and operational modes supported by this class, and associate corresponding FPGA configuration bitstreams and initialization parameters
@@ -2205,10 +2206,10 @@ class chFPGA(FPGAFirmware):
 
         Parameters:
 
-            datetime_ (datetime): the base target time in the Python as a 'datetime' object.
+            datetime_ (datetime): the base target time in the Python as a :class:`datetime` object.
 
-            delay (float): is a time offset in seconds that is added to
-            `datetime_` so set the target time. It defaults to zero.
+            delay (float): is a time offset in seconds that is added to `datetime_` so set the
+                target time. It defaults to zero.
 
         Returns:
 
@@ -2220,10 +2221,8 @@ class chFPGA(FPGAFirmware):
         reference clock and ensure deterministic start of the syncronization
         state machine.
 
-        If 'datetime_' and 'delay' are None, the trigger time is set 3 seconds
+        If `datetime_` and 'delay' are None, the trigger time is set 3 seconds
         after the current time (as returned by the board).
-
-
         """
         if datetime_ is None:
             ts = await self._get_irigb_time_async(trig=True)  # do this synchronously to we get an accurate time
@@ -3139,7 +3138,7 @@ class chFPGA(FPGAFirmware):
             burst_period_in_frames (int): Number of frames between captured bursts.
 
             number_of_bursts (int): Number of bursts to send, after which the FPGA stops sending
-                data. If `number_of_bursts`=0, the transmission continues indefinitely, until
+                data. If `number_of_bursts` =0, the transmission continues indefinitely, until
                 stopped by `stop_data_capture()`.
 
             frames_per_burst (int): Number of frames to send in a single burst. Default is 1.
@@ -3258,7 +3257,7 @@ class chFPGA(FPGAFirmware):
             sub_period (int): Sets how fast the data is to be temporarily
                 transmitted and captured for the selected channel.
 
-                 A capture is always done at the beginning of each primary
+                A capture is always done at the beginning of each primary
                 period, with subsequent captures spaced by 2**(sub_period+1)
                 frames. This can be used to speed up captures, but the rate
                 rate cannot be slower than the primary capture rate.
@@ -3402,8 +3401,8 @@ class chFPGA(FPGAFirmware):
 
             where
 
-                ``delay_info`` is a dict containing the ``tap_delays``, ``sample_delay`` and ``clock_delay`` for the channels specified in the key.
-               ``sync_delays`` is a list of the tap delays applied on the ADC sync line for each mezzanine
+            - ``delay_info`` is a dict containing the ``tap_delays``, ``sample_delay`` and ``clock_delay`` for the channels specified in the key.
+            - ``sync_delays`` is a list of the tap delays applied on the ADC sync line for each mezzanine
         """
         delay_table = self.chan.get_adc_delays()
         delay_table['sync_delays'] = self.REFCLK.get_sync_delays()
@@ -3751,7 +3750,7 @@ class chFPGA(FPGAFirmware):
         Returns:
 
             ``N_channels`` x 32 x 11 byte array, where ``N_channels`` is the numbe of channels
-            specified in :paramref:`channels`.
+            specified in `channels`.
 
         Note:
 
@@ -4242,40 +4241,37 @@ class chFPGA(FPGAFirmware):
             gain (scalar, tuple, list or dict): Linear gain and optional postscaler gain to apply to the
                 specified channels. Gain elements can be defined as:
 
-                    G = Glin_scalar: Single gain for all bins, default postscaler is used
-                    G = (Glin_scalar, None): same as above
-                    G = (Glin_scalar, Glog): Single gain for all bins with specified postscaler
-                    G = Glin_vector: Gain value for each bin, using the default post-scaler value
-                    G = (Glin_vector, None) : same as above
-                    G = (Glin_vector, Glog) : Gain value for each bin with specified post-scaler value
+                - G = Glin_scalar: Single gain for all bins, default postscaler is used
+                - G = (Glin_scalar, None): same as above
+                - G = (Glin_scalar, Glog): Single gain for all bins with specified postscaler
+                - G = Glin_vector: Gain value for each bin, using the default post-scaler value
+                - G = (Glin_vector, None) : same as above
+                - G = (Glin_vector, Glog) : Gain value for each bin with specified post-scaler value
 
                 where:
 
-                    - ``Glin_scalar`` is a real or complex number. The real and imaginary part of the linear
-                    gain are integer values ranging from -32768 to 32767.
+                - ``Glin_scalar`` is a real or complex number. The real and imaginary part of the
+                  linear gain are integer values ranging from -32768 to 32767.
 
-                    - ``Glog`` is the postscaler factor. This is a binary scaling factor, which is an integer
-                          between 0 and 31 representing a power of two that multiplies the linear
-                          gain. It is common to every bin.
+                - ``Glog`` is the postscaler factor. This is a binary scaling factor, which is an
+                  integer between 0 and 31 representing a power of two that multiplies the linear
+                  gain. It is common to every bin.
 
-                    - ``Glin_vector`` is a 1024-element vector of ``Glin_scalar``, where each element is the individual
-                          gain of every bin.
+                - ``Glin_vector`` is a 1024-element vector of ``Glin_scalar``, where each element is
+                  the individual gain of every bin.
 
                 `gain` can take the following form:
 
-                    - `gain` = G. If `gain` is a scalar or tuple, the specified gains are applied
-                      to all channels specified in `channels`.
+                - `gain` = G. If `gain` is a scalar or tuple, the specified gains are applied to all
+                  channels specified in `channels`.
 
-                    - `gain` = {ch_number1: G1, ch_number2: G2 ...}: If `gain` is  a dict, the gain
-                      is applied to specified channel numbers, but only if they are included in
-                      `channels`
+                - `gain` = {ch_number1: G1, ch_number2: G2 ...}: If `gain` is  a dict, the gain is
+                  applied to specified channel numbers, but only if they are included in `channels`
 
-                    - `gain` = [ (ch_number1, G1),  (ch_number2, G2), ...] or `gain` = [ (ch_list1 , G1), (ch_list2, G2), ...]:
-                      If `gain` is a list of tuples, a specified gain ``G`` profile is applied to unique
-                      channels number or to all channels in a of a list of channel numbers.
-                      Channels not specified in `channels` are not set.
-
-
+                - `gain` = [ (ch_number1, G1),  (ch_number2, G2), ...] or `gain` = [ (ch_list1 ,
+                  G1), (ch_list2, G2), ...]: If `gain` is a list of tuples, a specified gain ``G``
+                  profile is applied to unique channels number or to all channels in a of a list of
+                  channel numbers. Channels not specified in `channels` are not set.
 
             postscaler (int): Postscaler factor to apply if ``Glog`` is not specified (Glog=None) in
                 ``gain``.
@@ -4853,10 +4849,10 @@ class chFPGA(FPGAFirmware):
                 outputs of each crossbar.
 
             cb1_lanes (int): Number of input lanes considered in the
-                CROSSBAR1. Defaults to 16. Used only if `mode`=`None`.
+                CROSSBAR1. Defaults to 16. Used only if `mode` = `None`.
 
             cb1_bins (int): Number of frequency bins to be included in the first
-                crossbar. Defaults to 64. Used only if `mode`=`None`.
+                crossbar. Defaults to 64. Used only if `mode` = `None`.
 
 
             dsmap (list) : Destination slot for each of the bin selectors of
@@ -4866,7 +4862,7 @@ class chFPGA(FPGAFirmware):
 
 
             cb1_bypass (bool): If True, the first crossbar will be bypassed.
-                Used only if `mode`=`None`.
+                Used only if `mode` = `None`.
 
             cb1_combine_data_flags (bool): if True, the data flags at the output of CROSSBAR1 will
                 be packed in 32-bit words. Defaults to False, where each data word is associated

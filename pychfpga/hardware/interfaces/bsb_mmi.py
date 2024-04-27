@@ -97,21 +97,21 @@ class BSB_MMI:
 
             addr (int): Address from which to read within the BSB address
                 space. The control/status/RAM pages are determined from the high
-                bits of the address. 
+                bits of the address.
 
             type (``int``, str or dtype): Selects the type of returned object
 
-                - ``int`` object: a single integer of `length` bytes is read as a **big endian** and is returned. 
+                - ``int`` object: a single integer of `length` bytes is read as a **big endian** and is returned.
                 - ``bytes`` or ``bytearray`` object: A ``bytearray`` is returned.
                 - dtype or string representing a dtype: Returns a numpy array of `length` numpy objects of dtype `type`.
 
 
-            length (int): Indicates the number of bytes (if type==int) or the number of numpy elements of dtype==type to read.  
+            length (int): Indicates the number of bytes (if type==int) or the number of numpy elements of dtype==type to read.
                 Multiple transactions will be performed if the requested number of bytes cannot be obtained in a single one.
 
             timeout (float): If not None, sets the timeout period for the read transaction.
 
-            retry (int): Number times the read is retried. If None, the default is used. 
+            retry (int): Number times the read is retried. If None, the default is used.
 
             resync (bool): If True, the receiver will ignore command sequence number
                 mismatches and will resynchronize the local counter with the value
@@ -120,7 +120,7 @@ class BSB_MMI:
 
         Returns:
 
-            - If `type`=``int`, returns an integer. Otherwise, returns a numpy array.
+            - If `type` = ``int``, returns an integer. Otherwise, returns a numpy array.
 
         2014-02-06 JFC: Now reads multiple bytes at a time to improve
             efficiency by using the length field in the command word.
@@ -128,12 +128,12 @@ class BSB_MMI:
 
         byte_length = abs(length) * (1 if type is int else np.dtype(type).itemsize) # total number of bytes to read
         # use preallocated destination buffer unless we need more bytes, in which case a new one is allocated
-        rx_buf = self.rx_buf[:byte_length] if byte_length <= len(self.rx_buf) else memoryview(bytearray(byte_length)) 
+        rx_buf = self.rx_buf[:byte_length] if byte_length <= len(self.rx_buf) else memoryview(bytearray(byte_length))
 
         if timeout:
             self.set_timeout(timeout)
 
-        # Determine the command opcode based on the page encoded in the upper bits of the address  
+        # Determine the command opcode based on the page encoded in the upper bits of the address
         opcode = self.READ_OPCODES[addr >> 19]
         if opcode is None:
             raise RuntimeError(f'Invalid opcode for address page {addr >> 19}')
@@ -184,10 +184,10 @@ class BSB_MMI:
         """ Returns a byte-like view of `data`
 
         - A bytestring, bytearray or memoryview is returned as is
-        - A numpy array or numpy integer is viewed as an array of bytes according to its intrinsic endianness. 
+        - A numpy array or numpy integer is viewed as an array of bytes according to its intrinsic endianness.
         - A list or tuple is converted in a bytestring (each element representing a byte value)
         - An integer is interpreted as the value of a single byte
-        - Any other type is passed to bytes() and returned  
+        - Any other type is passed to bytes() and returned
         """
         # print(f'to_bytes data = {data}')
         if isinstance(data, (bytes, bytearray, memoryview)):
@@ -226,7 +226,7 @@ class BSB_MMI:
         length = len(data_bytes) if mask is None else 2 * len(data_bytes)
 
         # use preallocated destination buffer unless we need more bytes, in which case a new one is allocated
-        tx_buf = self.tx_buf[:length + 3] if length <= len(self.tx_buf) else memoryview(bytearray(length + 3)) 
+        tx_buf = self.tx_buf[:length + 3] if length <= len(self.tx_buf) else memoryview(bytearray(length + 3))
 
         tx_buf[0] = (opcode << 5) | ((addr >> 16) & 0x07)  # Byte 0: opcode, length, MSB of address
         tx_buf[1] = (addr >> 8) & 0xFF  # Byte 1: address

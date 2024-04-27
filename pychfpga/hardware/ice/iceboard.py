@@ -313,7 +313,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):
 
         Returns:
 
-            str: the serial number of this board. The original serial number is returned if `update`=False.
+            str: the serial number of this board. The original serial number is returned if `update` =False.
         """
         self.logger.debug(f'{self!r}: discovering the serial number of board at {self.tuber_uri}')
         try:
@@ -347,7 +347,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):
         Returns:
 
             int: the board's slot number. The original slot number is returned
-                if `update`=False. A slot number of 0 means the board is not
+                if `update` =False. A slot number of 0 means the board is not
                 connected to a backplane.
         """
         actual_slot = await self.tuber_get_backplane_slot_async()
@@ -375,7 +375,8 @@ class IceBoard(Motherboard, TuberIceBoardBase):
 
         Returns:
 
-            dict in the format {mezz_number:mezz_class, ...} that lists the mezzanine class discovered for each mezzanine, whether or not `update`=True or not.
+            dict: dict in the format {mezz_number:mezz_class, ...} that lists the mezzanine class
+            discovered for each mezzanine, whether or not `update` =True or not.
          """
         mezz_class = {}  # {mezz_number:mezz_class, ...}
         for m in self.FMC_MEZZ_NUMBERS:
@@ -482,7 +483,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):
 
         Returns:
 
-            class of the discovered crate object, or None if none is present. The new class is returned whether or not `update`=True or not.
+            class of the discovered crate object, or None if none is present. The new class is returned whether or not `update` =True or not.
 
         """
 

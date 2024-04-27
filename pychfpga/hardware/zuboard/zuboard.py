@@ -32,9 +32,9 @@ class ZUBoard(Motherboard):
 
     This class provides:
         - Lightweight list-based Hardware map management and optional mDNS discovery
-        - Model & serial self discovery 
+        - Model & serial self discovery
         - Access to on-board I2C peripherals (EEPROM)
-        - Access to 
+        - Access to
         - Access to the memory-mapped registers in the FPGA's firmware using the TCP link.
 
     Parameters:
@@ -119,7 +119,7 @@ class ZUBoard(Motherboard):
         """
         # print(f'{self!r} Ping_async()')
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.logger.info(f'{self!r}: Pinging {self.hostname} at {self.socket.getsockname()}')
+        self.logger.info(f'{self!r}: Pinging {self.hostname} at {s.getsockname()}')
         s.settimeout(timeout)
         loop = asyncio.get_event_loop()
         try:
@@ -127,7 +127,7 @@ class ZUBoard(Motherboard):
             if_addr = s.getsockname()
             s.close()
         except (socket.timeout, Exception) as e:
-            self.log.warn('Could not establish a TCP connection with %s:%s. Error is:\n %s' % (addr[0], addr[1], e))
+            self.logger.warn(f'Could not establish a TCP connection with {self.hostname}:{self.port}. Error is: {e!r}\n ')
             return False
         return True
 
@@ -145,7 +145,7 @@ class ZUBoard(Motherboard):
         """
         Discover the serial number of this IceBoard from its IPMI data, and update the hardware map accordingly if `update=True`
         """
-        self.logger.debug(f'{self!r}: discovering the serial number of board at {self.tuber_uri}')
+        self.logger.debug(f'{self!r}: discovering the serial number of board at {self.hostname}')
         return "003"
 
     async def discover_slot_async(self, update=True):
@@ -306,7 +306,7 @@ class ZUBoard(Motherboard):
                 fru_file="",
             )
         )
-        # Convert IPMI structures into a byte stream to be written 
+        # Convert IPMI structures into a byte stream to be written
         ipmi_bytes = fru.encode()
         self.i2c1_eeprom_data.write(0, ipmi_bytes)
 
