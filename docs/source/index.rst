@@ -25,6 +25,7 @@
    howto/takeData
    howto
    quick_start
+   howto/pocket_correlator
 
 .. toctree::
    :maxdepth: 3

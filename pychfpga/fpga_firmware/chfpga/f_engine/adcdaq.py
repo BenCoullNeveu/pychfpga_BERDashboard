@@ -143,7 +143,7 @@ class ADCDAQ(MMI):
 
     def get_delays(self):
         """ Return the curent 8 tap delays, sample delay and clock delay"""
-        tap_delays =  list(self.read(self.get_addr('DELAY0'), length=8)) # Reads the delay in registers
+        tap_delays =  list(self.read(self.get_addr('DELAY0'), length=8, type=np.uint8)) # Reads the delay in registers
         sample_delay =  self.SAMPLE_DELAY # Reads the sample delays
         clock_delay =  self.CLK_DELAY # Reads the sample delays
 
@@ -164,7 +164,7 @@ class ADCDAQ(MMI):
 
     def get_actual_delay(self):
         """ Reads the 8 actual delay tap values (returned by the IODELAY themselves, not the last delay set point) and return them as an array"""
-        return self.read(self.get_addr('DELAY0_STATUS'), length=8) # Reads the delay in registers
+        return self.read(self.get_addr('DELAY0_STATUS'), length=8, type=np.uint8) # Reads the delay in registers
 
     def set_divclk_phase(self, phase):
         """

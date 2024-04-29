@@ -28,6 +28,8 @@ class PROBER(MMI):
     RESET = BitField(CONTROL, 0, 7, doc="Resets the module (including the FIFO)")
     FIFO_RESET = BitField(CONTROL, 0, 6, doc="When '1', resets the data FIFO")
     SOURCE_SEL = BitField(CONTROL, 0, 5, doc="0 = source selector output (timestream), 1 = scaler output (spectrum)")
+    PROBER_USER_FLAGS = BitField(CONTROL, 0, 2,
+                                 doc="If True, returns user flags in last 4 bits captured from scaler")
     BURST_LENGTH = BitField(CONTROL, 0, 0, width=2, doc="Sets the number of consecutive frames capture and transmit")
 
 

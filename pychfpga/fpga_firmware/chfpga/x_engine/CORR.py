@@ -52,7 +52,6 @@ class CORR_core(MMI):
     NO_ACCUM           = BitField(CONTROL, 0x00, 5, doc="Disables accumulation - only the last result is saved")
     USER_ID            = BitField(CONTROL, 0x00, 0, width=4, doc="USER ID used in the correlator packet header")
     INTEGRATION_PERIOD = BitField(CONTROL, 0x04, 0, width=32, doc="Duration of te integration period minus one")
-    BINS_PER_FRAME_OLD = BitField(CONTROL, 0x05, 0, width=7, doc="Number of frequency bins per frame minus one")
     BINS_PER_FRAME     = BitField(CONTROL, 0x06, 0, width=9, doc="Number of frequency bins per frame minus one")
 
     # Status registers
@@ -155,11 +154,7 @@ class CORR(object):
             corr.SOFT_RESET = 1  # make sure we stop sending readouts in progres
             corr.INTEGRATION_PERIOD = integration_period - 1
             corr.AUTOCORR_ONLY = autocorr_only
-            if self.fpga.PLATFORM_ID == self.fpga._PLATFORM_ID_ZCU111:
-                corr.BINS_PER_FRAME = bins_per_frame - 1
-            else:
-                self.logger.error(f'{self!r}: Using the old CORR.BINS_PER_FRAME register. Remove this line when the firmware is updated')
-                corr.BINS_PER_FRAME_OLD = bins_per_frame - 1
+            corr.BINS_PER_FRAME = bins_per_frame - 1
             corr.SOFT_RESET = i not in correlators
         self.fpga.set_corr_reset(0)
 
