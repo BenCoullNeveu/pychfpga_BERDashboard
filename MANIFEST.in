@@ -1,2 +1,0 @@
-include pychfpga/fpga_firmware/bitstreams/*.bit
-include pychfpga/adc_delay_tables/*.yaml
