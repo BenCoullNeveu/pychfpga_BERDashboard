@@ -3896,6 +3896,13 @@ class FPGAArray(object):
         and whose FPGA has been programmed and initialized. Other boards are
         ignored.
 
+        Parameters:
+
+            tx_power (int):
+
+            print_ (bool):
+
+
         For now, this test works only if all boards are in a single crate.
         """
         # select only boards on crates and that are open

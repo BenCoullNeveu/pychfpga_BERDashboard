@@ -83,11 +83,12 @@
     qc = [
         # Private packages
         "wtl.pytest-xreport @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.pytest-xreport.git@jfc/dev",
-        "labpy @ git+ssh://git@bitbucket.org/winterlandcosmology/labpy.git@1.0.2",
+        "labpy @ git+ssh://git@bitbucket.org/winterlandcosmology/labpy.git@1.1.0",
 
         # Pypi packages
         "numpy",
         "matplotlib",
+        "py", # no longer a dependency brought in by pytest, but we need it
 
         # test-specific packages
         "pyserial", # (tested with 0.0.97 on Ubuntu) for memtest

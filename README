@@ -12,7 +12,7 @@ The ``pychfpga`` package is a Python framework for operating arrays of FPGA boar
 - Xilinx KC705: (FPGA: Kintex 7).  Off-the-shelf evaluation board. Needs one or two McGill MGADC08 8-channel ADC boards.
 - Xilinx ZU111 (FPGA: Ultrascale+ RfSoC). Off-the-shelf evaluation board. Needs ADC breakout board.
 - McGill IceBoard: (FPGA Xilinx Kintex 7). Custom board designed by McGill University to build for large synchronized arrays. Needs one or two McGill MGADC08 8-channel ADC boards.
-- t0 CRS (Ultrascale+ RfSoC). Also a custom board designed by ``t0 technology`` to build large synchronized arrays.
+- t0 CRS (Ultrascale+ RfSoC). Also a custom board designed by ``t0 technology`` (https://www.t0.technology) to build large synchronized arrays.
 
 ``pychfpga`` uploads the chfpga firmware to the FPGA and initializes all of its subsystems, including:
 
@@ -24,22 +24,38 @@ The ``pychfpga`` package is a Python framework for operating arrays of FPGA boar
 
 `pychfpga` is currently used to operate telescopes such as CHIME, CHORD, HIRAX, various outriggers of the previous telescopes, and a number of small portable interferometer-based experiments.
 
-.. p self-contained correlator up to thousand element interferometers tha tinterfaces with . , corner-turn and optional firmware-basd X-engine that is used for a number of big and small interferometer radio telescopes, including the Canadian Hydrogen Intensity Mapping Experiment (CHIME).
 
 Features
 ========
 
-- Manages a hardware map that describes all the boards, crates and mezzanine boards in an array.
-- FPGA boards can be specified explicitely by IP address, or can be automatically be found on the local network using mDNS based on the board or crate serial numbers.
-- The array manager can perform operations on mutiple boards at the same time using asynchronous coroutine to maximize performance.
-- Provides method to perform array-wide data acquisition synchronizaiton based on GPS-provided timestamps
-- Supports multiple operational modes (correlator, baseband streaming etc.)
-- Supports multiple hardware platforms
-- Selects the proper FPGA firmware for the desired operational mode and platform, and uploads the firmware to the FPGAs at initialization
-- Supports both interactive or automated operations:
+- Multi-platform: Supports multiple hardware platforms
 
-  	- Interactive: The :class:`fpga_array` object can be created in ipython or Jupyter notebooks to allow on-the-fly system configuration, data acqusition and processing
-	- Automated: The :class:`fpga_master` module automatically identifies and initializes the array based on a YAML configuration file, and provides a Web server that:
+- Hardware map manager: Keeps track of all the boards, crates and mezzanine boards in an arra and
+  how they connect together.
+
+- Auto-discovery: FPGA boards can be added to the hardware map explicitely by specifying their IP
+  address, or can be automatically found on local network using mDNS based on the board or crate
+  serial numbers. The boards can query the hardware to find the model and serial number of the
+  motherboard, crate and mezzanines..
+
+- Concurrent operation: The array manager can perform operations on mutiple boards at the same time
+  using asynchronous coroutine to maximize performance.
+
+- Array-wide synchronization: Provides method to perform array-wide data acquisition synchronizaiton
+  based on GPS-provided timestamps
+
+- Multiple operational modes: The FPGA can be configured in various ways (correlator, baseband streaming etc.).
+  The proper FPGA firmware for the desired operational mode and platform is automatically selected,
+  uploaded to the FPGA, and initialized.
+
+``pychfpga`` can be used both in interactive or automated modes:
+
+- Interactive mode : In interactive mode, the user instantiates the :class:`fpga_array.FPGAArray`
+  with parameters that indicates the hardware map, operational mode etc. The user can then use the
+  resulting object to  interact with the array or individual boards, and perform on-the-ply data
+  acquisition and processing. This is typically used in ``ipython`` or a Jupyter Notebook.
+
+- Automated mode: in automated mode, the :class:`fpga_master` module automatically identifies and initializes the array based on a YAML configuration file, and provides a Web server that:
 
 		# continuously publish system metrics (temperatures, voltages, data overflows etc) that can be scraped by data logging software like Prometheus
 		# Provide a REST command interface that allows a client to start or stop operation of the array and perform a number of on-the-fly data gathering and operational changes.

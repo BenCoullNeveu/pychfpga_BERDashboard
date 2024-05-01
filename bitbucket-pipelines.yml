@@ -9,29 +9,30 @@ clone:
 image: python:3.8
 
 pipelines:
-  default:
-    - step:
-        caches:
-          - pip
-        script: # Modify the commands below to build your repository.
-          - DOC_REPO='winterlandcosmology.bitbucket.io'
-          - DOC_REPO_URL='git@bitbucket.org:winterlandcosmology/'$DOC_REPO'.git'
-          - DOC_SPHINX_ROOT_FOLDER='docs'
-          - DOC_BUILD_FOLDER='build'
-          - DOC_PUBLISH_FOLDER='pychfpga/'$BITBUCKET_BRANCH
-          - pip install -e .[docs]
-          - cd $DOC_SPHINX_ROOT_FOLDER
-          - echo 'Building for '$BITBUCKET_REPO_SLUG/$BITBUCKET_BRANCH
-          - make html
-          - cd $DOC_BUILD_FOLDER
-          - git clone $DOC_REPO_URL
-          - rm -rf $DOC_REPO/$DOC_PUBLISH_FOLDER/*
-          - mkdir -p $DOC_REPO/$DOC_PUBLISH_FOLDER
-          - cp -r html/* $DOC_REPO/$DOC_PUBLISH_FOLDER/
-          - cd $DOC_REPO
-          - git config --global user.email "bb-pipelines@jfcliche.com"
-          - git config --global user.name "BitBucket Pipelines ($BITBUCKET_REPO_SLUG/$BITBUCKET_BRANCH)"
-          - git add --all $DOC_PUBLISH_FOLDER
-          - git diff-index --quiet HEAD -- || git commit -a -m "bitbucket-pipelines updated $BITBUCKET_BRANCH branch into $DOC_PUBLISH_FOLDER sphinx-generated documentation"
-          - git push
+  branches:
+    '{master,develop,jfc/dev}':
+      - step:
+          caches:
+            - pip
+          script: # Modify the commands below to build your repository.
+            - DOC_REPO='winterlandcosmology.bitbucket.io'
+            - DOC_REPO_URL='git@bitbucket.org:winterlandcosmology/'$DOC_REPO'.git'
+            - DOC_SPHINX_ROOT_FOLDER='docs'
+            - DOC_BUILD_FOLDER='build'
+            - DOC_PUBLISH_FOLDER='pychfpga/'$BITBUCKET_BRANCH
+            - pip install -e .[docs]
+            - cd $DOC_SPHINX_ROOT_FOLDER
+            - echo 'Building for '$BITBUCKET_REPO_SLUG/$BITBUCKET_BRANCH
+            - make html
+            - cd $DOC_BUILD_FOLDER
+            - git clone $DOC_REPO_URL
+            - rm -rf $DOC_REPO/$DOC_PUBLISH_FOLDER/*
+            - mkdir -p $DOC_REPO/$DOC_PUBLISH_FOLDER
+            - cp -r html/* $DOC_REPO/$DOC_PUBLISH_FOLDER/
+            - cd $DOC_REPO
+            - git config --global user.email "bb-pipelines@jfcliche.com"
+            - git config --global user.name "BitBucket Pipelines ($BITBUCKET_REPO_SLUG/$BITBUCKET_BRANCH)"
+            - git add --all $DOC_PUBLISH_FOLDER
+            - git diff-index --quiet HEAD -- || git commit -a -m "bitbucket-pipelines updated $BITBUCKET_BRANCH branch into $DOC_PUBLISH_FOLDER sphinx-generated documentation"
+            - git push
 
