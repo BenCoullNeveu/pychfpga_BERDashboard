@@ -52,8 +52,6 @@ class TestUtils:
         """
         instr_params = self.cfg.instruments[name].copy()
         class_name = instr_params.pop('labpy_object')
-        print(f"Params {instr_params}")
-        
         return labpy.open_instrument(class_name, **instr_params)
 
     def open_ps(self, name='ps18v', voltage=None, current=None):
@@ -112,25 +110,9 @@ class TestMGK7MBBench(TestUtils):
 
         """
         xr.header('Inspection test')
+        
 
-        questions = ["Is the FPGA heatsink attached? With pushpins holding it firmly in place [Y/N]? ",
-                     "Is the FPGA heatsink model correct? Pins cut near stiffener [Y/N]? ",
-                     "Is the board Stiffener installed, and the board is reasonably flat[Y/N]? ",
-                     "Are the PLL heatsinks attached [Y/N]? ",
-                     "Does the ARM shield fence look straight [Y/N]? ",
-                     "Are the dipswitches set correctly [Y/N]? ",
-                     "Are the jumpers placed correctly [Y/N]? ",
-                     "Are the 90pin Molex impact backplane connectors screwed down [Y/N]? ",
-                     "Are the QSFP and SFP connectors soldered in place [Y/N]? ",
-                     "Do all buck converter sensors have the additional hand soldered capacitor [Y/N]? ",
-                     #   ---
-                     #   Not strictly necessary since GTX test tests these connections:
-                     #             "Please inspect the GTX backplane connector pins on the back of the board (you will need the microscope). " \
-                     #                 "Are they all perfect? i.e none of them bent or unusual [Y/N]? ",
-                     #   ---
-                     "Do all the FMC power switches look well soldered [Y/N]?",
-                     "Is the patch wire in place and secured [Y/N]?"]
-
+        questions = self.cfg.motherboard_tests.inspection.questions
         answers = []
 
         for i in range(0, len(questions)):
@@ -660,6 +642,8 @@ class TestMGK7MBNetwork(TestUtils):
 
         # Useful shortcuts
         cfg = self.cfg.motherboard_tests.sensors
+        
+
         test_results = NameSpace()
         passed = False
 
@@ -675,35 +659,23 @@ class TestMGK7MBNetwork(TestUtils):
             power, current, voltage, temp = {}, {}, {}, {}
 
             totalPower = ib.get_motherboard_power()
+            
+            
+            """
+            Was previously:
+
             power['VCC3V3']     = ib.get_motherboard_power('MOTHERBOARD_RAIL_VCC3V3')
-            power['VCC12V0']    = ib.get_motherboard_power('MOTHERBOARD_RAIL_VCC12V0')
-            power['VCC5V5']     = ib.get_motherboard_power('MOTHERBOARD_RAIL_VCC5V5')
-            power['VCC1V0_GTX'] = ib.get_motherboard_power('MOTHERBOARD_RAIL_VCC1V0_GTX')
-            power['VCC1V0']     = ib.get_motherboard_power('MOTHERBOARD_RAIL_VCC1V0')
-            power['VCC1V2']     = ib.get_motherboard_power('MOTHERBOARD_RAIL_VCC1V2')
-            power['VCC1V5']     = ib.get_motherboard_power('MOTHERBOARD_RAIL_VCC1V5')
-            power['VCC1V8']     = ib.get_motherboard_power('MOTHERBOARD_RAIL_VCC1V8')
-            power['VADJ']       = ib.get_motherboard_power('MOTHERBOARD_RAIL_VADJ')
-
             current['VCC3V3']       = ib.get_motherboard_current('MOTHERBOARD_RAIL_VCC3V3')
-            current['VCC12V0']      = ib.get_motherboard_current('MOTHERBOARD_RAIL_VCC12V0')
-            current['VCC5V5']       = ib.get_motherboard_current('MOTHERBOARD_RAIL_VCC5V5')
-            current['VCC1V0_GTX']   = ib.get_motherboard_current('MOTHERBOARD_RAIL_VCC1V0_GTX')
-            current['VCC1V0']       = ib.get_motherboard_current('MOTHERBOARD_RAIL_VCC1V0')
-            current['VCC1V2']       = ib.get_motherboard_current('MOTHERBOARD_RAIL_VCC1V2')
-            current['VCC1V5']       = ib.get_motherboard_current('MOTHERBOARD_RAIL_VCC1V5')
-            current['VCC1V8']       = ib.get_motherboard_current('MOTHERBOARD_RAIL_VCC1V8')
-            current['VADJ']         = ib.get_motherboard_current('MOTHERBOARD_RAIL_VADJ')
-
             voltage['VCC3V3']       = ib.get_motherboard_voltage('MOTHERBOARD_RAIL_VCC3V3')
-            voltage['VCC12V0']      = ib.get_motherboard_voltage('MOTHERBOARD_RAIL_VCC12V0')
-            voltage['VCC5V5']       = ib.get_motherboard_voltage('MOTHERBOARD_RAIL_VCC5V5')
-            voltage['VCC1V0_GTX']   = ib.get_motherboard_voltage('MOTHERBOARD_RAIL_VCC1V0_GTX')
-            voltage['VCC1V0']       = ib.get_motherboard_voltage('MOTHERBOARD_RAIL_VCC1V0')
-            voltage['VCC1V2']       = ib.get_motherboard_voltage('MOTHERBOARD_RAIL_VCC1V2')
-            voltage['VCC1V5']       = ib.get_motherboard_voltage('MOTHERBOARD_RAIL_VCC1V5')
-            voltage['VCC1V8']       = ib.get_motherboard_voltage('MOTHERBOARD_RAIL_VCC1V8')
-            voltage['VADJ']         = ib.get_motherboard_voltage('MOTHERBOARD_RAIL_VADJ')
+
+            For each element in the sensor list. Info moved to test_config.yaml 
+
+            """
+            for name, board_name  in cfg.sensor_names
+                power[name]   = ib.get_motherboard_power[board_name]
+                current[name] = ib.get_motherboard_current[board_name]
+                voltage[name] = ib.get_motherboard_voltage[board_name]
+
 
             temp['POWER']   = ib.get_motherboard_temperature('MOTHERBOARD_TEMPERATURE_POWER')   # between the two 1.0V bucks
             temp['FPGA']    = ib.get_motherboard_temperature('MOTHERBOARD_TEMPERATURE_FPGA')    # near USER SMA
@@ -917,7 +889,7 @@ class TestMGK7MBNetwork(TestUtils):
         cmd = "ls /sys/bus/i2c/devices/"
         results = self.run_arm_system_command(ib.hostname, cmd)
 
-
+        """
         matrix_names = {"pca9548-1-70":"1-0070",
                         "pca9548-2-71":"2-0071"}
 
@@ -973,7 +945,9 @@ class TestMGK7MBNetwork(TestUtils):
                            "BP_Temp2": "19-004e",
                            "Backplane EEPROM": "19-0054"}
 
-        motherboard_names = dict(**matrix_names, **bus_names, **power_names, **temp_names, **io_names, **eeprom_names)
+        motherboard_names = dict(**matrix_names, **bus_names, **power_names, **temp_names, **io_names, **eeprom_names)"""
+        
+        motherboard_names = cfg.motherboard_names
 
         print("\nParsing the list looking for specific devices")
 

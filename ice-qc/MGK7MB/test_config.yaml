@@ -88,6 +88,28 @@ motherboard_tests:
          ps_voltage: 18  # Volts. Voltage to set on the Iceboard power supply 
          ps_current: 5   # Amps. Maximum current limit to set on the Iceboard power sypplt 
 
+    inspection:
+
+        #Questions for visual inspection of the board
+        questions:
+            - Is the FPGA heatsink attached? With pushpins holding it firmly in place [Y/N]? 
+            - Is the FPGA heatsink model correct? Pins cut near stiffener [Y/N]? 
+            - Is the board Stiffener installed, and the board is reasonably flat[Y/N]? 
+            - Are the PLL heatsinks attached [Y/N]? 
+            - Does the ARM shield fence look straight [Y/N]? 
+            - Are the dipswitches set correctly [Y/N]? 
+            - Are the jumpers placed correctly [Y/N]? 
+            - Are the 90pin Molex impact backplane connectors screwed down [Y/N]? 
+            - Are the QSFP and SFP connectors soldered in place [Y/N]? 
+            - Do all buck converter sensors have the additional hand soldered capacitor [Y/N]? 
+            #   ---
+            #   Not strictly necessary since GTX test tests these connections:
+            #             "Please inspect the GTX backplane connector pins on the back of the board (you will need the microscope). " \
+            #                 "Are they all perfect? i.e none of them bent or unusual [Y/N]? ",
+            #   ---
+            - Do all the FMC power switches look well soldered [Y/N]?
+            - Is the patch wire in place and secured [Y/N]?
+
     impedance:
         max_impedance: 1.0e+10  # any measurement more than this is probably not taken correctly
         test_points:
@@ -152,6 +174,17 @@ motherboard_tests:
 
     sensors:
 
+        sensor_names:
+            - {name: 'VCC3V3',     board_name: 'MOTHERBOARD_RAIL_VCC3V3'}
+            - {name: 'VCC12V0',    board_name: 'MOTHERBOARD_RAIL_VCC12V0'}
+            - {name: 'VCC5V5',     board_name: 'MOTHERBOARD_RAIL_VCC5V5'}
+            - {name: 'VCC1V0_GTX', board_name: 'MOTHERBOARD_RAIL_VCC1V0_GTX'}
+            - {name: 'VCC1V0',     board_name: 'MOTHERBOARD_RAIL_VCC1V0'}
+            - {name: 'VCC1V2',     board_name: 'MOTHERBOARD_RAIL_VCC1V2'}
+            - {name: 'VCC1V5',     board_name: 'MOTHERBOARD_RAIL_VCC1V5'}
+            - {name: 'VCC1V8',     board_name: 'MOTHERBOARD_RAIL_VCC1V8'}
+            - {name: 'VADJ',       board_name: 'MOTHERBOARD_RAIL_VADJ'}
+
         current:
             VCC3V3:     {nom: 2.00,  pmargin: 0.30,  amargin: 0}     # 30%
             VCC12V0:    {nom: 0.00,  pmargin: 0.0,  amargin: 0.1}   # +-100mA (2021-04-11 JFC Change to +-100mA like in the comment)
@@ -199,6 +232,71 @@ motherboard_tests:
         rev: 4  # Board revision number to program into the IPMI EEPROM
 
     i2c_test:
+
+        motherboard_names:
+
+            matrix_names:
+                pca9548-1-70: '1-0070'
+                pca9548-2-71: '2-0071'
+
+            bus_names:
+                I2C-1:              'i2c-1'
+                I2C-2:              'i2c-2'
+                I2C0_PCA954X_FMCA:  'i2c-5'
+                I2C0_PCA954X_FMCB:  'i2c-6'
+                I2C0_PCA954X_QSFPA: 'i2c-7'
+                I2C0_PCA954X_QSFPB: 'i2c-8'
+                I2C0_PCA954X_SFP:   'i2c-9'
+                I2C0_PCA954X_SMPS:  'i2c-10'
+                I2C0_PCA954X_BP:    'i2c-11'
+                I2C0_PCA954X_GPIO:  'i2c-12'
+                I2C1_PCA954X_FMCA:  'i2c-13'
+                I2C1_PCA954X_FMCB:  'i2c-14'
+                I2C1_PCA954X_QSFPA: 'i2c-15'
+                I2C1_PCA954X_QSFPB: 'i2c-16'
+                I2C1_PCA954X_SFP:   'i2c-17'
+                I2C1_PCA954X_SMPS:  'i2c-18'
+                I2C1_PCA954X_BP:    'i2c-19'
+                I2C1_PCA954X_GPIO:  'i2c-20'
+
+            power_names:  
+                VCC12V0:            '10-0047'
+                VCC5V5:             '10-0048'
+                VCC3V3:             '10-0049'
+                VADJ:               '10-0043'
+                VCC1V8:             '10-004b'
+                VCC1V5:             '10-004c'
+                VCC1V2:             '10-004d'
+                VCC1V0:             '10-004e'
+                VCC1V0_GTX:         '10-004f'
+                FMC_A_VCC3V3:       '10-0040'
+                FMC_A_VCC12V0:      '10-0041'
+                FMC_A_VADJ:         '10-0042'
+                FMC_B_VCC3V3:       '10-0044'
+                FMC_B_VCC12V0:      '10-0045'
+                FMC_B_VADJ:         '10-0046'
+
+            temp_names:
+                POWER:              '12-0048'
+                ARM:                '12-004a'
+                FPGA:               '12-004b'
+                PHY:                '12-004c'
+
+            io_names:
+                pca9575_u41:        '12-0020'
+                pca9575_u42:        '12-0021'
+                pca9575_u48:        '12-0022'
+                pca9575_u59:        '12-0023'
+
+            eeprom_names: 
+                Motherboard EEPROM: '12-0057'
+
+            backplane_names:
+                BP_VCC3V3:          '19-0040'
+                BP_Temp1:           '19-004d'
+                BP_Temp2:           '19-004e'
+                Backplane EEPROM:   '19-0054'
+
 
     clock_test:
 
