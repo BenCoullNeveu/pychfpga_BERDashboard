@@ -18,6 +18,7 @@ fpga_bit_file: '../../pychfpga/fpga_bitstreams/chFPGA_MGK7MB_Rev2.bit'
 #For changing prologix address, use ./nfcli --list to find devices
 instruments:
     dmm:       {labpy_object: 'agilent_dmm', adapter: "TCPIP::IDN::*34410*"} # Agilent 34410A multimeter
+#   TODO: Add SPD1168X DC programmable power supply to components list
 #   ps18v:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '11.11.11.73', gpib_addr: 5}  # Agilent N5764A power supply
 
 

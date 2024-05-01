@@ -20,18 +20,22 @@ import matplotlib.pyplot as plt
 # External private packages
 
 from wtl.namespace import NameSpace
-from wtl.pytest_xreport import xr
+from wtl.pytest_xreport import xr, TestMenu
 import labpy
 import pychfpga
-from pychfpga import ipmi_fru, fpga_array, run_async, async_to_sync
-from pychfpga import FpgaBitstream
+
+from pychfpga import fpga_array 
+from pychfpga.common import run_async, async_to_sync
+from pychfpga.hardware.interfaces import ipmi_fru
+
+from pychfpga.fpga_firmware import FPGABitstream
 
 # local packages
 from memtest_rs232 import MemTestRS232
 import cdce620005_pll_QC as cdce620005 
 
 
-TEST_CONFIG_FILE = './MGK7MB/mgk7mb_test_config.yaml'
+TEST_CONFIG_FILE = './test_config.yaml'
 
 def in_range(value, target, pmargin=0.05, amargin=0):
     if( (value < target * ( 1 - pmargin) - amargin) or
@@ -48,6 +52,8 @@ class TestUtils:
         """
         instr_params = self.cfg.instruments[name].copy()
         class_name = instr_params.pop('labpy_object')
+        print(f"Params {instr_params}")
+        
         return labpy.open_instrument(class_name, **instr_params)
 
     def open_ps(self, name='ps18v', voltage=None, current=None):
