@@ -54,28 +54,45 @@ class TestUtils:
         class_name = instr_params.pop('labpy_object')
         return labpy.open_instrument(class_name, **instr_params)
 
-    def open_ps(self, name='ps18v', voltage=None, current=None):
+    def open_ps(self, name='ps16v', voltage=None, current=None):
         """ Opens a power supply and configures it
 
         The `voltage` and `current` to be programmed can be specified. If `None`, the global values from
         the config file in ``motherboard_tests.global_settings`` will be
         used.
         """
-        # open power supply instrument if it is in the list of instruments and if we don't force manual operation
-        if 'ps18v' in self.cfg.instruments and not self.cfg.get('manual_ps', False):
-            self.ps18v = self.open_instruments(name) 
+        
+        # open power supply instrument if it is in the list of instruments and if we don't force manual operation /self.cfg.get('manual_ps', False)/
+        if True and name in self.cfg.instruments:
+            print("Tried to connect")
+            self.ps = self.open_instrument(name)
         else:
-            self.ps18v = None
+            self.ps = None
+
 
         # initialize power supply if we have one
-        if self.ps18v:
+        if name == 'ps18v' and self.ps:
             voltage = voltage if voltage is not None else self.cfg.motherboard_tests.global_settings.ps_voltage
             current = current if current is not None else self.cfg.motherboard_tests.global_settings.ps_current
-            self.ps18v.set_output(state=False) #Ensuring power on N5764A is off
-            self.ps18v.clear() #Clearing any previous protection
-            self.ps18v.set_voltage(voltage=voltage) #Setting voltage to 18V, power still off
-            self.ps18v.set_current_limit(current=current, ocp=True) #Setting current limit and turning on ocp feature
-        return self.ps18v
+            self.ps.set_output(state=False) #Ensuring power on N5764A is off
+            self.ps.clear() #Clearing any previous protection
+            self.ps.set_voltage(voltage=voltage) #Setting voltage to 18V, power still off
+            self.ps.set_current_limit(current=current, ocp=True) #Setting current limit and turning on ocp feature
+
+
+        if name == 'ps16v' and self.ps:
+            voltage = voltage if voltage is not None else self.cfg.motherboard_tests.global_settings.ps_voltage
+            current = current if current is not None else self.cfg.motherboard_tests.global_settings.ps_current
+            self.ps.set_output(state=False)
+            #self.ps.set_current_limit(current=current)
+
+
+        return self.ps
+        
+
+       
+
+
 
 class TestMGK7MBBench(TestUtils):
     """
@@ -89,14 +106,14 @@ class TestMGK7MBBench(TestUtils):
         xr.header('Setting-up')
         self.cfg = xr.config  # get the test config NameSpace
         # pre-define instrument variable. We'll load them only as needed by the tests.
-        self.ps18v = None
+        self.ps = None
         self.dmm = None
 
         yield  # pass control to the test and return
 
         # turn off power supply
-        if self.ps18v:
-            self.ps18v.set_output(state=False) #Ensuring power on N5764A is off
+        if self.ps:
+            self.ps.set_output(state=False) #Ensuring power on N5764A is off
 
     def test_insp(self, xr):
         """
@@ -229,8 +246,14 @@ class TestMGK7MBBench(TestUtils):
         xr.header('Powerup test')
 
         cfg = self.cfg.motherboard_tests.powerup
-        self.ps18v = self.open_ps()
-        manual_ps = not self.ps18v
+
+        cfg.power_sup
+
+        self.ps = self.open_ps()
+        print(self.ps)
+
+        self.ps.status()
+        manual_ps = not self.ps
 
         print('\n-------------------------------')
         print('Connect the power cable to the one slot backplane.')
@@ -255,10 +278,11 @@ class TestMGK7MBBench(TestUtils):
             while (xr.input_yes_no("Are you ready to apply power to the board? [Y/N]", additional_answers=[]) != True):
     	        pass;
 
-            self.ps18v.set_output(state=True)
-            self.ps18v.pollstatus(polltime=0.1, runtime=1)
-            status = self.ps18v.status()
-            self.ps18v.set_output(state=False) #Ensuring power on N5764A is off
+            self.ps.set_output(state=True)
+            self.ps.pollstatus(polltime=0.1, runtime=1)
+            
+            status = self.ps.status()
+            self.ps.set_output(state=False) #Ensuring power on N5764A is off
             if (status['status']=='OK'):
                 if (status['current'] < cfg.imax) and  ( status['current'] > cfg.imin):
                     passed = True
@@ -280,7 +304,7 @@ class TestMGK7MBBench(TestUtils):
         else:
             while (xr.input_yes_no("Are you ready to apply power to the board again? [Y/N]", additional_answers=[]) != True):
                 pass;
-            self.ps18v.set_output(state=True)
+            self.ps.set_output(state=True)
 
         response = xr.input_yes_no("Are all 9 of the power LEDs turned on? Y/N]", additional_answers=[])
         if manual_ps:
@@ -321,8 +345,8 @@ class TestMGK7MBBench(TestUtils):
         xr.header('PLL test')
 
         cfg = self.cfg.motherboard_tests.pll
-        self.ps18v = self.open_ps()
-        manual_ps = not self.ps18v
+        self.ps = self.open_ps()
+        manual_ps = not self.ps
 
         print('\n-------------------------------')
         print("Please ensure that NO flash card is in the board (if the ARM boots, it will interfere with the SPI signals to the PLLs).")
@@ -332,7 +356,7 @@ class TestMGK7MBBench(TestUtils):
             xr.input('Turn power supply ON and press ENTER')
         else:
             xr.input("Press [ENTER] when ready to apply power to the board")
-            self.ps18v.set_output(state=True)
+            self.ps.set_output(state=True)
 
         try:
             pll1 = cdce620005.CDCE620005(cfg.ftdi_url, port=0) # instantiate PLL1
@@ -398,8 +422,8 @@ class TestMGK7MBBench(TestUtils):
             xr.input('Turn power supply OFF and back ON and press ENTER')
         else:
             print("Rebooting the board")
-            self.ps18v.set_output(state=False)  # Ensuring power on N5764A is off
-            self.ps18v.set_output(state=True)  # Turning power back on
+            self.ps.set_output(state=False)  # Ensuring power on N5764A is off
+            self.ps.set_output(state=True)  # Turning power back on
 
         response = xr.input_yes_no("Are both PLL lock lights turned on? (yellow and green next to 6 pin RS232 header) [Y/N]", additional_answers=[])
         if response == True:
@@ -412,7 +436,7 @@ class TestMGK7MBBench(TestUtils):
             xr.input('Turn power supply OFF and press ENTER. You can then disconnect the PLL dongle: it is no longer needed for this board')
 
         assert passed
-        #self.instr.ps18v.set_output(state=False) #Ensuring power on N5764A is off
+        #self.instr.ps.set_output(state=False) #Ensuring power on N5764A is off
         #Estimate 10 seconds
 
     def test_mem(self, xr):
@@ -428,8 +452,8 @@ class TestMGK7MBBench(TestUtils):
 
         """
         cfg = self.cfg.motherboard_tests.mem_test
-        self.ps18v = self.open_ps()
-        manual_ps = not self.ps18v
+        self.ps = self.open_ps()
+        manual_ps = not self.ps
 
         xr.header('Mem test')
 
@@ -454,7 +478,7 @@ class TestMGK7MBBench(TestUtils):
             xr.input('press ENTER and *then* turn power supply ON')
         else:
             xr.input("Press [ENTER] when ready to turn power ON")
-            self.ps18v.set_output(state=True)
+            self.ps.set_output(state=True)
 
         ser.interupt_boot()
         testpassed = ser.start_memtest(iterations=5)
@@ -495,14 +519,14 @@ class TestMGK7MBNetwork(TestUtils):
         self.params = xr.params  # xr.params is a mutable objects, so self.params points to the same object 
         assert self.params.model, 'Need a model number' 
         assert self.params.serial, 'Need a serial number to either find an existing board a program a new one'
-        self.ps18v = None
+        self.ps = None
 
         yield
 
         xr.header('Tearing down')
         # make sure the power suply is of if it was used in the test
-        if self.ps18v:
-            self.ps18v.set_output(state=False)
+        if self.ps:
+            self.ps.set_output(state=False)
 
     def connect_to_board(self, questions = True, power_up = True, power_down=False, program = False, without_serial=False):
         """
@@ -515,8 +539,8 @@ class TestMGK7MBNetwork(TestUtils):
             without_serial (bool): if True, boards without serial numbers and advertised as 'iceboard.local' will be returned if we can't find one with the target serial number.
 
         """
-        self.ps18v = self.open_ps()
-        manual_ps = not self.ps18v
+        self.ps = self.open_ps()
+        manual_ps = not self.ps
         if questions:
             print('\n-------------------------------')
             print("Please ensure that a flash card is plugged into the board")
@@ -532,18 +556,26 @@ class TestMGK7MBNetwork(TestUtils):
                     self.xr.input('Please turn power ON and press ENTER')
         else:
             if power_down:
-                self.ps18v.set_power(state=False)
+                self.ps.set_output(state=False)
                 time.sleep(3)
             if power_up:
                 self.xr.input("Press [ENTER] when ready to power the board")
-                self.ps18v.set_power(state=True)
+                self.ps.set_output(state=True)
+
+        time.sleep(20)
 
         # If we expect to program a blank new board, first quickly check if a board with the specified  serial number exists over mDNS, then look for a generic 'iceboard.local' board.
         # Since we just powered up the board, it might take some time to find it, so we continuously check for both programmed and unprogrammed boards.  
         for count in range(30):
             # Try to find an Iceboard already configured with the target serial 
             print(f'Trial {count+1}/30: looking for iceboard{self.params.serial}.local')
-            ip = pychfpga.mdns_resolve(f'iceboard{self.params.serial}.local', timeout=2)
+
+            #THIS HAD TO BE MODIFIED TO FIT THE NEW VERSION
+            #ip = pychfpga.mdns_resolve(f'iceboard{self.params.serial}.local', timeout=2)
+
+            ip = pychfpga.mdns_discovery.mdns_resolve(f'iceboard{self.params.serial}.local', timeout=2)
+            
+
             if ip:
                 ca = fpga_array.FPGAArray(ip, ping=1)
                 if ca.ib:
@@ -555,7 +587,7 @@ class TestMGK7MBNetwork(TestUtils):
             # no, so if requested, try to find an unprogrammed iceboard
             if without_serial:
                 print(f'Trial {count+1}/30: looking for iceboard.local')
-                ip = pychfpga.mdns_resolve('iceboard.local', timeout=2)
+                ip = pychfpga.mds_discovery.mdns_resolve('iceboard.local', timeout=2)
                 if ip:
                     ca = fpga_array.FPGAArray(ip, ping=1)
                     if ca.ib:
@@ -671,7 +703,7 @@ class TestMGK7MBNetwork(TestUtils):
             For each element in the sensor list. Info moved to test_config.yaml 
 
             """
-            for name, board_name  in cfg.sensor_names
+            for name, board_name  in cfg.sensor_names:
                 power[name]   = ib.get_motherboard_power[board_name]
                 current[name] = ib.get_motherboard_current[board_name]
                 voltage[name] = ib.get_motherboard_voltage[board_name]
@@ -780,7 +812,7 @@ class TestMGK7MBNetwork(TestUtils):
             passed = True
 
         finally:
-            #self.instr.ps18v.set_output(state=False) # Turn power off
+            #self.instr.ps.set_output(state=False) # Turn power off
             self.params.test_locals = locals()
             test_results.passed = passed
             xr.save_data(test_results)
@@ -857,7 +889,7 @@ class TestMGK7MBNetwork(TestUtils):
             print("\nThe motherboard reports the following serial: %s which isn't correct" %ib.get_motherboard_serial())
             passed = False
             assert False, "Serial programmed incorrectly"
-        #self.instr.ps18v.set_output(state=False) # Turn power off
+        #self.instr.ps.set_output(state=False) # Turn power off
 
     def test_i2c(self, xr):
         """
@@ -989,7 +1021,7 @@ class TestMGK7MBNetwork(TestUtils):
         print("Please power OFF the board, move the clock source jumper to the CRYSTAL position")
         (ib, ibs) = self.connect_to_board(questions=False)
         clock_source = ib.get_clock_source()
-        #self.instr.ps18v.set_output(state=False) # Turn power off
+        #self.instr.ps.set_output(state=False) # Turn power off
 
         if (clock_source == ib.CLOCK_SOURCE.XTAL):
             print("Clock source is Crystal")
@@ -1003,7 +1035,7 @@ class TestMGK7MBNetwork(TestUtils):
 
         (ib, ibs) = self.connect_to_board(questions = False)
         clock_source = ib.get_clock_source()
-        #self.instr.ps18v.set_output(state=False) # Turn power off
+        #self.instr.ps.set_output(state=False) # Turn power off
 
         if (clock_source == ib.CLOCK_SOURCE.SMA):
             passed = True
@@ -1018,7 +1050,7 @@ class TestMGK7MBNetwork(TestUtils):
 
         (ib, ibs) = self.connect_to_board(questions = False)
         clock_source = ib.get_clock_source()
-        #self.instr.ps18v.set_output(state=False) # Turn power off
+        #self.instr.ps.set_output(state=False) # Turn power off
 
         if (clock_source == ib.CLOCK_SOURCE.BP):
             passed = True
@@ -1127,7 +1159,7 @@ class TestMGK7MBNetwork(TestUtils):
         print('\nTime Readout:')
         ib.set_irigb_source('bp_time')
         print(run_async(ib.get_irigb_time_async()))
-        #self.instr.ps18v.set_output(state=False) # Turn power off
+        #self.instr.ps.set_output(state=False) # Turn power off
 
         passed = True
 
