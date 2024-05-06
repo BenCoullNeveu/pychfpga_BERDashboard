@@ -119,15 +119,6 @@ class RawFrameReceiver(object):
 
     System Requirements:
 
-    The transmit rate must be fast enough to accommodate the desired bandwidth
-    by setting ib.GPIO.HOST_FRAME_READ_RATE = rate. rate=16 limits to about
-    260 Mbps but is slow enough to allow python to process the data with a
-    small standard UDP buffer. ``rate`` =15 is good for about 500 Mbps, and
-    ``rate`` =16 is good for the full Gigabit bandwidth. The later two require
-    bigger UDP buffers. See below::
-
-        ib.GPIO.HOST_FRAME_READ_RATE = 14
-
     The Ethernet interface must be set to receive Jumbo frames::
 
         sudo ifconfig eno1 mtu 9000
