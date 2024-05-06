@@ -63,7 +63,7 @@ from .ct_engine import cge
 from .ct_engine import ucap
 
 # FPGA Correlator (X-Engine)
-from .x_engine import CORR  # 16-channel correlator (if implemented in firmware)
+from .x_engine import CORR, UCORR  # 16-channel correlator (if implemented in firmware)
 
 
 # Default ADC delays
