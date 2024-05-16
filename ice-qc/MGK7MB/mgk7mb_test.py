@@ -528,7 +528,7 @@ class TestMGK7MBNetwork(TestUtils):
         if self.ps:
             self.ps.set_output(state=False)
 
-    def connect_to_board(self, questions = True, power_up = True, power_down=False, program = False, without_serial=False):
+    def connect_to_board(self, questions = True, power_up = True, power_down=False, program = False, open_fpga=False, without_serial=False):
         """
 
         Parameters: 
@@ -539,7 +539,7 @@ class TestMGK7MBNetwork(TestUtils):
             without_serial (bool): if True, boards without serial numbers and advertised as 'iceboard.local' will be returned if we can't find one with the target serial number.
 
         """
-        self.ps = self.open_ps()
+        #self.ps = self.open_ps()
         manual_ps = not self.ps
         if questions:
             print('\n-------------------------------')
@@ -562,7 +562,8 @@ class TestMGK7MBNetwork(TestUtils):
                 self.xr.input("Press [ENTER] when ready to power the board")
                 self.ps.set_output(state=True)
 
-        time.sleep(20)
+        
+        #print(fpga_array.IceBoard._class_registry)
 
         # If we expect to program a blank new board, first quickly check if a board with the specified  serial number exists over mDNS, then look for a generic 'iceboard.local' board.
         # Since we just powered up the board, it might take some time to find it, so we continuously check for both programmed and unprogrammed boards.  
@@ -574,10 +575,10 @@ class TestMGK7MBNetwork(TestUtils):
             #ip = pychfpga.mdns_resolve(f'iceboard{self.params.serial}.local', timeout=2)
 
             ip = pychfpga.mdns_discovery.mdns_resolve(f'iceboard{self.params.serial}.local', timeout=2)
+           
             
-
             if ip:
-                ca = fpga_array.FPGAArray(ip, ping=1)
+                ca = fpga_array.FPGAArray(f'MGK7MB {ip}', ping=1)
                 if ca.ib:
                     break
             # hwm = f'{self.params.model} {self.params.serial}'
@@ -589,7 +590,7 @@ class TestMGK7MBNetwork(TestUtils):
                 print(f'Trial {count+1}/30: looking for iceboard.local')
                 ip = pychfpga.mds_discovery.mdns_resolve('iceboard.local', timeout=2)
                 if ip:
-                    ca = fpga_array.FPGAArray(ip, ping=1)
+                    ca = fpga_array.FPGAArray(f'MGK7MB {ip}', ping=1)
                     if ca.ib:
                         break
         else:  # if we reach the end of the loop without break
@@ -597,17 +598,22 @@ class TestMGK7MBNetwork(TestUtils):
 
         assert len(ca.ib) == 1, "More than one iceboard with no serial number was found"
         ib = ca.ib[0]
+
         if ib.serial:
             assert ib.serial == self.params.serial, 'Serial number mismatch' # Should not happen
             print(f"Found an iceboard with the correct serial number on the network")
         else:
             print("Found an iceboard with the no serial number programmed on the network")
 
+        print(ib)
+
         # Monkey-patch the iceboar dobject to add async functions used in our tests 
         ib.set_fpga_bitstream = async_to_sync(ib.set_fpga_bitstream_async)
         # Add synchronous versions of the async tuber commands for convenience
         ib.is_fpga_programmed = async_to_sync(ib.tuber_is_fpga_programmed_async)
+        
         ib.get_clock_source = async_to_sync(ib.tuber_get_clock_source_async)
+        
         ib.is_mezzanine_present = async_to_sync(ib.tuber_is_mezzanine_present_async)
         ib.get_motherboard_power = async_to_sync(ib.tuber_get_motherboard_power_async)
         ib.get_motherboard_current = async_to_sync(ib.tuber_get_motherboard_current_async)
@@ -623,28 +629,58 @@ class TestMGK7MBNetwork(TestUtils):
         ib._motherboard_eeprom_write_base64 = async_to_sync(ib._tuber_motherboard_eeprom_write_base64_async)
         ib._get_motherboard_ipmi = async_to_sync(ib._tuber_get_motherboard_ipmi_async)
         ib.get_motherboard_serial = async_to_sync(ib.tuber_get_motherboard_serial_async)
-        ib.fpga_mmi_read = async_to_sync(ib.fpga_spi_mmi_read_async) # not same name
-        ib.get_fpga_firmware_timestamp_sync = async_to_sync(ib.get_fpga_firmware_timestamp) # different naming
-        ib.open_sync = async_to_sync(ib.open)
-        ib.set_irigb_source = async_to_sync(ib.set_irigb_source_async)
-        ib.is_qsfp_present = async_to_sync(ib.tuber_is_qsfp_present_async)
-        ib.set_qsfp_gpio = async_to_sync(ib.tuber_set_qsfp_gpio_async)
+        
+        
+        #needed
+
+        ib.fpga_mmi_read = async_to_sync(ib.fpga_core_reg_spi_read_async) 
+        #ib.open_sync = async_to_sync(ib.open_async)
+
+        #ib.get_fpga_firmware_timestamp_sync = async_to_sync(ib.get_fpga_firmware_timestamp) # different naming
+        #ib.set_irigb_source = async_to_sync(ib.set_irigb_source_async)
+        #ib.is_qsfp_present = async_to_sync(ib.tuber_is_qsfp_present_async)
+        #ib.set_qsfp_gpio = async_to_sync(ib.tuber_set_qsfp_gpio_async)
+
         ib._qsfp_eeprom_read_base64 = async_to_sync(ib._tuber_qsfp_eeprom_read_base64_async)
 
         if program:
             self.prog_fpga(ib)
+
+        
+        if open_fpga:
+            self.open_fpga(ib)
 
 
         return (ib, ca)
 
     def prog_fpga(self, ib):
         print("Programming FPGA. This takes about 20 seconds...")
-        current_path = os.path.dirname(__file__)
-        bitfile = os.path.join(current_path, self.cfg.fpga_bit_file)
-        bitstream = FpgaBitstream(bitfile)
-        # ib.register_fpga_bitstream(bit)
-        ib.set_fpga_bitstream(bitstream)
+
+
+
+        ib.set_fpga_bitstream(firmware_mode = self.cfg.fpga_firmware_mode, force=True)
         assert ib.is_fpga_programmed(), 'FPGA has not programmed'
+
+    def open_fpga(self, ib):
+        #Currying function to include ip address lambda function
+        ip_fn = lambda a, b, c, d: (a, b, 3, d)
+        run_async(ib.open_fpga_async(verbose=1, fpga_ip_addr_fn = ip_fn)) 
+        print(f"FPGA: {ib.fpga}")
+
+    def get_qfsp_info(self, port, ib):
+        """
+        Given an iceboard and a port number, returns the manufacturer and serial number of the qfst connector
+        """
+
+        port = int(port) - 1
+
+        ib.qsfp[port].reset()
+        info = ib.qsfp[port].get_info()
+        mfg = info['VendName']
+        serial = info['VenSN']
+
+        return (mfg, serial)
+
 
     def run_arm_system_command(self, hostname, cmd):
         ssh_cmd = f'ssh -o "StrictHostKeyChecking no" root@{hostname} "{cmd}"'
@@ -703,10 +739,11 @@ class TestMGK7MBNetwork(TestUtils):
             For each element in the sensor list. Info moved to test_config.yaml 
 
             """
-            for name, board_name  in cfg.sensor_names:
-                power[name]   = ib.get_motherboard_power[board_name]
-                current[name] = ib.get_motherboard_current[board_name]
-                voltage[name] = ib.get_motherboard_voltage[board_name]
+           
+            for sensor  in cfg.sensor_names:
+                power[sensor['name']]   = ib.get_motherboard_power(sensor['board_name'])
+                current[sensor['name']] = ib.get_motherboard_current(sensor['board_name'])
+                voltage[sensor['name']] = ib.get_motherboard_voltage(sensor['board_name'])
 
 
             temp['POWER']   = ib.get_motherboard_temperature('MOTHERBOARD_TEMPERATURE_POWER')   # between the two 1.0V bucks
@@ -921,7 +958,6 @@ class TestMGK7MBNetwork(TestUtils):
         cmd = "ls /sys/bus/i2c/devices/"
         results = self.run_arm_system_command(ib.hostname, cmd)
 
-        """
         matrix_names = {"pca9548-1-70":"1-0070",
                         "pca9548-2-71":"2-0071"}
 
@@ -977,21 +1013,27 @@ class TestMGK7MBNetwork(TestUtils):
                            "BP_Temp2": "19-004e",
                            "Backplane EEPROM": "19-0054"}
 
-        motherboard_names = dict(**matrix_names, **bus_names, **power_names, **temp_names, **io_names, **eeprom_names)"""
+        motherboard_names = dict(**matrix_names, **bus_names, **power_names, **temp_names, **io_names, **eeprom_names)
         
-        motherboard_names = cfg.motherboard_names
+       # motherboard_names = cfg.motherboard_names
 
         print("\nParsing the list looking for specific devices")
+
+
+        
 
         passed = True
         def check_names(names):
             nonlocal passed
-            for name, addr in names.items():
+
+            for name in names:
+                addr = names[name]
                 if addr + '\n' not in results:
                     print(f"   {name}:{addr}: Missing I2C device")
                     passed = False
                 else:
                     print(f"   {name}:{addr}: OK")
+
 
         check_names(motherboard_names)
         if check_bp:
@@ -1092,6 +1134,7 @@ class TestMGK7MBNetwork(TestUtils):
 
         (ib, ibs) = self.connect_to_board(questions=self.cfg.ready_check)
 
+        
         print('Before programming the FPGA die temperature is: %.3f C' % ib.get_motherboard_temperature(ib.TEMPERATURE_SENSOR.MB_FPGA_DIE))
         pre_prog_power = ib.get_motherboard_power(ib.RAIL.MB_VCC3V3) + ib.get_motherboard_power(ib.RAIL.MB_VCC12V0) + ib.get_motherboard_power(ib.RAIL.MB_VCC5V5)
         print('Before programming the boards power consumption is: %.3f W' % pre_prog_power)
@@ -1121,6 +1164,7 @@ class TestMGK7MBNetwork(TestUtils):
             print("Check that all the hand soldered buck caps are in place")
             assert False, "One or more of the buck rails reports that its voltage is out of the permitted 5% tollerance margin"
 
+        #possible name change 
         cookie = hex(ib.fpga_mmi_read(ib.FPGA_CORE_FIRMWARE_COOKIE_ADDR))
         print("\nThe FPGA memory map cookie (address 0) is: %s" % cookie)
 
@@ -1137,27 +1181,35 @@ class TestMGK7MBNetwork(TestUtils):
         print('After programming the boards power consumption is: %.3f W' % after_prog_power)
 
         try:
-            ib.open_sync()
-            ib.is_core_open()
+            self.open_fpga(ib)
+            #ib._is_core_open
             print("\nDirect FPGA communications established through SFP unit.")
         except:
             print("\nCannot communicate directly with the FPGA through the SFP unit.")
             print("Remove the SFP unit, clean the contacts and re-run the test.")
             print("If that does not work its likely that the FPGA bit file is the incorrect version - use latest on jfcdev")
             assert False, "\nError establishing UDP communications with the FPGA"
+        
 
-        print("\nThe firmware operating is version: %s" %ib.get_fpga_firmware_timestamp_sync())
+        #print("\nThe firmware operating is version: %s" %ib.get_fpga_firmware_timestamp_sync())
+
+        #I think this function doesn't exist anymore, ask about new version
+        #print("\nThe firmware operating is version: %s" %async_to_sync(ib.get_fpga_firmware_timestamp()))
 
         print("\nAttempting to read the motherboard eeprom directly from the FPGA - this tests connectivity to I2C matrix")
-        partnum = ib.hw.read_motherboard_eeprom(40,6)
+
+        #I think the message length might have change since this threw an error
+        partnum = ib.read_motherboard_eeprom(40,6)
         print(f"The part number detected in the eeprom is: {partnum}")
-        if partnum != b'MGK7MB':
-            assert False, "Error reading the motherboard EEPROM through the FPGA I2C interface"
+
+        assert partnum == b'MGK7MB', "Error reading the motherboard EEPROM through the FPGA I2C interface"
 
         print('Testing IRIG-B')
         ib.set_user_output_source('irigb_gen','sma_a')
         print('\nTime Readout:')
-        ib.set_irigb_source('bp_time')
+        #ib.set_irigb_source('bp_time')
+        async_to_sync(ib.set_irigb_source_async('bp_time'))
+
         print(run_async(ib.get_irigb_time_async()))
         #self.instr.ps.set_output(state=False) # Turn power off
 
@@ -1411,18 +1463,47 @@ class TestMGK7MBNetwork(TestUtils):
 
         print('\n-------------------------------')
         print("Please ensure QSFP cable is plugged into the motherboard in both ports, and sufficient cooling for FPGA")
-        (ib, _) = self.connect_to_board(questions=self.cfg.ready_check)
+        (ib, _) = self.connect_to_board(questions=self.cfg.ready_check, program=True, open_fpga=True)
 
         # self.prog_fpga(ib)
         # ib.open_sync()
 
         xr.header('Test-Results')
+
+        metrics = run_async(ib.get_metrics_async())
+
+        
+        entries = metrics.metrics['fpga_motherboard_qsfp_present']['entries']
+        assert len(entries) == 2, "Not all connectors were detected!"
+
+        for entries in entries:
+
+            qsfp = dict(entries)
+            port = qsfp['qsfp']
+            slot = qsfp['slot']
+            print(f"Motherboard QSFP module present on port {port}")
+            print(f"Resetting Module {port}")
+
+            try:
+                (manufacturer, serial) = self.get_qfsp_info(port, ib)
+                print(f"QSFP cable {port} manufactured by {manufacturer}. Serial number: {serial}")
+                assert manufacturer in cfg.manufacturer, f"Cannot find string '{manufacturer}' in expected values. I2C read error?"
+
+            finally:
+                self.params.test_locals = locals()
+
+
+
+            """
+        
         qsfp_info = []
         try:
             qsfp_present = [0, 0]
 
             for i in [1, 2]:
-                if ib.is_qsfp_present(i):
+                #if ib.is_qsfp_present(i):
+                #function doesn't exist
+                if async_to_sync(ib.is_qsfp_present_async(i)):
                     print("Motherboard QSFP module present on port %d" %i)
                     qsfp_present[i-1] = 1
                 else:
@@ -1430,7 +1511,8 @@ class TestMGK7MBNetwork(TestUtils):
                 assert qsfp_present[i-1], "Not all connectors were detected!"
 
                 print("Resetting Module " + repr(i))
-                ib.set_qsfp_gpio(ib.QSFP_GPIO.ResetL, i, False)
+                #ib.set_qsfp_gpio(ib.QSFP_GPIO.ResetL, i, False)
+                async_to_sync(ib.set_qsfp_gpio_async(ib.QSFP_GPIO.ResetL, i, False))
                 time.sleep(1)
                 ib.set_qsfp_gpio(ib.QSFP_GPIO.ResetL, i, True)
                 ib.set_qsfp_gpio(ib.QSFP_GPIO.ModSelL, i, False)
@@ -1439,7 +1521,7 @@ class TestMGK7MBNetwork(TestUtils):
                 qsfp_info.append(mfg)
                 qsfp_info.append(serial)
                 print(f"QSFP cable {i} manufactured by {mfg}. Serial number: {serial}")
-                assert re.search(cfg.manufacturer, mfg), f"Cannot find string '{cfg.manufacturer}' in the manufacturer data. I2C read error?" 
+                assert re.search(cfg.manufacturer, mfg), f"Cannot find string '{cfg.manufacturer}' in the manufacturer data. I2C read error?" """
 
             # if  and re.search(cfg.manufacturer,qsfp_info[2]) and\
             #    re.search(cfg.serial,qsfp_info[1]) and re.search(cfg.serial,qsfp_info[3]) :
@@ -1448,8 +1530,7 @@ class TestMGK7MBNetwork(TestUtils):
             # else:
             #     passed = False
             #     assert False,"Cable did not read correctly or is not specified correctly in the test config"
-        finally:
-            self.params.test_locals = locals()
+        
 
     def test_gtx(self, xr):
         """
