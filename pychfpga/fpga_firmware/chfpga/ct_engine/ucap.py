@@ -136,7 +136,7 @@ class RawFrameReceiver(object):
 
     Monitor UDP buffer::
 
-        watch -cd -n .5 "grep :A6  /proc/net/udp"
+        watch -cd -n .5 "cat /proc/net/udp"
     """
 
     def __init__(self, socket, buffer_length=256):
