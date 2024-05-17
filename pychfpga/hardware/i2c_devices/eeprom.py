@@ -48,7 +48,7 @@ class eeprom(object):
             max_read_length=4, # max number of bytes to read at a time
             max_write_length=3, # max number of bytes to write at a time
             write_cycle_time=0.005, # write cycle
-            verbose=1):
+            verbose=0):
         """
         """
         self.i2c = i2c_handler

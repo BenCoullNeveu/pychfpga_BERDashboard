@@ -165,9 +165,9 @@ class BSB_MMI:
         elif type is bytes:
             return bytes(rx_buf)
         elif type is bytearray:
-            return rx_buf
+            return bytearray(rx_buf) # make sure we make a copy of the array
         else:
-            dout = np.frombuffer(rx_buf, dtype=np.dtype(type))
+            dout = np.frombuffer(rx_buf, dtype=np.dtype(type)).copy()  # make a copy so we don't just return a pointer to the buffer, which changes on every call
             return dout
             # # If we requested a single value (length=1), returns the object,
             # # otherwise return a numpy array of objects

@@ -1432,7 +1432,7 @@ class FPGAArray(object):
                 ib = Motherboard.get_unique_instance(new_class=mb_classes[class_name], **params)
                 # self.logger.debug('%r: Crate %r is in %r' % (self, crate_number, params))
 
-    def process_str_hwm(self, hwm):
+    def process_str_hwm(self, hwm, allow_generic_motherboard=False):
         """
         Create the hardware map objects that are specified in a string-based hardware map `hwm`
 
@@ -1491,8 +1491,10 @@ class FPGAArray(object):
                 # print(f'Adding Motherboard {hostname}, {slot}, {crate_number}')
                 if current_class:
                     ib = current_class.get_unique_instance(hostname=hostname, slot=slot, crate_number=crate_number)
-                else:
+                elif allow_generic_motherboard:
                     ib = Motherboard.get_unique_instance(hostname=hostname, slot=slot, crate_number=crate_number)
+                else:
+                    raise RuntimeError('Must specify model number before an IP address')
                 current_class = None
             elif el[0].isdigit():  # if a serial (is only digits)
                 if not current_class:
@@ -3895,6 +3897,13 @@ class FPGAArray(object):
         The test is performed only on IceBoards that are installed in crates
         and whose FPGA has been programmed and initialized. Other boards are
         ignored.
+
+        Parameters:
+
+            tx_power (int):
+
+            print_ (bool):
+
 
         For now, this test works only if all boards are in a single crate.
         """

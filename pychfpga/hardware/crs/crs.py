@@ -24,6 +24,7 @@ from pychfpga.hardware.interfaces import TCPipe, TCPipe_I2C, TCPipe_SPI, ipmi_fr
 from pychfpga.fpga_firmware import FPGAFirmware
 
 from ..i2c_devices.pca9575 import pca9575 # I2C 16-bit IO Expander
+from ..i2c_devices.pca6524 import pca6524 # I2C 24-bit IO Expander
 from ..i2c_devices.pca9546a import pca9546a  # I2C switch
 from ..i2c_devices.pca8574 import PCA8574
 from ..i2c_devices.tmp421 import tmp421  # Temperature sensor
@@ -231,6 +232,11 @@ class CRS(Motherboard):
         # Switch port 0: QSFP
         self.i2c1_qsfp = qsfp(self.iic, bus_name=(i2c1_switch1, 0), gpio_prefix='QSFP_', gpio=self.i2c1_gpios, address=0x50)
         # Switch port 1-6: SFPs
+
+        self.i2c0_bp_eeprom_data = eeprom(self.iic, address=0x50, bus_name=0, address_width=7, max_read_length=255, max_write_length=8, write_page_size=8)
+        self.i2c0_bp_eeprom_serial = eeprom(self.iic, address=0x58, bus_name=0, address_width=8, max_read_length=255)
+        self.i2c0_bp_tmp421 = tmp421(self.iic, address=0x4E, port=0)
+        self.i2c0_bp_gpio = pca6524(self.iic, address=0x22, port=0) #
 
         # list of sensors
         self.i2c1_ina231_list = {

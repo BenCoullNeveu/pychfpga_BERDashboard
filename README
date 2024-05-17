@@ -1,33 +1,61 @@
 .. Use UTF-8 encoding
 
+.. Online documentation can be found at: https://winterlandcosmology.bitbucket.io/pychfpga
 
 Introduction
 ============
 
 The ``pychfpga`` package is a Python framework for operating arrays of FPGA boards used in implementing radiotelescope arrays or various sizes, from a single-board desktop correlator up to arrays of hundreds of crate-mounted boards forming a multi-thousand element interferometers.
 
-`pychfpga` operates on a number of boards featuring Xilinx/AMD FPGAs, and that operate the `chFPGA` FPGA firmware, including off-the-shelf evaluation platforms such as KC705 (Kintex 7), ZU111 (Ultrascale+ RfSoC), and custom boards that are friendlier to large arrays such as the IceBoard (Kintex 7) and CRS (Ultrascale+ RfSoC).
+`pychfpga` can operate platforms that run the chfpga firmware (https://winterlandcosmology.bitbucket.io/chfpga/). Currently supported platforms are:
 
-The `chFPGA` FPGA firmware implements ADC data acquisition, F-Engine (channelizer), Corner-turn engine, an optional on-board X-Engine (N^2 4-bit correlator) or 40- or 100 Gbps Ethernet real-time data offload to an external X-Engine farm.
+- Xilinx KC705: (FPGA: Kintex 7).  Off-the-shelf evaluation board. Needs one or two McGill MGADC08 8-channel ADC boards.
+- Xilinx ZU111 (FPGA: Ultrascale+ RfSoC). Off-the-shelf evaluation board. Needs ADC breakout board.
+- McGill IceBoard: (FPGA Xilinx Kintex 7). Custom board designed by McGill University to build for large synchronized arrays. Needs one or two McGill MGADC08 8-channel ADC boards.
+- t0 CRS (Ultrascale+ RfSoC). Also a custom board designed by ``t0 technology`` (https://www.t0.technology) to build large synchronized arrays.
+
+``pychfpga`` uploads the chfpga firmware to the FPGA and initializes all of its subsystems, including:
+
+- ADC data acquisition (including calibration)
+- F-Engine (channelizer) including a function generator, PFB/FFT, Scaler and raw data capture
+- Corner-turn engine for trasposing data between 1 board, 1 crate (16 boards) or 2 crates (32 boards)
+- Optional on-board X-Engine (N^2 correlator): (4 + 4j) bit data width
+- Optional 40- or 100 Gbps Ethernet real-time data offload to an external X-Engine farm.
 
 `pychfpga` is currently used to operate telescopes such as CHIME, CHORD, HIRAX, various outriggers of the previous telescopes, and a number of small portable interferometer-based experiments.
 
-.. p self-contained correlator up to thousand element interferometers tha tinterfaces with . , corner-turn and optional firmware-basd X-engine that is used for a number of big and small interferometer radio telescopes, including the Canadian Hydrogen Intensity Mapping Experiment (CHIME).
 
 Features
 ========
 
-- Manages a hardware map that describes all the boards, crates and mezzanine boards in an array.
-- FPGA boards can be specified explicitely by IP address, or can be automatically be found on the local network using mDNS based on the board or crate serial numbers.
-- The array manager can perform operations on mutiple boards at the same time using asynchronous coroutine to maximize performance.
-- Provides method to perform array-wide data acquisition synchronizaiton based on GPS-provided timestamps
-- Supports multiple operational modes (corner-turn, correlator, or direct data streaming)
-- Supports multiple hardware platforms
-- Selects the proper FPGA firmware for the desired operational mode and platform, and uploads the firmware to the FPGAs at initialization
-- Supports both interactive or automated operations:
+- Multi-platform: Supports multiple hardware platforms
 
-  	- Interactive: The :class:`fpga_array` object can be created in ipython or Jupyter notebooks to allow on-the-fly system configuration, data acqusition and processing
-	- Automated: The :class:`fpma_master` module automatically identifies and initializes the array based on a YAML configuration file, and provides a Web server that:
+- Hardware map manager: Keeps track of all the boards, crates and mezzanine boards in an arra and
+  how they connect together.
+
+- Auto-discovery: FPGA boards can be added to the hardware map explicitely by specifying their IP
+  address, or can be automatically found on local network using mDNS based on the board or crate
+  serial numbers. The boards can query the hardware to find the model and serial number of the
+  motherboard, crate and mezzanines..
+
+- Concurrent operation: The array manager can perform operations on mutiple boards at the same time
+  using asynchronous coroutine to maximize performance.
+
+- Array-wide synchronization: Provides method to perform array-wide data acquisition synchronizaiton
+  based on GPS-provided timestamps
+
+- Multiple operational modes: The FPGA can be configured in various ways (correlator, baseband streaming etc.).
+  The proper FPGA firmware for the desired operational mode and platform is automatically selected,
+  uploaded to the FPGA, and initialized.
+
+``pychfpga`` can be used both in interactive or automated modes:
+
+- Interactive mode : In interactive mode, the user instantiates the :class:`fpga_array.FPGAArray`
+  with parameters that indicates the hardware map, operational mode etc. The user can then use the
+  resulting object to  interact with the array or individual boards, and perform on-the-ply data
+  acquisition and processing. This is typically used in ``ipython`` or a Jupyter Notebook.
+
+- Automated mode: in automated mode, the :class:`fpga_master` module automatically identifies and initializes the array based on a YAML configuration file, and provides a Web server that:
 
 		# continuously publish system metrics (temperatures, voltages, data overflows etc) that can be scraped by data logging software like Prometheus
 		# Provide a REST command interface that allows a client to start or stop operation of the array and perform a number of on-the-fly data gathering and operational changes.
@@ -136,11 +164,11 @@ Create a clean python environment and install the `pychfpga` package all its dep
 	$ source my_env/bin/activate  # activate the new environment
 	$ pip install -e ./pychfpga  # install in-place
 
-If you plan manual interactive sessions (which is useful for debugging first installations), install ipython:
+If you plan manual interactive sessions (which is useful for debugging first installations), install ipython::
 
 	$ pip install ipython
 
-If you want to operate the Quality Control (QC) test scripts, you can ask for the additional dependencies to be installed with:
+If you want to operate the Quality Control (QC) test scripts, you can ask for the additional dependencies to be installed with::
 
 	$ pip install -e ./pychfpga[qc]  # install in-place with the QC dependencies
 
@@ -157,7 +185,7 @@ Manual operation (using :mod:`fpga_array`)
 
 `fpga_array` creates an object that represents any number of ICEBoards and ICECrates and allows their initialization. Once started, it returns control to you. (See `fpga_master` for a full stand-alone automated server).
 
-Manual operations are done through ipython. First start ipython in the proper folder and python environment:
+Manual operations are done through ipython. First start ipython in the proper folder and python environment::
 
 	source my_env/bin/activate  # activate the python environment
 	cd pychfpga
@@ -165,12 +193,12 @@ Manual operations are done through ipython. First start ipython in the proper fo
 
 Power-up the boards. We are now ready to initialize your board(s). Here are a few specific examples depending on your setup (from a single board to a full 128-board array)
 
-Assuming you have a single IceBoard with IP address 1.2.3.4 and want to use an external correlator that will process the data from the two QSFP+ links (mode `shuffle16`):
+Assuming you have a single IceBoard with IP address 1.2.3.4 and want to use an external correlator that will process the data from the two QSFP+ links (mode `shuffle16`)::
 
 
 	run -i fpga_array 1.2.3.4 --prog --open --sync_method local_soft_trigger --mode shuffle16
 
-If you have avahi/bonjour server (a MDNS server) running on your computer, you can specify the board through its model and serial number, and the MDNS protocol will resolve the IP address of the board. In the following example, we start the IceBoard MGK7MB serial 0123 with the stand-alone firmware correlator (mode `corr16`) that will stream integrated data over the 1G Ethernet SFP+ link:
+If you have avahi/bonjour server (a MDNS server) running on your computer, you can specify the board through its model and serial number, and the MDNS protocol will resolve the IP address of the board. In the following example, we start the IceBoard MGK7MB serial 0123 with the stand-alone firmware correlator (mode `corr16`) that will stream integrated data over the 1G Ethernet SFP+ link::
 
 	run -i fpga_array mb 123 --prog --open --sync_method local_soft_trigger --mode corr16
 

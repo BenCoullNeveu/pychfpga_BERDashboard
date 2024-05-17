@@ -100,7 +100,7 @@ async def mdns_discover(
                 None or an empty list: no iceboard are added on a crate
                 membership basis.
 
-        timeout (float): Maximum amount of time (in seconds) to wait for mDNS replies. 
+        timeout (float): Maximum amount of time (in seconds) to wait for mDNS replies.
 
         inter_reply_timeout (int or float): If non-zero, mDNS search will stop
             when the delay since the last reply  exceeds inter_reply_timeout
@@ -108,7 +108,7 @@ async def mdns_discover(
             replies to come in a burst after some long delay. The search will
             still stop after `timeout` even if the burst has started. This feature is disabled if `inter_reply_timeout` is `None`.
 
-        case_sensitive (bool): If true, motherboard and crate model names matching will be case sensitive. 
+        case_sensitive (bool): If true, motherboard and crate model names matching will be case sensitive.
 
     """
     logger = logging.getLogger(__name__)
@@ -195,7 +195,8 @@ async def mdns_discover(
                     ib_cls = Motherboard.get_class_by_ipmi_part_number(ib_part_number if case_sensitive else ib_part_number.upper())
 
                     if not ib_cls:
-                        raise RuntimeError(f'mdns discover: cannot find a class for motherboard with part number {ib_part_number}. Make sure the class is registered.')
+                        known_part_numbers = ','.join(cc for c in Motherboard._class_registry.values() if c._ipmi_part_numbers for cc in c._ipmi_part_numbers)
+                        raise RuntimeError(f'mdns discover: cannot find a class for motherboard with part number {ib_part_number}. Registered part numbers are {known_part_numbers}.')
                     ib_obj = ib_cls.get_unique_instance(serial=ib_serial, hostname=addr)
                     # print(f'ib obj {ib_obj} has hostnme {ib_obj.hostname}')
                     for tib in expected_ibs:

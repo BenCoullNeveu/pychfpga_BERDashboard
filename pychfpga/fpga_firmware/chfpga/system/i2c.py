@@ -66,7 +66,7 @@ class I2C(MMI):
         self.current_port = port_number
         # self.logger.debug("Setting FPGA I2C port to %i" % port_number)
 
-    def write_read(self, addr=0, data=[0], read_length=0, verbose=1, noerror=False, retry=1):
+    def write_read(self, addr=0, data=[0], read_length=0, verbose=0, noerror=False, retry=1):
         """ Perform a write and/or read operation on the I2C bus using the FPGA's I2C engine.
 
         Parameters:
@@ -156,12 +156,19 @@ class I2C(MMI):
                 self.logger.warn('%r: write_read: Transaction is not completed yet!' % self)
 
             # Get the data that was read back
-            read_data = self.read_status(0x00, length=4, type=np.uint8)
+            read_data = self.read_status(0x00, length=4, type=np.uint8).copy()
+            if verbose:
+                print(f'I2C: read_data 1 is {read_data}')
 
             # Check the ACK flags
             ack = self.ACK_STATUS
+
+            if verbose:
+                print(f'I2C: read_data 1.1 is {read_data}')
+
             if ack == expected_ack:
                 break
+            print(f'I2C: trying again')
             trial += 1
             if trial > retry:
                 error_msg += '%r: write_read: communication error: did not receive correct ACK bits. ' \
@@ -182,6 +189,11 @@ class I2C(MMI):
                                         self.COLLISION,
                                         self.TIMEOUT))
 
+            if verbose:
+                print(f'I2C: read_data 2 is  {read_data}')
+        if verbose:
+            print(f'I2C: read_data 3 is  {read_data}')
+
         # Che
         if self.START_CTR != start_ctr:
             error_msg += '%r: write_read: communication error: start_ctr do not match. ' \
@@ -193,6 +205,8 @@ class I2C(MMI):
         # print 'I2C communication: ACK byte is 0x%02x' % ack
         read_data = read_data[-read_length:]
         # data.dtype=np.dtype(type)
+        if verbose:
+            print(f'I2C: read_data 4 is {read_data}')
         if error_msg:
             error_msg = (
                 '%r: write_read:  The following errors occured while '
@@ -207,7 +221,8 @@ class I2C(MMI):
             else:
                 self.logger.error(error_msg)
                 raise IOError(error_msg)
-        # print(f'write_read ={read_data}')
+        if verbose:
+            print(f'write_read 5 ={read_data}')
 
         return read_data
 
