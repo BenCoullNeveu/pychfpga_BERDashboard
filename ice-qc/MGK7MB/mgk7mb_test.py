@@ -676,8 +676,8 @@ class TestMGK7MBNetwork(TestUtils):
 
         ib.qsfp[port].reset()
         info = ib.qsfp[port].get_info()
-        mfg = info['VendName']
-        serial = info['VenSN']
+        mfg = info['VendName'].decode('ascii').rstrip() #data is right paded with withespaces
+        serial = info['VenSN'].decode('ascii').rstrip()
 
         return (mfg, serial)
 
@@ -1208,7 +1208,7 @@ class TestMGK7MBNetwork(TestUtils):
         ib.set_user_output_source('irigb_gen','sma_a')
         print('\nTime Readout:')
         #ib.set_irigb_source('bp_time')
-        async_to_sync(ib.set_irigb_source_async('bp_time'))
+        run_async(ib.set_irigb_source_async('bp_time'))
 
         print(run_async(ib.get_irigb_time_async()))
         #self.instr.ps.set_output(state=False) # Turn power off
@@ -1487,7 +1487,7 @@ class TestMGK7MBNetwork(TestUtils):
             try:
                 (manufacturer, serial) = self.get_qfsp_info(port, ib)
                 print(f"QSFP cable {port} manufactured by {manufacturer}. Serial number: {serial}")
-                assert manufacturer in cfg.manufacturer, f"Cannot find string '{manufacturer}' in expected values. I2C read error?"
+                assert str(manufacturer) in cfg.manufacturer, f"Cannot find string '{manufacturer}' in expected values. I2C read error?"
 
             finally:
                 self.params.test_locals = locals()
@@ -1555,12 +1555,12 @@ class TestMGK7MBNetwork(TestUtils):
         print('\n-------------------------------')
         print("Please ensure the QSFP cable is plugged into the motherboard in both ports, and sufficient cooling for FPGA")
         print("The motherboard must be plugged into the one slot backplane")
-        (ib, ibs) = self.connect_to_board(program=1, questions=self.cfg.ready_check)
+        (ib, ibs) = self.connect_to_board(program=True, questions=self.cfg.ready_check, open_fpga=True)
 
-        print("Calling ib.open()")
-        ib.open_sync()
+        #print("Calling ib.open()")
+        #ib.open_sync()
         ib.i2c.select_bus('BP')
-        ibs.ic[0]._gpio_ctrl.init(cfg0_def=0xFF, cfg1_def=0xFF)
+        #ibs.ic[0]._gpio_ctrl.init(cfg0_def=0xFF, cfg1_def=0xFF)
 
         xr.header('Test-Results')
 
