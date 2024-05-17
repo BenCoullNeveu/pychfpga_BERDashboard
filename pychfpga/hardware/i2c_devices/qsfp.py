@@ -68,13 +68,13 @@ class QSFP(object):
 
         Parameters:
 
-            i2c (object): I2C interface object through which I2C communications will be performed. Must support the methods ``select_bus()`` and ``write_read()``. 
+            i2c (object): I2C interface object through which I2C communications will be performed. Must support the methods ``select_bus()`` and ``write_read()``.
 
             bus_name (int, tuple, dict): Parameter that is passed to i2c.select_bus() to enable access to this device
 
             gpio_prefix (str): String that is prefixed to the GPIO names to access GPIOs provided by the `gpio` object
 
-            gpio (GPIO): GPIO-class object that provides read() and write() methods to access the QSFP hardware control lines. 
+            gpio (GPIO): GPIO-class object that provides read() and write() methods to access the QSFP hardware control lines.
                 The object must define the following GPIOs:
 
                     - <prefix>ModPrsL
@@ -86,7 +86,7 @@ class QSFP(object):
 
             address (int): 7-bit I2C address of the QSFP
 
-            parent: Used in repr() of this QSFP object to clarify to which object this one is dependent from             
+            parent: Used in repr() of this QSFP object to clarify to which object this one is dependent from
 
         Valid control bit names are: 'ModPrsL', 'ResetL', 'IntL', 'ModSelL', 'LPMode', 'Led'
         """
@@ -151,7 +151,7 @@ class QSFP(object):
     def status(self):
         """
         """
-        return {bit_name: self.get_control_bit(bit_name) for bit_name in self._control_bits}
+        return {bit_name: self.get_control_bit(bit_name) for bit_name in ('ModPrsL','LPMode','ResetL','IntL')}
 
     def enable_i2c(self, enable):
         """
@@ -204,6 +204,21 @@ class QSFP(object):
     def read(self, addr, length=1, page=0, enable=True):
         """
         Reads QSFP eeprom. Enables I2C, reads, Disables I2C. Returns the data as a string.
+
+        Parameters:
+
+            addr (int): memory address
+
+            length (int): number of bytes to read
+
+            page (int): data page to read (affects only address 128 and above)
+
+            enable (bool): Enable the I2C port and I2C switch chain
+
+        Returns:
+
+            bytes: bytestring containing the requested bytes.
+
         """
 
         if enable:
@@ -235,12 +250,12 @@ class QSFP(object):
     def read_byte(self, addr, page=0, enable=True):
         """ Read 8-bit byte. """
         data = self.read(addr, length=1, page=page, enable=enable)
-        return ord(data[0])
+        return data[0]
 
     def read_word(self, addr, page=0, type=np.uint16, enable=True):
         """ Read 16-bit word as an unsigned big endian. """
         data = self.read(addr, length=2, page=page, enable=enable)
-        return type((ord(data[0]) << 8) + ord(data[1]))
+        return (data[0] << 8) + data[1]
 
     def get_temperature(self):
         word = self.read_word('MeasuredTemp', type=np.int16)
@@ -356,41 +371,5 @@ class QSFP(object):
             else:  # assuming binary
                 data[key] = self.read(addr=addr, length=length, page=page)
         return data
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
