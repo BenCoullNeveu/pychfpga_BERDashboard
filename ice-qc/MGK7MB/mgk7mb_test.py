@@ -1373,6 +1373,7 @@ class TestMGK7MBNetwork(TestUtils):
         print("Please ensure mezzanines are loaded, and sufficient cooling for FPGA")
         (ib, ibs) = self.connect_to_board(questions=self.cfg.ready_check, program=True, open_fpga=True)
 
+        run_async(ib.fpga.init_async()) #temp fix
 
         try:
             test_results.data = []
@@ -1383,11 +1384,15 @@ class TestMGK7MBNetwork(TestUtils):
                 mezz.init()
 
             print('Computing ADC delays...')
+
+            
             ib.set_adc_delays(compute_delays=2, save_delays=False, check_sync_delays=True, check_adc_delays=20, verbose=0, retry=5)
             delay_table = ib.get_adc_delays()
             print(delay_table)
             print('\nOpening data receiver socket')
-            receiver = ib.get_data_receiver()
+
+            print(ib.CAPTURE_TYPE)
+            receiver = ib.get_data_receiver(threaded=True)
 
             print('Setting up ramp transmission...')
             ib.set_adcdaq_mode('data')
@@ -1466,7 +1471,7 @@ class TestMGK7MBNetwork(TestUtils):
             passed = True
 
         finally:
-            ib.close()
+            #ib.close()
             self.params.test_locals = locals()  # store local variables for interactive debugging
             #receiver.close()
             xr.save_data(test_results)
@@ -1513,49 +1518,16 @@ class TestMGK7MBNetwork(TestUtils):
             try:
                 (manufacturer, serial) = self.get_qfsp_info(port, ib)
                 print(f"QSFP cable {port} manufactured by {manufacturer}. Serial number: {serial}")
-                assert str(manufacturer) in cfg.manufacturer, f"Cannot find string '{manufacturer}' in expected values. I2C read error?"
+                assert manufacturer in cfg.manufacturer, f"Cannot find string '{manufacturer}' in expected values. I2C read error?"
 
             finally:
                 self.params.test_locals = locals()
 
 
 
-            """
         
-        qsfp_info = []
-        try:
-            qsfp_present = [0, 0]
-
-            for i in [1, 2]:
-                #if ib.is_qsfp_present(i):
-                #function doesn't exist
-                if async_to_sync(ib.is_qsfp_present_async(i)):
-                    print("Motherboard QSFP module present on port %d" %i)
-                    qsfp_present[i-1] = 1
-                else:
-                    print("Motherboard QSFP module NOT present on port %d" %i)
-                assert qsfp_present[i-1], "Not all connectors were detected!"
-
-                print("Resetting Module " + repr(i))
-                #ib.set_qsfp_gpio(ib.QSFP_GPIO.ResetL, i, False)
-                async_to_sync(ib.set_qsfp_gpio_async(ib.QSFP_GPIO.ResetL, i, False))
-                time.sleep(1)
-                ib.set_qsfp_gpio(ib.QSFP_GPIO.ResetL, i, True)
-                ib.set_qsfp_gpio(ib.QSFP_GPIO.ModSelL, i, False)
-                mfg = base64.b64decode(ib._qsfp_eeprom_read_base64(i, 148, 16)).strip().decode()
-                serial = base64.b64decode(ib._qsfp_eeprom_read_base64(i, 196, 16)).strip().decode()
-                qsfp_info.append(mfg)
-                qsfp_info.append(serial)
-                print(f"QSFP cable {i} manufactured by {mfg}. Serial number: {serial}")
-                assert re.search(cfg.manufacturer, mfg), f"Cannot find string '{cfg.manufacturer}' in the manufacturer data. I2C read error?" """
-
-            # if  and re.search(cfg.manufacturer,qsfp_info[2]) and\
-            #    re.search(cfg.serial,qsfp_info[1]) and re.search(cfg.serial,qsfp_info[3]) :
-            #     print("Detected that the cable was manufactured by " + cfg.manufacturer + " and has serial " + cfg.serial + " as indicated in the config file.")
-            #     passed = True
-            # else:
-            #     passed = False
-            #     assert False,"Cable did not read correctly or is not specified correctly in the test config"
+        
+    
         
 
     def test_gtx(self, xr):

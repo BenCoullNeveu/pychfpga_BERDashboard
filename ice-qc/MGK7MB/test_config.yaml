@@ -13,7 +13,7 @@ ready_check: 0 #If this is set to 0, the tests can be strung together without lo
 model_number: 'MGK7MB'
 
 fpga_bit_file: '../../pychfpga/fpga_firmware/bitstreams/SIFPGA_MGK7MB.bit'
-fpga_firmware_mode: 'chan8'
+fpga_firmware_mode: 'corr16'
 
 #For changing prologix address, use ./nfcli --list to find devices
 instruments:
