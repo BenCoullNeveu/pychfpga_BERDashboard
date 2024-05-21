@@ -34,6 +34,8 @@ from pychfpga.fpga_firmware import FPGABitstream
 from memtest_rs232 import MemTestRS232
 import cdce620005_pll_QC as cdce620005 
 
+utils = __import__('ice-qc.utils') #import doens't like the dash in the name
+TestUtils = utils.utils.TestUtils
 
 TEST_CONFIG_FILE = './test_config.yaml'
 
@@ -44,23 +46,24 @@ def in_range(value, target, pmargin=0.05, amargin=0):
     else:
             return True
 
+"""
 class TestUtils:
-    """ Some utility methods common to all tests. 
-    """
+    " Some utility methods common to all tests. 
+    "
     def open_instrument(self, name):
-        """ Looks up the instrument name in the instrument table in configuration file and open it with the parameters specified in the table.  
-        """
+        " Looks up the instrument name in the instrument table in configuration file and open it with the parameters specified in the table.  
+        "
         instr_params = self.cfg.instruments[name].copy()
         class_name = instr_params.pop('labpy_object')
         return labpy.open_instrument(class_name, **instr_params)
 
     def open_ps(self, name='ps16v', voltage=None, current=None):
-        """ Opens a power supply and configures it
+        " Opens a power supply and configures it
 
         The `voltage` and `current` to be programmed can be specified. If `None`, the global values from
         the config file in ``motherboard_tests.global_settings`` will be
         used.
-        """
+        "
         
         # open power supply instrument if it is in the list of instruments and if we don't force manual operation /self.cfg.get('manual_ps', False)/
         if True and name in self.cfg.instruments:
@@ -90,7 +93,8 @@ class TestUtils:
         return self.ps
         
 
-       
+      """ 
+
 
 
 
