@@ -86,7 +86,7 @@ menu:
 
 motherboard_tests:
     global_settings:
-         eth_interface: 'enp8s0' # name of ethernet interface on which the IceBoard is connected. Used to check jumbo frames.
+         eth_interface: 'enp4s0' # name of ethernet interface on which the IceBoard is connected. Used to check jumbo frames.
          ps_voltage: 18  # Volts. Voltage to set on the Iceboard power supply 
          ps_current: 5   # Amps. Maximum current limit to set on the Iceboard power sypplt 
 

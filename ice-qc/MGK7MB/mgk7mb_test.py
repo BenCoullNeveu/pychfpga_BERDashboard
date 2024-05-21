@@ -638,7 +638,7 @@ class TestMGK7MBNetwork(TestUtils):
         #needed
 
         ib.fpga_mmi_read = async_to_sync(ib.fpga_core_reg_spi_read_async) 
-        #ib.open_sync = async_to_sync(ib.open_async)
+        
 
         #ib.get_fpga_firmware_timestamp_sync = async_to_sync(ib.get_fpga_firmware_timestamp) # different naming
         #ib.set_irigb_source = async_to_sync(ib.set_irigb_source_async)
@@ -650,6 +650,7 @@ class TestMGK7MBNetwork(TestUtils):
         if program:
             self.prog_fpga(ib)
 
+
         
         if open_fpga:
             self.open_fpga(ib)
@@ -658,11 +659,9 @@ class TestMGK7MBNetwork(TestUtils):
         return (ib, ca)
 
     def prog_fpga(self, ib):
+
         print("Programming FPGA. This takes about 20 seconds...")
-
-
-
-        ib.set_fpga_bitstream(firmware_mode = self.cfg.fpga_firmware_mode, force=True)
+        ib.set_fpga_bitstream(firmware_mode = self.cfg.fpga_firmware_mode, force=False)
         assert ib.is_fpga_programmed(), 'FPGA has not programmed'
 
     def open_fpga(self, ib):
@@ -1046,6 +1045,8 @@ class TestMGK7MBNetwork(TestUtils):
         assert passed, "Missing I2C devices"
         print("All devices are present")
 
+
+
     def test_clock(self, xr):
         """
         QC?: check if board will boot with backplane clock
@@ -1242,18 +1243,18 @@ class TestMGK7MBNetwork(TestUtils):
 
         print('\n-------------------------------')
         print("Please ensure that the Mezzanines ARE mounted on the board for this test.")
-        (ib, ibs) = self.connect_to_board(questions=True)
+        (ib, ibs) = self.connect_to_board(questions=True, program=True, open_fpga=True)
 
         assert ib.is_mezzanine_present(1), "Did not find Mezzanine on Slot 1."
         assert ib.is_mezzanine_present(2), "Did not find Mezzanine on Slot 2."
 
-        self.prog_fpga(ib)
-        ib.open_sync()
+        #self.prog_fpga(ib)
+        #ib.open_sync()
 
-        if not (ib.is_core_open()):
-            assert False , "Cannot communicate directly with the FPGA through the SFP unit."
-        else:
-            print("Communications established with FPGA through SFP unit")
+        #if not (ib.is_core_open()):
+        #    assert False , "Cannot communicate directly with the FPGA through the SFP unit."
+        #else:
+        #    print("Communications established with FPGA through SFP unit")
 
         for mezz in (1,2):
             eeprom = base64.b64decode(ib._mezzanine_eeprom_read_base64(mezz))
@@ -1306,8 +1307,12 @@ class TestMGK7MBNetwork(TestUtils):
         #Checking if the mezzanine PG_M2C line is high - its one of the GPIOs that the ARM has access to
         #A bit over kill but I prefer getting the info via the arm and no tubber command exists for it
         #Could have gone via the FPGA instead
+        """
         def check_power_good(cmd, mezz_number):
+            print(ib.hostname, cmd)
             result = self.run_arm_system_command(ib.hostname, cmd)
+
+            print(result)
             if re.search("1",result[0]):
                 print(f"Mezzanine {mezz_number} - PG_M2C line is detected high - mezzanine reports power good")
             else:
@@ -1315,7 +1320,25 @@ class TestMGK7MBNetwork(TestUtils):
                 assert False, f"Mezzanine {mezz_number} - PG_M2C has problems"
 
         check_power_good("cat /sys/class/gpio/FMCA_PG_M2C/value", 1)
-        check_power_good("cat /sys/class/gpio/FMCB_PG_M2C/value", 2)
+        check_power_good("cat /sys/class/gpio/FMCB_PG_M2C/value", 2)"""
+
+        FMCA_power = ib._gpio.read('FMCA_PG_M2C')
+        FMCB_power = ib._gpio.read('FMCB_PG_M2C')
+
+        if FMCA_power == 1:
+              print(f"Mezzanine A - PG_M2C line is detected high - mezzanine reports power good")
+        else:
+            print(f"Mezzanine A - PG_M2C line is not high - mezzanine did not report good power")
+            assert False, f"Mezzanine A- PG_M2C has problems"
+
+        if FMCB_power == 1:
+              print(f"Mezzanine B - PG_M2C line is detected high - mezzanine reports power good")
+        else:
+            print(f"Mezzanine B - PG_M2C line is not high - mezzanine did not report good power")
+            assert False, f"Mezzanine A- PG_M2C has problems"
+
+
+
 
 
     def test_ramp(self, xr):
@@ -1337,8 +1360,9 @@ class TestMGK7MBNetwork(TestUtils):
         x = subprocess.check_output(stat_command)
         m = re.search(b'mtu 9000', x)
         if (m == None ):
-            print("\nNeed to change the ethernet port MTU setting. Please enter password when asked.")
+            print("Need to change the ethernet port MTU setting. Please enter password when asked.")
             os.system(f'sudo ifconfig {eth_if} mtu 9000')
+        
 
         # Useful shortcuts
         cfg = self.cfg.motherboard_tests.rmp_test
@@ -1347,10 +1371,8 @@ class TestMGK7MBNetwork(TestUtils):
 
         print('\n-------------------------------')
         print("Please ensure mezzanines are loaded, and sufficient cooling for FPGA")
-        (ib, ibs) = self.connect_to_board(questions=self.cfg.ready_check)
+        (ib, ibs) = self.connect_to_board(questions=self.cfg.ready_check, program=True, open_fpga=True)
 
-        self.prog_fpga(ib)
-        ib.open_sync()
 
         try:
             test_results.data = []
