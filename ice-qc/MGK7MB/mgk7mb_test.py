@@ -1392,7 +1392,7 @@ class TestMGK7MBNetwork(TestUtils):
             print('\nOpening data receiver socket')
 
             print(ib.CAPTURE_TYPE)
-            receiver = ib.get_data_receiver(threaded=True)
+            receiver = ib.get_data_receiver()
 
             print('Setting up ramp transmission...')
             ib.set_adcdaq_mode('data')
@@ -1404,15 +1404,15 @@ class TestMGK7MBNetwork(TestUtils):
             ib.sync()
 
             print('Getting data frames...')
-            receiver.read_frames(flush=1, frames=3, verbose =1)  # flush
+            receiver.read_raw_frames(flush=1)  # flush
             data = []
             framenum = 0
             maxcount=40
             i = 0;
             foundone=0
             while i < maxcount and foundone == 0:
-                data.append(receiver.read_frames(frames = 1, verbose = 0))
-                if len(data[i]) == 17:
+                data.append(receiver.read_raw_frames()[1])
+                if len(data[i]) == 16:
                     framenum = i
                     foundone = 1
                 print(len(data[i]))
@@ -1445,13 +1445,17 @@ class TestMGK7MBNetwork(TestUtils):
             #         ib.stop_data_capture()
             #         raise
             # print "lost {0} to get {1}".format(missed, frames)
-            receiver.close()
-            ib.stop_data_capture()
+            
+            #receiver.close()
+            #ib.stop_data_capture()
 
             test_results.data.append(data)
             plt.figure(1)
 
             ideal_ramp = (np.arange(2048) - 128).astype(np.int8)
+
+            print(data)
+
 
             ramp_ok = []
             for ch in range(16):
