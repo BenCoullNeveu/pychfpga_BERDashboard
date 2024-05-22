@@ -1560,7 +1560,7 @@ class TestMGK7MBNetwork(TestUtils):
 
         #print("Calling ib.open()")
         #ib.open_sync()
-        run_async(ib.fpga.init_async())
+        #run_async(ib.fpga.init_async())
         ib.i2c.select_bus('BP')
         
         #ibs.ic[0]._gpio_ctrl.init(cfg0_def=0xFF, cfg1_def=0xFF) #what on gods green earth does this do

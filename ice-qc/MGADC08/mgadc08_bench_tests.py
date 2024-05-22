@@ -24,40 +24,44 @@ import pytest
 from pytest_html import extras
 
 # McGill packages
-from wtl.pytest_xreport import xr, run_test_menu
 from wtl.namespace import NameSpace
-
-# from wtl.xreport import util
-# from wtl.xreport import NameSpace
-# from wtl.xreport import XReport as xr
-# from wtl.xreport import test_report
+from wtl.pytest_xreport import xr, TestMenu
 import labpy
 import pychfpga
-from pychfpga import run_async
 
-TEST_CONFIG_FILE = './mgadc08_test_config.yaml'
+from pychfpga import fpga_array 
+from pychfpga.common import run_async, async_to_sync
+
+
+
+
+utils = __import__('ice-qc.utils') #import doens't like the dash in the name
+TestUtils = utils.utils.TestUtils
+
+
+TEST_CONFIG_FILE = './test_config.yaml'
 
 def wrap(obj, width=80):
     return textwrap.fill(str(obj), width)
-
+"""
 class TestUtils:
-    """
+"""
 
-    """
+"""
     def open_instrument(self, name):
-        """ Open an instrument defined in the instrument list in the config file"""
+        "" Open an instrument defined in the instrument list in the config file""
         instr_params = self.cfg.instruments[name].copy()
         class_name = instr_params.pop('labpy_object')
         print(f'calling open instrument on class {class_name} with parameters {instr_params}')
         return labpy.open_instrument(class_name, **instr_params)
 
     def open_ps(self, name='ps18v', state=True):
-        """ Open and setup the power supply for the motherboard if is in the instrument list and manual operation is not forced
+        " Open and setup the power supply for the motherboard if is in the instrument list and manual operation is not forced
 
         Note: the following instance attributes must exist when this method is called: 
             self.ps18v (can be None)
             self.xr
-        """
+        "
 
         # if supply is already turned on
         if 'ps18v' in self.cfg.instruments and not self.cfg.get('manual_ps', False):
@@ -88,7 +92,7 @@ class TestUtils:
                 self.xr.input('Turn ON power to the Iceboard and press [ENTER]')
             else:
                 self.xr.input('Turn OFF power to the Iceboard and press [ENTER]')
-
+"""
 
 class TestMGADC08Bench(TestUtils):
     """
@@ -97,9 +101,21 @@ class TestMGADC08Bench(TestUtils):
 
     @pytest.fixture(autouse=True)
     def setUp(self, xr):
-        """ Prepare the test for execution.
 
-        Here, we grab the command line arguments and parse them.
+        """ Prepare the test for execution. This fixture is executed automatically before each test.
+        """
+        xr.header('Setting-up')
+        self.cfg = xr.config  # get the test config NameSpace
+        # pre-define instrument variable. We'll load them only as needed by the tests.
+        self.ps = None
+        self.dmm = self.open_instrument('dmm')
+
+        yield  # pass control to the test and return
+
+        # turn off power supply
+        if self.ps:
+            self.ps.set_output(state=False) #Ensuring power on N5764A is off
+
         """
         xr.header('Setting-up')
         self.cfg = xr.config
@@ -110,7 +126,7 @@ class TestMGADC08Bench(TestUtils):
         self.dmm.display('Ready for','MGADC08 tests')
 
         # Disable power supply outputs
-        self.adc_ps_output_enable(False)
+        #self.adc_ps_output_enable(False)
 
         # Set-up power supply voltages and current limits
         self.rails = NameSpace()
@@ -121,11 +137,12 @@ class TestMGADC08Bench(TestUtils):
             instr.set_voltage(rail.output, rail.voltage)
             instr.set_current(rail.output, rail.current_limit)
             self.rails[rail_name] = instr
-        xr.header('Test results')
+        xr.header('Test results')"""
 
-    def adc_ps_output_enable(self, status):
-        for instr in self.rails.values():
-            instr.output_enable(status)
+    ##def adc_ps_output_enable(self, status):
+    #
+     #   for instr in self.cfg.rails.values():
+     #       instr.output_enable(status)
 
     def test_impedance(self, xr):
         """
@@ -151,7 +168,8 @@ class TestMGADC08Bench(TestUtils):
         """
         # Useful shortcuts
         cfg = self.cfg.bench_tests.impedance
-        dmm = self.dmm  # Multimeter
+        dmm = self.dmm   # Multimeter
+        dmm.set_beeper(True)
         test_results = NameSpace()
 
         print('-------------------------------')
@@ -161,13 +179,14 @@ class TestMGADC08Bench(TestUtils):
         print()
         print(' Connect the Quick SMA to any of the 10 SMA inputs to provide a ground for the impedance measurements')
 
-        self.adc_ps_output_enable(False)
+        #self.adc_ps_output_enable(False)
 
         failed_test_points = []
         passed = False
         try:
             test_results.test_points = NameSpace()
-            for tp_name, limits in list(NameSpace(cfg.test_points).items()):
+            for tp_name, limits in cfg.test_points:
+                limits = NameSpace(limits)
                 dmm.display('','Measure %s' % tp_name)
                 dmm.select_resistance_measurement()
                 while True:
@@ -192,7 +211,7 @@ class TestMGADC08Bench(TestUtils):
         finally:
             test_results.passed = passed
             dmm.display(xr.pass_fail(passed),'Impedance tests')
-            dmm.local()
+            #dmm.local()
             xr.save_data(test_results)
 
 
@@ -215,7 +234,7 @@ class TestMGADC08Bench(TestUtils):
         # Useful shortcuts
         cfg = self.cfg.bench_tests.smoke_test
         dmm = self.dmm  # Multimeter
-        self.adc_ps_output_enable(False)
+        #self.adc_ps_output_enable(False)
 
         test_results = NameSpace()  # container for the test results to be saved in the test report
 
@@ -227,7 +246,7 @@ class TestMGADC08Bench(TestUtils):
 
             # for ps in pss: # Turn on both power supplies
             #     ps.output_enable(1)
-            self.adc_ps_output_enable(True)
+            #self.adc_ps_output_enable(True)
 
             # Measure currents on the power supplies
             test_results.rails = NameSpace()  # Namespace to store all rail results
@@ -288,7 +307,7 @@ class TestMGADC08Carrier(TestUtils):
 
 
     def check_mtu(self):
-        stat_command = ['ifconfig', 'eno1']
+        stat_command = ['ifconfig', 'enp4s0']
         x = subprocess.check_output(stat_command).decode()
         m = re.search('mtu 9000', x)
         if (m == None ):
@@ -353,14 +372,14 @@ class TestMGADC08Carrier(TestUtils):
     def _get_iceboard(self, **kwargs):
             try:
                 print('Connecting to the IceBoard...')
-                a = pychfpga.FPGAArray(**kwargs, mdns_timeout=1)
+                a = fpga_array.FPGAArray(**kwargs, mdns_timeout=1)
             except RuntimeError:  # if we can't find the board
                 a = None
 
             if not a: # turn on the supply and try again if we did not find the board 
                 self.set_ps_output(state=True)
                 print('Searching for the IceBoard for up to 30 seconds...')
-                a = pychfpga.FPGAArray(**kwargs, mdns_timeout=30)
+                a = fpga_array.FPGAArray(**kwargs, mdns_timeout=30)
 
             assert len(a.ib), 'No Iceboard was found with parameters %s' % kwargs
             assert len(a.ib) == 1, 'One than one Iceboard was found with parameters %s' % kwargs
@@ -422,7 +441,9 @@ class TestMGADC08Carrier(TestUtils):
             # The EEPROM has 128 kBytes of data and requires 17 bits of addressing
             # 16 bits are provided in the data payload, and the 17th bit is in the I2C address, therefore creating 2 pages.
             # We check if the EEPROM responds to both addresses
-            eeprom = [ib.hw._fmca_eeprom, ib.hw._fmcb_eeprom][self.fmc_slot-1]
+
+            
+            eeprom = [ib._fmca_eeprom, ib._fmcb_eeprom][self.fmc_slot-1]
             tr.is_eeprom_i2c_responding = [eeprom.is_present(page) for page in (0, 1)]
             print()
             print('EEPROM is responding to I2C addressing for [page 0, page 1]: %s' % bool(tr.is_eeprom_i2c_responding))
@@ -1220,7 +1241,11 @@ class TestMGADC08Carrier(TestUtils):
 
 if __name__ == '__main__':
     """ Run the test in this file."""
-    import mgadc08_bench_tests
-    importlib.reload(mgadc08_bench_tests)
-    run_test_menu()
-    locals().update(v) # bring local variables from the test runner into the current namespace for easier debugging
+    v = TestMenu(TEST_CONFIG_FILE).run()
+    locals().update(v)
+
+
+    #import mgadc08_bench_tests
+    #importlib.reload(mgadc08_bench_tests)
+    #run_test_menu()
+    #locals().update(v) # bring local variables from the test runner into the current namespace for easier debugging

@@ -320,7 +320,7 @@ motherboard_tests:
     rmp_test:
 
     qsfp_test:
-        manufacturer: "3M Company"
+        manufacturer: ["3M Company", "FS"]
         # We don't check serial anymore. It changes too much from setup to setup. Checking the manufacturer is enough to validate I2C operation.
         # serial: "V10E6005"
         # serial: "V20B9886"
