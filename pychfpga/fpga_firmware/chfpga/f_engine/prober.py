@@ -373,7 +373,23 @@ class RawFrameReceiver(object):
             flush=True,
             data_timeout=0.01,
             flush_timeout=0.001):
-        """ Reads the specified number of raw data frames.
+        """ 
+        Reads 2048 frames for each 16 adc channel
+        
+        Parameters:
+
+            stream_ids (list of int): List of adc channels to capture
+            flush (bool): Indicates if the buffer should be flushed
+            data_timeout (float): unknown
+            flush_timeout (float): unknown
+
+        Returns:
+            [times_stamp, data, data_count]
+
+
+        *The following discription is outdate but retained for reference:
+
+        Reads the specified number of raw data frames.
 
         Parameters:
 

@@ -635,17 +635,16 @@ class TestMGK7MBNetwork(TestUtils):
         ib.get_motherboard_serial = async_to_sync(ib.tuber_get_motherboard_serial_async)
         
         
-        #needed
 
         ib.fpga_mmi_read = async_to_sync(ib.fpga_core_reg_spi_read_async) 
-        
+        ib._qsfp_eeprom_read_base64 = async_to_sync(ib._tuber_qsfp_eeprom_read_base64_async)
 
         #ib.get_fpga_firmware_timestamp_sync = async_to_sync(ib.get_fpga_firmware_timestamp) # different naming
         #ib.set_irigb_source = async_to_sync(ib.set_irigb_source_async)
         #ib.is_qsfp_present = async_to_sync(ib.tuber_is_qsfp_present_async)
         #ib.set_qsfp_gpio = async_to_sync(ib.tuber_set_qsfp_gpio_async)
 
-        ib._qsfp_eeprom_read_base64 = async_to_sync(ib._tuber_qsfp_eeprom_read_base64_async)
+        
 
         if program:
             self.prog_fpga(ib)
@@ -1504,7 +1503,7 @@ class TestMGK7MBNetwork(TestUtils):
         # ib.open_sync()
 
         xr.header('Test-Results')
-
+        
         metrics = run_async(ib.get_metrics_async())
 
         
@@ -1561,8 +1560,10 @@ class TestMGK7MBNetwork(TestUtils):
 
         #print("Calling ib.open()")
         #ib.open_sync()
+        run_async(ib.fpga.init_async())
         ib.i2c.select_bus('BP')
-        #ibs.ic[0]._gpio_ctrl.init(cfg0_def=0xFF, cfg1_def=0xFF)
+        
+        #ibs.ic[0]._gpio_ctrl.init(cfg0_def=0xFF, cfg1_def=0xFF) #what on gods green earth does this do
 
         xr.header('Test-Results')
 
