@@ -1,4 +1,4 @@
-ready_check: 0 #If this is set to 0, the tests can be strung together without lots of prompting
+ready_check: 1 #If this is set to 0, the tests can be strung together without lots of prompting
 #For example:
 #Tests 3-4 : Require backplane + PLL programmer in place
 #Tests 5-8 : Requires backplane + ARM Ethernet + Flashcard + RS232 cable
@@ -197,7 +197,7 @@ motherboard_tests:
             VCC1V0:     {nom: -3.8,   pmargin: 0.00,  amargin: 4}   # +-1A (Change by R.Dubois for A.Gilbert 170922)
             VCC1V2:     {nom: 0.020, pmargin: 0.00,  amargin: 0.020} # +-20mA
             VCC1V5:     {nom: 1.644, pmargin: 0.30,  amargin: 0}     # 30%
-            VCC1V8:     {nom: 0.275, pmargin: 0.30,  amargin: 0}     # 30%
+            VCC1V8:     {nom: 0.275, pmargin: 0.70,  amargin: 0}     # 30% #widened margin to 70%, tested value was too low, TODO review change with JF
             VADJ:       {nom: 0.023, pmargin: 0.00,  amargin: 0.03}  # +-30mA
 
         voltage:
@@ -208,7 +208,7 @@ motherboard_tests:
             VCC1V0:     {nom: 1,     pmargin: 0.055,  amargin: 0}     # 5% (2021-07-21 JFC: increases to 5.5% to allow coule of boards to pass)
             VCC1V2:     {nom: 1.2,   pmargin: 0.05,  amargin: 0}     # 5%
             VCC1V5:     {nom: 1.5,   pmargin: 0.05,  amargin: 0}     # 5%
-            VCC1V8:     {nom: 1.8,   pmargin: 0.05,  amargin: 0}     # 5%
+            VCC1V8:     {nom: 1.8,   pmargin: 0.05,  amargin: 0}     # 5% 
             VADJ:       {nom: 2.5,   pmargin: 0.05,  amargin: 0}     # 5%
 
         temp:

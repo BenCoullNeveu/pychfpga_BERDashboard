@@ -90,6 +90,7 @@
         "numpy",
         "matplotlib",
         "py", # no longer a dependency brought in by pytest, but we need it
+        "prettytable", 
 
         # test-specific packages
         "pyserial", # (tested with 0.0.97 on Ubuntu) for memtest

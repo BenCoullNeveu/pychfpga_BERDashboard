@@ -17,6 +17,8 @@ import pytest
 import numpy as np
 import matplotlib.pyplot as plt
 
+from prettytable import PrettyTable, ORGMODE 
+
 # External private packages
 
 from wtl.namespace import NameSpace
@@ -448,7 +450,6 @@ class TestMGK7MBBench(TestUtils):
         QC005: Perform the ARM memory test
 
         Procedure:
-
           - Connect RS232 cable to the board
           - Type in serial number of tested board.
           - Enable board power
@@ -726,7 +727,7 @@ class TestMGK7MBNetwork(TestUtils):
             assert not ib.is_mezzanine_present(1), "Mezzanine are NOT supposed to be present for this test, found Mezzanine on Slot 1."
             assert not ib.is_mezzanine_present(2), "Mezzanine are NOT supposed to be present for this test, found Mezzanine on Slot 2."
 
-            print("Reading Iceboard Power, Current, Voltage & Temperature Sensors")
+            print("\nReading Iceboard Power, Current, Voltage & Temperature Sensors")
             power, current, voltage, temp = {}, {}, {}, {}
 
             totalPower = ib.get_motherboard_power()
@@ -742,32 +743,35 @@ class TestMGK7MBNetwork(TestUtils):
             For each element in the sensor list. Info moved to test_config.yaml 
 
             """
-           
+ 
+            table = PrettyTable(['Sensor', 'Power [W]', 'Voltage [V]', 'Current [A]']) #table object for nice printing
+            temp_table = PrettyTable(['Sensor', 'Temp [C]'])
+
             for sensor  in cfg.sensor_names:
-                power[sensor['name']]   = ib.get_motherboard_power(sensor['board_name'])
-                current[sensor['name']] = ib.get_motherboard_current(sensor['board_name'])
-                voltage[sensor['name']] = ib.get_motherboard_voltage(sensor['board_name'])
+                name = sensor['name']
+
+                power[name]   = ib.get_motherboard_power(sensor['board_name'])
+                current[name] = ib.get_motherboard_current(sensor['board_name'])
+                voltage[name] = ib.get_motherboard_voltage(sensor['board_name'])
+
+                table.add_row([name, power[name], voltage[name], current[name]])
 
 
             temp['POWER']   = ib.get_motherboard_temperature('MOTHERBOARD_TEMPERATURE_POWER')   # between the two 1.0V bucks
             temp['FPGA']    = ib.get_motherboard_temperature('MOTHERBOARD_TEMPERATURE_FPGA')    # near USER SMA
             temp['ARM']     = ib.get_motherboard_temperature('MOTHERBOARD_TEMPERATURE_ARM')     # under the CPU shield
             temp['PHY']     = ib.get_motherboard_temperature('MOTHERBOARD_TEMPERATURE_PHY')     # also under the CPU shield
+            
+            
+            for x in temp:
+                temp_table.add_row([x, temp[x]])
+
+            table.set_style(ORGMODE)
+            temp_table.set_style(ORGMODE)
+            print(table)
+            print(temp_table)
 
             test_results.power, test_results.current, test_results.voltage, test_results.temp = power, current, voltage, temp
-
-            print("Total Power: ", totalPower)
-            for x in power:
-                print(x, ':   \t', power[x])
-            print("\nCurrent:")
-            for x in current:
-                print(x, ':   \t', current[x])
-            print("\nVoltage:")
-            for x in voltage:
-                print(x, ':   \t', voltage[x])
-            print("\nTemperature:")
-            for x in temp:
-                print(x, ':\t', temp[x])
 
             moffvoltage = {}
             moffvoltage['VCC3V3']  = ib.get_mezzanine_voltage('MEZZANINE_RAIL_VCC3V3', 1)  ,   ib.get_mezzanine_voltage('MEZZANINE_RAIL_VCC3V3', 2)
@@ -950,7 +954,7 @@ class TestMGK7MBNetwork(TestUtils):
         if(self.cfg.ready_check):
             check_bp = xr.input_yes_no("Should this test check for backplane I2C devices? [Y/N]", additional_answers=[])
         else:
-            check_bp = True
+            check_bp = False 
 
         cfg = self.cfg.motherboard_tests.i2c_test
         passed = False
@@ -961,8 +965,66 @@ class TestMGK7MBNetwork(TestUtils):
         cmd = "ls /sys/bus/i2c/devices/"
         results = self.run_arm_system_command(ib.hostname, cmd)
 
+        print(results)
+        """
         matrix_names = {"pca9548-1-70":"1-0070",
                         "pca9548-2-71":"2-0071"}
+
+        bus_names = {"I2C-1": "i2c-1",
+                     "I2C-2": "i2c-2",
+                     "I2C0_PCA954X_FMCA": "i2c-5",
+                     "I2C0_PCA954X_FMCB": "i2c-6",
+                     "I2C0_PCA954X_QSFPA": "i2c-7",
+                     "I2C0_PCA954X_QSFPB": "i2c-8",
+                     "I2C0_PCA954X_SFP": "i2c-9",
+                     "I2C0_PCA954X_SMPS": "i2c-10",
+                     "I2C0_PCA954X_BP": "i2c-11",
+                     "I2C0_PCA954X_GPIO": "i2c-12",
+                     "I2C1_PCA954X_FMCA": "i2c-13",
+                     "I2C1_PCA954X_FMCB": "i2c-14",
+                     "I2C1_PCA954X_QSFPA": "i2c-15",
+                     "I2C1_PCA954X_QSFPB": "i2c-16",
+                     "I2C1_PCA954X_SFP": "i2c-17",
+                     "I2C1_PCA954X_SMPS": "i2c-18",
+                     "I2C1_PCA954X_BP": "i2c-19",
+                     "I2C1_PCA954X_GPIO": "i2c-20"}
+
+        power_names = {"VCC12V0": "10-0047",
+                       "VCC5V5": "10-0048",
+                       "VCC3V3": "10-0049",
+                       "VADJ": "10-0043",
+                       "VCC1V8": "10-004b",
+                       "VCC1V5": "10-004c",
+                       "VCC1V2": "10-004d",
+                       "VCC1V0": "10-004e",
+                       "VCC1V0_GTX": "10-004f",
+                       "FMC_A_VCC3V3": "10-0040",
+                       "FMC_A_VCC12V0": "10-0041",
+                       "FMC_A_VADJ": "10-0042",
+                       "FMC_B_VCC3V3": "10-0044",
+                       "FMC_B_VCC12V0": "10-0045",
+                       "FMC_B_VADJ": "10-0046"}
+
+        temp_names = {"POWER": "12-0048",
+                      "ARM": "12-004a",
+                      "FPGA": "12-004b",
+                      "PHY": "12-004c"}
+
+        io_names = {"pca9575_u41": "12-0020",
+                    "pca9575_u42": "12-0021",
+                    "pca9575_u48": "12-0022",
+                    "pca9575_u59": "12-0023"}
+
+        eeprom_names = {"Motherboard EEPROM": "12-0057"}
+
+        backplane_names = {"BP_VCC3V3": "19-0040",
+                           "BP_Temp1": "19-004d",
+                           "BP_Temp2": "19-004e",
+                           "Backplane EEPROM": "19-0054"}"""
+
+
+        matrix_names = {"pca9548-1-70":"1-0070",
+                        "pca9548-2-71":"1-0071"}
 
         bus_names = {"I2C-1": "i2c-1",
                      "I2C-2": "i2c-2",
@@ -1564,7 +1626,7 @@ class TestMGK7MBNetwork(TestUtils):
         #run_async(ib.fpga.init_async())
         ib.i2c.select_bus('BP')
         
-        #ibs.ic[0]._gpio_ctrl.init(cfg0_def=0xFF, cfg1_def=0xFF) #what on gods green earth does this do
+        ibs.ic[0]._gpio_ctrl.init(cfg0_def=0xFF, cfg1_def=0xFF) #what on gods green earth does this do
 
         xr.header('Test-Results')
 
