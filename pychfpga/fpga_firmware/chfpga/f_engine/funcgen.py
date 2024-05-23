@@ -29,11 +29,15 @@ class FUNCGEN(MMI):
     BYTE_C           = BitField(CONTROL, 0x04, 0, width=8, doc="Byte C to be used by the function generator")
     SHIFT            = BitField(CONTROL, 0x05, 0, width=4, doc="Number of bits to shift-right the ADC data before it is passed on")
     RAM_PAGE_MSB     = BitField(CONTROL, 0x05, 4, width=4, doc="MSB of the 512-byte RAM page we want to access")
+    RESET_STATS      = BitField(CONTROL, 0x06, 7, doc="Reset the overflow statistics counter")
+    CLIP_WIDTH       = BitField(CONTROL, 0x06, 0, width=4, doc="Saturates the ADC data to a ``clip_width-1``-bit wide signed value (i.e. clip_width is the position of the sign bit). Saturation is applied after the right-shift.")
+
 
     RAMP_CTR   = BitField(STATUS, 0x00, 0, width=8, doc="Last 8 bits of the ramp counter (for debuging)")
     FRAME_CTR  = BitField(STATUS, 0x01, 0, width=8, doc="Frame counter")
     SEND_FRAME = BitField(STATUS, 0x02, 0, doc="debug")
     DELAY_CTR = BitField(STATUS, 0x04, 0, width=16, doc="Debug: Delay counter")
+    ADC_OVERFLOW_CTR = BitField(STATUS, 0x05, 0, width=8, doc="Number of ADC overflows since the counter was last cleared")
 
     FN_ADC = 0
     FN_BUFFER = 1
