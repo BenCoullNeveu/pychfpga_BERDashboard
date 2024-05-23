@@ -146,7 +146,7 @@ motherboard_tests:
         # Note :McGill FTDI cable info: Model: C232HM-DDHSL-0, Serial: FTXQWE8U. Yellow tape, DEFECT tag (but works).
         #       URL: 'ftdi://::FTXQWE8U/1'
         #       There is another one SN FTVR3DME (ftdi://::FTVR3DME/1) 
-        ftdi_url: 'ftdi://ftdi:232h/1'  # Any ft232h cable 
+        ftdi_url: 'ftdi://ftdi:232h:FTXQYGNU/1'  # Any ft232h cable 
         pll1regs:
             - 0x01260320
             # - 0x01260321 # bad value for testing 
@@ -173,7 +173,8 @@ motherboard_tests:
         # URL to connect to the FTDI USB to serial cable.
         # See pll_test for more details.
         # ftdi_url: 'ftdi://ftdi:0x6015/1' # Digico cable  
-        ftdi_url: 'ftdi://ftdi:232h/1'  # PLL cable
+        #ftdi_url: 'ftdi://ftdi:232h/1'  # PLL cable
+        ftdi_url: 'ftdi://ftdi:ft-x:FT0N9TN0/1'  # RS232 cable
 
     sensors:
 

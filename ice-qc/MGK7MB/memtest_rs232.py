@@ -17,7 +17,7 @@ import subprocess
 # Pypi packages
 import pyftdi.serialext
 
-# import serial
+import serial
 # import serial.tools.list_ports
 
 class MemTestRS232:

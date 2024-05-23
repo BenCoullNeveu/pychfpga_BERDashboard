@@ -456,7 +456,8 @@ class TestMGK7MBBench(TestUtils):
 
         """
         cfg = self.cfg.motherboard_tests.mem_test
-        self.ps = self.open_ps()
+        #self.ps = self.open_ps()
+        self.ps = None
         manual_ps = not self.ps
 
         xr.header('Mem test')
