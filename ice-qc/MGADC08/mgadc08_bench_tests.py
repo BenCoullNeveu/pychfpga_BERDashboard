@@ -340,6 +340,7 @@ class TestMGADC08Carrier(TestUtils):
         #    self.dmm = self.open_instrument('dmm')
         #else:
         #    self.dmm = None
+        self.dmm = None
 
         self.ps18v = self.open_ps() # Get supply and make sure it is turned on
  
@@ -842,7 +843,8 @@ class TestMGADC08Carrier(TestUtils):
             for i in range(cfg.pll_iterations):
                 for freq in cfg.pll_frequencies:
                     print('   Locking PLL at %f MHz' % freq)
-                    mezz.ADC_PLL.init(freq, gate_time=cfg.pll_gate_time)
+                    #mezz.ADC_PLL.init(freq, gate_time=cfg.pll_gate_time)
+                    mezz.ADC_PLL.init(freq)
                     read_adc_freq = ib.FreqCtr.read_frequency(f'ADC_CLK{ch}', gate_time=0.1) / 1e6
                     read_pll_freq = read_adc_freq * 8
                     freq_err = read_pll_freq - freq
