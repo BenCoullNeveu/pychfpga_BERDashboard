@@ -106,6 +106,7 @@ class TestMGADC08Bench(TestUtils):
         """
         xr.header('Setting-up')
         self.cfg = xr.config  # get the test config NameSpace
+        self.params = xr.params
         # pre-define instrument variable. We'll load them only as needed by the tests.
         self.ps = None
         self.dmm = self.open_instrument('dmm')
@@ -320,6 +321,7 @@ class TestMGADC08Carrier(TestUtils):
         self.xr = xr  # used by other methods
         xr.header('Setting-up')
         self.cfg = xr.config
+        self.params = xr.params
         # print(f'cfg={self.cfg}')
         cfg = self.cfg.carrier_tests.setup
         # Expected model and serial of the mezzanine under test (if known)
@@ -334,10 +336,10 @@ class TestMGADC08Carrier(TestUtils):
         print('  - Make sure the mezzanine is mounted to the iceboard (or connected via the extension cable), and the iceboard is properly set up (see handbook).')
         print("  - The mezzanine must NOT have a power cable connected directly to it.")
 
-        if 'dmm' in self.cfg.instruments:
-            self.dmm = self.open_instrument('dmm')
-        else:
-            self.dmm = None
+        #if 'dmm' in self.cfg.instruments:
+        #    self.dmm = self.open_instrument('dmm')
+        #else:
+        #    self.dmm = None
 
         self.ps18v = self.open_ps() # Get supply and make sure it is turned on
  
@@ -379,7 +381,7 @@ class TestMGADC08Carrier(TestUtils):
                 a = None
 
             if not a: # turn on the supply and try again if we did not find the board 
-                self.set_ps_output(state=True)
+                self.ps.set_output(state=True)
                 print('Searching for the IceBoard for up to 30 seconds...')
                 a = fpga_array.FPGAArray(**kwargs, mdns_timeout=30)
 
@@ -406,6 +408,10 @@ class TestMGADC08Carrier(TestUtils):
                 self.serial = serial
             else:
                 assert serial.lower() == self.serial.lower(), 'The Mezzanine currently under test does not have the correct model and serial numbers (expected %s SN%s, got %s SN%s)' % (self.model, self.serial, model, serial)
+
+            run_async(ib.set_fpga_bitstream_async(firmware_mode = 'corr16', force=False)) #needs to be added to the open iceboard funct
+            ip_fn = lambda a, b, c, d: (a, b, 3, d)
+            run_async(ib.open_fpga_async(verbose=1, fpga_ip_addr_fn = ip_fn)) 
 
             return ib, mezz
 
@@ -920,24 +926,29 @@ class TestMGADC08Carrier(TestUtils):
         tr = NameSpace()  # test results container
         ib, mezz = (None, None)  # in case we fail finding boards
         passed = False
-        r = None
+        receiver = None
+        test_results = NameSpace()
 
         message = 'Make sure 2 mezzanines are mounted on the board.\nIf not: quit test, power down board, mount second mezzanine and launch test again.\nPress [Enter] to continue or Q[uit]: '
         assert not xr.input(message).lower().startswith('q'), 'Test was interrupted by user'
 
         try:
+            test_results.data = []
+            test_results.ramp_ok = []
+
             print('Opening link to IceBoard')
             ib, mezz = self._get_iceboard(**cfg.fpga_array)
 
             print('initializing mezzanine...')
+            run_async(ib.fpga.init_async()) 
             mezz.init()
 
-            print('Computing ADC delays...')
-            ib.set_adc_delays(compute_delays=2, save_delays=False, check_sync_delays=True, check_adc_delays=20, verbose=0, retry=5)
-            delay_table = ib.get_adc_delays()
-
+            #print('Computing ADC delays...')
+            #ib.set_adc_delays(compute_delays=2, save_delays=False, check_sync_delays=True, check_adc_delays=20, verbose=0, retry=5)
+            #delay_table = ib.get_adc_delays()
+#
             print('\nOpening data receiver socket')
-            r = ib.get_data_receiver()
+            receiver = ib.get_data_receiver()
 
             print('Setting up ramp transmission...')
             # Begin Ramp test
@@ -1066,8 +1077,6 @@ class TestMGADC08Carrier(TestUtils):
             tr.passed = passed
             print()
             print('Test ended. Turning mezzanine power OFF')
-            if r:
-                r.close()
             if ib:
                 for m in ib.mezzanine.values():
                     run_async(m.set_mezzanine_power_async(False))
@@ -1113,6 +1122,10 @@ class TestMGADC08Carrier(TestUtils):
 
             print("Connecting to Iceboard")
             ib, mezz = self._get_iceboard(**cfg.fpga_array)
+            run_async(ib.fpga.init_async())
+
+            
+
 
             r = ib.get_data_receiver()
 
@@ -1127,6 +1140,7 @@ class TestMGADC08Carrier(TestUtils):
 
             frame_transmission_period = 0.1
             ib.set_adc_delays(compute_delays=2, save_delays=False, check_sync_delays=True, check_adc_delays=20, verbose=0, retry=5)
+
             tr.delay_table = ib.get_adc_delays()
             ib.set_adcdaq_mode('data')
             ib.set_data_source('adc')
@@ -1157,6 +1171,8 @@ class TestMGADC08Carrier(TestUtils):
                 plt.close('all')
 
                 logical_channel = (channel - 1) + (8 if self.fmc_slot==2 else 0)
+                
+                #logical_channel = 12
                 # make sure we generate a signal on port 1
                 na.command('S21')
                 na.command('CONT')
@@ -1165,7 +1181,7 @@ class TestMGADC08Carrier(TestUtils):
                     # na.command('CWFREQ 10 MHz') # kick the network analyser in CW mode early
                     # na.command('POWE %f DB' % power_level)  # should we wait for the power to stabilize?
                     na.set_cw_source(freq=10e6, power=power_level)
-                    r.read_frames(flush=1, frames=3)  # flush
+                    r.read_raw_frames(flush=True)  # flush
 
                     ampl = []
                     fr_ok = []
@@ -1176,25 +1192,40 @@ class TestMGADC08Carrier(TestUtils):
                             na.set_cw_source(freq=f*1e6)
                             print('.', end='')
                             # time.sleep(frame_transmission_period)
-                            r.read_frames(flush=True, frames=3)  # let the new data propagate
+                            r.read_raw_frames(flush=True)  # let the new data propagate
                             print('.', end='')
-                            trial = 0
-                            while True:
-                                data = r.read_frames(cfg.number_of_frames)
-                                if logical_channel in data:
-                                    break
-                                assert trial < 40, 'Did not receive data from the board.'
-                                trial += 1
+                            
+                            #trial = 0
+                            for frame in cfg.number_of_frames:
+                                #data = r.read_frames(cfg.number_of_frames)
+                                ts, scaler, count = r.read_raw_frames(flush=True) #reads one frame of buffer 
+                                data.append(scaler)                                
+                                
+                            
+                                #data = data_raw[cfg.number_of_frames]
+
+                               
+
+                                #if logical_channel in data:
+                                #    break
+                                #assert trial < 40, 'Did not receive data from the board.'
+                                #trial += 1
 
                                     # answer = input_yes_no('Did not receive data from the board. Want to try again [Y] or quit [Q]?' )
                                     # assert answer, 'Interrupting test upon user request because of missing data'
                                 # else:
+
+                           
+
                             data = data[logical_channel].astype(float)
+
                             # print "Got %i samples" % len(data)
                                     # break
                             resp.freq.append(f)
                             resp.data.append(data)
-                            a = 10 * np.log10(data.var() / full_scale_response.var())  # in dBFS
+
+                            
+                            a = 10 * np.log10(data.var() / full_scale_response.var())  # in dBFS, takes frame matrix and computes its variance 
                             resp.dbfs.append(a)
                             if  min(fr_f) <= f <=max(fr_f):
                                 expected_a = np.interp(f, fr_f, fr_a)
@@ -1302,13 +1333,13 @@ class TestMGADC08Carrier(TestUtils):
             print()
             print('Test ended. Turning mezzanine power OFF')
             print('Disconnect the mezzanine if you are finished with it')
-            if r:
-                r.close()
+            #if r:
+            #    r.close()
             if mezz:
                 run_async(mezz.set_mezzanine_power_async(False))
             xr.save_data(tr)
-            if self.ps18v:
-                self.ps18v.output(state=False, readonly=False)
+            if self.ps:
+                self.ps.set_output(state=False)
             # na.close()
 
 if __name__ == '__main__':

@@ -522,7 +522,7 @@ class TestMGK7MBNetwork(TestUtils):
         xr.header('Setting-up')
         self.xr = xr
         self.cfg = xr.config
-        self.params = xr.params  # xr.params is a mutable objects, so self.params points to the same object 
+        test  # xr.params is a mutable objects, so self.params points to the same object 
         assert self.params.model, 'Need a model number' 
         assert self.params.serial, 'Need a serial number to either find an existing board a program a new one'
         self.ps = None
