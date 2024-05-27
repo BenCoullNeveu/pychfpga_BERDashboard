@@ -30,7 +30,7 @@ class TCPipe:
 
 
     CORE_REG_UDP_DATA_PORT = 2
-    
+
     opened_sockets = {}
 
     def __init__(self, hostname, port=7, timeout=2):
@@ -85,7 +85,7 @@ class TCPipe:
         for (func_id, name, docs) in f:
             if len(name) > 1: # exclude terminator, which has an empty null-terminated name string
                 funcs[ord(func_id)] = dict(
-                    name=name.strip('\x00'), 
+                    name=name.strip('\x00'),
                     docs=re.sub(r'\t(\t*)',r'\n\1',docs.strip('\x00')).strip() #replace first tab of a sequence of tabs by a newline, and remove leading/trailing newlines/empty lines
                     )
         return funcs
@@ -189,7 +189,7 @@ class TCPipe:
 
         """
         self.i2c_write_read(addr, data, read_length=0)
- 
+
     def bsb_write_read(self, data):
         """ Writes `data` to the FPGA firmware Byte-serial bus and return reply.
 
@@ -288,12 +288,12 @@ class TCPipe:
         tx_len = 5
         self.tx_view[0] = self.RPC_PREFIX
         self.tx_view[1] = self.RPC_CORE_REG_READ
-        self.tx_view[2] = 1 
+        self.tx_view[2] = 1
         self.tx_view[3] = 0
         self.tx_view[4] = reg # register number
 
         # print(f'Sending {self.tx_buf[:tx_len + len(data) + read_length]}')
-        self.sock.sendall(self.tx_view[:tx_len])    
+        self.sock.sendall(self.tx_view[:tx_len])
         rx_len = self.sock.recv_into(self.rx_buf)
         if self.rx_buf[0]:
             raise IOError(f'core_reg_read reply has error code {self.rx_buf[0]}')
@@ -307,13 +307,13 @@ class TCPipe:
         tx_len = 4+1+4
         self.tx_view[0] = self.RPC_PREFIX
         self.tx_view[1] = self.RPC_CORE_REG_WRITE
-        self.tx_view[2] = 5 # register + value word 
+        self.tx_view[2] = 5 # register + value word
         self.tx_view[3] = 0
         self.tx_view[4] = reg # register number
         self.tx_view[5: 9] = value.to_bytes(4, 'little');
 
         # print(f'Sending {self.tx_buf[:tx_len + len(data) + read_length]}')
-        self.sock.sendall(self.tx_view[:tx_len])    
+        self.sock.sendall(self.tx_view[:tx_len])
         rx_len = self.sock.recv_into(self.rx_buf)
         if self.rx_buf[0]:
             raise IOError(f'core_reg_read reply has error code {self.rx_buf[0]}')
@@ -369,15 +369,16 @@ class TCPipe_I2C:
 
             bus_info (int, dict, tuple): Describes the port, switch and switch parameter
                 It can be either a
-                    - ``i2c_port`` integer,
-                    - ``(switch_obj, switch_params)`` tuple, or
-                    ``{"port":i2c_port, "switch":switch_obj, "switch_params": switch_params"} dict
+
+                - ``i2c_port`` integer,
+                - ``(switch_obj, switch_params)`` tuple, or ``{"port":i2c_port, "switch":switch_obj,
+                  "switch_params": switch_params"} dict
 
                 where
 
-                    - i2c_port (int): I2C port (aka bus number) to use. If not specified, we'll use the I2C port of the specified switch, if any.
-                    - switch (instance): switch object instance
-                    - switch_params (int or dict): arguments to pass to the switch instance
+                - i2c_port (int): I2C port (aka bus number) to use. If not specified, we'll use the I2C port of the specified switch, if any.
+                - switch (instance): switch object instance
+                - switch_params (int or dict): arguments to pass to the switch instance
 
             args, kwargs: passed to the bus select function
 

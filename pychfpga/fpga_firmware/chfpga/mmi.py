@@ -1,12 +1,6 @@
-#!/usr/bin/python
-# Disable pylint Line too long (=C0301)
-# pylint: disable=C0301
+""" Memory Mapped interface
 
-"""
-mmi.py module
-  Firmware module Memory Mapped interface
-#
-# History:
+..  History:
     2011-08-03 JFC : Created from ANT.py
 
     2011-09-25 JFC: Added read_DRP and read_RAM
@@ -150,8 +144,11 @@ class BitField(object):
         return (int(value) >> self.bit) & ((1 << self.width)-1)
 
 class MMI(object):
-    """ Implements basic interfaces to a module. It is intended to be inherited by a subclass that specializes to specific modules"""
-    _locked = False # when 1, prevents the object to be modified
+    """ Provides access to the memory-mapped resources of a module.
+
+    It is intended to be inherited by classes that define FPGA modules that implement a Byte-Serial Bus (BSB) end point.
+    """
+    _locked = False  # when 1, prevents new attributes from being created
 
     CONTROL = CONTROL
     STATUS = STATUS
@@ -415,12 +412,34 @@ class MMI(object):
                 else:
                     raise RuntimeError("Timeout exceeded while waiting for bitfield %s==%i" % (bitfield_name, target_value))
 
-    def read_all_fields(self, format='%(name)-30s = %(page_name)7s(0x%(addr)-02X)[%(bit_range)-5s]:  %(value)5i, 0x%(hex_value)-4s, 0b%(bin_value)s', sort = ['page','name']):
+    def read_all_fields(
+            self,
+            format='%(name)-30s = %(page_name)7s(0x%(addr)-02X)[%(bit_range)-5s]:  '
+                   '%(value)5i, 0x%(hex_value)-4s, 0b%(bin_value)s',
+            sort = ['page','name']):
         """ Returns a list of all bitfields and their values.
-            Each element of the list is a dictionary describing the bitfield with the following keys:
-                name (str), page (int), page_name (str), addr (int), bit (int), bit_range (str), width (int), doc (str), value (int), bin_value (str)
-            'sort' indicated on which field(s) to sort the list
-            If a 'format' string is specified, a list of  strings formatted using the specified format is returned instead.
+
+        Parameters:
+
+            format (str): if None, the method returns a list of dict describing each bitfield. If `format` is a string, the method returns a list
+                of strings describing the bitfields, where each string is formatted using the provided string format. The string format can refer to the keys below.
+
+                - name (str),
+                - page (int),
+                - page_name (str),
+                - addr (int),
+                - bit (int),
+                - bit_range (str),
+                - width (int),
+                - doc (str),
+                - value (int),
+                - bin_value (str)
+
+            sort (list): list of strings indicateing on which field(s) to sort the bitfield list
+
+        Returns:
+
+            list: list of strings if  `format` is a string, list of dict if format is None.
         """
         def entries():  # generator to list all the bitfield values
             for (name, bitfield) in vars(type(self)).items():

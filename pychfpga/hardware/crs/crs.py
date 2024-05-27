@@ -24,6 +24,7 @@ from pychfpga.hardware.interfaces import TCPipe, TCPipe_I2C, TCPipe_SPI, ipmi_fr
 from pychfpga.fpga_firmware import FPGAFirmware
 
 from ..i2c_devices.pca9575 import pca9575 # I2C 16-bit IO Expander
+from ..i2c_devices.pca6524 import pca6524 # I2C 24-bit IO Expander
 from ..i2c_devices.pca9546a import pca9546a  # I2C switch
 from ..i2c_devices.pca8574 import PCA8574
 from ..i2c_devices.tmp421 import tmp421  # Temperature sensor
@@ -114,8 +115,8 @@ class CRS(Motherboard):
     NUMBER_OF_CHANNELIZERS = 4
     # List serial numbers of Rev 0 boards. This is a temporary hack that is used to properly select the SPI port of the PLL.
     # One day we'll be able to query the board directly.
-    REV0_SERIALS = ('429', '0429', # returned by SN003 with old TCPipe firmware that didn't read the EEPROM and used the FPGA DNA 
-                    '003',)  
+    REV0_SERIALS = ('429', '0429', # returned by SN003 with old TCPipe firmware that didn't read the EEPROM and used the FPGA DNA
+                    '003',)
 
     port = 7  # port number on which to access the platform `hostname`
 
@@ -219,7 +220,7 @@ class CRS(Motherboard):
         self.i2c1_gpio0 = pca9575(self.iic, address=0x20, port=(i2c1_switch1, 7)) #   0x20: PCA9757 GPIO for SFP/QSFP
         self.i2c1_gpio1 = pca9575(self.iic, address=0x21, port=(i2c1_switch1, 7)) #   0x21: PCA9757 GPIO for SFP/QSFP
         self.i2c1_gpio0.init(cfg0_def=0b11110010, out0_default=0b11110111)
-        self.i2c1_gpios = GPIO(gpio_table={ 
+        self.i2c1_gpios = GPIO(gpio_table={
             # name : (io_expander_object, byte, LSB bit, width)
             'QSFP_ModPrsL': (self.i2c1_gpio0, 0, 1, 1),
             'QSFP_ResetL': (self.i2c1_gpio0, 0, 2, 1),
@@ -231,6 +232,11 @@ class CRS(Motherboard):
         # Switch port 0: QSFP
         self.i2c1_qsfp = qsfp(self.iic, bus_name=(i2c1_switch1, 0), gpio_prefix='QSFP_', gpio=self.i2c1_gpios, address=0x50)
         # Switch port 1-6: SFPs
+
+        self.i2c0_bp_eeprom_data = eeprom(self.iic, address=0x50, bus_name=0, address_width=7, max_read_length=255, max_write_length=8, write_page_size=8)
+        self.i2c0_bp_eeprom_serial = eeprom(self.iic, address=0x58, bus_name=0, address_width=8, max_read_length=255)
+        self.i2c0_bp_tmp421 = tmp421(self.iic, address=0x4E, port=0)
+        self.i2c0_bp_gpio = pca6524(self.iic, address=0x22, port=0) #
 
         # list of sensors
         self.i2c1_ina231_list = {
@@ -247,7 +253,7 @@ class CRS(Motherboard):
         }
 
         self.pll = hmc7044(self.spi, spi_port=self.pll_spi_port) # programmable PLL, to be initialized when FPGA is programmed.
- 
+
         return
         self.logger.info(f'Initializing Voltage/current monitor chips')
         for name, info in self.i2c1_ina231_list.items():
@@ -287,13 +293,13 @@ class CRS(Motherboard):
             fosc=50e6,  # on-board VCXO nominal frequency
             fvco=3000e6, # PLL2 VCO frequency, which is also the ADC sampling frequency
             fsys=10e6, # system clock. Divider = 3000/250 = 12 (200 MHz is not possible because divider is odd)
-            fsysref=2.5e6 # Divider = 1200 
+            fsysref=2.5e6 # Divider = 1200
         ):
         """ Initialize the Programmable PLL.
-         
-        Because initializing the PLL changes the board state and it not needed for platform operations (PHY has a fixed clock), the PLL init  
-        should be done just before we configure the firmware so the proper reset sequences can be performed when it starts. Furthermore, this 
-        allows us to set PLL frequencies based on the requested application-specific firmware.  
+
+        Because initializing the PLL changes the board state and it not needed for platform operations (PHY has a fixed clock), the PLL init
+        should be done just before we configure the firmware so the proper reset sequences can be performed when it starts. Furthermore, this
+        allows us to set PLL frequencies based on the requested application-specific firmware.
 
         Clock inputs:
 
@@ -309,13 +315,13 @@ class CRS(Motherboard):
         self.pll.init(
             fref=fref, # external 10 MHz reference from backplane or SMA
             fosc=fosc, # on-board VCXO nominal frequency
-            fvco=fvco, 
+            fvco=fvco,
             fout={
                 0: frfdc,    # RF_CLK (FPGA RFDC 229)
                 1: fsys,     # DDR4_CLK (FPGA Bank 67 LVDS)- used as system clock
                 2: fsysref,  # CLKOUT_SMP (SMP connector P2 - Back row, 1st from M2)- to SMP connector, for debugging
                 3: fsysref,  # SYSREF_SMP (SMP connector P27, Bak row, 2nd from M2)- to SMP connector, for debugging
-                4: fpl,      # PL_CLK (FPGA Bank 69 LVDS) - used as processing clock 
+                4: fpl,      # PL_CLK (FPGA Bank 69 LVDS) - used as processing clock
                 5: fsysref,  # PL_SYSREF (FPGA Bank 69 LVDS) - used as 10 MHz reference
                 6: fsys,     # GTY_CLK0_128 - not used
                 7: fsys,     # GTY_CLK0_130 - not used
@@ -461,12 +467,12 @@ class CRS(Motherboard):
                 used to automatically select the proper bitstream file for
                 this platform and create the proper FPGAFirmware class.
 
-            force (bool or None):
+            force (bool or None): Determine when the FPGA shall be configured
 
-                force = True: FPGA will always be configured independent of the signature of the currently programmed firmware
-                force = False: FPGA will be configured if it is not configured or
+                - force = True: FPGA will always be configured independent of the signature of the currently programmed firmware
+                - force = False: FPGA will be configured if it is not configured or
                         if its bitstream CRC differ from the provided bitstream
-                force = None: FPGA will be configured only if it is not configured
+                - force = None: FPGA will be configured only if it is not configured
 
             bitfile_override (str): Specifies the path to a folder in which to
                 search for the default bitstream file,  or the path to the
@@ -486,7 +492,7 @@ class CRS(Motherboard):
         crc32 = buf.crc32
         bitstream = buf.raw_bitstream
 
-        await self.pll_init_async(fvco=fw_params['sampling_frequency'])  # add fw params here if we want to have mode/application-specific frequencies sent to the FPGA 
+        await self.pll_init_async(fvco=fw_params['sampling_frequency'])  # add fw params here if we want to have mode/application-specific frequencies sent to the FPGA
 
         self.logger.debug(f'{self!r}: Getting is_programmed')
         is_fpga_programmed = await self.is_fpga_programmed_async()
@@ -586,7 +592,7 @@ class CRS(Motherboard):
                 fru_file="",
             )
         )
-        # Convert IPMI structures into a byte stream to be written 
+        # Convert IPMI structures into a byte stream to be written
         ipmi_bytes = fru.encode()
         self.i2c1_eeprom_data.write(0, ipmi_bytes)
 

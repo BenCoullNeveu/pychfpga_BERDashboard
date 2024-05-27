@@ -8,7 +8,7 @@ Make sure you've got the latest firmware that supports corr8 mode with all 8 cha
 Run from ipython with
 
     run sifpga_crs_corr_capture.py
-    
+
 If you want to change some parameters, write them directly in the file. Command-line
 arguments are not yet supported.
 """
@@ -30,13 +30,13 @@ class CRS_CORR_CAPTURE:
     def __init__(self,
                  hwm,
                  stderr_log_level,
-                 prog, 
+                 prog,
                  mode,
                  make_directories = False,
                  data_path = None):
         """
         Description.
-        
+
         Parameters
         ----------
         the : TYPE
@@ -71,9 +71,10 @@ class CRS_CORR_CAPTURE:
 
         if self.ucap.MODE == 0:
             self.n_frames_per_capture = 2
+
         
         for n in range(self.NPOLS):
-            
+
             # Configure each FFT
             fft = self.i.chan[n].FFT
             # fft.FFT_SHIFT = 0b11111111111111 # Start with an aggressive shift schedule. This can be adjusted with optimize_fft_shift
@@ -83,14 +84,14 @@ class CRS_CORR_CAPTURE:
             fft.FFT_SHIFT = 0b11111111111000
             fft.PIPELINE_DELAY = fft.MEASURED_PIPELINE_DELAY # set pipeline delay equal to measured delay
             print(fft.status())
-            
+
             # Configure each scaler
             scaler = self.i.chan[n].SCALER
             scaler.USE_OFFSET_BINARY = 0 # don't use offset binary encoding
             scaler.ROUNDING_MODE = 2 # 0: truncate, 1: standard rounding, 2: convergent/banker's rounding
             scaler.FOUR_BITS = 1 # scale to 4 bits
             scaler.SATURATE_ON_MINUS_7 = 1 # this is typically set as default
-            
+
         # Define a bool to check if the correlator is configured
         self.corr_is_configured = False # we'll configur the correlator later
             
@@ -134,7 +135,7 @@ class CRS_CORR_CAPTURE:
                 os.mkdir(self.vis_dir_name)
             else:
                 print(f'Acquisition vis directory is {self.vis_dir_name}')
-            
+
     def read_adc_frames(self,
                         period = 0.02,
                         ncap = 1,
@@ -143,7 +144,7 @@ class CRS_CORR_CAPTURE:
                         ):
         """
         Description.
-        
+
         Parameters
         ----------
         the : TYPE
@@ -217,7 +218,7 @@ class CRS_CORR_CAPTURE:
                         ):
         """
         Description.
-        
+
         Parameters
         ----------
         the : TYPE
@@ -300,7 +301,7 @@ class CRS_CORR_CAPTURE:
                            ):
         """
         Description.
-        
+
         Parameters
         ----------
         the : TYPE
@@ -382,7 +383,7 @@ class CRS_CORR_CAPTURE:
                          ):
         """
         Description.
-        
+
         Parameters
         ----------
         the : TYPE
@@ -393,7 +394,7 @@ class CRS_CORR_CAPTURE:
         None.
 
         """
-        
+
         # NOTE: this does not presume that gains have been computed.
 
         self.ucap.OUTPUT_SOURCE_SEL = 1 # u.OUTPUT_SOURCE_SEL = 0 --> raw data, u.OUTPUT_SOURCE_SEL = 1 --> correlator data
@@ -432,7 +433,7 @@ class CRS_CORR_CAPTURE:
         t2 = time.time()
 
         print(f'Took {t2 - t1}s to capture corr data')
-        
+
         return t1, d, count, sat
 
     def optimize_fft_shift(self,
@@ -507,14 +508,14 @@ class CRS_CORR_CAPTURE:
         None.
 
         """
-        
+
         if not type(lin_gain) == np.ndarray:
-            # If not passed as an array, create an array of 
+            # If not passed as an array, create an array of
             # linear gains of constant value
             lin_gain = np.repeat(lin_gain, self.NBINS) #, dtype = '>i2')
-            
+
             # From this point forward, lin_gain is an ndarray
-        
+
         # Set gains on all channelizers
         for n in range(self.NPOLS):
             self.i.chan[n].SCALER.set_gain_table(lin_gain[n], bank = 0)
@@ -530,7 +531,7 @@ class CRS_CORR_CAPTURE:
                       ):
         """
         Description.
-        
+
         Parameters
         ----------
         the : TYPE
@@ -707,7 +708,7 @@ class CRS_CORR_CAPTURE:
                    gain_type):
         """
         Description.
-        
+
         Parameters
         ----------
         the : TYPE
@@ -728,12 +729,12 @@ class CRS_CORR_CAPTURE:
 
         digital_gain_file_name = f'{self.gain_file_name}/gains.hdf5'
         print(f'Creating digital gains file {digital_gain_file_name}')
-        
+
         # Create the gain hdf5 file
         f = h5py.File(f'{self.gain_file_name}/gains.hdf5', 'w')
 
-        lin_gain_dset = f.create_dataset('lin', 
-                                         (self.NPOLS, self.NBINS), 
+        lin_gain_dset = f.create_dataset('lin',
+                                         (self.NPOLS, self.NBINS),
                                          data = lin_gain,
                                          dtype = np.int16)
 
@@ -743,17 +744,17 @@ class CRS_CORR_CAPTURE:
                                          (self.NPOLS,),
                                          data = log_gain,
                                          dtype = np.int8) # type might be 'int', but small enough that 8 bits is plenty (max log gain is 31)
-        
+
         f.close()
-        
+
         return # nothing
-    
+
     def make_time_string(self):
         """
         Breaks down a datetime.datetime.now object into
         constituent units and refactors them in a single
         string. Used for creating file names.
-        
+
         Parameters
         ----------
         None.
@@ -761,15 +762,15 @@ class CRS_CORR_CAPTURE:
         Returns
         -------
         Datetime string in the format
-        
+
             YEAR MONTH DAY T HOUR MINUTE SECOND Z
-            
+
         For example:
-            
+
             20230501T113105Z
 
         """
-                
+
         t = datetime.datetime.now()
         y = t.year
         mth = t.month
@@ -777,25 +778,23 @@ class CRS_CORR_CAPTURE:
         h = t.hour
         m = t.minute
         s = t.second
-        
+
         # Hacky, but add a 0 if a given unit is only 1 number
         # to be consistent with ICE file names
         if len(str(mth)) == 1:
             mth = f'0{mth}'
-            
+
         if len(str(d)) == 1:
             d = f'0{d}'
-            
+
         if len(str(h)) == 1:
             h = f'0{h}'
-            
+
         if len(str(m)) == 1:
             m = f'0{m}'
-            
+
         if len(str(s)) == 1:
             s = f'0{s}'
-        
-        return f'{y}{mth}{d}T{h}{m}{s}Z' 
 
     def observe(self, 
                 n_vis_per_file = 256,
@@ -812,13 +811,13 @@ class CRS_CORR_CAPTURE:
 
         """
         Runs overnight acquisitions, handling data capture and file writing.
-        
+
         Parameters
         ----------
 
         Returns
         -------
-        
+
 
         """
 
@@ -862,9 +861,9 @@ class CRS_CORR_CAPTURE:
 
         # ===========
         # Configure the channelizer and correlator. This is done after gain
-        # computation because the compute gains algorithm changes the 
+        # computation because the compute gains algorithm changes the
         # configuration.
-        
+
         print('')
         print('')
         print('===================================')
@@ -876,8 +875,8 @@ class CRS_CORR_CAPTURE:
 
         # Set up the channelizer. Input data should be coming
         # from the ADC, and nothing should be bypassed.
-        self.i.set_channelizer(data_source = 'adc', 
-                               fft_bypass = 0, 
+        self.i.set_channelizer(data_source = 'adc',
+                               fft_bypass = 0,
                                scaler_bypass = 0
                                )
 
@@ -893,7 +892,7 @@ class CRS_CORR_CAPTURE:
             
             # Update the corr configure check
             self.corr_is_configured = True
-            
+
         print(self.corr.status()) # print corr configuration status
 
         # ===========
@@ -918,7 +917,7 @@ class CRS_CORR_CAPTURE:
         actual_integration_time = n_firmware_frames * n_software_frames * s_per_frame
         print(f'Target integration time: {set_integration_time} s')
         print(f'Actual integration time: {actual_integration_time} s')
-        
+
         # Generate product array
         prod_idx = np.triu_indices(8)
         prod = np.zeros((len(prod_idx[0]), 2))
@@ -954,13 +953,13 @@ class CRS_CORR_CAPTURE:
 
                 dset_freq[:] = self.f
                 dset_prod[:] = prod
-                
+
                 # Make numpy buffers for index_map
                 t_buf = np.zeros(n_vis_per_file, dtype = np.float64)
                 vis_buf = np.zeros((n_vis_per_file, self.NBINS, self.NCORR_PROD), dtype = np.complex128)
                 counts_buf = np.zeros((n_vis_per_file, self.NBINS), dtype = np.uint32)
                 sat_buf = np.zeros((n_vis_per_file, self.NBINS, self.NCORR_PROD), dtype = np.complex64)
-                
+
                 # Make statistics group
                 stats_grp = f.create_group('stats')
                 dset_FRAME_COUNT = stats_grp.create_dataset('frame_count', (n_vis_per_file, self.NPOLS), dtype = int)
@@ -968,14 +967,14 @@ class CRS_CORR_CAPTURE:
                 dset_FFT_OVERFLOWS = stats_grp.create_dataset('fft_overflows', (n_vis_per_file, self.NPOLS), dtype = int)
                 dset_SCALER_OVERFLOWS = stats_grp.create_dataset('scaler_overflows', (n_vis_per_file, self.NPOLS), dtype = int)
                 dset_CORR_OVERRUN = stats_grp.create_dataset('corr_overrun', (n_vis_per_file, ), dtype = int)
-                
-                # Make numpy buffers for statistics 
+
+                # Make numpy buffers for statistics
                 frame_count_buf = np.zeros((n_vis_per_file, self.NPOLS), dtype = int)
                 adc_overflows_buf = np.zeros((n_vis_per_file, self.NPOLS), dtype = int)
                 fft_overflows_buf = np.zeros((n_vis_per_file, self.NPOLS), dtype = int)
                 scaler_overflows_buf = np.zeros((n_vis_per_file, self.NPOLS), dtype = int)
                 corr_overrun_buf = np.zeros(n_vis_per_file, dtype = int)
-                
+
                 # Capture some ADC data... here? But then we would need to reconfigure the channelizer...
                 # If so, then record maybe 10 captures. Or let it be a user-defined variable.
                 # 10 captures for 256 timestamps is over half a GB of data. maybe need a separate file for this.
@@ -1023,11 +1022,11 @@ class CRS_CORR_CAPTURE:
                     print('')
                     print('<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>')
                     print(f'Capture {n} for file {file_name}')
-                    
+
                     print('Capturing statistics')
                     # Capture statistics
                     for m in range(self.NPOLS):
-                    
+
                         # FFT stats
                         self.i.chan[m].FFT.OVERFLOW_RESET = 1
                         self.i.chan[m].FFT.OVERFLOW_RESET = 0
@@ -1081,7 +1080,7 @@ class CRS_CORR_CAPTURE:
 
                 # Close file
                 print(f'Closing file {file_name}')
-                f.close() 
+                f.close()
 
                 # Increment file number
                 file_number += 1
@@ -1095,7 +1094,7 @@ class CRS_CORR_CAPTURE:
             print('')
 
         return
-    
+
 # Sandbox mode:
 # ccc = CRS_CORR_CAPTURE(hwm = 'crs 0016',
 #                        stderr_log_level = 'debug',
@@ -1105,6 +1104,7 @@ class CRS_CORR_CAPTURE:
 
 # final_fft_shift = ccc.optimize_fft_shift()
 # fft_data, fft_rms, gain, lin, log, scaler_data  = ccc.compute_gains(1000)
+
 
 # Observation mode:
 ccc = CRS_CORR_CAPTURE(hwm = 'crs 0016',

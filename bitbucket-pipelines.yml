@@ -3,34 +3,36 @@
 # Only use spaces to indent your .yml configuration.
 # -----
 # You can specify a custom docker image from Docker Hub as your build environment.
-image: python:3.7
+clone:
+  lfs: true  # make sure LFS files are fetched, otherwise we don't have our images...
+
+image: python:3.8
 
 pipelines:
-  default:
-    - step:
-        caches:
-          - pip
-        script: # Modify the commands below to build your repository.
-          - DOC_REPO='winterlandcosmology.bitbucket.io'
-          - DOC_REPO_URL='git@bitbucket.org:winterlandcosmology/'$DOC_REPO'.git'
-          - DOC_SPHINX_ROOT_FOLDER='docs'
-          - DOC_BUILD_FOLDER='build'
-          - DOC_PUBLISH_FOLDER='pychfpga/'$BITBUCKET_BRANCH
-          # - pip install -r requirements.txt
-          - pip install -e . # git+ssh://git@bitbucket.org/winterlandcosmology/wtl-sphinx-paramlinks.git#egg=wtl_sphinx_paramlinks
-          - cd $DOC_SPHINX_ROOT_FOLDER
-          - pip install -r requirements.txt
-          - echo 'Building for '$BITBUCKET_REPO_SLUG/$BITBUCKET_BRANCH
-          - make html
-          - cd $DOC_BUILD_FOLDER
-          - git clone $DOC_REPO_URL
-          - rm -rf $DOC_REPO/$DOC_PUBLISH_FOLDER/*
-          - mkdir -p $DOC_REPO/$DOC_PUBLISH_FOLDER
-          - cp -r html/* $DOC_REPO/$DOC_PUBLISH_FOLDER/
-          - cd $DOC_REPO
-          - git config --global user.email "bb-pipelines@jfcliche.com"
-          - git config --global user.name "BitBucket Pipelines ($BITBUCKET_REPO_SLUG/$BITBUCKET_BRANCH)"
-          - git add --all $DOC_PUBLISH_FOLDER
-          - git diff-index --quiet HEAD -- || git commit -a -m "bitbucket-pipelines updated $BITBUCKET_BRANCH branch into $DOC_PUBLISH_FOLDER sphinx-generated documentation"
-          - git push
+  branches:
+    '{master,develop,jfc/dev}':
+      - step:
+          caches:
+            - pip
+          script: # Modify the commands below to build your repository.
+            - DOC_REPO='winterlandcosmology.bitbucket.io'
+            - DOC_REPO_URL='git@bitbucket.org:winterlandcosmology/'$DOC_REPO'.git'
+            - DOC_SPHINX_ROOT_FOLDER='docs'
+            - DOC_BUILD_FOLDER='build'
+            - DOC_PUBLISH_FOLDER='pychfpga/'$BITBUCKET_BRANCH
+            - pip install -e .[docs]
+            - cd $DOC_SPHINX_ROOT_FOLDER
+            - echo 'Building for '$BITBUCKET_REPO_SLUG/$BITBUCKET_BRANCH
+            - make html
+            - cd $DOC_BUILD_FOLDER
+            - git clone $DOC_REPO_URL
+            - rm -rf $DOC_REPO/$DOC_PUBLISH_FOLDER/*
+            - mkdir -p $DOC_REPO/$DOC_PUBLISH_FOLDER
+            - cp -r html/* $DOC_REPO/$DOC_PUBLISH_FOLDER/
+            - cd $DOC_REPO
+            - git config --global user.email "bb-pipelines@jfcliche.com"
+            - git config --global user.name "BitBucket Pipelines ($BITBUCKET_REPO_SLUG/$BITBUCKET_BRANCH)"
+            - git add --all $DOC_PUBLISH_FOLDER
+            - git diff-index --quiet HEAD -- || git commit -a -m "bitbucket-pipelines updated $BITBUCKET_BRANCH branch into $DOC_PUBLISH_FOLDER sphinx-generated documentation"
+            - git push
 

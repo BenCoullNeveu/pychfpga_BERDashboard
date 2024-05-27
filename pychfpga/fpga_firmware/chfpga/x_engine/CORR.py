@@ -52,7 +52,6 @@ class CORR_core(MMI):
     NO_ACCUM           = BitField(CONTROL, 0x00, 5, doc="Disables accumulation - only the last result is saved")
     USER_ID            = BitField(CONTROL, 0x00, 0, width=4, doc="USER ID used in the correlator packet header")
     INTEGRATION_PERIOD = BitField(CONTROL, 0x04, 0, width=32, doc="Duration of te integration period minus one")
-    BINS_PER_FRAME_OLD = BitField(CONTROL, 0x05, 0, width=7, doc="Number of frequency bins per frame minus one")
     BINS_PER_FRAME     = BitField(CONTROL, 0x06, 0, width=9, doc="Number of frequency bins per frame minus one")
 
     # Status registers
@@ -155,11 +154,7 @@ class CORR(object):
             corr.SOFT_RESET = 1  # make sure we stop sending readouts in progres
             corr.INTEGRATION_PERIOD = integration_period - 1
             corr.AUTOCORR_ONLY = autocorr_only
-            if self.fpga.PLATFORM_ID == self.fpga._PLATFORM_ID_ZCU111:
-                corr.BINS_PER_FRAME = bins_per_frame - 1
-            else:
-                self.logger.error(f'{self!r}: Using the old CORR.BINS_PER_FRAME register. Remove this line when the firmware is updated')
-                corr.BINS_PER_FRAME_OLD = bins_per_frame - 1
+            corr.BINS_PER_FRAME = bins_per_frame - 1
             corr.SOFT_RESET = i not in correlators
         self.fpga.set_corr_reset(0)
 
@@ -492,10 +487,10 @@ class CorrFrameReceiver(object):
     System Requirements:
 
     The transmit rate must be fast enough to accommodate the desired bandwidth
-    by setting ib.GPIO.HOST_FRAME_READ_RATE = rate. rate=16 limits to about
+    by setting ``ib.GPIO.HOST_FRAME_READ_RATE = rate``. ``rate`` =16 limits to about
     260 Mbps but is slow enough to allow python to process the data with a
-    small standard UDP buffer. ``rate``=15 is good for about 500 Mbps, and
-    ``rate``=16 is good for the full Gigabit bandwidth. The latetr two require
+    small standard UDP buffer. ``rate`` =15 is good for about 500 Mbps, and
+    ``rate`` =16 is good for the full Gigabit bandwidth. The latetr two require
     bigger UDP buffers. See below::
 
         ib.GPIO.HOST_FRAME_READ_RATE = 14
@@ -505,12 +500,14 @@ class CorrFrameReceiver(object):
         sudo ifconfig eno1 mtu 9000
 
     The UDP buffers shall be increased to reduce packet loss to a minimum::
+
         sudo sysctl -w net.core.rmem_max=26214400
         sudo sysctl -w net.core.rmem_default=26214400
         sudo sysctl -w net.ipv4.udp_mem='26214400 26214400 26214400'
         sudo sysctl -w net.ipv4.udp_rmem_min=26214400
 
     Check udp buffers::
+
         sysctl -a | grep mem
 
     Monitor UDP buffer::
@@ -681,14 +678,14 @@ class CorrFrameReceiver(object):
             data_timeout=0.001,
             flush_timeout=0.001,
             return_format='raw'):
-        """
+        """ Read correlator frames
 
         Parameters:
 
             number_of_results (int): Number of software-integrated frames to
                 acquire and return. If a `filename` is specified, only the
                 last frame is returned. Also only if `filename` is specified,
-                a `number_of_results`=Non ewill result in indefinite data
+                a `number_of_results` =None will result in indefinite data
                 capture until the capture is stopped.
 
             soft_integ_period (int): Number of correlator frames to

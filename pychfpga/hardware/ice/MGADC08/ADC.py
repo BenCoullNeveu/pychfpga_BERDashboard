@@ -1,11 +1,9 @@
 #!/usr/bin/python
 
-"""
-ADC.py module
- Implements interface to ADC on the ADC FMC
-#
-# History:
-# 2011-07-07 : JFC : Created from test code in chFPGA.py
+""" Implements the interface to the ADC chips MGADC08 FMC Mezzanine.
+
+.. History:
+    2011-07-07 : JFC : Created from test code in chFPGA.py
     2011-09-29 JFC: Added set_test_mode()
     2012-06-07 JFC: Added ADC_chip.get_temperature()
 """

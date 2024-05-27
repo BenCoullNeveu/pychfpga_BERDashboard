@@ -21,6 +21,7 @@ import socket
 import __main__
 import asyncio
 import traceback
+from typing import List, Literal
 
 # PyPi external packages
 import numpy as np
@@ -38,7 +39,7 @@ from pychfpga.hardware.interfaces import TCPipe_BSB_MMI, FPGAMmi
 from pychfpga.fpga_firmware import FPGAFirmware
 
 from .chFPGA_receiver import chFPGA_receiver
-
+from .f_engine.scaler import SCALER
 
 # FPGA subsystems handlers
 from .system import spi
@@ -54,7 +55,7 @@ from .f_engine import prober  # needed to access RawFrameReceiver
 
 # FPGA Corner-turn Engine
 from .ct_engine import chan_crossbar
-from .ct_engine import ultract
+from .ct_engine import ucorn
 from .ct_engine import shuffle_crossbar
 from .ct_engine import shuffle
 from .ct_engine import gpu
@@ -62,8 +63,7 @@ from .ct_engine import cge
 from .ct_engine import ucap
 
 # FPGA Correlator (X-Engine)
-from .x_engine import CORR  # 16-channel correlator (if implemented in firmware)
-from .x_engine import UCORR  # 8-channel Ultrascale+ correlator (if implemented in firmware)
+from .x_engine import CORR, UCORR  # 16-channel correlator (if implemented in firmware)
 
 
 # Default ADC delays
@@ -110,17 +110,22 @@ class chFPGA(FPGAFirmware):
 
     This class supports two methods to access the FPGA firmware:
 
-        - Ethernet/UDP-based
-          Memory-mapped Interface (MMI) implemented directly by the FPGA, typically used by the IceBoard motherboard. The class provides SPI-based Memory-mapped Interface to the
-      FPGA, which is used to configure the networking parameters in the FPGA via the on-board ARM processor.
+    - Ethernet/UDP-based Memory-mapped Interface (MMI) implemented directly by the FPGA,
+      typically used by the IceBoard motherboard. The class provides SPI-based Memory-mapped
+      Interface to the FPGA, which is used to configure the networking parameters in the FPGA
+      via the on-board ARM processor.
 
-        - TCPipe, TCP-based memory-map interface typically supported by the ZCU111
+    - TCPipe, TCP-based memory-map interface typically supported by the ZCU111
     """
 
-    # Define the motherboard models and operational modes supported by this class, and associate corresponding FPGA configuration bitstreams and initialization parameters
-    PLATFORM_SUPPORT = { # (platform_model, firmware_config_class, modes): {firmware_filename: <fw_fn>, <other platform parameters>}
+    # Define the motherboard models and operational modes supported by this class, and associate corresponding FPGA
+    # configuration bitstreams and initialization parameters The 'clock_divider' is used to know when clock frequency
+    # to expect when we monitor the ADC clock with the frequency counter.This could be independent from the
+    # procrssing clock.For the CRS, the procssing clock is Fs/ 8 and the monitoring clock is Fs/ 16. For the
+    # IceBoard, it's both fs/4. (fs=sampling frequency)
+    PLATFORM_SUPPORT = { # (platform_model, firmware_config, modes): {firmware_filename: <fw_fn>, <other platform parameters>}
         ("MGK7MB", "chFPGA", ("shuffle16", "shuffle128", "shuffle256", "shuffle512", "chan8", "chan4")): dict(firmware_url='chFPGA_MGK7MB_Rev2.bit', sampling_frequency=800e6, processing_frequency=200e6, adc_clock_divider=4),
-        ("MGK7MB", "siFPGA", ("corr16",)): dict(firmware_url='SIFPGA_MGK7MB.bit', sampling_frequency=800e6, processing_frequency = 200e6),
+        ("MGK7MB", "siFPGA", ("corr16",)): dict(firmware_url='SIFPGA_MGK7MB.bit', sampling_frequency=800e6, processing_frequency = 200e6, adc_clock_divider=4),
         ("MGK7MB", "chordFPGA", ("chord16",)): dict(firmware_url='chordFPGA_MGK7MB_Rev2.bit', sampling_frequency=1200e6, processing_frequency = 300e6),
         ("ZCU111", "siFPGA", ("corr4", "corr8")): dict(firmware_url='sifpga_zcu111_wrapper.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
         ("ZCU111", "chFPGA", ("chan8",)): dict(firmware_url='chfpga_zcu111.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
@@ -269,7 +274,7 @@ class chFPGA(FPGAFirmware):
 
         Parameters:
 
-            motherboard (Motherboard subclass): Motherboard platform on which the FPGA is located. 
+            motherboard (Motherboard subclass): Motherboard platform on which the FPGA is located.
 
             **fw_params (dict): Extra parameters to be associated with this
                   version of the firmware. Those are obtained from the platform
@@ -294,7 +299,7 @@ class chFPGA(FPGAFirmware):
         self.logger.debug(f"{self!r}: Creating chFPGA FPGAFirmware object")
 
 
-        # Firmware attributes provided by PLATFORM_SUPPORT. Those will be used later by `init_async`. 
+        # Firmware attributes provided by PLATFORM_SUPPORT. Those will be used later by `init_async`.
         self.fw_params = fw_params
 
         # Firmware attributes that will be intialized later by `init_async`
@@ -305,7 +310,7 @@ class chFPGA(FPGAFirmware):
         self._FMC_present = []  # indicates if the FMC board is present. If not, the modules will act accordingly.
         self._last_init_time = None
         self.recv = None # raw data capture receiver object
-        self.corr_recv = None # correlator data receiver object 
+        self.corr_recv = None # correlator data receiver object
         self.mmi = None
 
         self.PLATFORM_ID = None # Platform will be identified once communication is established with the FPGA. Might be called by get_metrics() before that.
@@ -736,7 +741,7 @@ class chFPGA(FPGAFirmware):
 
             # Set platform/implementation-specific features & constants based on values reported by the FPGA GPIO module
             #
-            # Get frame size info, i.e number of samples per frame 
+            # Get frame size info, i.e number of samples per frame
             self._LOG2_FRAME_LENGTH = self.GPIO.LOG2_FRAME_LENGTH
             self.FRAME_LENGTH = 2**self._LOG2_FRAME_LENGTH  # 2**11 = 2048 time samples per frame
             self.ADC_SAMPLES_PER_FRAME = self.FRAME_LENGTH  # more explicit name
@@ -844,7 +849,7 @@ class chFPGA(FPGAFirmware):
                     self._CROSSBAR1_BASE_ADDR,
                     self._CROSSBAR_ADDR_INCREMENT)  # CROSSBAR block
             elif self.CROSSBAR1_TYPE == "URAM":
-                self.CROSSBAR = ultract.UltraCT(
+                self.CROSSBAR = ucorn.UCorn(
                     self,
                     self._CROSSBAR1_BASE_ADDR,
                     self._CROSSBAR_ADDR_INCREMENT)
@@ -906,7 +911,7 @@ class chFPGA(FPGAFirmware):
                 self.UCAP = ucap.UCAP(self, self._UCAP_BASE_ADDR, 0)
             elif self.CAPTURE_TYPE !='PROBER':
                 raise RuntimeError(f'Unknown Data capture type {self.CAPTURE_TYPE}')
-   
+
             self.logger.debug('%r: This motherboard has %i FMC slots' % (self, self._NUMBER_OF_FMC_SLOTS))
 
             # ---------------------------------------------------------------------
@@ -992,7 +997,7 @@ class chFPGA(FPGAFirmware):
              adc_delay_table (dict): initial setting of the ADC delays. see `set_adc_delays`.
                  A default delay table is used if none is provided.
 
-             adc_clock_divider (float): ratio between the ADC sampling frequency and the measured ADC clock speed. If `None`, the platform/mode default is used. 
+             adc_clock_divider (float): ratio between the ADC sampling frequency and the measured ADC clock speed. If `None`, the platform/mode default is used.
 
              data_width (int): 4 or 8. Indicate of the channelizer output is in (4+4)bit or (8+8
                  bit) mode
@@ -1005,7 +1010,7 @@ class chFPGA(FPGAFirmware):
 
              verbose (int): verbose level
 
-             kwargs (dict): Any other arguments. These are not used. 
+             kwargs (dict): Any other arguments. These are not used.
 
         Returns:
             None
@@ -1197,7 +1202,8 @@ class chFPGA(FPGAFirmware):
             self.get_data_receiver()
 
     def check_adc_frequencies(self, stage):
-
+        # TODO: disable if mezzanine is not attached
+        # if self.mezzanine.atta
         target_frequency = self._sampling_frequency/self.adc_clock_divider
 
         for trial in range(10):
@@ -1690,7 +1696,7 @@ class chFPGA(FPGAFirmware):
         """
         if self.PLATFORM_ID in (self._PLATFORM_ID_ZCU111, self._PLATFORM_ID_CRS):
             self.mb.tcpipe.core_reg_write(self.mb.tcpipe.CORE_REG_UDP_DATA_PORT, port)
-        else: 
+        else:
             word = await self.fpga_core_reg_read_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR)
             await self.fpga_core_reg_write_async(self._FPGA_DATA_DEST_MAC_ADDR_MSW_IP_PORT_ADDR, (word & 0xFFFF0000) | (port & 0xFFFF))
 
@@ -2205,10 +2211,10 @@ class chFPGA(FPGAFirmware):
 
         Parameters:
 
-            datetime_ (datetime): the base target time in the Python as a 'datetime' object.
+            datetime_ (datetime): the base target time in the Python as a :class:`datetime` object.
 
-            delay (float): is a time offset in seconds that is added to
-            `datetime_` so set the target time. It defaults to zero.
+            delay (float): is a time offset in seconds that is added to `datetime_` so set the
+                target time. It defaults to zero.
 
         Returns:
 
@@ -2220,10 +2226,8 @@ class chFPGA(FPGAFirmware):
         reference clock and ensure deterministic start of the syncronization
         state machine.
 
-        If 'datetime_' and 'delay' are None, the trigger time is set 3 seconds
+        If `datetime_` and 'delay' are None, the trigger time is set 3 seconds
         after the current time (as returned by the board).
-
-
         """
         if datetime_ is None:
             ts = await self._get_irigb_time_async(trig=True)  # do this synchronously to we get an accurate time
@@ -2650,6 +2654,9 @@ class chFPGA(FPGAFirmware):
             scaler_bypass=None,
             gain=None,
             postscaler=None,
+            scaler_eight_bit=None,
+            scaler_rounding_mode=None,
+            prober_user_flags=None,
             offset_binary_encoding=None,
             local_sync=True,
             channels=None,
@@ -2675,9 +2682,13 @@ class chFPGA(FPGAFirmware):
 
         # Set the date source and the function generator that feed the FFT
         if data_source is not None:
-            self.set_data_source(data_source, channels=channels)  # does a channelizer reset
+            self.set_data_source(data_source, channels=channels, **function_kwargs)  # does a channelizer reset
 
         if function is not None:
+            logger = logging.getLogger(self.__class__.__name__)
+            logger.warning(
+                "Using 'function' parameter for setting FUNCGEN function is obsolete. Please use 'data_source' instead."
+            )
             # Handle special case where we set the output of the channelizer
             # with complex numbers that will give unique correlation products
             # (visibilities). There are 108 such numbers in a (4+4) bits
@@ -2739,6 +2750,19 @@ class chFPGA(FPGAFirmware):
         if scaler_bypass is not None:
             self.set_scaler_bypass(bypass_mode=scaler_bypass, channels=channels)
 
+        if scaler_rounding_mode is not None:
+            self.set_scaler_rounding_mode(
+                scaler_rounding_mode=scaler_rounding_mode,
+                channels=channels,
+            )
+
+        if scaler_eight_bit is not None:
+            self.set_scaler_eight_bit(
+                scaler_eight_bit=scaler_eight_bit,
+                prober_user_flags=prober_user_flags,
+                channels=channels,
+            )
+
         if gain is not None:
             self.set_gains(gain=gain, postscaler=postscaler, channels=channels)
 
@@ -2787,7 +2811,7 @@ class chFPGA(FPGAFirmware):
         is automatically selected and the waveform is set-up.
 
         This function resets the channelizers, even if only the function is
-        changed. user `setfuncgen_function()` if the function generator is
+        changed. Use `set_funcgen_function()` if the function generator is
         already active and you want to change only the waveform
         """
         data_sources = self.chan[0].FUNCGEN.DATA_SOURCE_NAMES.keys()
@@ -3139,7 +3163,7 @@ class chFPGA(FPGAFirmware):
             burst_period_in_frames (int): Number of frames between captured bursts.
 
             number_of_bursts (int): Number of bursts to send, after which the FPGA stops sending
-                data. If `number_of_bursts`=0, the transmission continues indefinitely, until
+                data. If `number_of_bursts` =0, the transmission continues indefinitely, until
                 stopped by `stop_data_capture()`.
 
             frames_per_burst (int): Number of frames to send in a single burst. Default is 1.
@@ -3258,7 +3282,7 @@ class chFPGA(FPGAFirmware):
             sub_period (int): Sets how fast the data is to be temporarily
                 transmitted and captured for the selected channel.
 
-                 A capture is always done at the beginning of each primary
+                A capture is always done at the beginning of each primary
                 period, with subsequent captures spaced by 2**(sub_period+1)
                 frames. This can be used to speed up captures, but the rate
                 rate cannot be slower than the primary capture rate.
@@ -3402,8 +3426,8 @@ class chFPGA(FPGAFirmware):
 
             where
 
-                ``delay_info`` is a dict containing the ``tap_delays``, ``sample_delay`` and ``clock_delay`` for the channels specified in the key.
-               ``sync_delays`` is a list of the tap delays applied on the ADC sync line for each mezzanine
+            - ``delay_info`` is a dict containing the ``tap_delays``, ``sample_delay`` and ``clock_delay`` for the channels specified in the key.
+            - ``sync_delays`` is a list of the tap delays applied on the ADC sync line for each mezzanine
         """
         delay_table = self.chan.get_adc_delays()
         delay_table['sync_delays'] = self.REFCLK.get_sync_delays()
@@ -3416,7 +3440,7 @@ class chFPGA(FPGAFirmware):
             save_delays=True,
             check_sync_delays=False,
             check_adc_delays=20,
-            delay_table_folder=ADC_DELAY_TABLE_FOLDER, 
+            delay_table_folder=ADC_DELAY_TABLE_FOLDER,
             verbose=1,
             retry=5):
         """
@@ -3682,7 +3706,7 @@ class chFPGA(FPGAFirmware):
 
         """
         self.REFCLK.set_sync_delays(sync_delays)
-         
+
 
     def _set_adc_delays(self, delay_table):
         """
@@ -3751,7 +3775,7 @@ class chFPGA(FPGAFirmware):
         Returns:
 
             ``N_channels`` x 32 x 11 byte array, where ``N_channels`` is the numbe of channels
-            specified in :paramref:`channels`.
+            specified in `channels`.
 
         Note:
 
@@ -4079,7 +4103,7 @@ class chFPGA(FPGAFirmware):
 
     def set_offset_binary_encoding(self, offset=True, channels=None, sync=True):
         """
-        Set the output to be encoded in offset binary instead of 2's compliment
+        Set the output to be encoded in offset binary instead of 2's complement
         if sync is true, perform a sync afterward.  Necessary for data to continue flowing
 
         Parameters:
@@ -4221,6 +4245,97 @@ class chFPGA(FPGAFirmware):
         except IOError:
             self.logger.warning("Gain file '%s' could not be saved for (crate,slot)=%r " % (gain_filename, self.get_id()))
 
+    def set_scaler_eight_bit(
+            self,
+            scaler_eight_bit: bool,
+            prober_user_flags: bool,
+            channels: List[int],
+    ):
+        """
+            Sets the scaler to 8-bit/4bit mode. The mode will be set individually for each channelizer.
+
+            Parameters:
+
+                scaler_eight_bit (bool): If True - sets the channel to 8-bit mode, otherwise 4-bit mode
+
+                prober_user_flags (bool): If True, returns user flags in last 4 bits captured from scaler
+
+                channels (list of int): channels to which the specified mode is applied. If 'channels' is None, it is
+                applied to the default (active) channels (see set_default_channels()).
+
+            Notes:
+
+
+            Examples:
+
+                set_eight_bit_scaler(True, False, [0,1,2,3])    # Sets first four channels to the 8-bit mode with data
+                                                                taking the whole byte
+                set_eight_bit_scaler(True, True)                # Sets active channels to the 4-bit mode, but last
+                                                                4-bits in each byte will be returned user flags
+
+            History:
+                2023-10-10 Vadym B.: Added this function
+            """
+
+        if channels is None:
+            channels = self.default_channels
+
+        eb_support = [chan.SCALER.EIGHT_BIT_SUPPORT for chan in self.chan]
+        if not all(eb_support):
+            raise RuntimeError(
+                f"The scaler of channelizers {[ch for ch in range(len(self.chan)) if not eb_support[ch]]} "
+                f"does not support 8-bit mode."
+            )
+
+        for ch in range(len(self.chan)):
+            if ch in channels:
+                self.logger.debug(f"Setting scaler of channel {ch} to 8-bit mode.")
+                self.chan[ch].SCALER.FOUR_BITS = not scaler_eight_bit
+
+                self.logger.debug(
+                    f"{'Adding' if prober_user_flags else 'Removing'} user flags from scaler data of channel {ch}."
+                )
+                if prober_user_flags is not None:
+                    self.chan[ch].PROBER.PROBER_USER_FLAGS = prober_user_flags
+
+    def set_scaler_rounding_mode(
+            self,
+            scaler_rounding_mode: Literal[1, 2, 3],
+            channels: List[int],
+    ):
+        """
+            Sets the rounding mode of the scaler. The mode will be set individually for each channelizer.
+
+            Parameters:
+
+                scaler_rounding_mode (int): 0 - truncation, 1 - rounding, 2 - convergent rounding
+
+                channels (list of int): channels to which the specified mode is applied. If 'channels' is None, it is
+                applied to the default (active) channels (see set_default_channels()).
+
+            History:
+                2023-10-23 Vadym B.: Added this function
+            """
+
+        rounding_options = {
+            0: ("truncation", SCALER.ROUNDING_MODE_TRUNCATE),
+            1: ("rounding", SCALER.ROUNDING_MODE_ROUND),
+            2: ("convergent_rounding", SCALER.ROUNDING_MODE_CONVERGENT_ROUND),
+        }
+
+        if scaler_rounding_mode not in rounding_options.keys():
+            raise ValueError(f"Invalid rounding mode requested. Available options: {list(rounding_options.keys())}")
+
+        rm_name, rm_code = rounding_options[scaler_rounding_mode]
+
+        if channels is None:
+            channels = self.default_channels
+
+        for ch in range(len(self.chan)):
+            if ch in channels:
+                self.logger.debug(f"Setting rounding mode of scaler in channel {ch} to {rm_name}.")
+                self.chan[ch].SCALER.ROUNDING_MODE = not rm_code
+
     def set_gains(
             self,
             gain=None,
@@ -4242,40 +4357,45 @@ class chFPGA(FPGAFirmware):
             gain (scalar, tuple, list or dict): Linear gain and optional postscaler gain to apply to the
                 specified channels. Gain elements can be defined as:
 
-                    G = Glin_scalar: Single gain for all bins, default postscaler is used
-                    G = (Glin_scalar, None): same as above
-                    G = (Glin_scalar, Glog): Single gain for all bins with specified postscaler
-                    G = Glin_vector: Gain value for each bin, using the default post-scaler value
-                    G = (Glin_vector, None) : same as above
-                    G = (Glin_vector, Glog) : Gain value for each bin with specified post-scaler value
+                - G = Glin_scalar: Single gain for all bins, default postscaler is used
+                - G = (Glin_scalar, None): same as above
+                - G = (Glin_scalar, Glog): Single gain for all bins with specified postscaler
+                - G = Glin_vector: Gain value for each bin, using the default post-scaler value
+                - G = (Glin_vector, None) : same as above
+                - G = (Glin_vector, Glog) : Gain value for each bin with specified post-scaler value
 
                 where:
 
+<<<<<<< HEAD
+                - ``Glin_scalar`` is a real or complex number. The real and imaginary part of the
+                  linear gain are integer values ranging from -32768 to 32767.
+
+                - ``Glog`` is the postscaler factor. This is a binary scaling factor, which is an
+                  integer between 0 and 31 representing a power of two that multiplies the linear
+                  gain. It is common to every bin.
+=======
                     - ``Glin_scalar`` is a real or complex number. The real and imaginary part of the linear
                     gain are integer values ranging from -32768 to 32767.
-
                     - ``Glog`` is the postscaler factor. This is a binary scaling factor, which is an integer
                           between 0 and 31 representing a power of two that multiplies the linear
                           gain. It is common to every bin.
+>>>>>>> origin/vb/firmtest
 
-                    - ``Glin_vector`` is a 1024-element vector of ``Glin_scalar``, where each element is the individual
-                          gain of every bin.
+                - ``Glin_vector`` is a 1024-element vector of ``Glin_scalar``, where each element is
+                  the individual gain of every bin.
 
                 `gain` can take the following form:
 
-                    - `gain` = G. If `gain` is a scalar or tuple, the specified gains are applied
-                      to all channels specified in `channels`.
+                - `gain` = G. If `gain` is a scalar or tuple, the specified gains are applied to all
+                  channels specified in `channels`.
 
-                    - `gain` = {ch_number1: G1, ch_number2: G2 ...}: If `gain` is  a dict, the gain
-                      is applied to specified channel numbers, but only if they are included in
-                      `channels`
+                - `gain` = {ch_number1: G1, ch_number2: G2 ...}: If `gain` is  a dict, the gain is
+                  applied to specified channel numbers, but only if they are included in `channels`
 
-                    - `gain` = [ (ch_number1, G1),  (ch_number2, G2), ...] or `gain` = [ (ch_list1 , G1), (ch_list2, G2), ...]:
-                      If `gain` is a list of tuples, a specified gain ``G`` profile is applied to unique
-                      channels number or to all channels in a of a list of channel numbers.
-                      Channels not specified in `channels` are not set.
-
-
+                - `gain` = [ (ch_number1, G1),  (ch_number2, G2), ...] or `gain` = [ (ch_list1 ,
+                  G1), (ch_list2, G2), ...]: If `gain` is a list of tuples, a specified gain ``G``
+                  profile is applied to unique channels number or to all channels in a of a list of
+                  channel numbers. Channels not specified in `channels` are not set.
 
             postscaler (int): Postscaler factor to apply if ``Glog`` is not specified (Glog=None) in
                 ``gain``.
@@ -4396,7 +4516,7 @@ class chFPGA(FPGAFirmware):
 
                 # Set the postscaler value
                 if Glog is not None:
-                    self.chan[ch].SCALER.SHIFT_LEFT = Glog
+                    self.chan[ch].SCALER.SHIFT_LEFT = int(Glog)
 
                 if use_fixed_gain:
                     if not np.isscalar(Glin):
@@ -4669,7 +4789,7 @@ class chFPGA(FPGAFirmware):
 
         Parameters:
 
-            value (int): The value sof the user bits 
+            value (int): The value sof the user bits
         """
         self.GPIO.set_user_bits(value)
 
@@ -4853,10 +4973,10 @@ class chFPGA(FPGAFirmware):
                 outputs of each crossbar.
 
             cb1_lanes (int): Number of input lanes considered in the
-                CROSSBAR1. Defaults to 16. Used only if `mode`=`None`.
+                CROSSBAR1. Defaults to 16. Used only if `mode` = `None`.
 
             cb1_bins (int): Number of frequency bins to be included in the first
-                crossbar. Defaults to 64. Used only if `mode`=`None`.
+                crossbar. Defaults to 64. Used only if `mode` = `None`.
 
 
             dsmap (list) : Destination slot for each of the bin selectors of
@@ -4866,7 +4986,7 @@ class chFPGA(FPGAFirmware):
 
 
             cb1_bypass (bool): If True, the first crossbar will be bypassed.
-                Used only if `mode`=`None`.
+                Used only if `mode` = `None`.
 
             cb1_combine_data_flags (bool): if True, the data flags at the output of CROSSBAR1 will
                 be packed in 32-bit words. Defaults to False, where each data word is associated
@@ -6188,76 +6308,6 @@ class chFPGA(FPGAFirmware):
         return metrics
 
 
-
-
-    #########################################################################
-    #
-    #   FIRMARE CORRELATOR
-    #
-    #########################################################################
-    # def start_corr_capture(
-    #         self,
-    #         integration_period=1.0,
-    #         capture_period=None,
-    #         corr_to_use=None,
-    #         verbose=1):
-    #     """
-    #     Instructs chFPGA to starts integrating and capturing the correlator
-    #     outputs at the specified period. The captures data is sent over the
-    #     Ethernet interface.
-
-    #     The capture period can be optionnaly specified independently from the
-    #     integration period. If not specified, it is equal to the integration
-    #     period.
-
-    #     This function does not receive the frames from the ethernet port. This
-    #     has to be done separately.
-
-    #     corr_to_use -> if not None, is a list specifying which to correlators to use
-
-    #     History:
-    #         2012-10-02 JFC: Created
-    #         2013-03-25 KMB
-    #     """
-
-    #     if not self._last_init_time:
-    #         self.logger.warning('%r: The system is not initialized. This might not work.' % self)
-
-    #     if capture_period is None:
-    #         capture_period = integration_period
-
-    #     capture_period_in_frames = int(capture_period / self.FRAME_PERIOD)
-    #     integration_period_in_frames = int(integration_period / self.FRAME_PERIOD)
-
-    #     self.set_ant_reset(1)
-    #     self.set_corr_reset(1)
-    #     if corr_to_use is None:
-    #         corrs = self.LIST_OF_IMPLEMENTED_CORRELATORS
-    #         corrs_not_used = []
-    #     else:
-    #         corrs = corr_to_use
-    #         corrs_not_used = list(set(self.LIST_OF_IMPLEMENTED_CORRELATORS).difference(corr_to_use))
-    #     for corr_num in corrs:
-    #         corr = self.CORR[corr_num]
-    #         self.logger.debug(
-    #             '%r: Configuring correlator %i to integrate '
-    #             'over %f seconds (%i frames) '
-    #             'and transmit data every %f seconds (%i frames)' % (
-    #                 self,
-    #                 corr.instance_number,
-    #                 integration_period,
-    #                 integration_period_in_frames,
-    #                 capture_period,
-    #                 capture_period_in_frames))
-    #         corr.ACC.RESET = 0
-    #         corr.ACC.config(integration_period=integration_period_in_frames, capture_period=capture_period_in_frames)
-    #     for corr_num in corrs_not_used:
-    #         self.logger.debug('%r: Disabling correlator %i' % (self, corr.instance_number))
-    #         corr = self.CORR[corr_num]
-    #         corr.ACC.RESET = 1
-    #     self.set_corr_reset(0)
-    #     self.set_ant_reset(0)
-    #     #self.sync()
 
     def get_correlator_params(self):
         """ Returns the correlator geometry and configuration """

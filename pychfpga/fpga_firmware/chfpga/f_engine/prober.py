@@ -28,6 +28,8 @@ class PROBER(MMI):
     RESET = BitField(CONTROL, 0, 7, doc="Resets the module (including the FIFO)")
     FIFO_RESET = BitField(CONTROL, 0, 6, doc="When '1', resets the data FIFO")
     SOURCE_SEL = BitField(CONTROL, 0, 5, doc="0 = source selector output (timestream), 1 = scaler output (spectrum)")
+    PROBER_USER_FLAGS = BitField(CONTROL, 0, 2,
+                                 doc="If True, returns user flags in last 4 bits captured from scaler")
     BURST_LENGTH = BitField(CONTROL, 0, 0, width=2, doc="Sets the number of consecutive frames capture and transmit")
 
 
@@ -238,8 +240,8 @@ class RawFrameReceiver(object):
     The transmit rate must be fast enough to accommodate the desired bandwidth
     by setting ib.GPIO.HOST_FRAME_READ_RATE = rate. rate=16 limits to about
     260 Mbps but is slow enough to allow python to process the data with a
-    small standard UDP buffer. ``rate``=15 is good for about 500 Mbps, and
-    ``rate``=16 is good for the full Gigabit bandwidth. The latetr two require
+    small standard UDP buffer. ``rate`` =15 is good for about 500 Mbps, and
+    ``rate`` =16 is good for the full Gigabit bandwidth. The latetr two require
     bigger UDP buffers. See below::
 
         ib.GPIO.HOST_FRAME_READ_RATE = 14
@@ -249,12 +251,14 @@ class RawFrameReceiver(object):
         sudo ifconfig eno1 mtu 9000
 
     The UDP buffers shall be increased to reduce packet loss to a minimum::
+
         sudo sysctl -w net.core.rmem_max=26214400
         sudo sysctl -w net.core.rmem_default=26214400
         sudo sysctl -w net.ipv4.udp_mem='26214400 26214400 26214400'
         sudo sysctl -w net.ipv4.udp_rmem_min=26214400
 
     Check udp buffers::
+
         sysctl -a | grep mem
 
     Monitor UDP buffer::

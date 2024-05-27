@@ -54,7 +54,7 @@ class UCORR(MMI):
         """ Inisializes all modules of a correlator block."""
         # self.INTEGRATION_PERIOD = 16384-1
         # self.USER_ID = self.fpga.slot - 1 if self.fpga.slot else 0
- 
+
 
     def status(self):
         """Displays the status of al the correlator blocks"""
@@ -101,8 +101,8 @@ class UCorrFrameReceiver(object):
     The transmit rate must be fast enough to accommodate the desired bandwidth
     by setting ib.GPIO.HOST_FRAME_READ_RATE = rate. rate=16 limits to about
     260 Mbps but is slow enough to allow python to process the data with a
-    small standard UDP buffer. ``rate``=15 is good for about 500 Mbps, and
-    ``rate``=16 is good for the full Gigabit bandwidth. The latetr two requireabs(vis[0, :, 0])
+    small standard UDP buffer. ``rate`` =15 is good for about 500 Mbps, and
+    ``rate`` =16 is good for the full Gigabit bandwidth. The latetr two requireabs(vis[0, :, 0])
     bigger UDP buffers. See below::
 
         ib.GPIO.HOST_FRAME_READ_RATE = 14
@@ -112,12 +112,14 @@ class UCorrFrameReceiver(object):
         sudo ifconfig eno1 mtu 9000
 
     The UDP buffers shall be increased to reduce packet loss to a minimum::
+
         sudo sysctl -w net.core.rmem_max=262144000
         sudo sysctl -w net.core.rmem_default=262144000
         sudo sysctl -w net.ipv4.udp_mem='26214400 26214400 262144000'
         sudo sysctl -w net.ipv4.udp_rmem_min=262144000
 
     Check udp buffers::
+
         sysctl -a | grep mem
 
     Monitor UDP buffer::
@@ -227,7 +229,7 @@ class UCorrFrameReceiver(object):
         if self.n and not ((self.buf_ts[0] & self.ts_mask) % self.soft_integ_period):
             print("align: We're already aligned, no need to flush packets!")
             return
-        
+
         print('Waiting for first frame of the specified integration period')
         while True:
             try:
@@ -264,7 +266,7 @@ class UCorrFrameReceiver(object):
             number_of_results (int): Number of software-integrated frames to
                 acquire and return. If a `filename` is specified, only the
                 last frame is returned. Also only if `filename` is specified,
-                a `number_of_results`=Non ewill result in indefinite data
+                a `number_of_results` =None will result in indefinite data
                 capture until the capture is stopped.
 
             soft_integ_period (int): Number of correlator frames to
@@ -322,7 +324,7 @@ class UCorrFrameReceiver(object):
         # case. We cannot thereofre use a complex64 value (float32+float32),
         # and thereofre use a complex128 format.
         self.data = np.zeros((number_of_results, self.NBINS, self.NPROD), dtype=np.complex128)
-        
+
         # lists for debugging
         # self.bin_ = [] # used for debugging missing bins
         # tt = []
@@ -347,14 +349,14 @@ class UCorrFrameReceiver(object):
         self.socket.settimeout(data_timeout)
         # if not self.n:
 
-        # wait for a new timestamp to make sure we start at the beginning of a new firmware integration 
+        # wait for a new timestamp to make sure we start at the beginning of a new firmware integration
         while True:
             try:
                 s = self.socket.recv_into(self.buf[0])
                 if self.buf_cookie[0] != 0xcf:
                     continue
                 ts = self.buf_ts[0] & self.ts_mask
-                
+
                 if  ts != self.last_ts:
                     if self.last_ts is None:
                         self.last_ts = ts
@@ -429,7 +431,9 @@ class UCorrFrameReceiver(object):
                 self.n = 0
             else:
                 self.n += 1
-                
+
+            tt.append(ts)
+
             # packets += n
             # chunks += 1
             # packets_per_chunk += n

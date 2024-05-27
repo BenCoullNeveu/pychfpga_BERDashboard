@@ -1,10 +1,8 @@
 #!/usr/bin/python
 
-"""
-REFCLK.py module
- Implements FMC Reference clock interface
-#
-# History:
+"""Implements the interface to the REFCLK FPGA module.
+
+.. History:
     2011-09-22 JFC: Created
     2011-09-25 JFC: Modified to support new method on incrementing phase (pulse PS_EN unstead of PS_CLK)
     2011-11-15 JFC: Lots of modifications done to debug SYNC clock alignment.
@@ -115,8 +113,14 @@ class REFCLK(MMI):
         Locally generates a SYNC pulse on the current board's ADCs and reset the data acquisition logic.
         This is the same as receiving a SYNC signal encoded on the 10 MHz reference clock.
         The timing of the sync pulse (delay relative to FMC 10 MHz reference clock can optionally be specified).
-            If delay=None or is omited, the previous SYNC timing will be used.
-            If delay is an integer between 0 and 31, the timing delay is set to that value.
+
+        Parameters:
+            delay: Specify sync signal timing delays
+
+                - If delay=None or is omited, the previous SYNC timing will be used.
+                - If delay is an integer between 0 and 31, the timing delay is set to that value.
+
+            max_trials (int):
         """
         self.set_sync_delays(delay)
         # self.pulse_bit('LOCAL_SYNC') # Force the REFCLK state machine to initiate a SYNC event

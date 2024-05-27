@@ -29,11 +29,15 @@ class FUNCGEN(MMI):
     BYTE_C           = BitField(CONTROL, 0x04, 0, width=8, doc="Byte C to be used by the function generator")
     SHIFT            = BitField(CONTROL, 0x05, 0, width=4, doc="Number of bits to shift-right the ADC data before it is passed on")
     RAM_PAGE_MSB     = BitField(CONTROL, 0x05, 4, width=4, doc="MSB of the 512-byte RAM page we want to access")
+    RESET_STATS      = BitField(CONTROL, 0x06, 7, doc="Reset the overflow statistics counter")
+    CLIP_WIDTH       = BitField(CONTROL, 0x06, 0, width=4, doc="Saturates the ADC data to a ``clip_width-1``-bit wide signed value (i.e. clip_width is the position of the sign bit). Saturation is applied after the right-shift.")
+
 
     RAMP_CTR   = BitField(STATUS, 0x00, 0, width=8, doc="Last 8 bits of the ramp counter (for debuging)")
     FRAME_CTR  = BitField(STATUS, 0x01, 0, width=8, doc="Frame counter")
     SEND_FRAME = BitField(STATUS, 0x02, 0, doc="debug")
     DELAY_CTR = BitField(STATUS, 0x04, 0, width=16, doc="Debug: Delay counter")
+    ADC_OVERFLOW_CTR = BitField(STATUS, 0x05, 0, width=8, doc="Number of ADC overflows since the counter was last cleared")
 
     FN_ADC = 0
     FN_BUFFER = 1
@@ -89,25 +93,26 @@ class FUNCGEN(MMI):
         v[1::2] = v_imag
         return v
 
+
     FUNCTION_NAMES = {  # key : (function number, buffer generator fn)
 
         # The following define the patterns we can program in the waveform buffer
         # If the function returns a numpy array, it should be self.NS long; it will be reinterpreted as self.dtype type
         # If the function returns a bytestring, the bytes will be written directly into the buffer.
 
-        # Warning!: 
-        #   - byte ordering and dtype are changed when using operators (>>, /, +, & etc). 
+        # Warning!:
+        #   - byte ordering and dtype are changed when using operators (>>, /, +, & etc).
         #   - Use N//2 to make sure  the arange is of integer type.
         'arb':            (0, lambda data, self=None: data),  # Arbitrary waveform stored in buffer
         'a':              (1, lambda self, a: np.full(self.NS, a)),  # All bytes are Byte A. 16-bit friendly
         'b':              (2, lambda self, b: np.full(self.NS, b)),  # All bytes are Byte B
         'ab':             (3, lambda self, a, b, : np.tile((a , b ), self.NS // 2)),  # Bytes alternate between A and B.
-        'ramp':           (4, lambda self, **kwargs: np.arange(self.NS)),  # 
+        'ramp':           (4, lambda self, **kwargs: np.arange(self.NS)),  #
         'real_ramp':      (5, lambda self, **kwargs: np.ravel([(i,0) for i in range(self.NS//2)])),  # Generates the ramp: 0,0,1,0,2,0... If the data is read as (8+8)-bit complex value pairs, we obtain (0,0j), (1+0j)... (255+0j)
         '4bit_ramp':      (6, lambda self, **kwargs: np.arange(self.NS) << (self.Nbits - 4)),  # Generates the ramp in the upper 4 bits of the ADC sample (e.g for 8 bits: 0x00, 0x10, 0x20, ... 0xF0.)
         '4bit_real_ramp': (7, lambda self, **kwargs: np.ravel([(i,0) for i in range(self.NS//2)]) << (self.Nbits - 4)),  # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
          # '4bit_split_ramp': (0, FN_BUFFER, ),  # Generates 0x0000, 0x0010, 0x0020, .. 0x00F0, 0x1000, 0x1010 ...
-        'sin':            (8, lambda self, freq=1, ampl=None: (np.sin(np.arange(self.NS) * 2 * np.pi / self.NS * freq) * (ampl if ampl is not None else (1<<(self.Nbits-1)-1)))),  # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
+        'sin':            (8, lambda self, freq=1, ampl=None: (np.sin(np.arange(self.NS) * 2 * np.pi / self.NS * freq) * (ampl if ampl is not None else ((1 << (self.Nbits - 1)) - 1) ))),  # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
         'crate_slot':     (9, lambda self: np.tile(self.fpga.get_id()[:2], self.NS // 2) << (self.Nbits - 4)),  # Bytes alternate between crate number and slot number (in upper 4 bits). If FFT and scaler are bypassed, then the complex data has the crate number in the real part and slot number in imag part.
         #'crate':          (10, lambda self, N=BUFFER_SIZE: np.tile(np.array([self.get_id()[0]<<4, 0], np.uint8), N / 2)),  # Bytes alternate between crate number (in upper 4 bits) and 0. If FFT and scaler are bypassed, then the complex data has the crate number in the real part.
         'freq_test':      (10, freq_test),
@@ -129,7 +134,7 @@ class FUNCGEN(MMI):
         # self.BUFFER_SIZE = self.BYTES_PER_FRAME  # bytes
         self.FRAME_SIZE = self.BYTES_PER_FRAME  # bytes
         self.PAGE_SIZE = 512 # number of bytes accessible in one RAM page
-        self.N_PAGES = self.BYTES_PER_FRAME //  self.PAGE_SIZE # number of pages 
+        self.N_PAGES = self.BYTES_PER_FRAME //  self.PAGE_SIZE # number of pages
 
         # Determine the sample numpy storage type and how many bits to left-shift when storing in the buffer
         if self.BYTES_PER_SAMPLE not in(1 , 2):
@@ -221,7 +226,7 @@ class FUNCGEN(MMI):
 
         Parameters:
 
-            data: Data to write in the waveform buffer. 
+            data: Data to write in the waveform buffer.
 
                If `data` is an numpy array or any kind of iterable (list, tuple, generator etc.)
                whose elements that can be converted to integers, it must be `self.NS` samples long,
@@ -230,7 +235,7 @@ class FUNCGEN(MMI):
 
                If 'data' is a bytestring or bytearray, it must be `self.NB` bytes long and will be
                written directly in the waveform buffer without any conversion.
- 
+
             function_number: Value  (0-255) to store along with the data to identify the buffer
                 contents. It has no impact on the generated waveforms.
 
@@ -264,7 +269,7 @@ class FUNCGEN(MMI):
             print(f'page={page}, slice={page_slice}')
             self.buffer_cache[page_slice] = page_data
 
-        # Store info on the buffer contents 
+        # Store info on the buffer contents
         self.BYTE_C = function_number
         # self.RAM_PAGE = 4
         # self.write_ram(0, function_number)
@@ -297,22 +302,29 @@ class FUNCGEN(MMI):
         Return the simulated output of this module.
 
         Parameters:
-            ``adc_input`` is a (adc_flags, adc_dat) tuple containing:
+            adc_input:  is a (adc_flags, adc_dat) tuple containing:
 
-            adc_flags: Numpy array of (Nframes x 512) integers values
-                indicating overflow condition for each sample of each word in bits
-                3:0. Bit 3 is for earliest sample of the word.
+                - adc_flags: Numpy array of (Nframes x 512) integers values
+                    indicating overflow condition for each sample of each word in bits
+                    3:0. Bit 3 is for earliest sample of the word.
 
-            adc_data: Numpy array of (Nframes x 512) Big endian 64-bit words
-                (dtype='>u4') contained the adc samples packed in words. Bits
-                31-24 if for sample 0, bits 23-15 bit sample 1 etc.
+                - adc_data: Numpy array of (Nframes x 512) Big endian 64-bit words
+                    (dtype='>u4') contained the adc samples packed in words. Bits
+                    31-24 if for sample 0, bits 23-15 bit sample 1 etc.
+
+            source:
+
+            number_of_frames:
+
 
         Returns:
-            A tuple of two 512 elements vector (flags, data)
-            flags:
-                Bit 0 : Adc overflow flag for the word (set to 1 if any of the four samples in the word has overflown).
-                Bits 1-3:'0'.
-            data: Array of big-endian 64-bit words containing the data.
+            tuple: A tuple of two 512 elements vector ``(flags, data)`` where:
+
+                - flags:
+
+                    - Bit 0 : Adc overflow flag for the word (set to 1 if any of the four samples in the word has overflown).
+                    - Bits 1-3: '0'.
+                - data: Array of big-endian 64-bit words containing the data.
         """
         if self.RESET:
             raise RuntimeError('Module is in reset')

@@ -1,13 +1,9 @@
-#!/usr/bin/python
+""" Interface to the chFPGA's firmware-based SPI peripheral
 
-"""
-SPI.py module
- Implements SPI interface of chFPGFA
-#
-# History:
-# 2011-07-07 : JFC : Created from test code in chFPGA.py
-# 2011-07-13 JFC: added read_reg() and write_reg() to make code more manageable and reader-friendly
-# 2013-08-16 JFC: Cleanup. Used new BitFiield style. Removed all explicit address references. removed REV0 and moved ALT_TIMING and added PORT.
+.. History:
+    2011-07-07 : JFC : Created from test code in chFPGA.py
+    2011-07-13 JFC: added read_reg() and write_reg() to make code more manageable and reader-friendly
+    2013-08-16 JFC: Cleanup. Used new BitFiield style. Removed all explicit address references. removed REV0 and moved ALT_TIMING and added PORT.
 """
 
 import numpy as np

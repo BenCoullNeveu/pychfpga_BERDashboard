@@ -1,10 +1,8 @@
 #!/usr/bin/python
 
-"""
-FFT.py module
- Implements interface to the FFT or PFB
+""" Implements the interface to the PFB/FFT FPGA firmware module
 
-History:
+.. History:
     2011-07-12 : JFC : Created from test code in chFPGA.py
     2012-05-29 JFC: Extracted frm ANT.py
     2012-09-05 JFC: Fixed PIPELINE_DELAY property: was STATUS instead of CONTROL
@@ -89,14 +87,23 @@ class FFT(MMI):
     def get_sim_output(self, fft_input, bypass = None):
         """ Return the simulated output of the FFT module.
 
-        ``input`` is typically the data coming from the function generator. It is in the format (flags, data). Data is 32-bit, preferably stored in big endian format. sample 0 is on the Most significant byte.
+        Parameters:
 
-        The output is a tuple of 512 element arrays containing (flags, even_real, even_imag, odd_real, odd_imag).
-        ``flags`` is a uint8, with bits as follows:
-            bit 3: ADC overflow (valid on the last element of the frame)
-            bit 2: EVEN bins scaler overflow (always zero for simulations)
-            bit 1: ODD bins scaler overflow (always zero for simulations)
-            bit 0: FFT overflow (always zero for simulations)
+            input:  is typically the data coming from the function generator. It is in the
+                format (flags, data). Data is 32-bit, preferably stored in big endian format. sample 0
+                is on the Most significant byte.
+
+            bypass (bool):
+
+        Returns:
+
+            tuple: The output is a tuple of 512 element arrays containing ``(flags, even_real, even_imag, odd_real, odd_imag)`` where
+                ``flags`` is a uint8, with bits as follows:
+
+                - bit 3: ADC overflow (valid on the last element of the frame)
+                - bit 2: EVEN bins scaler overflow (always zero for simulations)
+                - bit 1: ODD bins scaler overflow (always zero for simulations)
+                - bit 0: FFT overflow (always zero for simulations)
         """
         (flags, data) = fft_input
         data_bytes = data.astype('>u4', copy=False).view(np.int8)  # signed. astype won't do anything if input is already '>u4'

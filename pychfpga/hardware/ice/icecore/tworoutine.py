@@ -27,7 +27,9 @@ We can also, using a little sugar, call it asynchronously:
     <coroutine object double_slowly at 0x...>
     >>> asyncio.run(c)
     4
+
 or
+
     >>> asyncio.run(double_slowly.__acall__(2))
 
 ...which devolves to the usual asyncio case.

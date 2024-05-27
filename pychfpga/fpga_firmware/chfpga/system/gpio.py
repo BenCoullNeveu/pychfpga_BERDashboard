@@ -2,11 +2,9 @@
 # Disable pylint Line too long (=C0301)
 # pylint: disable=C0301
 
-"""
-GPIO.py module
- Implements SYSTEM-level interface
-#
-# History:
+""" Implements the interface to the GPIO FPGA module
+
+.. History:
     2011-08-25 JFC : Created
     2011-08-30 JFC: Added read_bitstream_* functions and status()
     2011-09-08 JFC: Added TIMESTAMP_VALID and ADC_SYNC_READBACK in field definitions
@@ -55,23 +53,17 @@ class GPIO(MMI):
     SYSMON_RESET               = BitField(CONTROL, 3, 3, doc='SYSMON reset')
     CLK10_SEL                  = BitField(CONTROL, 3, 2, doc='Selects 10 MHz reference source; 0: Motherboard; 1: Backplane (CRS board)')
     PLL_SYNC                   = BitField(CONTROL, 3, 1, doc='Sets the SYNC line of the external PLL (CRS board)')
-    # CORR_IP_PORT_OFFSET        = BitField(CONTROL, 3, 2, width=2, doc='Correlator output data IP port offset from the base port')
-    # DATA_IP_PORT_OFFSET        = BitField(CONTROL, 3, 0, width=2, doc='Captured data IP port offset from the base port')
-    # USER_RESET                 = BitField(CONTROL, 3, 0, doc='system reset')
 
     HOST_FRAME_READ_RATE       = BitField(CONTROL, 4, 0, width=5, doc='Indicates how often the host UDP buffers are read. Used to throttle data transmision. Period = 2/125MHz*2^value ')
     BUCK_PHASE                 = BitField(CONTROL, 12, 0, width=64, doc='Phase of each of the 16 Buck sync lines. There are 16 possible phase values for each line. Bits 3:0 is for phase of line 0, bits 7:4 for phase of line 1 etc.')
     ADC_CAL_FREEZE             = BitField(CONTROL, 13, 0, width=8, doc='ADC calibration control')
-    # TARGET_MAC_ADDR            = BitField(CONTROL, 18, 0, width=48, doc='NETWORK_CONFIG_SOURCE=0: destination MAC address for outgoing data on UDP channel 1. NETWORK_CONFIG_SOURCE=1,2: unused.  NETWORK_CONFIG_SOURCE=3, FPGA listening MAC address to be loaded on the rising edge of TARGET_LOAD when TARGET_FPGA_SERIAL_NUMBER matches the actual FPGA serial number.')
-    # TARGET_IP_ADDR             = BitField(CONTROL, 22, 0, width=32, doc='NETWORK_CONFIG_SOURCE=0: destination IP address for outgoing data on UDP channel 1.  NETWORK_CONFIG_SOURCE=1,2 and3: FPGA listening IP address of the FPGA to be loaded on the rising edge of TARGET_LOAD when TARGET_FPGA_SERIAL_NUMBER matches the actual FPGA serial number.')
-    # TARGET_IP_PORT             = BitField(CONTROL, 24, 0, width=16, doc='NETWORK_CONFIG_SOURCE=0: unused; NETWORK_CONFIG_SOURCE=1,2,3: FPGA listening port number to be loaded on the rising edge of TARGET_LOAD when TARGET_FPGA_SERIAL_NUMBER matches the actual FPGA serial number.')
+    ADC_OR_CLEAR               = BitField(CONTROL, 14, 0, width=8, doc='ADC Overrange clear')
+    ADC_OV_CLEAR               = BitField(CONTROL, 15, 0, width=8, doc='ADC Overvoltage clear')
     TARGET_FPGA_SERIAL_NUMBER  = BitField(CONTROL, 32, 0, width=64, doc='Target FPGA serial number, used to to setup networking over UDP broadcast. Loading of the networking parameters occurs only on a rising edge of TARGET_LOAD when this matches the actual FPGA serial number.')
-    # TARGET_LOAD                = BitField(CONTROL, 33, 7, doc='When transitioning from 0 to 1, loads the FPGA networking parameters with the target values, but only if the target FPGA serial number matches the actual FPGA serial number.')
     NETWORK_CONFIG_SOURCE      = BitField(CONTROL, 33, 2, width=2, doc='Controls write access to the core registers.  '
                                                                        'When 00, core registers are always accesible. '
                                                                        'When 01, 10 or 11, core registers can be written only if the target serial number matches the actual FPGA serial number. '
                                                                        'This is typically used to bootstrap board-specific networking configuration using UDP broadcasts instead of using the SPI access to the core registers.')
-    # TARGET_SUBARRAY            = BitField(CONTROL, 33, 0, width=2, doc='Target subarray to be used during network setup over UDP broadcast')
     PWM_OFFSET                 = BitField(CONTROL, 37, 0, width=32, doc='Number of events (frames) to delay before starting to generate the first High of the PWM output')
     PWM_HIGH_TIME              = BitField(CONTROL, 41, 0, width=32, doc='Number of events (frames) to keep the PWM output at High')
     PWM_PERIOD                 = BitField(CONTROL, 45, 0, width=32, doc='Number of events (frames) between PWM High (i.e PWM period)')
@@ -128,6 +120,8 @@ class GPIO(MMI):
     ADC_BITS_PER_SAMPLE        = BitField(STATUS, 26, 0, width=8, doc='Number of bits in a ADC sample')
     ADC_CAL_FROZEN             = BitField(STATUS, 27, 0, width=8, doc='ADC calibration frozen')
     ADC_CAL_SIGNAL_DETECT      = BitField(STATUS, 28, 0, width=8, doc='ADC calibration dignal detect')
+    ADC_OR                     = BitField(STATUS, 29, 0, width=8, doc='ADC overrange flag')
+    ADC_OV                     = BitField(STATUS, 30, 0, width=8, doc='ADC overvoltage flag')
     ADC_PLL_LOCK0              = BitField(STATUS, 33, 6,  doc='Lock status of the ADC PLL in FMC0')
     ADC_PLL_LOCK1              = BitField(STATUS, 33, 7,  doc='Lock status of the ADC PLL in FMC1')
     CMD_RPLY_PACKET_COUNTERS   = BitField(STATUS, 35, 0, width=16, doc='Number of reply packets received since last FPGA configuration. MSB=Commands, LSB=Replies')
@@ -329,7 +323,7 @@ class GPIO(MMI):
         # Buck sync is enabled by default and starts immediately when the FPGA is programmed
 
         # The commented code below was for the CRS platform before platform-specific freqs and enable status could be set in firmware
-        # it is started by software 
+        # it is started by software
         # if self.PLATFORM_ID == self.fpga._PLATFORM_ID_CRS:
             # self.BUCK_CLK_DIV = 24
             # self.logger.info(f'Enabling CRS Buck sync at {200/16/self.BUCK_CLK_DIV:.3f} MHz NOW!')

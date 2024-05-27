@@ -52,9 +52,10 @@ class ZCU111(Motherboard):
     If is assumed that the board is running the bridge software.
 
     Provides:
-        - Lightweight list-based Hardware map management
-        - Model, serial, slot, crate and mezzanine self discovery through the Iceboard (no mDNS required)
-        - Access to the memory-mapped registers in the FPGA's firmware using the TCP link.
+
+    - Lightweight list-based Hardware map management
+    - Model, serial, slot, crate and mezzanine self discovery through the Iceboard (no mDNS required)
+    - Access to the memory-mapped registers in the FPGA's firmware using the TCP link.
 
     Parameters:
 
@@ -72,12 +73,19 @@ class ZCU111(Motherboard):
 
     Parameters:
         parent_getter (func): Function that returns the dynamically return the parent object from which the following parameters will be fetched. Is `None` if there is no parent.
+
         hostname (str): hostname or IP address of the ICEBoard ARM processor (mandatory)
+
         serial (str): Serial number of the board. Can be provided by the ARM.
+
         part_number (str): Part number of the IceBoard. Can be obtained from the ARM.
+
         crate (IceCrateHandler): = object that handle the backplane on which the board is connected. `None` if the board is not connected to a backplane.
+
         slot (int): Slot number in which the board is installed ona backplane. None if there is no backplane.
+
         mezzanine (dict): Map {mezzanine_number: Mezzanine Handler, ...} describing the installed mezzanines. Can be obtained from the ARM.
+
         tuber_objname (str): name of the set of software functions that will be provided by the ARM processor through the Tuber interface.
 
 
@@ -446,7 +454,7 @@ class ZCU111(Motherboard):
                 fru_file="",
             )
         )
-        # Convert IPMI structures into a byte stream to be written 
+        # Convert IPMI structures into a byte stream to be written
         ipmi_bytes = fru.encode()
         self.i2c_eeprom.write(0, ipmi_bytes)
 
