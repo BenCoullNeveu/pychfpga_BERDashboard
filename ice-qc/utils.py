@@ -155,14 +155,16 @@ class TestUtils:
 
             def check_error(errors):
                 is_passed = True
+                print("\nEncoutered the following error's during parsing: ")
 
                 for error in errors:
                     is_passed = False
-                    assert False, error
+                    print(error)
 
                 return is_passed
 
-            return parse_maybe.run(check_error) #check if the parser returned any errors to assert
+            test_passed = parse_maybe.run(check_error).orElse(False).unwrap() #check if the parser returned any errors to assert
+            return test_passed # uses this function to simplify the pytest error messaging
 
             
         else:
