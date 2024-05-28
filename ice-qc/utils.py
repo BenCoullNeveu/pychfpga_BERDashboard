@@ -1,4 +1,8 @@
 from functools import partial 
+from typing import Callable
+
+
+import labpy
 
 class Maybe:
     """
@@ -9,27 +13,35 @@ class Maybe:
     """
 
 
-    def __init__(self, value, errlog='Operation failed'):
+    def __init__(self, value=None, fn_memory=None):
 
         """
         Constructor method
+
+        :params value: value wrapped by Maybe class 
+        :params fn_memory: memory of the function which generated the maybe's value, None if it didn't come from another maybe object
         """
         self._value  = value
-        self._errlog = errlog
+        self._fn_memory = fn_memory
+        
 
-    def run(self, func, errhandle=None):
+    def run(self, func, errhandle=None, _errlog='default'):
         """
         Returns Maybe<K> when given a func: T -> K applied on Maybe<T> 
 
         :params func: Function T -> K to be applied to Maybe<T>
         :params errhandle: Function () -> K that allows the error handling to be specified by the user, default to unused
-        :return: Outpu of the funciton wrapped in the Maybe class
+        :return: Output of the function wrapped in the Maybe class
         :rtype: Maybe<K>
 
         """
 
         if self._value is None:
-            print(_errlog)
+            if _errlog == 'default':
+                print(f"Maybe monad returned None when running {self._fn_memory}") #Fn memory keeps a log of the function which generated the Maybe class 
+                #(improvement consider a complete log of functions?)
+            else:
+                print(_errlog)
 
             if errhandle is not None:
                 return Maybe(errhandle())
@@ -37,7 +49,35 @@ class Maybe:
 
             return Maybe(None)
         else:
-            return Maybe(func(self._value))
+            return Maybe(func(self._value), func)
+
+    def run_no_input(self, func, check_none=True, errhandle=None, _errlog='default'):
+        """
+        Returns Maybe<K> when given an IO func with no inputs: () -> K applied on Maybe<T> 
+
+        :params func: Function () -> K with no inputs, used mainly to interact with IO or console 
+        :params check_none: Bool specifies if the function should check if the Maybe object has a value of None before proceding with the func, defaults to True
+        :params errhandle: Function () -> K that allows the error handling to be specified by the user, default to unused
+        
+        :return: Output of the function wrapped in a Maybe class
+        :rtype: Maybe<K>
+        """
+
+        if self._value is None and check_none:
+            if _errlog == 'default':
+                print(f"Maybe monad returned None when running {self._fn_memory}") #Fn memory keeps a log of the function which generated the Maybe class 
+                #(improvement consider a complete log of fucntions?)
+            else:
+                print(_errlog)
+
+            if errhandle is not None:
+                return Maybe(errhandle())
+
+            return Maybe(None)
+
+        else:
+            return Maybe(func(), func)
+
 
     def orElse(self, default):
         """
@@ -86,6 +126,51 @@ class Maybe:
 class TestUtils:
     """ Some utility methods common to all tests. 
     """
+    def sub_test(self,
+                setup_fn: Callable[[], bool],
+                get_fn:   Callable[[], dict], 
+                parse_fn: Callable[[dict], list], 
+                teardown_fn: Callable[[], bool]) -> bool:
+
+        """
+        Self contained sub test function, allows for new tests to be constructed from different functions, returns True if passed, False otherwise
+
+        :params setup_fn: Function () -> bool, function intended to setup test systems, (ex: open the board, open power supply), expected to return a True if setup is successfull
+        :params get_fn: Function () -> dict, generic getter function, should contain test process and return a dict with matching keys to the expected machine output, ingested by parse_fn
+        :params parse_fn: Function dict -> list(str), parsing function applied to the output of get_fn, should return human readable error messages as a list of strings 
+        :params teardown_fn: Function () -> bool, tear down tests and ready for the following test, expected to return True if teardown is successfull
+
+        :return: Did the subtest pass 
+        :rtype: Bool
+        """
+
+        
+        test_object = Maybe(None)
+
+
+        if setup_fn():
+
+            get_maybe = test_object.run_no_input(get_fn, check_none=False)
+            parse_maybe = get_maybe.run(parse_fn)
+
+            def check_error(errors):
+                is_passed = True
+
+                for error in errors:
+                    is_passed = False
+                    assert False, error
+
+                return is_passed
+
+            return parse_maybe.run(check_error) #check if the parser returned any errors to assert
+
+            
+        else:
+            assert False, 'Error: Error in test setup '
+            return False
+
+
+
     def open_instrument(self, name):
         """ Looks up the instrument name in the instrument table in configuration file and open it with the parameters specified in the table.  
         """
