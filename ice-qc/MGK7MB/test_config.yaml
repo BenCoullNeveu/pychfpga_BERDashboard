@@ -13,7 +13,7 @@ ready_check: 1 #If this is set to 0, the tests can be strung together without lo
 model_number: 'MGK7MB'
 
 fpga_bit_file: '../../pychfpga/fpga_firmware/bitstreams/SIFPGA_MGK7MB.bit'
-fpga_firmware_mode: 'corr16'
+fpga_firmware_mode: 'shuffle16'
 
 #For changing prologix address, use ./nfcli --list to find devices
 instruments:
@@ -239,11 +239,11 @@ motherboard_tests:
 
         motherboard_names:
 
-            - matrix_names:
+            matrix_names:
                 pca9548-1-70: '1-0070'
                 pca9548-2-71: '2-0071'
 
-            - bus_names:
+            bus_names:
                 I2C-1:              'i2c-1'
                 I2C-2:              'i2c-2'
                 I2C0_PCA954X_FMCA:  'i2c-5'
@@ -263,7 +263,7 @@ motherboard_tests:
                 I2C1_PCA954X_BP:    'i2c-19'
                 I2C1_PCA954X_GPIO:  'i2c-20'
 
-            - power_names:  
+            power_names:  
                 VCC12V0:            '10-0047'
                 VCC5V5:             '10-0048'
                 VCC3V3:             '10-0049'
@@ -280,26 +280,26 @@ motherboard_tests:
                 FMC_B_VCC12V0:      '10-0045'
                 FMC_B_VADJ:         '10-0046'
 
-            - temp_names:
+            temp_names:
                 POWER:              '12-0048'
                 ARM:                '12-004a'
                 FPGA:               '12-004b'
                 PHY:                '12-004c'
 
-            - io_names:
+            io_names:
                 pca9575_u41:        '12-0020'
                 pca9575_u42:        '12-0021'
                 pca9575_u48:        '12-0022'
                 pca9575_u59:        '12-0023'
 
-            - eeprom_names: 
+            eeprom_names: 
                 Motherboard EEPROM: '12-0057'
 
-            - backplane_names:
-                BP_VCC3V3:          '19-0040'
-                BP_Temp1:           '19-004d'
-                BP_Temp2:           '19-004e'
-                Backplane EEPROM:   '19-0054'
+        backplane_names:
+            BP_VCC3V3:          '19-0040'
+            BP_Temp1:           '19-004d'
+            BP_Temp2:           '19-004e'
+            Backplane EEPROM:   '19-0054'
 
 
     clock_test:

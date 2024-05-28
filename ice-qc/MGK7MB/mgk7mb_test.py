@@ -456,8 +456,9 @@ class TestMGK7MBBench(TestUtils):
           - Interupt boot and start memtest - let run for 5 memory pass runs
 
         """
+        ########################################################
+        #Setup
         cfg = self.cfg.motherboard_tests.mem_test
-        #self.ps = self.open_ps()
         self.ps = None
         manual_ps = not self.ps
 
@@ -487,16 +488,22 @@ class TestMGK7MBBench(TestUtils):
             self.ps.set_output(state=True)
 
         ser.interupt_boot()
+
+        ###################################################
+        #Getter
         testpassed = ser.start_memtest(iterations=5)
         ser.close()
 
+        #####################################################
+        #Parser
         if testpassed == 1:
             print("The memory is good - all iterations passed")
             passed = True
         else:
             print("The memory test failed")
             passed = False
- 
+        ####################################################
+        #Teardown
         if manual_ps:
             xr.input('Power OFF the board and press ENTER. You can then disconnect the RS232 dongle: it is no longer needed with this board')
  
@@ -522,7 +529,8 @@ class TestMGK7MBNetwork(TestUtils):
         xr.header('Setting-up')
         self.xr = xr
         self.cfg = xr.config
-        test  # xr.params is a mutable objects, so self.params points to the same object 
+        self.params = xr.params  # xr.params is a mutable objects, so self.params points to the same object 
+
         assert self.params.model, 'Need a model number' 
         assert self.params.serial, 'Need a serial number to either find an existing board a program a new one'
         self.ps = None
@@ -584,7 +592,7 @@ class TestMGK7MBNetwork(TestUtils):
            
             
             if ip:
-                ca = fpga_array.FPGAArray(f'MGK7MB {ip}', ping=1)
+                ca = fpga_array.FPGAArray(f'MGK7MB {ip}', ping=1, ignore_missing_boards=True)
                 if ca.ib:
                     break
             # hwm = f'{self.params.model} {self.params.serial}'
@@ -596,7 +604,7 @@ class TestMGK7MBNetwork(TestUtils):
                 print(f'Trial {count+1}/30: looking for iceboard.local')
                 ip = pychfpga.mds_discovery.mdns_resolve('iceboard.local', timeout=2)
                 if ip:
-                    ca = fpga_array.FPGAArray(f'MGK7MB {ip}', ping=1)
+                    ca = fpga_array.FPGAArray(f'MGK7MB {ip}', ping=1, ignore_missing_boards=True)
                     if ca.ib:
                         break
         else:  # if we reach the end of the loop without break
@@ -679,7 +687,8 @@ class TestMGK7MBNetwork(TestUtils):
         port = int(port) - 1
 
         ib.qsfp[port].reset()
-        info = ib.qsfp[port].get_info()
+        info = ib.qsfp[port].get_info()        
+
         mfg = info['VendName'].decode('ascii').rstrip() #data is right paded with withespaces
         serial = info['VenSN'].decode('ascii').rstrip()
 
@@ -935,7 +944,8 @@ class TestMGK7MBNetwork(TestUtils):
             assert False, "Serial programmed incorrectly"
         #self.instr.ps.set_output(state=False) # Turn power off
 
-    def test_i2c(self, xr):
+    #def test_i2c(self, xr):
+    def _test_i2c(self, xr):
         """
         QC008: Check if all I2C devices are present
 
@@ -965,128 +975,19 @@ class TestMGK7MBNetwork(TestUtils):
         cmd = "ls /sys/bus/i2c/devices/"
         results = self.run_arm_system_command(ib.hostname, cmd)
 
-        print(results)
-        """
-        matrix_names = {"pca9548-1-70":"1-0070",
-                        "pca9548-2-71":"2-0071"}
-
-        bus_names = {"I2C-1": "i2c-1",
-                     "I2C-2": "i2c-2",
-                     "I2C0_PCA954X_FMCA": "i2c-5",
-                     "I2C0_PCA954X_FMCB": "i2c-6",
-                     "I2C0_PCA954X_QSFPA": "i2c-7",
-                     "I2C0_PCA954X_QSFPB": "i2c-8",
-                     "I2C0_PCA954X_SFP": "i2c-9",
-                     "I2C0_PCA954X_SMPS": "i2c-10",
-                     "I2C0_PCA954X_BP": "i2c-11",
-                     "I2C0_PCA954X_GPIO": "i2c-12",
-                     "I2C1_PCA954X_FMCA": "i2c-13",
-                     "I2C1_PCA954X_FMCB": "i2c-14",
-                     "I2C1_PCA954X_QSFPA": "i2c-15",
-                     "I2C1_PCA954X_QSFPB": "i2c-16",
-                     "I2C1_PCA954X_SFP": "i2c-17",
-                     "I2C1_PCA954X_SMPS": "i2c-18",
-                     "I2C1_PCA954X_BP": "i2c-19",
-                     "I2C1_PCA954X_GPIO": "i2c-20"}
-
-        power_names = {"VCC12V0": "10-0047",
-                       "VCC5V5": "10-0048",
-                       "VCC3V3": "10-0049",
-                       "VADJ": "10-0043",
-                       "VCC1V8": "10-004b",
-                       "VCC1V5": "10-004c",
-                       "VCC1V2": "10-004d",
-                       "VCC1V0": "10-004e",
-                       "VCC1V0_GTX": "10-004f",
-                       "FMC_A_VCC3V3": "10-0040",
-                       "FMC_A_VCC12V0": "10-0041",
-                       "FMC_A_VADJ": "10-0042",
-                       "FMC_B_VCC3V3": "10-0044",
-                       "FMC_B_VCC12V0": "10-0045",
-                       "FMC_B_VADJ": "10-0046"}
-
-        temp_names = {"POWER": "12-0048",
-                      "ARM": "12-004a",
-                      "FPGA": "12-004b",
-                      "PHY": "12-004c"}
-
-        io_names = {"pca9575_u41": "12-0020",
-                    "pca9575_u42": "12-0021",
-                    "pca9575_u48": "12-0022",
-                    "pca9575_u59": "12-0023"}
-
-        eeprom_names = {"Motherboard EEPROM": "12-0057"}
-
-        backplane_names = {"BP_VCC3V3": "19-0040",
-                           "BP_Temp1": "19-004d",
-                           "BP_Temp2": "19-004e",
-                           "Backplane EEPROM": "19-0054"}"""
-
-
-        matrix_names = {"pca9548-1-70":"1-0070",
-                        "pca9548-2-71":"1-0071"}
-
-        bus_names = {"I2C-1": "i2c-1",
-                     "I2C-2": "i2c-2",
-                     "I2C0_PCA954X_FMCA": "i2c-5",
-                     "I2C0_PCA954X_FMCB": "i2c-6",
-                     "I2C0_PCA954X_QSFPA": "i2c-7",
-                     "I2C0_PCA954X_QSFPB": "i2c-8",
-                     "I2C0_PCA954X_SFP": "i2c-9",
-                     "I2C0_PCA954X_SMPS": "i2c-10",
-                     "I2C0_PCA954X_BP": "i2c-11",
-                     "I2C0_PCA954X_GPIO": "i2c-12",
-                     "I2C1_PCA954X_FMCA": "i2c-13",
-                     "I2C1_PCA954X_FMCB": "i2c-14",
-                     "I2C1_PCA954X_QSFPA": "i2c-15",
-                     "I2C1_PCA954X_QSFPB": "i2c-16",
-                     "I2C1_PCA954X_SFP": "i2c-17",
-                     "I2C1_PCA954X_SMPS": "i2c-18",
-                     "I2C1_PCA954X_BP": "i2c-19",
-                     "I2C1_PCA954X_GPIO": "i2c-20"}
-
-        power_names = {"VCC12V0": "10-0047",
-                       "VCC5V5": "10-0048",
-                       "VCC3V3": "10-0049",
-                       "VADJ": "10-0043",
-                       "VCC1V8": "10-004b",
-                       "VCC1V5": "10-004c",
-                       "VCC1V2": "10-004d",
-                       "VCC1V0": "10-004e",
-                       "VCC1V0_GTX": "10-004f",
-                       "FMC_A_VCC3V3": "10-0040",
-                       "FMC_A_VCC12V0": "10-0041",
-                       "FMC_A_VADJ": "10-0042",
-                       "FMC_B_VCC3V3": "10-0044",
-                       "FMC_B_VCC12V0": "10-0045",
-                       "FMC_B_VADJ": "10-0046"}
-
-        temp_names = {"POWER": "12-0048",
-                      "ARM": "12-004a",
-                      "FPGA": "12-004b",
-                      "PHY": "12-004c"}
-
-        io_names = {"pca9575_u41": "12-0020",
-                    "pca9575_u42": "12-0021",
-                    "pca9575_u48": "12-0022",
-                    "pca9575_u59": "12-0023"}
-
-        eeprom_names = {"Motherboard EEPROM": "12-0057"}
-
-        backplane_names = {"BP_VCC3V3": "19-0040",
-                           "BP_Temp1": "19-004d",
-                           "BP_Temp2": "19-004e",
-                           "Backplane EEPROM": "19-0054"}
-
-        motherboard_names = dict(**matrix_names, **bus_names, **power_names, **temp_names, **io_names, **eeprom_names)
         
-       # motherboard_names = cfg.motherboard_names
+        
+        motherboard_names = {}
+        for name in cfg.motherboard_names:
+            motherboard_names.update(cfg.motherboard_names[name])
+
+        if check_bp:
+            motherboard_names.update(cfg.backplane_names)
 
         print("\nParsing the list looking for specific devices")
-
-
         
 
+    
         passed = True
         def check_names(names):
             nonlocal passed
@@ -1101,14 +1002,64 @@ class TestMGK7MBNetwork(TestUtils):
 
 
         check_names(motherboard_names)
-        if check_bp:
-            check_names(backplane_names)
+        
 
         assert passed, "Missing I2C devices"
         print("All devices are present")
 
+    def test_i2c(self, xr):
+
+        def setup():
+            xr.header('Checking I2C devices')
+            return True
+            
+        def getter():
+            (ib, ibs) = self.connect_to_board(questions=self.cfg.ready_check)
+            print("Requesting all the I2C devices found at /sys/bus/i2c/devices on the board")
+            cmd = "ls /sys/bus/i2c/devices/"
+            temp = self.run_arm_system_command(ib.hostname, cmd)
+            print(temp)
+            return temp
 
 
+        def parser(i2c_devices: dict) -> list:
+            if(self.cfg.ready_check):
+                check_bp = xr.input_yes_no("Should this test check for backplane I2C devices? [Y/N]", additional_answers=[])
+            else:
+                check_bp = False 
+
+            cfg = self.cfg.motherboard_tests.i2c_test
+
+            #load expected values from yaml file
+            motherboard_names = {}
+            for name in cfg.motherboard_names:
+                motherboard_names.update(cfg.motherboard_names[name])
+    
+            if check_bp:
+                motherboard_names.update(cfg.backplane_names)
+
+            errors = []
+
+            #compare to 
+            for name in motherboard_names:
+                addr = motherboard_names[name]
+                if addr + '\n' not in i2c_devices:
+                    print(f"   {name}:{addr}: Missing I2C device")
+                    errors.append(f"   {name}:{addr}: Missing I2C device")
+
+                else:
+                    print(f"   {name}:{addr}: OK")
+
+            return errors
+
+        def tear_down():
+            return True
+
+        assert self.sub_test(setup, getter, parser, tear_down), "Missing I2C devices" 
+        print("All devices are present")
+
+
+           
     def test_clock(self, xr):
         """
         QC?: check if board will boot with backplane clock
@@ -1626,7 +1577,7 @@ class TestMGK7MBNetwork(TestUtils):
         #run_async(ib.fpga.init_async())
         ib.i2c.select_bus('BP')
         
-        ibs.ic[0]._gpio_ctrl.init(cfg0_def=0xFF, cfg1_def=0xFF) #what on gods green earth does this do
+        #ibs.ic[0]._gpio_ctrl.init(cfg0_def=0xFF, cfg1_def=0xFF) 
 
         xr.header('Test-Results')
 
