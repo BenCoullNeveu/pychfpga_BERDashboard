@@ -3,6 +3,8 @@ from typing import Callable
 
 
 import labpy
+import icecore
+from icecore import NameSpace, XReport
 
 class Maybe:
     """
@@ -57,7 +59,7 @@ class Maybe:
 
         :params func: Function () -> K with no inputs, used mainly to interact with IO or console 
         :params check_none: Bool specifies if the function should check if the Maybe object has a value of None before proceding with the func, defaults to True
-        :params errhandle: Function () -> K that allows the error handling to be specified by the user, default to unused
+        :params errhandle: Function () -> K that allows the error handling to be specified by the user, default to unused, doens't take input, use partial evaluation to give it input
         
         :return: Output of the function wrapped in a Maybe class
         :rtype: Maybe<K>
@@ -126,6 +128,12 @@ class Maybe:
 class TestUtils:
     """ Some utility methods common to all tests. 
     """
+
+    def __init__(self, test_instruments={}: dict, cfg_path=None: str, cfg=None):
+        self.test_instruments = test_instruments 
+        self.cfg = cfg
+
+
     def sub_test(self,
                 setup_fn: Callable[[], bool],
                 get_fn:   Callable[[], dict], 
@@ -172,13 +180,52 @@ class TestUtils:
             return False
 
 
+    def load_config(filename):
+        print 'Loading config file %s' % filename
+        with open(filename, 'rb') as yamlfile:
+            self.cfg = NameSpace(icecore.load_yaml(yamlfile))
+        return self.cfg  #return reference to self.cfg
+
 
     def open_instrument(self, name):
         """ Looks up the instrument name in the instrument table in configuration file and open it with the parameters specified in the table.  
         """
-        instr_params = self.cfg.instruments[name].copy()
-        class_name = instr_params.pop('labpy_object')
-        return labpy.open_instrument(class_name, **instr_params)
+
+        def start_instrument(cfg, name):
+            instr_params = self.cfg.instruments[name].copy()
+            class_name = instr_params.pop('labpy_object')
+            return labpy.open_instrument(class_name, **instr_params)
+
+        def is_responding(name): #\\TODO: not yet implemented check labpy for a function for that
+            return True
+
+        load_cfg_partial         = partial(load_config, self.cfg_path)    #partial evaluation of load_config 
+        #start_instrument_partial = partial(start_instrument, name=name)
+
+
+        if name in test_instruments and is_responding(name): #if the instrument is already opened and availble we just use it
+            return test_instruments[name]
+
+        else: 
+            config_maybe = Maybe(self.cfg, errhandle=load_cfg_partial) #get the config object if it doens't exist try to load the file
+
+            if config_maybe:
+                try:
+                    instrument = start_instrument(config_maybe.unwrap(), name)
+                    test_instruments.update({name: instrument})
+                    return instrument
+
+                except Exception as e:
+                      print(f"Failed to open or locate instrument {name} \nFailed with error: {e}")
+                      return None
+            else:
+                print(f"Failed to load or open config yaml file with path {self.cfg_path}")
+                return None
+
+            
+        #generate a dictionary of instruments that persists across tests, maybe as a curried labpy function? 
+
+
 
     def open_ps(self, name='ps16v', voltage=None, current=None):
         """ Opens a power supply and configures it
