@@ -282,7 +282,7 @@ class TestMGK7MBBench(TestUtils):
             assert current_good, "Current is out of range"
         else:
             while (xr.input_yes_no("Are you ready to apply power to the board? [Y/N]", additional_answers=[]) != True):
-    	        pass;
+                pass
 
             self.ps.set_output(state=True)
             self.ps.pollstatus(polltime=0.1, runtime=1)

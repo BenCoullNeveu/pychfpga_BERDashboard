@@ -636,8 +636,11 @@ class TestMGADC08Carrier(TestUtils):
 
             # Check that Power Good goes down when board is powered off to make sure we are not stuck to 0
             # For this to work, the GPIO should not have its internal pull up/downs enabled. This set-up is done by the FPGA hw module.
-            assert ib.hw._gpio_power.read_reg(4) == 0, 'Pullups/pulldown are enabled on the IceBoard IOExpander. The Mezzanine Power Good signal cannot be read properly.'
-            tr.post_power_pg = ib.hw._gpio.read(pg_gpio[self.fmc_slot])
+            assert ib._gpio_power.read_reg(4) == 0, 'Pullups/pulldown are enabled on the IceBoard IOExpander. The Mezzanine Power Good signal cannot be read properly.'
+
+            #tr.post_power_pg = ib.hw._gpio.read(pg_gpio[self.fmc_slot])
+            tr.post_power_pg =  ib._gpio.read(pg_gpio[self.fmc_slot])
+
             assert not tr.post_power_pg, 'The Power good line is ON even if the board is OFF!'
             print('Power good line is OFF as expected')
 
