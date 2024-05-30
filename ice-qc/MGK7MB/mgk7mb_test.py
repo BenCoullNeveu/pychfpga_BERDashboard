@@ -138,8 +138,8 @@ class TestMGK7MBBench(TestUtils):
         questions = self.cfg.motherboard_tests.inspection.questions
         answers = []
 
-        for i in range(0, len(questions)):
-            answers.append(xr.input_yes_no(str(i+1)+ ") " + questions[i], additional_answers=[]))
+        for i, question in enumerate(questions):
+            answers.append(xr.input_yes_no(f"{i+1}) {question}", additional_answers=[]))
 
         passed =  True
         for i, ans in enumerate(answers):
@@ -309,7 +309,7 @@ class TestMGK7MBBench(TestUtils):
             print('Apply power to the board')
         else:
             while (xr.input_yes_no("Are you ready to apply power to the board again? [Y/N]", additional_answers=[]) != True):
-                pass;
+                pass
             self.ps.set_output(state=True)
 
         response = xr.input_yes_no("Are all 9 of the power LEDs turned on? Y/N]", additional_answers=[])
@@ -385,12 +385,12 @@ class TestMGK7MBBench(TestUtils):
 
         if (all(v==0 for v in meas_pll1_regs) and all(v==0 for v in meas_pll1_regs)):
             while (xr.input_yes_no("All the registers in both PLLs are 0.  Please ensure that dongle orientated correctly on the program header. Ready to continue? [Y/N]", additional_answers=[]) != True):
-                pass;
+                pass
             xr.input_yes_no("Out of interest was it on the right way? [Y/N]", additional_answers=[])
 
         if (all(v==0xFFFFFFFF for v in meas_pll1_regs) and all(v==0xFFFFFFFF for v in meas_pll1_regs)):
             while (xr.input_yes_no("All the registers in both PLLs are 0xFFFFFFFF.  Please ensure that dongle is plugged into the program header. Ready to continue? [Y/N]", additional_answers=[]) != True):
-                pass;
+                pass
             xr.input_yes_no("Out of interest was it plugged in? [Y/N]", additional_answers=[])
 
         if pll1_cmp == 0:
@@ -456,8 +456,7 @@ class TestMGK7MBBench(TestUtils):
           - Interupt boot and start memtest - let run for 5 memory pass runs
 
         """
-        ########################################################
-        #Setup
+        
         cfg = self.cfg.motherboard_tests.mem_test
         self.ps = None
         manual_ps = not self.ps
@@ -488,22 +487,17 @@ class TestMGK7MBBench(TestUtils):
             self.ps.set_output(state=True)
 
         ser.interupt_boot()
-
-        ###################################################
-        #Getter
         testpassed = ser.start_memtest(iterations=5)
         ser.close()
 
-        #####################################################
-        #Parser
+        
         if testpassed == 1:
             print("The memory is good - all iterations passed")
             passed = True
         else:
             print("The memory test failed")
             passed = False
-        ####################################################
-        #Teardown
+        
         if manual_ps:
             xr.input('Power OFF the board and press ENTER. You can then disconnect the RS232 dongle: it is no longer needed with this board')
  
@@ -679,15 +673,12 @@ class TestMGK7MBNetwork(TestUtils):
         run_async(ib.open_fpga_async(verbose=1, fpga_ip_addr_fn = ip_fn)) 
         print(f"FPGA: {ib.fpga}")
 
-    def get_qfsp_info(self, port, ib):
+    def get_qfsp_info(self, qsfp):
         """
-        Given an iceboard and a port number, returns the manufacturer and serial number of the qfst connector
+        Reads and formats qsfp info, returns manufacturer and serial number
         """
 
-        port = int(port) - 1
-
-        ib.qsfp[port].reset()
-        info = ib.qsfp[port].get_info()        
+        info = qsfp.get_info()        
 
         mfg = info['VendName'].decode('ascii').rstrip() #data is right paded with withespaces
         serial = info['VenSN'].decode('ascii').rstrip()
@@ -1530,23 +1521,20 @@ class TestMGK7MBNetwork(TestUtils):
         # ib.open_sync()
 
         xr.header('Test-Results')
-        
-        metrics = run_async(ib.get_metrics_async())
 
-        
-        entries = metrics.metrics['fpga_motherboard_qsfp_present']['entries']
-        assert len(entries) == 2, "Not all connectors were detected!"
+        qsfp_ports = ib.qsfp
+        assert len(qsfp_ports) == 2, f"Not all connectors were detected! Detected qsfp port: {qsfp_ports}"
 
-        for entries in entries:
-
-            qsfp = dict(entries)
-            port = qsfp['qsfp']
-            slot = qsfp['slot']
-            print(f"Motherboard QSFP module present on port {port}")
-            print(f"Resetting Module {port}")
-
+        for port, qsfp in enumerate(qsfp_ports):
+            
             try:
-                (manufacturer, serial) = self.get_qfsp_info(port, ib)
+                if qsfp.is_present():
+                
+                    print(f"Motherboard QSFP module present on port {port}")
+                    print(f"Resetting Module {port}")
+
+
+                (manufacturer, serial) = self.get_qfsp_info(qsfp)
                 print(f"QSFP cable {port} manufactured by {manufacturer}. Serial number: {serial}")
                 assert manufacturer in cfg.manufacturer, f"Cannot find string '{manufacturer}' in expected values. I2C read error?"
 
