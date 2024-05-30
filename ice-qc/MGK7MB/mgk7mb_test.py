@@ -945,7 +945,70 @@ class TestMGK7MBNetwork(TestUtils):
         #self.instr.ps.set_output(state=False) # Turn power off
 
     #def test_i2c(self, xr):
-    def _test_i2c(self, xr):
+
+    # def _test_i2c(self, xr):
+    #     """
+    #     QC008: Check if all I2C devices are present
+
+    #     Procedure:
+
+    #       - Start the i2c test on the computer
+    #       - Connect to the iceboard with specified serial number.
+    #       - Check if expected devices are present
+
+    #     Not done:
+    #       - IOexpanders - GPIO/ LEDs
+    #       - Measure temperatures
+
+    #     """
+    #     xr.header('Checking I2C devices')
+    #     if(self.cfg.ready_check):
+    #         check_bp = xr.input_yes_no("Should this test check for backplane I2C devices? [Y/N]", additional_answers=[])
+    #     else:
+    #         check_bp = False 
+
+    #     cfg = self.cfg.motherboard_tests.i2c_test
+    #     passed = False
+
+    #     (ib, ibs) = self.connect_to_board(questions=self.cfg.ready_check)
+
+    #     print("Requesting all the I2C devices found at /sys/bus/i2c/devices on the board")
+    #     cmd = "ls /sys/bus/i2c/devices/"
+    #     results = self.run_arm_system_command(ib.hostname, cmd)
+
+        
+        
+    #     motherboard_names = {}
+    #     for name in cfg.motherboard_names:
+    #         motherboard_names.update(cfg.motherboard_names[name])
+
+    #     if check_bp:
+    #         motherboard_names.update(cfg.backplane_names)
+
+    #     print("\nParsing the list looking for specific devices")
+        
+
+    
+    #     passed = True
+    #     def check_names(names):
+    #         nonlocal passed
+
+    #         for name in names:
+    #             addr = names[name]
+    #             if addr + '\n' not in results:
+    #                 print(f"   {name}:{addr}: Missing I2C device")
+    #                 passed = False
+    #             else:
+    #                 print(f"   {name}:{addr}: OK")
+
+
+    #     check_names(motherboard_names)
+        
+
+    #     assert passed, "Missing I2C devices"
+    #     print("All devices are present")
+
+    def test_i2c(self, xr):
         """
         QC008: Check if all I2C devices are present
 
@@ -960,54 +1023,6 @@ class TestMGK7MBNetwork(TestUtils):
           - Measure temperatures
 
         """
-        xr.header('Checking I2C devices')
-        if(self.cfg.ready_check):
-            check_bp = xr.input_yes_no("Should this test check for backplane I2C devices? [Y/N]", additional_answers=[])
-        else:
-            check_bp = False 
-
-        cfg = self.cfg.motherboard_tests.i2c_test
-        passed = False
-
-        (ib, ibs) = self.connect_to_board(questions=self.cfg.ready_check)
-
-        print("Requesting all the I2C devices found at /sys/bus/i2c/devices on the board")
-        cmd = "ls /sys/bus/i2c/devices/"
-        results = self.run_arm_system_command(ib.hostname, cmd)
-
-        
-        
-        motherboard_names = {}
-        for name in cfg.motherboard_names:
-            motherboard_names.update(cfg.motherboard_names[name])
-
-        if check_bp:
-            motherboard_names.update(cfg.backplane_names)
-
-        print("\nParsing the list looking for specific devices")
-        
-
-    
-        passed = True
-        def check_names(names):
-            nonlocal passed
-
-            for name in names:
-                addr = names[name]
-                if addr + '\n' not in results:
-                    print(f"   {name}:{addr}: Missing I2C device")
-                    passed = False
-                else:
-                    print(f"   {name}:{addr}: OK")
-
-
-        check_names(motherboard_names)
-        
-
-        assert passed, "Missing I2C devices"
-        print("All devices are present")
-
-    def test_i2c(self, xr):
 
         def setup():
             xr.header('Checking I2C devices')
@@ -1016,10 +1031,8 @@ class TestMGK7MBNetwork(TestUtils):
         def getter():
             (ib, ibs) = self.connect_to_board(questions=self.cfg.ready_check)
             print("Requesting all the I2C devices found at /sys/bus/i2c/devices on the board")
-            cmd = "ls /sys/bus/i2c/devices/"
-            temp = self.run_arm_system_command(ib.hostname, cmd)
-            print(temp)
-            return temp
+            cmd = "ls /sys/bus/i2c/devices/"            
+            return self.run_arm_system_command(ib.hostname, cmd)
 
 
         def parser(i2c_devices: dict) -> list:
@@ -1429,7 +1442,7 @@ class TestMGK7MBNetwork(TestUtils):
                     framenum = i
                     foundone = 1
                 print(len(data[i]))
-                i=i+1;
+                i=i+1
 
             #receiver.close()
             #ib.stop_data_capture()
