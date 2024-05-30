@@ -1553,7 +1553,7 @@ class TestMGK7MBNetwork(TestUtils):
 
         Procedure:
 
-          - With one slot backplane  - where we already using this?
+          - With one slot backplane  
           - Plug in QSFP loopback
           - Type in serial number of tested board.
           - Program FPGA
