@@ -1129,10 +1129,10 @@ class IceCrate_MGK7BP1(IceCrate):
     _BP_RX_TO_TX_MAP = {(slot, lane): (slot, lane) for slot in range(17) for lane in range(16)}
     _BP_TX_TO_RX_MAP = {tx: rx for (rx, tx) in _BP_RX_TO_TX_MAP.items()}
 
-    @property
-    def _i2c(self):
-        """ Returns the I2C Interface object on the first available iceboard"""
-        return self.master_iceboard.i2c # self.MasterIceboardObject(self, 'i2c')
+    #@property
+    #def _i2c(self):
+    #    """ Returns the I2C Interface object on the first available iceboard"""
+    #    return self.master_iceboard.i2c # self.MasterIceboardObject(self, 'i2c')
 
     def __init__(self, **kwargs):
         """
