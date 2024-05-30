@@ -1150,6 +1150,9 @@ class IceCrate_MGK7BP1(IceCrate):
         # self.logger.debug('Initializing Iceboard hardware')
 
         self.logger.debug(' Instantiating Backplane I2C resource managers')
+
+        self._i2c = MasterIceboardObject(self, 'i2c')
+
         self._eeprom_data = EEPROM(
             self._i2c, bus_name='BP',
             address=self.BACKPLANE_EEPROM_DATA_ADDRESS,
