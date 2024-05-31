@@ -19,33 +19,85 @@ from ..i2c_devices import gpio
 from ..i2c_devices import qsfp
 
 
-class MasterIceboardObject(object):
+class MasterIceboardObjectProxy(object):
     def __init__(self, crate_object, iceboard_object_name):
+        """ Create a proxy object that can be used to access attributes of a master motherbord's
+        object while deferring resolution of that master motherboard.
+
+        Accessing any attribute of this proxy object will 1) cause the master_iceboard to be resolved,
+        2) the proxied object will be obtained from it, and 3) the desired attribute will be fetched from
+        that object.
+
+        A proxy object is useful when we need to provide an object that accesses a master
+        motherboard object before the list of motherboards is not yet available.
+
+        Parameters:
+
+            crate_object (IceCrate): Icecrate object through which the ``master_iceboard`` will be accessed.
+
+            iceboard_object_name (str): Name of the ``master_iceboard`` object to be proxied
+        """
         self._crate = crate_object
         self._iceboard_object_name = iceboard_object_name
 
     def __getattr__(self, name):
+        """ Return the attribute of a ``master_iceboard`` proxied object.
+
+        Parameters:
+
+            name (str): name of the attribute to be fetched from the proxied object.
+
+        Returns:
+
+            Requested attribute.
+        """
         obj = getattr(self._crate.master_iceboard, self._iceboard_object_name)
         return getattr(obj, name)
 
 
 class IceCrate(Crate, IceCrateBase):
     """
-    Generic IceCrate base class tha define the methotd and attrubutes common to various IceCrate models.
+    Generic IceCrate base class that defines the methods and attributes common to various IceCrate models.
     """
-    # This is still a generic class. part numbers will be defined in subclases.
+
+    # This is still a generic class, so set part number to ``None``. Part numbers will be defined in subclases.
     part_number = None
     _ipmi_part_numbers = None  # Must match part number in IPMI data
+
+
+    def __init__(self, **kwargs):
+
+        super().__init__(**kwargs)
+
+        # Create an I2C proxy object that will resolve the master motherboard and get its I2C object
+        # only when its attributes are accessed. This allows us to create the I2C devices at object
+        # instantiatiation (``__init__``) even if the motherboards have not yet been associated with
+        # the crate (i.e. ``slot`` is empty).
+        self.i2c_proxy = MasterIceboardObjectProxy(self, 'i2c')
 
     def init(self):
         pass
 
     @property
     def master_iceboard(self):
-        active_iceboards = [(slot, iceboard)
+        """ Return the first valid iceboard available in the crate.
+
+        Notes:
+            - The ``slots`` dict must be properly populated before this property is used. It
+              therefore cannot be accessed directly during the ``__init__`` method of the crate,
+              because the list of slots it not yet populated. All references to a master iceboard
+              attribute must be done through an object that will defer access to the master
+              iceboard.
+        """
+
+        # Create a list of (slot, motherboard) tuples that are available to this crate, keeping only
+        # those with valid hostname and serial numbers.
+        mbs = [(slot, iceboard)
                             for (slot, iceboard) in self.slot.items()
                             if iceboard.hostname or iceboard.serial]
-        return sorted(active_iceboards)[0][1]
+        # Sort the tuple list in increasing slot number and take the first element
+        first_slot, first_mb = sorted(mbs)[0]
+        return first_mb
 
     _BP_RX_TO_TX_MAP = {}
     _BP_TX_TO_RX_MAP = {tx: rx for (rx, tx) in _BP_RX_TO_TX_MAP.items()}
@@ -383,25 +435,6 @@ class IceCrate_MGK7BP16(IceCrate):
     def get_rx_net_length(cls, rx_slot_lane_tuple):
         return cls._BP_RX_NET_LENGTH[rx_slot_lane_tuple]
 
-    # @property
-    # def _i2c(self):
-    #     """ provide access to the backplane I2C device through whichever is the current master iceboard """
-    #     return self.master_iceboard.i2c
-
-    # def __getattr__(self, name):
-    #     """ Fetches attributes from the master iceboard's backplane handling object 'bp'
-    #     """
-    #     if self.master_iceboard:
-    #         return getattr(self.master_iceboard.bp, name)
-    #     else:
-    #         return AttributeError("%r does not have an attribute '%s'" % (self, name))
-
-    # def __dir__(self):
-    #     class_attributes = [item  for class_ in type(self).mro() for item in dir(class_)]
-    #     instance_attributes = self.__dict__.keys()
-    #     backplane_attributes = dir(self.master_iceboard.bp) if self.master_iceboard else []
-    #     return list(set(class_attributes + instance_attributes + backplane_attributes))
-
     def __init__(self, **kwargs):
         """ Create all the I2C objects needed to interface the backplane hardware.
 
@@ -422,39 +455,38 @@ class IceCrate_MGK7BP16(IceCrate):
         super().__init__(**kwargs)
 
         # self.logger = logging.getLogger(__name__)
-        self.logger.debug('%r: Instantiating backplane hardware' % self)
+        self.logger.debug(f'{self!r}: Instantiating backplane hardware')
 
-        self._i2c = MasterIceboardObject(self, 'i2c')  # Indirect reference to the master Iceboard's I2C object
 
-        self.logger.debug('%r: Instantiating Backplane I2C resource managers' % self)
+        self.logger.debug('{self!r}: Instantiating Backplane I2C resource managers')
         self._eeprom_data = EEPROM(
-            self._i2c, bus_name='BP',
+            self.i2c_proxy, bus_name='BP',
             address=self.BACKPLANE_EEPROM_DATA_ADDRESS,
             address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH,
             write_page_size=self.BACKPLANE_EEPROM_PAGE_SIZE)
         self._eeprom_serial = EEPROM(
-            self._i2c, bus_name='BP',
+            self.i2c_proxy, bus_name='BP',
             address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS,
             address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH,
             write_page_size=self.BACKPLANE_EEPROM_PAGE_SIZE)
         self._qsfp_eeprom = EEPROM(
-            self._i2c, bus_name='BP',
+            self.i2c_proxy, bus_name='BP',
             address=self.BACKPLANE_QSFP_ADDRESS,
             address_width=self.BACKPLANE_QSFP_ADDRESS_WIDTH)
 
         self.logger.debug('%r: Instantiating Backplane I2C temperature sensors' % self)
-        self._tmp_slot1 = tmp421.tmp421(self._i2c, self._TMP_SLOT1_ADDR, 'BP')
-        self._tmp_slot16 = tmp421.tmp421(self._i2c, self._TMP_SLOT16_ADDR, 'BP')
+        self._tmp_slot1 = tmp421.tmp421(self.i2c_proxy, self._TMP_SLOT1_ADDR, 'BP')
+        self._tmp_slot16 = tmp421.tmp421(self.i2c_proxy, self._TMP_SLOT16_ADDR, 'BP')
 
         self.logger.debug('%r: Instantiating Backplane I2C current/power monitor' % self)
-        self._power_3v3 = ina230.ina230(self._i2c, self._POWER_3V3_ADDR, 'BP')
+        self._power_3v3 = ina230.ina230(self.i2c_proxy, self._POWER_3V3_ADDR, 'BP')
 
         self.logger.debug('%r: Instantiating Backplane I2C I/O expanders' % self)
-        self._qsfp_ctrla = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETA_ADDR, 'BP')
-        self._qsfp_ctrlb = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETB_ADDR, 'BP')
-        self._reset_ctrl = pca9698.pca9698(self._i2c, self._RESETS_CTRL_ADDR, 'BP')
+        self._qsfp_ctrla = pca9698.pca9698(self.i2c_proxy, self._QSFP_CTRL_SETA_ADDR, 'BP')
+        self._qsfp_ctrlb = pca9698.pca9698(self.i2c_proxy, self._QSFP_CTRL_SETB_ADDR, 'BP')
+        self._reset_ctrl = pca9698.pca9698(self.i2c_proxy, self._RESETS_CTRL_ADDR, 'BP')
 
-        self._fan_ctrl = amc6821.AMC6821(self._i2c, self._FAN_CTRL_ADDR, 'BP')
+        self._fan_ctrl = amc6821.AMC6821(self.i2c_proxy, self._FAN_CTRL_ADDR, 'BP')
 
         self._gpio = gpio.GPIO(gpio_table={
             # name : (expander object, byte, lsb bit number,  width)
@@ -558,7 +590,7 @@ class IceCrate_MGK7BP16(IceCrate):
             })
 
         self.qsfp = Ccoll(qsfp.QSFP(
-            self._i2c, 'BP',
+            self.i2c_proxy, 'BP',
             gpio_prefix='QSFP%i_' % (i + 1),
             gpio=self._gpio,
             parent=self) for i in range(self.NUMBER_OF_SLOTS))
@@ -647,7 +679,7 @@ class IceCrate_MGK7BP16(IceCrate):
                                   % (self, trial+1, e))
             finally:
                 try:
-                    self._i2c.select_bus([])  # Make sure we don't load the bus
+                    self.i2c_proxy.select_bus([])  # Make sure we don't load the bus
                 except (IOError, RuntimeError) as e:
                     self.logger.info('%r: IO Error while trying to deselect bus. Error was:\n%s' % (self, e))
                     pass
@@ -1129,10 +1161,6 @@ class IceCrate_MGK7BP1(IceCrate):
     _BP_RX_TO_TX_MAP = {(slot, lane): (slot, lane) for slot in range(17) for lane in range(16)}
     _BP_TX_TO_RX_MAP = {tx: rx for (rx, tx) in _BP_RX_TO_TX_MAP.items()}
 
-    #@property
-    #def _i2c(self):
-    #    """ Returns the I2C Interface object on the first available iceboard"""
-    #    return self.master_iceboard.i2c # self.MasterIceboardObject(self, 'i2c')
 
     def __init__(self, **kwargs):
         """
@@ -1146,26 +1174,29 @@ class IceCrate_MGK7BP1(IceCrate):
         """
         super().__init__(**kwargs)
 
+
         self._I2C_BACKPLANE_BUS_NAME = 'BP'
         # self.logger.debug('Initializing Iceboard hardware')
 
         self.logger.debug(' Instantiating Backplane I2C resource managers')
 
-        self._i2c = MasterIceboardObject(self, 'i2c')
+        # Define the I2C devide objects
+        # Note that we use a I2C proxy objects so we don't need yet to resolve which is the master motherboard.
+        # (the motherboards are added to ``slot`` only after instantiation and are ot available right now)
 
         self._eeprom_data = EEPROM(
-            self._i2c, bus_name='BP',
+            self.i2c_proxy, bus_name='BP',
             address=self.BACKPLANE_EEPROM_DATA_ADDRESS,
             address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH,
             write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
         self._eeprom_serial = EEPROM(
-            self._i2c, bus_name='BP',
+            self.i2c_proxy, bus_name='BP',
             address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS,
             address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH,
             write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
 
         self.logger.debug(' Instantiating Backplane I2C I/O expanders')
-        self._gpio_ctrl = pca9575.pca9575(self._i2c, self._GPIO_CTRL_ADDR, 'BP')
+        self._gpio_ctrl = pca9575.pca9575(self.i2c_proxy, self._GPIO_CTRL_ADDR, 'BP')
 
         self._GPIO_CTRL_MAP = {
              # Slot num : (expander object, Register, bit number)

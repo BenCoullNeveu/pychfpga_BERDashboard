@@ -1115,6 +1115,7 @@ class FPGAArray(object):
                     ) for ib in self.ib])
 
 
+            if init >= 3: # initialize the backplane
                 ########################
                 # Initializing backplane hardware communication firmware
                 ########################
