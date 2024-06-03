@@ -62,7 +62,7 @@ class eeprom(object):
         self.address_mask = (1 << address_width) - 1
         self.address_page_mask = write_page_size - 1
         self.max_read_length = max_read_length
-        self.max_write_length = max_read_length
+        self.max_write_length = max_write_length
         self.write_cycle_time = write_cycle_time
 
     def _get_addr_bytes(self, addr):
