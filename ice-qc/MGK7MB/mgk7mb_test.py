@@ -596,7 +596,7 @@ class TestMGK7MBNetwork(TestUtils):
             # no, so if requested, try to find an unprogrammed iceboard
             if without_serial:
                 print(f'Trial {count+1}/30: looking for iceboard.local')
-                ip = pychfpga.mds_discovery.mdns_resolve('iceboard.local', timeout=2)
+                ip = pychfpga.mdns_discovery.mdns_resolve('iceboard.local', timeout=2)
                 if ip:
                     ca = fpga_array.FPGAArray(f'MGK7MB {ip}', ping=1, ignore_missing_boards=True)
                     if ca.ib:
@@ -617,11 +617,10 @@ class TestMGK7MBNetwork(TestUtils):
 
         # Monkey-patch the iceboar dobject to add async functions used in our tests 
         ib.set_fpga_bitstream = async_to_sync(ib.set_fpga_bitstream_async)
+
         # Add synchronous versions of the async tuber commands for convenience
         ib.is_fpga_programmed = async_to_sync(ib.tuber_is_fpga_programmed_async)
-        
         ib.get_clock_source = async_to_sync(ib.tuber_get_clock_source_async)
-        
         ib.is_mezzanine_present = async_to_sync(ib.tuber_is_mezzanine_present_async)
         ib.get_motherboard_power = async_to_sync(ib.tuber_get_motherboard_power_async)
         ib.get_motherboard_current = async_to_sync(ib.tuber_get_motherboard_current_async)
@@ -637,16 +636,10 @@ class TestMGK7MBNetwork(TestUtils):
         ib._motherboard_eeprom_write_base64 = async_to_sync(ib._tuber_motherboard_eeprom_write_base64_async)
         ib._get_motherboard_ipmi = async_to_sync(ib._tuber_get_motherboard_ipmi_async)
         ib.get_motherboard_serial = async_to_sync(ib.tuber_get_motherboard_serial_async)
-        
-        
-
         ib.fpga_mmi_read = async_to_sync(ib.fpga_core_reg_spi_read_async) 
         ib._qsfp_eeprom_read_base64 = async_to_sync(ib._tuber_qsfp_eeprom_read_base64_async)
 
-        #ib.get_fpga_firmware_timestamp_sync = async_to_sync(ib.get_fpga_firmware_timestamp) # different naming
-        #ib.set_irigb_source = async_to_sync(ib.set_irigb_source_async)
-        #ib.is_qsfp_present = async_to_sync(ib.tuber_is_qsfp_present_async)
-        #ib.set_qsfp_gpio = async_to_sync(ib.tuber_set_qsfp_gpio_async)
+
 
         
 
@@ -687,7 +680,7 @@ class TestMGK7MBNetwork(TestUtils):
 
 
     def run_arm_system_command(self, hostname, cmd):
-        ssh_cmd = f'ssh -o "StrictHostKeyChecking no" root@{hostname} "{cmd}"'
+        ssh_cmd = f'ssh -o "KexAlgorithms=diffie-hellman-group14-sha1" -o "HostKeyAlgorithms=+ssh-dss" -o "StrictHostKeyChecking=no" root@{hostname} "{cmd}"'
         split_cmd = shlex.split(ssh_cmd)
         p = subprocess.Popen(split_cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='ascii')
         result = p.stdout.readlines()
