@@ -3,9 +3,8 @@ from typing import Callable
 
 
 import labpy
-import icecore
-from icecore import NameSpace, XReport
-
+from wtl.namespace import NameSpace
+from yaml import safe_load
 class Maybe:
     """
     General monad class for uncertain operation handling, (harware request, file opening, etc.). Maybe<T> objects can 
@@ -125,13 +124,16 @@ class Maybe:
     def __bool__(self):
         return self._value is not None
 
+
+
+
 class TestUtils:
     """ Some utility methods common to all tests. 
     """
 
-    def __init__(self, test_instruments={}: dict, cfg_path=None: str, cfg=None):
+    def __init__(self, test_instruments: dict={}, cfg_path: str=None, cfg_namespace: NameSpace=None):
         self.test_instruments = test_instruments 
-        self.cfg = cfg
+        self.cfg_namespace = cfg_namespace
 
 
     def sub_test(self,
@@ -177,50 +179,67 @@ class TestUtils:
             
         else:
             assert False, 'Error: Error in test setup '
-            return False
 
 
-    def load_config(filename):
-        print 'Loading config file %s' % filename
+
+    def load_config(self, filename):
+        print(f'Loading config file {filename}')
         with open(filename, 'rb') as yamlfile:
-            self.cfg = NameSpace(icecore.load_yaml(yamlfile))
+            self.cfg = NameSpace(safe_load(yamlfile))
         return self.cfg  #return reference to self.cfg
 
 
     def open_instrument(self, name):
-        """ Looks up the instrument name in the instrument table in configuration file and open it with the parameters specified in the table.  
+        """ Looks up the instrument name in the instrument table in configuration file and open it with the parameters specified in the table. 
+            Open instrument will return a specific instrument object, if the instrument is already in the dictionnary it'll get it from there 
+            if it's not it'll try to open it then add it to the dict for 
+
+            :param name: str, name of the instrument requested as specified in the config file (not the labpy driver name)
         """
 
-        def start_instrument(cfg, name):
-            instr_params = self.cfg.instruments[name].copy()
-            class_name = instr_params.pop('labpy_object')
-            return labpy.open_instrument(class_name, **instr_params)
+        def start_instrument(name):
+            specified_instruments = self.cfg.get('instruments', default=None)
 
-        def is_responding(name): #\\TODO: not yet implemented check labpy for a function for that
-            return True
-
-        load_cfg_partial         = partial(load_config, self.cfg_path)    #partial evaluation of load_config 
-        #start_instrument_partial = partial(start_instrument, name=name)
-
-
-        if name in test_instruments and is_responding(name): #if the instrument is already opened and availble we just use it
-            return test_instruments[name]
-
-        else: 
-            config_maybe = Maybe(self.cfg, errhandle=load_cfg_partial) #get the config object if it doens't exist try to load the file
-
-            if config_maybe:
+            if specified_instruments:
                 try:
-                    instrument = start_instrument(config_maybe.unwrap(), name)
-                    test_instruments.update({name: instrument})
-                    return instrument
-
-                except Exception as e:
-                      print(f"Failed to open or locate instrument {name} \nFailed with error: {e}")
-                      return None
+                    instr_params = specified_instruments[name].copy()
+                    class_name = instr_params.pop('labpy_object')
+                    return labpy.open_instrument(class_name, **instr_params)
+                
+                except KeyError:
+                    assert False, f'Instrument {name}, could not be resolve in config file. The following instruments were specified {specified_instruments}'
+                    
             else:
-                print(f"Failed to load or open config yaml file with path {self.cfg_path}")
-                return None
+                assert False, f'Config file does not specify instruments '
+
+
+        def is_responding(instrument): #(not very stable)
+            return instrument.status() is not None
+
+        load_cfg_partial = partial(self.load_config, self.cfg_path)    #partial evaluation of load_config 
+        
+
+
+        if name in self.test_instruments: #if the instrument is already opened and available we just use it but we check if it still answers 
+            if is_responding(self.test_instruments[name]):
+                return self.test_instruments[name]
+            else:
+                print(f"Lost connection with instrument: {name}. Retrying connection: ")
+
+
+        config_maybe = Maybe(self.cfg, errhandle=load_cfg_partial) #get the config object if it doens't exist try to load the file
+
+        if config_maybe:
+            try:
+                instrument = start_instrument(config_maybe.unwrap(), name)
+                self.test_instruments.update({name: instrument})
+                return instrument
+            except Exception as e:
+                  print(f"Failed to open or locate instrument {name} \nFailed with error: {e}")
+                  return None
+        else:
+            print(f"Failed to load cfg or open config yaml file with path {self.cfg_path}")
+            return None
 
             
         #generate a dictionary of instruments that persists across tests, maybe as a curried labpy function? 
