@@ -109,6 +109,10 @@ class TestMGADC08Bench(TestUtils):
         self.params = xr.params
         # pre-define instrument variable. We'll load them only as needed by the tests.
         self.ps = None
+
+        self.ps3v3_2v5 = self.open_instrument('ps3v3_2v5')
+        self.ps16v = self.open_instrument('ps16v')
+
         self.dmm = self.open_instrument('dmm')
 
         yield  # pass control to the test and return
@@ -235,6 +239,9 @@ class TestMGADC08Bench(TestUtils):
         # Useful shortcuts
         cfg = self.cfg.bench_tests.smoke_test
         dmm = self.dmm  # Multimeter
+
+        pss = [self.ps16v, self.ps3v3_2v5]
+        
         #self.adc_ps_output_enable(False)
 
         test_results = NameSpace()  # container for the test results to be saved in the test report
