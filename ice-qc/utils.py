@@ -169,7 +169,7 @@ class TestUtils:
             
         else:
             assert False, 'Error: Error in test setup '
-            return False
+            
 
 
 

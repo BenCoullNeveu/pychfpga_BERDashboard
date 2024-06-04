@@ -28,6 +28,8 @@ instruments:
     iceboards: 0047
     mdns_delay: 1
 
+test_results_folder: '~/iceboard/iceqc/iceqc/dev/'
+git_repo_path: '/home/antoine_p/iceboard/iceqc/iceqc'
 
 test_list:
     # This list all the tests that will be done by the test software, in the proper order

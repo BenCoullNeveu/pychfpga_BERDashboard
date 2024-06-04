@@ -1662,7 +1662,6 @@ class TestMGK7MBNetwork(TestUtils):
 
 if __name__ == '__main__':
     # util.add_paths('..')  # needed to pychfpga
-
     """ Run the test in this file."""
-    v = TestMenu(TEST_CONFIG_FILE).run()
+    v = TestMenu(TEST_CONFIG_FILE, use_git=True, git_repo_path="~/iceboard/iceqc/iceqc").run()
     locals().update(v) # bring local variables from the test runner into the current namespace for easier debugging

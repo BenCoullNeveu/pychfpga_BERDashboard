@@ -10,7 +10,7 @@ comment: |
 
 # test_results_folder: './test_results'
 # test_results_folder: '../../iceqc'  # relative to this config file's folder. "~" is allowed.
-test_results_folder: '../../qc_results'  # relative to this config file's folder. "~" is allowed.
+#test_results_folder: '../../qc_results'  # relative to this config file's folder. "~" is allowed.
 test_results_folder_uses_git: false
 # xml_test_results_pathname: ""  # not needed for a pure menu
 
