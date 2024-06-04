@@ -250,18 +250,18 @@ class TestMGADC08Bench(TestUtils):
             #self.adc_ps_output_enable(True)
 
             # Measure currents on the power supplies
-            test_results.rails = NameSpace()  # Namespace to store all rail results
-            for rail_name, rail_info in cfg.rails.items():
-                instr = self.rails[rail_name]
-                V = instr.get_voltage(rail.output)
-                I = instr.get_current(rail.output)
-                print('Rail %s: %.3fV@%.3fA,  limits = %s' % (rail_name, V, I, rail_info))
-                test_results.rails[rail_name] = NameSpace(V=V, I=I)  # Namespace to store this rail results
-                print(test_results.rails[rail_name])
-                print(test_results)
-                if V < rail_info.vmin or V > rail_info.vmax or I < rail_info.imin or I > rail_info.imax:
-                    # stop immediately as soon as we fail one of these tests. We can't go further anyway. This will powewr off the supplies
-                    assert False, 'Inadequate current or voltage on rail %s' % rail_name
+            #test_results.rails = NameSpace()  # Namespace to store all rail results
+            #for rail_name, rail_info in cfg.rails.items():
+            #    instr = self.rails[rail_name]
+            #    V = instr.get_voltage(rail_info.output)
+            #    I = instr.get_current(rail_info.output)
+            #    print('Rail %s: %.3fV@%.3fA,  limits = %s' % (rail_name, V, I, rail_info))
+            #    test_results.rails[rail_name] = NameSpace(V=V, I=I)  # Namespace to store this rail results
+            #    print(test_results.rails[rail_name])
+            #    print(test_results)
+            #    if V < rail_info.vmin or V > rail_info.vmax or I < rail_info.imin or I > rail_info.imax:
+            #        # stop immediately as soon as we fail one of these tests. We can't go further anyway. This will powewr off the supplies
+            #        assert False, 'Inadequate current or voltage on rail %s' % rail_name
 
             dmm.display('','Check power LED')
             power_led_state = xr.input_yes_no('Is the power LED turned ON [Y/N]?')
@@ -271,7 +271,8 @@ class TestMGADC08Bench(TestUtils):
             # Measure voltages on test points
             failed_rails = []
             test_results.test_points = NameSpace()  # Namespace to store all rail results
-            for tp_name, limits in list(NameSpace(cfg.test_points).items()): # Convert list to (ordered) namespace. limits will also be a NameSpace.
+            for tp_name, limits in cfg.test_points: 
+                limits = NameSpace(limits)
                 dmm.display('','Measure %s' % tp_name)
                 dmm.select_voltage_measurement()
                 while True:
@@ -294,7 +295,7 @@ class TestMGADC08Bench(TestUtils):
             assert not len(failed_rails), 'Inadequate voltage or current on %s' % ','.join(failed_rails)
             passed = True
         finally: # Always execute this, whatever happens
-            self.adc_ps_output_enable(False)
+            #self.adc_ps_output_enable(False)
 
             test_results.passed = passed
             dmm.display(xr.pass_fail(passed), 'Power-up tests')

@@ -8,8 +8,8 @@ default_serial: null
 instruments:
     # Digico setup 
     dmm:       {labpy_object: 'agilent_dmm', adapter: 'TCPIP::IDN::*34410*'} # Agilent 34410A multimeter (we don't use the LAN connection so we can go back in local mode remotely)
-    ps12v:     {labpy_object: 'AgilentE3648A',   adapter: 'TCPIP::PROLOGIX::01-1d-d9::GPIB::5'}  # Agilent E3648A dual output power supply  12V on output 1, output 2 not used
-    ps3v3_2v5: {labpy_object: 'AgilentE3648A',   adapter: 'TCPIP::PROLOGIX::01-1d-d9::GPIB::6'}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
+    ps16v:     {labpy_object: 'siglentspd1000x', adapter: 'TCPIP::10.10.10.149'}  #Siglentspd1186 power supply for 12V power, static IP
+    ps3v3_2v5: {labpy_object: 'AgilentE3648A',   adapter: 'TCPIP::PROLOGIX::01-09-13::GPIB::6'}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
     na:        {labpy_object: 'KeysightN9923', adapter: 'TCPIP::IDN::*Keysight*N9923*'} # Keysight portable Network Analyzer
 
 
