@@ -108,7 +108,7 @@ class MemTestRS232:
 
     def interupt_boot(self):
 
-        time.sleep(0.5)  #give the serial port sometime to receive the data
+        #time.sleep(0.5)  #give the serial port sometime to receive the data
         numOfLines = 0
         response = None
 
@@ -118,7 +118,7 @@ class MemTestRS232:
           numOfLines = numOfLines +1
           m = re.search(b'stop', response)
           if (m != None ):
-            print("Board is booting and producing RS232 output")
+            print("\nBoard is booting and producing RS232 output")
             print("Found the stop spot, and halting boot process at TI-MIN# prompt")
             self.ser.write(b"stop\n")
             break
@@ -163,3 +163,5 @@ class MemTestRS232:
 
     def close(self):
         self.ser.close()
+
+
