@@ -3,7 +3,8 @@ from typing import Callable
 
 
 import labpy
-
+from wtl.namespace import NameSpace
+from yaml import safe_load
 class Maybe:
     """
     General monad class for uncertain operation handling, (harware request, file opening, etc.). Maybe<T> objects can 
@@ -57,7 +58,7 @@ class Maybe:
 
         :params func: Function () -> K with no inputs, used mainly to interact with IO or console 
         :params check_none: Bool specifies if the function should check if the Maybe object has a value of None before proceding with the func, defaults to True
-        :params errhandle: Function () -> K that allows the error handling to be specified by the user, default to unused
+        :params errhandle: Function () -> K that allows the error handling to be specified by the user, default to unused, doens't take input, use partial evaluation to give it input
         
         :return: Output of the function wrapped in a Maybe class
         :rtype: Maybe<K>
@@ -123,9 +124,18 @@ class Maybe:
     def __bool__(self):
         return self._value is not None
 
+
+
+
 class TestUtils:
     """ Some utility methods common to all tests. 
     """
+
+    def __init__(self, test_instruments: dict={}, cfg_path: str=None, cfg_namespace: NameSpace=None):
+        self.test_instruments = test_instruments 
+        self.cfg_namespace = cfg_namespace
+
+
     def sub_test(self,
                 setup_fn: Callable[[], bool],
                 get_fn:   Callable[[], dict], 
@@ -169,16 +179,72 @@ class TestUtils:
             
         else:
             assert False, 'Error: Error in test setup '
-            
 
+
+
+    def load_config(self, filename):
+        print(f'Loading config file {filename}')
+        with open(filename, 'rb') as yamlfile:
+            self.cfg = NameSpace(safe_load(yamlfile))
+        return self.cfg  #return reference to self.cfg
 
 
     def open_instrument(self, name):
-        """ Looks up the instrument name in the instrument table in configuration file and open it with the parameters specified in the table.  
+        """ Looks up the instrument name in the instrument table in configuration file and open it with the parameters specified in the table. 
+            Open instrument will return a specific instrument object, if the instrument is already in the dictionnary it'll get it from there 
+            if it's not it'll try to open it then add it to the dict for 
+
+            :param name: str, name of the instrument requested as specified in the config file (not the labpy driver name)
         """
-        instr_params = self.cfg.instruments[name].copy()
-        class_name = instr_params.pop('labpy_object')
-        return labpy.open_instrument(class_name, **instr_params)
+
+        def start_instrument(name):
+            specified_instruments = self.cfg.get('instruments', default=None)
+
+            if specified_instruments:
+                try:
+                    instr_params = specified_instruments[name].copy()
+                    class_name = instr_params.pop('labpy_object')
+                    return labpy.open_instrument(class_name, **instr_params)
+                
+                except KeyError:
+                    assert False, f'Instrument {name}, could not be resolve in config file. The following instruments were specified {specified_instruments}'
+                    
+            else:
+                assert False, f'Config file does not specify instruments '
+
+
+        def is_responding(instrument): #(not very stable)
+            return instrument.status() is not None
+
+        load_cfg_partial = partial(self.load_config, self.cfg_path)    #partial evaluation of load_config 
+        
+
+
+        if name in self.test_instruments: #if the instrument is already opened and available we just use it but we check if it still answers 
+            if is_responding(self.test_instruments[name]):
+                return self.test_instruments[name]
+            else:
+                print(f"Lost connection with instrument: {name}. Retrying connection: ")
+
+
+        config_maybe = Maybe(self.cfg, errhandle=load_cfg_partial) #get the config object if it doens't exist try to load the file
+
+        if config_maybe:
+            try:
+                instrument = start_instrument(config_maybe.unwrap(), name)
+                self.test_instruments.update({name: instrument})
+                return instrument
+            except Exception as e:
+                  print(f"Failed to open or locate instrument {name} \nFailed with error: {e}")
+                  return None
+        else:
+            print(f"Failed to load cfg or open config yaml file with path {self.cfg_path}")
+            return None
+
+            
+        #generate a dictionary of instruments that persists across tests, maybe as a curried labpy function? 
+
+
 
     def open_ps(self, name='ps16v', voltage=None, current=None):
         """ Opens a power supply and configures it

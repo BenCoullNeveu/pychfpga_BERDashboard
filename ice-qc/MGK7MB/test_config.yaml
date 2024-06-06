@@ -23,6 +23,8 @@ instruments:
 #   TODO: Add SPD1168X DC programmable power supply to components list
 #   ps18v:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '11.11.11.73', gpib_addr: 5}  # Agilent N5764A power supply
 
+test_results_folder: '~/iceboard/iceqc/iceqc/dev/'
+git_repo_path: '~/iceboard/iceqc/iceqc'
 
 ?: &default_fpga_array
     iceboards: 0047
