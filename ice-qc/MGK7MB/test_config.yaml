@@ -30,6 +30,7 @@ instruments:
 
 test_results_folder: '~/iceboard/iceqc/iceqc/dev/'
 git_repo_path: '~/iceboard/iceqc/iceqc'
+test_results_folder_uses_git: True
 
 test_list:
     # This list all the tests that will be done by the test software, in the proper order
