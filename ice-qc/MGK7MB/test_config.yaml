@@ -20,6 +20,11 @@ instruments:
     dmm:       {labpy_object: 'agilent_dmm', adapter: "TCPIP::IDN::*34410*"} # Agilent 34410A multimeter
     ps16v:     {labpy_object: 'siglentspd1000x', adapter: 'TCPIP::10.10.10.149'}
 
+instruments_default:
+    dmm:       []
+    ps16v:     []
+
+
 #   TODO: Add SPD1168X DC programmable power supply to components list
 #   ps18v:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '11.11.11.73', gpib_addr: 5}  # Agilent N5764A power supply
 

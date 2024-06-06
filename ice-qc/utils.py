@@ -3,6 +3,8 @@ from typing import Callable
 
 
 import labpy
+import pytest 
+
 from wtl.namespace import NameSpace
 from yaml import safe_load
 class Maybe:
@@ -131,10 +133,14 @@ class TestUtils:
     """ Some utility methods common to all tests. 
     """
 
-    def __init__(self, test_instruments: dict={}, cfg_path: str=None, cfg_namespace: NameSpace=None):
-        self.test_instruments = test_instruments 
-        self.cfg_namespace = cfg_namespace
+    class SharedInstruments:
+        def __init__(self):
+            self.instruments = {}
 
+    
+    @pytest.fixture(scope='class')
+    def instruments(self):
+        return self.SharedInstruments().instruments
 
     def sub_test(self,
                 setup_fn: Callable[[], bool],
@@ -197,8 +203,8 @@ class TestUtils:
             :param name: str, name of the instrument requested as specified in the config file (not the labpy driver name)
         """
 
-        def start_instrument(name):
-            specified_instruments = self.cfg.get('instruments', default=None)
+        def start_instrument(cfg, name):
+            specified_instruments = cfg.get('instruments', default=None)
 
             if specified_instruments:
                 try:
@@ -216,29 +222,31 @@ class TestUtils:
         def is_responding(instrument): #(not very stable)
             return instrument.status() is not None
 
-        load_cfg_partial = partial(self.load_config, self.cfg_path)    #partial evaluation of load_config 
+        #load_cfg_partial = partial(self.load_config, self.cfg_path)    #partial evaluation of load_config 
         
 
 
-        if name in self.test_instruments: #if the instrument is already opened and available we just use it but we check if it still answers 
-            if is_responding(self.test_instruments[name]):
-                return self.test_instruments[name]
+        if name in self.instruments: #if the instrument is already opened and available we just use it but we check if it still answers 
+            if is_responding(self.instruments[name]):
+                return self.instruments[name]
             else:
                 print(f"Lost connection with instrument: {name}. Retrying connection: ")
 
 
-        config_maybe = Maybe(self.cfg, errhandle=load_cfg_partial) #get the config object if it doens't exist try to load the file
+        #config_maybe = Maybe(self.cfg, errhandle=load_cfg_partial) #get the config object if it doens't exist try to load the file
+        config_maybe = Maybe(self.cfg) #get the config object if it doens't exist try to load the file
 
+        
         if config_maybe:
             try:
                 instrument = start_instrument(config_maybe.unwrap(), name)
-                self.test_instruments.update({name: instrument})
+                self.instruments.update({name: instrument})
                 return instrument
             except Exception as e:
                   print(f"Failed to open or locate instrument {name} \nFailed with error: {e}")
                   return None
         else:
-            print(f"Failed to load cfg or open config yaml file with path {self.cfg_path}")
+            #print(f"Failed to load cfg or open config yaml file with path {self.cfg_path}")
             return None
 
             
