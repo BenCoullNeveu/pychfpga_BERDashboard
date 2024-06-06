@@ -1009,52 +1009,43 @@ class TestMGK7MBNetwork(TestUtils):
 
         """
 
-        def setup():
-            xr.header('Checking I2C devices')
-            return True
-            
-        def getter():
-            (ib, ibs) = self.connect_to_board(questions=self.cfg.ready_check)
-            print("Requesting all the I2C devices found at /sys/bus/i2c/devices on the board")
-            cmd = "ls /sys/bus/i2c/devices/"            
-            return self.run_arm_system_command(ib.hostname, cmd)
+        
+        xr.header('Checking I2C devices')
+        (ib, _) = self.connect_to_board(questions=self.cfg.ready_check)
+        print("Requesting all the I2C devices found at /sys/bus/i2c/devices on the board")
+        cmd = "ls /sys/bus/i2c/devices/"
 
+        i2c_devices = self.run_arm_system_command(ib.hostname, cmd)
 
-        def parser(i2c_devices: dict) -> list:
-            if(self.cfg.ready_check):
-                check_bp = xr.input_yes_no("Should this test check for backplane I2C devices? [Y/N]", additional_answers=[])
+        if(self.cfg.ready_check):
+            check_bp = xr.input_yes_no("Should this test check for backplane I2C devices? [Y/N]", additional_answers=[])
+        else:
+            check_bp = False 
+
+        cfg = self.cfg.motherboard_tests.i2c_test
+
+        #load expected values from yaml file
+        motherboard_names = {}
+        passed = True
+
+        for name in cfg.motherboard_names:
+            motherboard_names.update(cfg.motherboard_names[name])
+
+        if check_bp:
+            motherboard_names.update(cfg.backplane_names)
+        
+        #compare to 
+        for name in motherboard_names:
+            addr = motherboard_names[name]
+            if addr + '\n' not in i2c_devices:
+                print(f"   {name}:{addr}: Missing I2C device")
+                passed = False
             else:
-                check_bp = False 
+                    print(f"   {name}:{addr}: OK")  
 
-            cfg = self.cfg.motherboard_tests.i2c_test
-
-            #load expected values from yaml file
-            motherboard_names = {}
-            for name in cfg.motherboard_names:
-                motherboard_names.update(cfg.motherboard_names[name])
-    
-            if check_bp:
-                motherboard_names.update(cfg.backplane_names)
-
-            errors = []
-
-            #compare to 
-            for name in motherboard_names:
-                addr = motherboard_names[name]
-                if addr + '\n' not in i2c_devices:
-                    print(f"   {name}:{addr}: Missing I2C device")
-                    errors.append(f"   {name}:{addr}: Missing I2C device")
-
-                else:
-                    print(f"   {name}:{addr}: OK")
-
-            return errors
-
-        def tear_down():
-            return True
-
-        assert self.sub_test(setup, getter, parser, tear_down), "Missing I2C devices" 
-        print("All devices are present")
+        assert passed, 'Missing I2C devices'
+        print('All devices present')
+        
 
 
            
