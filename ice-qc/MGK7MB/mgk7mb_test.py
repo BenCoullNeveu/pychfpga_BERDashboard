@@ -1154,14 +1154,17 @@ class TestMGK7MBNetwork(TestUtils):
         test_results = NameSpace()
         passed = False
 
+        (ib, ibs) = self.connect_to_board(questions=self.cfg.ready_check)
+
         print('\n-------------------------------')
         print("Please again ensure that the FPGA heatsink is in place, and with sufficient ventilation")
         print("Please ensure that SFP unit is inserted into board, with an ethernet cable attached.")
-
-        print('\n-------------------------------')
         print("Connect an SMA cable from the backplace Time input (grouped with the 4 other SMA) to the SMA A connector on the iceboard.")
 
-        (ib, ibs) = self.connect_to_board(questions=self.cfg.ready_check)
+        print('\n-------------------------------')
+        
+
+        
 
         
         print('Before programming the FPGA die temperature is: %.3f C' % ib.get_motherboard_temperature(ib.TEMPERATURE_SENSOR.MB_FPGA_DIE))
@@ -1589,7 +1592,7 @@ class TestMGK7MBNetwork(TestUtils):
 
         xr.header('Test-Results')
 
-        print("\nMeasuring  gtx error rate over a 20 second period - WARNING THIS TEST IS IGNORING THE BPQSFP LINKS - NEED JF's ATTENTION HERE")
+        print("\nMeasuring  gtx error rate over a 20 second period ")
         meas_ber1 = run_async(ibs.get_ber(tx_power = cfg.tx_power, print_ = 0, period = 20))
         #print meas_ber1
 
