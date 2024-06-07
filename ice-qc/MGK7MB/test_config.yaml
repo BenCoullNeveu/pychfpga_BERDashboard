@@ -133,7 +133,7 @@ motherboard_tests:
            - ['3.3V (L1)',      {delay: 0.2, zmin: 15}]
            - ['5V (L4)',        {delay: 0.2, zmin: 250}]
            - ['1V Gt. (L5)',    {delay: 0.2, zmin: 13}]
-           - ['1.2V Gt. (L6)',  {delay: 0.2, zmin: 150}]
+           - ['1.2V Gt. (L6)',  {delay: 0.2, zmin: 13}]
            - ['1V Co. (L8)',    {delay: 0.2, zmin: 13}]
            - ['1.5V (L7)',      {delay: 0.2, zmin: 200}]
            - ['1.8V (L9)',      {delay: 0.2, zmin: 150}]
