@@ -322,6 +322,8 @@ class TestMGK7MBBench(TestUtils):
         if manual_ps:
             xr.input('Turn OFF power and press ENTER')
 
+        if ps:
+            ps.set_output(state=False)
         if response == True:
             print("Test has passed")
         else:
@@ -448,6 +450,9 @@ class TestMGK7MBBench(TestUtils):
         if manual_ps:
             xr.input('Turn power supply OFF and press ENTER. You can then disconnect the PLL dongle: it is no longer needed for this board')
 
+        if ps:
+            ps.set_output(state=False)
+
         assert passed
         #self.instr.ps.set_output(state=False) #Ensuring power on N5764A is off
         #Estimate 10 seconds
@@ -508,6 +513,9 @@ class TestMGK7MBBench(TestUtils):
         
         if manual_ps:
             xr.input('Power OFF the board and press ENTER. You can then disconnect the RS232 dongle: it is no longer needed with this board')
+
+        if ps:
+            ps.set_output(state=False)
  
         assert passed, "Memory test failed"
 
@@ -587,7 +595,7 @@ class TestMGK7MBNetwork(TestUtils):
 
         # If we expect to program a blank new board, first quickly check if a board with the specified  serial number exists over mDNS, then look for a generic 'iceboard.local' board.
         # Since we just powered up the board, it might take some time to find it, so we continuously check for both programmed and unprogrammed boards.  
-        for count in range(30):
+        for count in range(50):
             # Try to find an Iceboard already configured with the target serial 
             print(f'Trial {count+1}/30: looking for iceboard{self.params.serial}.local')
 
