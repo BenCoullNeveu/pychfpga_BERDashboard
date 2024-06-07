@@ -438,6 +438,7 @@ class TestMGK7MBBench(TestUtils):
         else:
             print("Rebooting the board")
             ps.set_output(state=False)  # Ensuring power on N5764A is off
+            time.sleep(1) 
             ps.set_output(state=True)  # Turning power back on
 
         response = xr.input_yes_no("Are both PLL lock lights turned on? (yellow and green next to 6 pin RS232 header) [Y/N]", additional_answers=[])
