@@ -5,6 +5,12 @@
 model_number: 'MGADC08' # required to run the tests (generate data folder name, configure EEPROM etc.)
 default_serial: null
 
+
+test_results_folder: '~/iceboard/iceqc/iceqc/dev/'
+git_repo_path: '~/iceboard/iceqc/iceqc'
+test_results_folder_uses_git: True
+
+
 instruments:
     # Digico setup 
     dmm:       {labpy_object: 'agilent_dmm', adapter: 'TCPIP::IDN::*34410*'} # Agilent 34410A multimeter (we don't use the LAN connection so we can go back in local mode remotely)
