@@ -414,6 +414,8 @@ class TestMGADC08Carrier(TestUtils):
 
             if not a: # turn on the supply and try again if we did not find the board 
                 self.ps.set_output(state=True)
+                self.xr.input('Press [ENTER] once board has booted and front LED is green')
+                
                 print('Searching for the IceBoard for up to 70 seconds...')
                 a = fpga_array.FPGAArray(**kwargs, fpga_ip_addr_fn=FPGA_IP_SET_FUNCTION, mdns_timeout=70)
 
