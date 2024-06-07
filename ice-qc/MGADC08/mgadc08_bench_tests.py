@@ -1234,12 +1234,12 @@ class TestMGADC08Carrier(TestUtils):
                             r.read_raw_frames(flush=True)  # let the new data propagate
                             print('.', end='')
                             
-                            data = []
+                            
                             #trial = 0
                             for frame in range(cfg.number_of_frames):
                                 #data = r.read_frames(cfg.number_of_frames)
                                 ts, scaler, count = r.read_raw_frames(flush=True) #reads one frame of buffer 
-                                data.append(scaler)                                
+                                                              
                                 
                             
                                 #data = data_raw[cfg.number_of_frames]
@@ -1255,9 +1255,9 @@ class TestMGADC08Carrier(TestUtils):
                                     # assert answer, 'Interrupting test upon user request because of missing data'
                                 # else:
 
-                            print(data)
+                        
 
-                            data = data[logical_channel].astype(float)
+                            data = scaler[logical_channel].astype(float)
 
                             # print "Got %i samples" % len(data)
                                     # break
