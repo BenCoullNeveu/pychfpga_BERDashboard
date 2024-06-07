@@ -414,8 +414,8 @@ class TestMGADC08Carrier(TestUtils):
 
             if not a: # turn on the supply and try again if we did not find the board 
                 self.ps.set_output(state=True)
-                print('Searching for the IceBoard for up to 50 seconds...')
-                a = fpga_array.FPGAArray(**kwargs, fpga_ip_addr_fn=FPGA_IP_SET_FUNCTION, mdns_timeout=50)
+                print('Searching for the IceBoard for up to 70 seconds...')
+                a = fpga_array.FPGAArray(**kwargs, fpga_ip_addr_fn=FPGA_IP_SET_FUNCTION, mdns_timeout=70)
 
             assert len(a.ib), 'No Iceboard was found with parameters %s' % kwargs
             assert len(a.ib) == 1, 'One than one Iceboard was found with parameters %s' % kwargs
@@ -464,7 +464,7 @@ class TestMGADC08Carrier(TestUtils):
         Total time: 3 s
         """
         cfg = self.cfg.carrier_tests.eeprom_test
-        dmm = self.open_instruments('dmm')
+        dmm = self.open_instrument('dmm')
 
         self.dmm_display(dmm, 'EEPROM tests', '%s SN%s' % (self.model, self.serial))
 
