@@ -243,7 +243,9 @@ class TestUtils:
                 self.instruments.update({name: instrument})
                 return instrument
             except Exception as e:
+                  print("********************************************************************")
                   print(f"Failed to open or locate instrument {name} \nFailed with error: {e}")
+                  print("*******************************************************************")
                   return None
         else:
             #print(f"Failed to load cfg or open config yaml file with path {self.cfg_path}")
