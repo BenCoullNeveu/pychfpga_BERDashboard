@@ -127,8 +127,8 @@ class TestMGK7MBBench(TestUtils):
         yield  # pass control to the test and return
 
         # turn off power supply
-        if self.ps:
-            self.ps.set_output(state=False) #Ensuring power on N5764A is off
+        # if self.ps:
+        #     self.ps.set_output(state=False) #Ensuring power on N5764A is off
 
     def test_insp(self, xr):
         """
