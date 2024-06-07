@@ -40,6 +40,11 @@ import cdce620005_pll_QC as cdce620005
 utils = __import__('ice-qc.utils') #import doens't like the dash in the name
 TestUtils = utils.utils.TestUtils
 
+if os.environ.get("PYTEST_PLUGINS") is not None and os.environ.get("PYTEST_PLUGINS") != "":
+    os.environ["PYTEST_PLUGINS"] += ",wtl.pytest_xreport"
+else:
+    os.environ["PYTEST_PLUGINS"] = "wtl.pytest_xreport"
+
 TEST_CONFIG_FILE = './test_config.yaml'
 
 def in_range(value, target, pmargin=0.05, amargin=0):
@@ -567,7 +572,7 @@ class TestMGK7MBNetwork(TestUtils):
                 if power_down:
                     self.xr.input('Please turn power OFF and press ENTER')
                 if power_up:
-                    self.xr.input('Please turn power ON and press ENTER')
+                    self.xr.input('Please turn power supply ON, wait for a single green light and press ENTER')
         else:
             if power_down:
                 ps.set_output(state=False)
@@ -575,7 +580,7 @@ class TestMGK7MBNetwork(TestUtils):
             if power_up:
                 self.xr.input("Press [ENTER] when ready to power the board")
                 ps.set_output(state=True)
-                time.sleep(5) #give the board time to initialise
+                time.sleep(10) #give the board time to initialise
 
         
         #print(fpga_array.IceBoard._class_registry)
@@ -1143,7 +1148,9 @@ class TestMGK7MBNetwork(TestUtils):
         print('\n-------------------------------')
         print("Please again ensure that the FPGA heatsink is in place, and with sufficient ventilation")
         print("Please ensure that SFP unit is inserted into board, with an ethernet cable attached.")
-        print("Connect an SMA cable from the backplace time input to the SMA A connector on the iceboard.")
+
+        print('\n-------------------------------')
+        print("Connect an SMA cable from the backplace Time input (grouped with the 4 other SMA) to the SMA A connector on the iceboard.")
 
         (ib, ibs) = self.connect_to_board(questions=self.cfg.ready_check)
 

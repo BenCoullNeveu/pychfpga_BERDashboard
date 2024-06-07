@@ -38,6 +38,10 @@ from pychfpga.common import run_async, async_to_sync
 utils = __import__('ice-qc.utils') #import doens't like the dash in the name
 TestUtils = utils.utils.TestUtils
 
+if os.environ.get("PYTEST_PLUGINS") is not None and os.environ.get("PYTEST_PLUGINS") != "":
+    os.environ["PYTEST_PLUGINS"] += ",wtl.pytest_xreport"
+else:
+    os.environ["PYTEST_PLUGINS"] = "wtl.pytest_xreport"
 
 TEST_CONFIG_FILE = './test_config.yaml'
 
