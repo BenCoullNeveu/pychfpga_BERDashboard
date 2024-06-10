@@ -245,6 +245,7 @@ class TestUtils:
             except Exception as e:
                   print("********************************************************************")
                   print(f"Failed to open or locate instrument {name} \nFailed with error: {e}")
+                  print(f"Please try to power cycle instrument: {name} and restart test.")
                   print("*******************************************************************")
                   return None
         else:

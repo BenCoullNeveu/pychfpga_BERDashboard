@@ -596,9 +596,9 @@ class TestMGK7MBNetwork(TestUtils):
 
         # If we expect to program a blank new board, first quickly check if a board with the specified  serial number exists over mDNS, then look for a generic 'iceboard.local' board.
         # Since we just powered up the board, it might take some time to find it, so we continuously check for both programmed and unprogrammed boards.  
-        for count in range(50):
+        for count in range(60):
             # Try to find an Iceboard already configured with the target serial 
-            print(f'Trial {count+1}/30: looking for iceboard{self.params.serial}.local')
+            print(f'Trial {count+1}/60: looking for iceboard{self.params.serial}.local')
 
             #THIS HAD TO BE MODIFIED TO FIT THE NEW VERSION
             #ip = pychfpga.mdns_resolve(f'iceboard{self.params.serial}.local', timeout=2)
