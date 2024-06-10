@@ -18,7 +18,7 @@ fpga_firmware_mode: 'shuffle16'
 #For changing prologix address, use ./nfcli --list to find devices
 instruments:
     dmm:       {labpy_object: 'agilent_dmm', adapter: "TCPIP::IDN::*34410*"} # Agilent 34410A multimeter
-    ps16v:     {labpy_object: 'siglentspd1000x', adapter: 'TCPIP::10.10.10.149'}
+    ps16v:     {labpy_object: 'siglentspd1000x', adapter: 'TCPIP::10.11.1.4'}
 
 instruments_default:
     dmm:       []
@@ -28,16 +28,14 @@ instruments_default:
 #   TODO: Add SPD1168X DC programmable power supply to components list
 #   ps18v:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '11.11.11.73', gpib_addr: 5}  # Agilent N5764A power supply
 
-test_results_folder: '~/iceboard/iceqc/iceqc/dev/'
-git_repo_path: '~/iceboard/iceqc/iceqc'
+test_results_folder: '~/icetests/iceqc/hirax/'
+git_repo_path: '~/icetests/iceqc/'
+test_results_folder_uses_git: True
 
 ?: &default_fpga_array
     iceboards: 0047
     mdns_delay: 1
 
-test_results_folder: '~/iceboard/iceqc/iceqc/dev/'
-git_repo_path: '~/iceboard/iceqc/iceqc'
-test_results_folder_uses_git: True
 
 test_list:
     # This list all the tests that will be done by the test software, in the proper order
@@ -96,7 +94,7 @@ menu:
 
 motherboard_tests:
     global_settings:
-         eth_interface: 'enp4s0' # name of ethernet interface on which the IceBoard is connected. Used to check jumbo frames.
+         eth_interface: 'enp8s0' # name of ethernet interface on which the IceBoard is connected. Used to check jumbo frames.
          ps_voltage: 18  # Volts. Voltage to set on the Iceboard power supply 
          ps_current: 5   # Amps. Maximum current limit to set on the Iceboard power sypplt 
 
