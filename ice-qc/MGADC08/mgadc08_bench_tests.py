@@ -681,7 +681,7 @@ class TestMGADC08Carrier(TestUtils):
         
             #assert not tr.post_power_pg, 'The Power good line is ON even if the board is OFF!'
 
-            power_led_state = xr.input_yes_no('Are the top power LED turned off for the mezzanine under test [Y/N]?')
+            power_led_state = xr.input_yes_no('Is the bottom power LED turned off for the mezzanine under test [Y/N]?')
             assert power_led_state, 'The Power good line is ON even if the board is OFF!'
 
             print('Power good line is OFF as expected')
