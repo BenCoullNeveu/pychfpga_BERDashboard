@@ -989,9 +989,9 @@ class TestMGADC08Carrier(TestUtils):
             run_async(ib.fpga.init_async()) 
             mezz.init()
 
-            #print('Computing ADC delays...')
-            #ib.set_adc_delays(compute_delays=2, save_delays=False, check_sync_delays=True, check_adc_delays=20, verbose=0, retry=5)
-            #delay_table = ib.get_adc_delays()
+            print('Computing ADC delays...')
+            ib.set_adc_delays(compute_delays=2, save_delays=False, check_sync_delays=True, check_adc_delays=20, verbose=0, retry=5)
+            delay_table = ib.get_adc_delays()
 #
             print('\nOpening data receiver socket')
             receiver = ib.get_data_receiver()
