@@ -989,9 +989,9 @@ class TestMGADC08Carrier(TestUtils):
             run_async(ib.fpga.init_async()) 
             mezz.init()
 
-            #print('Computing ADC delays...')
-            #ib.set_adc_delays(compute_delays=2, save_delays=False, check_sync_delays=True, check_adc_delays=20, verbose=0, retry=5)
-            #delay_table = ib.get_adc_delays()
+            print('Computing ADC delays...')
+            ib.set_adc_delays(compute_delays=2, save_delays=False, check_sync_delays=True, check_adc_delays=20, verbose=0, retry=5)
+            delay_table = ib.get_adc_delays()
 #
             print('\nOpening data receiver socket')
             receiver = ib.get_data_receiver()
@@ -1244,28 +1244,24 @@ class TestMGADC08Carrier(TestUtils):
                             print('.', end='')
                             
                             
-                            #trial = 0
+                            trial = 0
                             for frame in range(cfg.number_of_frames):
                                 #data = r.read_frames(cfg.number_of_frames)
-                                ts, scaler, count = r.read_raw_frames(flush=True) #reads one frame of buffer 
-                                                              
+                                while True:
+                                    _, scaler, _ = r.read_raw_frames(flush=True) #reads one frame of buffer 
+
+                                    channels_received = len(scaler)
+                                    print(f"Got packets from {channels_received} channels")
+                                    if channels_received == 16:
+                                        break   
+                                    
+                                    assert trial < 20, 'Did not receive data from board' 
+
+                                    time.sleep(0.5)
+                                    trial += 1
+
                                 
                             
-                                #data = data_raw[cfg.number_of_frames]
-
-                               
-
-                                #if logical_channel in data:
-                                #    break
-                                #assert trial < 40, 'Did not receive data from the board.'
-                                #trial += 1
-
-                                    # answer = input_yes_no('Did not receive data from the board. Want to try again [Y] or quit [Q]?' )
-                                    # assert answer, 'Interrupting test upon user request because of missing data'
-                                # else:
-
-                        
-
                             data = scaler[logical_channel].astype(float)
 
                             # print "Got %i samples" % len(data)
