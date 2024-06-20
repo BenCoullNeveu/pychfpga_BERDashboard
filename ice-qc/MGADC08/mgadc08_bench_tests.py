@@ -1237,7 +1237,12 @@ class TestMGADC08Carrier(TestUtils):
                     for f in fr_freqs:
                             print('   CHANNEL CH%i, Sinewave %7.3f MHz @ %f dBm' % (channel, f, power_level)),
                             # na.command('CWFREQ %f MHz' % f)
-                            na.set_cw_source(freq=f*1e6)
+                            for i in range(5):
+                                try:
+                                    na.set_cw_source(freq=f*1e6)
+                                    break
+                                except:
+                                    print(f"Couldn't communicate with the network analyzer, trying again ({i+2}/5)")
                             print('.', end='')
                             # time.sleep(frame_transmission_period)
                             r.read_raw_frames(flush=True)  # let the new data propagate
