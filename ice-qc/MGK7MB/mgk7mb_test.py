@@ -121,11 +121,12 @@ class TestMGK7MBBench(TestUtils):
 
         self.instruments = instruments #creates the shared instrument dictionary object for all tests
 
-        # self.ps = None
         # self.dmm = None
 
+        self.ps = None
         yield  # pass control to the test and return
-
+        if self.ps:
+            self.ps.adapter.connection.close()
         # turn off power supply
         # if self.ps:
         #     self.ps.set_output(state=False) #Ensuring power on N5764A is off
@@ -263,9 +264,9 @@ class TestMGK7MBBench(TestUtils):
         xr.header('Powerup test')
 
         cfg = self.cfg.motherboard_tests.powerup
-        ps = self.open_instrument('ps16v')
+        self.ps = self.open_instrument('ps16v')
 
-        manual_ps = not ps
+        manual_ps = not self.ps
 
         print('\n-------------------------------')
         print('Connect the power cable to the one slot backplane.')
@@ -290,13 +291,13 @@ class TestMGK7MBBench(TestUtils):
             while (xr.input_yes_no("Are you ready to apply power to the board? [Y/N]", additional_answers=[]) != True):
                 pass
 
-            ps.set_output(state=True)
-            ps.pollstatus(polltime=0.1, runtime=1)
+            self.ps.set_output(state=True)
+            self.ps.pollstatus(polltime=0.1, runtime=1)
             
-            status = ps.status()
-            ps.set_output(state=False) #Ensuring power on N5764A is off
+            status = self.ps.status()
+            self.ps.set_output(state=False) #Ensuring power on N5764A is off
             if (status['status']=='OK'):
-                if (status['current'] < cfg.imax) and  ( status['current'] > cfg.imin):
+                if (status['current'] < cfg.imax) and ( status['current'] > cfg.imin):
                     passed = True
                 else:
                     passed = False
@@ -316,14 +317,14 @@ class TestMGK7MBBench(TestUtils):
         else:
             while (xr.input_yes_no("Are you ready to apply power to the board again? [Y/N]", additional_answers=[]) != True):
                 pass
-            ps.set_output(state=True)
+            self.ps.set_output(state=True)
 
         response = xr.input_yes_no("Are all 9 of the power LEDs turned on? Y/N]", additional_answers=[])
         if manual_ps:
             xr.input('Turn OFF power and press ENTER')
 
-        if ps:
-            ps.set_output(state=False)
+        if self.ps:
+            self.ps.set_output(state=False)
         if response == True:
             print("Test has passed")
         else:
@@ -359,9 +360,9 @@ class TestMGK7MBBench(TestUtils):
         xr.header('PLL test')
 
         cfg = self.cfg.motherboard_tests.pll
-        ps = self.open_instrument('ps16v')
+        self.ps = self.open_instrument('ps16v')
 
-        manual_ps = not ps
+        manual_ps = not self.ps
 
         print('\n-------------------------------')
         print("Please ensure that NO flash card is in the board (if the ARM boots, it will interfere with the SPI signals to the PLLs).")
@@ -371,7 +372,7 @@ class TestMGK7MBBench(TestUtils):
             xr.input('Turn power supply ON and press ENTER')
         else:
             xr.input("Press [ENTER] when ready to apply power to the board")
-            ps.set_output(state=True)
+            self.ps.set_output(state=True)
 
         try:
             pll1 = cdce620005.CDCE620005(cfg.ftdi_url, port=0) # instantiate PLL1
@@ -437,9 +438,9 @@ class TestMGK7MBBench(TestUtils):
             xr.input('Turn power supply OFF and back ON and press ENTER')
         else:
             print("Rebooting the board")
-            ps.set_output(state=False)  # Ensuring power on N5764A is off
+            self.ps.set_output(state=False)  # Ensuring power on N5764A is off
             time.sleep(1) 
-            ps.set_output(state=True)  # Turning power back on
+            self.ps.set_output(state=True)  # Turning power back on
 
         response = xr.input_yes_no("Are both PLL lock lights turned on? (yellow and green next to 6 pin RS232 header) [Y/N]", additional_answers=[])
         if response == True:
@@ -451,8 +452,8 @@ class TestMGK7MBBench(TestUtils):
         if manual_ps:
             xr.input('Turn power supply OFF and press ENTER. You can then disconnect the PLL dongle: it is no longer needed for this board')
 
-        if ps:
-            ps.set_output(state=False)
+        if self.ps:
+            self.ps.set_output(state=False)
 
         assert passed
         #self.instr.ps.set_output(state=False) #Ensuring power on N5764A is off
@@ -471,9 +472,9 @@ class TestMGK7MBBench(TestUtils):
         """
         
         cfg = self.cfg.motherboard_tests.mem_test
-        ps = self.open_instrument('ps16v')
+        self.ps = self.open_instrument('ps16v')
 
-        manual_ps = not ps
+        manual_ps = not self.ps
 
         xr.header('Mem test')
 
@@ -498,7 +499,7 @@ class TestMGK7MBBench(TestUtils):
             xr.input('press ENTER and *then* turn power supply ON')
         else:
             xr.input("Press [ENTER] when ready to turn power ON")
-            ps.set_output(state=True)
+            self.ps.set_output(state=True)
 
         ser.interupt_boot()
         testpassed = ser.start_memtest(iterations=5)
@@ -515,8 +516,8 @@ class TestMGK7MBBench(TestUtils):
         if manual_ps:
             xr.input('Power OFF the board and press ENTER. You can then disconnect the RS232 dongle: it is no longer needed with this board')
 
-        if ps:
-            ps.set_output(state=False)
+        if self.ps:
+            self.ps.set_output(state=False)
  
         assert passed, "Memory test failed"
 
@@ -547,8 +548,10 @@ class TestMGK7MBNetwork(TestUtils):
         
         self.instruments = instruments
 
+        self.ps = None
         yield
-
+        if self.ps:
+            self.ps.adapter.connection.close()
         xr.header('Tearing down')
         # make sure the power suply is of if it was used in the test
         
@@ -566,9 +569,9 @@ class TestMGK7MBNetwork(TestUtils):
             without_serial (bool): if True, boards without serial numbers and advertised as 'iceboard.local' will be returned if we can't find one with the target serial number.
 
         """
-        ps = self.open_instrument('ps16v')
+        self.ps = self.open_instrument('ps16v')
 
-        manual_ps = not ps
+        manual_ps = not self.ps
         if questions:
             print('\n-------------------------------')
             print("Please ensure that a flash card is plugged into the board")
@@ -584,11 +587,11 @@ class TestMGK7MBNetwork(TestUtils):
                     self.xr.input('Please turn power supply ON, wait for a single green light and press ENTER')
         else:
             if power_down:
-                ps.set_output(state=False)
+                self.ps.set_output(state=False)
                 time.sleep(3)
             if power_up:
                 self.xr.input("Press [ENTER] when ready to power the board")
-                ps.set_output(state=True)
+                self.ps.set_output(state=True)
                 time.sleep(10) #give the board time to initialise
 
         
