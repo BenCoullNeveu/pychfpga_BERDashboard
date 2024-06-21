@@ -129,7 +129,7 @@ class TestMGADC08Bench(TestUtils):
         if self.ps16v:
             self.ps16v.close()
         if self.ps12v:
-            self.ps12v.adapter.connection.close()
+            self.ps12v.close()
         if self.ps:
             self.ps.close()
 
