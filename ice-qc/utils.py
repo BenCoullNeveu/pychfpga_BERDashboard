@@ -136,7 +136,6 @@ class TestUtils:
     class SharedInstruments:
         def __init__(self):
             self.instruments = {}
-
     
     @pytest.fixture(scope='class')
     def instruments(self):
@@ -226,21 +225,21 @@ class TestUtils:
         
 
 
-        if name in self.instruments: #if the instrument is already opened and available we just use it but we check if it still answers 
-            if is_responding(self.instruments[name]):
-                return self.instruments[name]
-            else:
-                print(f"Lost connection with instrument: {name}. Retrying connection: ")
+        # if name in self.instruments: #if the instrument is already opened and available we just use it but we check if it still answers
+        #     if is_responding(self.instruments[name]):
+        #         return self.instruments[name]
+        #     else:
+        #         print(f"Lost connection with instrument: {name}. Retrying connection: ")
 
 
         #config_maybe = Maybe(self.cfg, errhandle=load_cfg_partial) #get the config object if it doens't exist try to load the file
         config_maybe = Maybe(self.cfg) #get the config object if it doens't exist try to load the file
 
-        
+
         if config_maybe:
             try:
                 instrument = start_instrument(config_maybe.unwrap(), name)
-                self.instruments.update({name: instrument})
+                # self.instruments.update({name: instrument})
                 return instrument
             except Exception as e:
                   print("********************************************************************")

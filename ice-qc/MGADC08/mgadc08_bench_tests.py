@@ -119,11 +119,19 @@ class TestMGADC08Bench(TestUtils):
         # self.ps = None
 
         # self.ps3v3_2v5 = self.open_instrument('ps3v3_2v5')
-        # self.ps16v = self.open_instrument('ps16v')
 
         # self.dmm = self.open_instrument('dmm')
 
+        self.ps16v = None
+        self.ps12v = None
+        self.ps = None
         yield  # pass control to the test and return
+        if self.ps16v:
+            self.ps16v.close()
+        if self.ps12v:
+            self.ps12v.close()
+        if self.ps:
+            self.ps.close()
 
 
 
@@ -247,13 +255,13 @@ class TestMGADC08Bench(TestUtils):
         cfg = self.cfg.bench_tests.smoke_test
         dmm = self.open_instrument('dmm')  # Multimeter
 
-        ps12v = self.open_instrument('ps12v')
+        self.ps12v = self.open_instrument('ps12v')
         ps3v3_2v5 = self.open_instrument('ps3v3_2v5')
 
-        pss = [ps12v, ps3v3_2v5] #dual power supply
+        self.pss = [self.ps12v, ps3v3_2v5] #dual power supply
         
         ps_config = NameSpace(self.cfg.bench_tests.setup.rails)
-        ps12v.set_output(voltage=ps_config.vcc12v.voltage, current=ps_config.vcc12v.voltage)
+        self.ps12v.set_output(voltage=ps_config.vcc12v.voltage, current=ps_config.vcc12v.voltage)
 
        
         ps3v3_2v5.set_voltage(output=1, voltage=ps_config.vcc3v3.voltage)
@@ -273,7 +281,7 @@ class TestMGADC08Bench(TestUtils):
             print('Connect the power cable to the MGADC08, connect the SMA cable to one of the front ports for better ground.')
             xr.input("Press ENTER to measure current (Q=Exit):")
 
-            ps12v.set_output(state=True)
+            self.ps12v.set_output(state=True)
             ps3v3_2v5.output_enable(True)
 
 
@@ -325,7 +333,7 @@ class TestMGADC08Bench(TestUtils):
         finally: # Always execute this, whatever happens
             #self.adc_ps_output_enable(False)
 
-            ps12v.set_output(state=False)
+            self.ps12v.set_output(state=False)
             ps3v3_2v5.output_enable(False)
 
             test_results.passed = passed
@@ -387,6 +395,8 @@ class TestMGADC08Carrier(TestUtils):
 
         yield # now give back control to proceed to the test
 
+        if self.ps:
+            self.ps.close()
         # This is executed once the test is done
 
         # pass the model & possibly updated serial back to the parameters object
@@ -1237,7 +1247,12 @@ class TestMGADC08Carrier(TestUtils):
                     for f in fr_freqs:
                             print('   CHANNEL CH%i, Sinewave %7.3f MHz @ %f dBm' % (channel, f, power_level)),
                             # na.command('CWFREQ %f MHz' % f)
-                            na.set_cw_source(freq=f*1e6)
+                            for i in range(5):
+                                try:
+                                    na.set_cw_source(freq=f*1e6)
+                                    break
+                                except:
+                                    print(f"Couldn't communicate with the network analyzer, trying again ({i+2}/5)")
                             print('.', end='')
                             # time.sleep(frame_transmission_period)
                             r.read_raw_frames(flush=True)  # let the new data propagate
