@@ -18,7 +18,7 @@ fpga_firmware_mode: 'shuffle16'
 #For changing prologix address, use ./nfcli --list to find devices
 instruments:
     dmm:       {labpy_object: 'agilent_dmm', adapter: "TCPIP::IDN::*34410*"} # Agilent 34410A multimeter
-    ps16v:     {labpy_object: 'siglentspd1000x', interface: 'lan', ip_addr: '10.10.10.149', ip_port: 5025, timeout: 0.5}
+    ps16v:     {labpy_object: 'siglentspd1000x', interface: 'lan', ip_addr: '10.11.1.4', ip_port: 5025, timeout: 0.5}
 
 instruments_default:
     dmm:       []
