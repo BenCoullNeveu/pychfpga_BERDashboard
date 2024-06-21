@@ -127,11 +127,11 @@ class TestMGADC08Bench(TestUtils):
         self.ps = None
         yield  # pass control to the test and return
         if self.ps16v:
-            self.ps16v.adapter.connection.close()
+            self.ps16v.close()
         if self.ps12v:
             self.ps12v.adapter.connection.close()
         if self.ps:
-            self.ps.adapter.connection.close()
+            self.ps.close()
 
 
 
@@ -396,7 +396,7 @@ class TestMGADC08Carrier(TestUtils):
         yield # now give back control to proceed to the test
 
         if self.ps:
-            self.ps.adapter.connection.close()
+            self.ps.close()
         # This is executed once the test is done
 
         # pass the model & possibly updated serial back to the parameters object

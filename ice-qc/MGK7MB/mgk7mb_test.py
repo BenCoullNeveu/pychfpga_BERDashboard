@@ -126,7 +126,7 @@ class TestMGK7MBBench(TestUtils):
         self.ps = None
         yield  # pass control to the test and return
         if self.ps:
-            self.ps.adapter.connection.close()
+            self.ps.close()
         # turn off power supply
         # if self.ps:
         #     self.ps.set_output(state=False) #Ensuring power on N5764A is off
@@ -551,7 +551,7 @@ class TestMGK7MBNetwork(TestUtils):
         self.ps = None
         yield
         if self.ps:
-            self.ps.adapter.connection.close()
+            self.ps.close()
         xr.header('Tearing down')
         # make sure the power suply is of if it was used in the test
         
