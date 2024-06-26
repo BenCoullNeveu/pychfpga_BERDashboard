@@ -126,6 +126,7 @@ class TestMGK7MBBench(TestUtils):
         self.ps = None
         yield  # pass control to the test and return
         if self.ps:
+            self.ps.set_output(state=False)
             self.ps.close()
         # turn off power supply
         # if self.ps:
@@ -551,7 +552,9 @@ class TestMGK7MBNetwork(TestUtils):
         self.ps = None
         yield
         if self.ps:
-            self.ps.close()
+            print('.')
+            # self.ps.set_output(state=False)
+            # self.ps.close()
         xr.header('Tearing down')
         # make sure the power suply is of if it was used in the test
         
@@ -592,7 +595,7 @@ class TestMGK7MBNetwork(TestUtils):
             if power_up:
                 self.xr.input("Press [ENTER] when ready to power the board")
                 self.ps.set_output(state=True)
-                time.sleep(10) #give the board time to initialise
+                time.sleep(2) #give the board time to initialise
 
         
         #print(fpga_array.IceBoard._class_registry)
