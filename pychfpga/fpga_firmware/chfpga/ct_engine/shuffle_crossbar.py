@@ -209,7 +209,7 @@ class ShuffleCrossbar(MMI):
         output lanes each bin selected its data, i.e.
         shuffle_output_lane = lane_map[bin_sel_input_lane]
         """
-        map_bytes = self.read(self.get_addr('LANE_MAP_BYTE0'), length=self.NUMBER_OF_CROSSBAR_INPUTS // 2)
+        map_bytes = self.read(self.get_addr('LANE_MAP_BYTE0'), type=np.dtype('<u2'), length=self.NUMBER_OF_CROSSBAR_INPUTS // 2)
 
         lane_map = []
         for i, byte in enumerate(map_bytes):
