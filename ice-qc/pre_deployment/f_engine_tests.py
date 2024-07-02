@@ -20,6 +20,12 @@ from wtl.pytest_xreport import xr, TestMenu
 import pychfpga
 from pychfpga import fpga_array
 import labpy
+import os
+
+if os.environ.get("PYTEST_PLUGINS") is not None and os.environ.get("PYTEST_PLUGINS") != "":
+    os.environ["PYTEST_PLUGINS"] += ",wtl.pytest_xreport"
+else:
+    os.environ["PYTEST_PLUGINS"] = "wtl.pytest_xreport"
 
 TEST_CONFIG_FILE = './test_config.yaml'
 
@@ -802,7 +808,7 @@ class TestPreDeploymentCrate(TestUtils):
                             if 'IGNORE' not in list(fields.keys()) and status == True:
                                 bp_errs.append([slot, ss, lane, status, label ,fields])
                             if 'IGNORE' in list(fields.keys()):
-                                cb2_ignore_lane.append(lane)
+                                cb2_ignore_lanes.append(lane)
 
                         if ss == 'CB2 FRAME #':
                             # Check the lanes with no 'IGNORE' in 'CB2 ALIGN'
