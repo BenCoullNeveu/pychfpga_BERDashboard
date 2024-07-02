@@ -1256,6 +1256,7 @@ class TestMGADC08Carrier(TestUtils):
                             print('.', end='')
                             # time.sleep(frame_transmission_period)
                             r.read_raw_frames(flush=True)  # let the new data propagate
+
                             print('.', end='')
                             
                             
@@ -1263,7 +1264,7 @@ class TestMGADC08Carrier(TestUtils):
                             for frame in range(cfg.number_of_frames):
                                 #data = r.read_frames(cfg.number_of_frames)
                                 while True:
-                                    _, scaler, _ = r.read_raw_frames(flush=True) #reads one frame of buffer 
+                                    _, scaler, _ = r.read_raw_frames(flush=False) #reads one frame of buffer 
 
                                     channels_received = len(scaler)
                                     print(f"Got packets from {channels_received} channels")
