@@ -882,7 +882,7 @@ class FPGAArray(object):
         ###########################################################################
         for ib in Motherboard.get_all_instances():
             if ib.serial and exclude_iceboards:
-                int_serial = self._to_int(ib.serial)
+                int_serial = self._to_integer(ib.serial)
                 if ib.serial in exclude_iceboards or int_serial in exclude_iceboards:
                     ib.delete_instance()
                     self.logger.info(
@@ -2597,7 +2597,7 @@ class FPGAArray(object):
                 bs = bin_map[(crate % 2, slot)]
                 expected_bins = bs['cb1'][slot][bs['cb2'][crate % 2]][bs['cb3'][lane]]
                 if not all(np.equal(expected_bins, actual_bins)):
-                    print(f'Link {(crate, slot, link)} do not match: '
+                    print(f'Link {(crate, slot, lane)} do not match: '
                           f'Expected bins: {expected_bins!r}, got bins {actual_bins!r}')
                     errors += 1
 
@@ -4090,8 +4090,8 @@ class FPGAArray(object):
                 continue
             (source_crate, source_slot, source_lane) = tx_id
             (dest_crate, dest_slot, dest_lane) = rx_id
-            ic0 = crates[source_crate]
-            ic1 = crates[dest_crate]
+            ic0 = crate_map[source_crate]
+            ic1 = crate_map[dest_crate]
             if (source_slot not in ic0.slot) or (dest_slot not in ic1.slot):
                 continue
             bp0 = ic0.slot[source_slot].BP_SHUFFLE
@@ -4674,6 +4674,7 @@ class FPGAArray(object):
             col_labels = [f"SN{slot['serial']}\n{slot_number}" for slot_number, slot in crate['slots'].items()]
             # row_labels = ['BP PCB Rx\nBP QSFP Rx\nCB2 FIFO\nCB2 ALIGN\nCB2 FRAMEnCB3 FIFO\nCB3 ALIGN\nCB3 FRAME\n']
             row_labels = []
+            data = []
 
             slots = list(crate['slots'].values())
             first_slot = [slot for slot in slots if slot['ib']][0]
@@ -4821,6 +4822,7 @@ class FPGAArray(object):
             return
 
         # Process func and end up with a dict of {iceboard:cell_text}
+        data = {}
         if func:
             if isinstance(func, dict):
                 data = func
@@ -5147,7 +5149,7 @@ class FPGAArray(object):
 
         plt.figure(figure_number)
         plt.clf()
-        plt.hold(1)
+        # plt.hold(1)
         for ic in self.ic:
             ib = Ccoll(ic.slot.values())
             t = ib.get_motherboard_temperature(sensor)
@@ -5164,12 +5166,12 @@ class FPGAArray(object):
 
     def _update_arm_firmware(self, image_filename, power_cycle=True):
         """
-        Update the ARM SD card firmware and power cycle all the power supplies. The image must be compressed with bzip2.
+        Update the ARM SD card firmware. The image must be compressed with bzip2 and the boards must be power cycled.
         """
         self.ib._update_arm_firmware(image_filename, delay=120)
-        if self.ps and power_cycle:
-            ps.unlock()
-            ps.power_cycle(delay=4)
+        # if self.ps and power_cycle:
+        #     self.ps.unlock()
+        #     self.ps.power_cycle(delay=4)
 
     async def set_adc_delays_async(self, **kwargs):
         """

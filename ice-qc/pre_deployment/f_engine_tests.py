@@ -140,8 +140,8 @@ class TestPreDeploymentCrate(TestUtils):
         self.cfg = xr.config  # get the test config NameSpace
         # pre-define instrument variable. We'll load them only as needed by the tests.
         self.ps = None
-        self.model = None # should be set by the test
-        self.serial = None # should be set by the test
+        # self.model = None # should be set by the test
+        # self.serial = None # should be set by the test
         yield  # pass control to the test and return
 
         # pass the model and serial number we discoverd back to XReport so the test result files can be named appropriately
@@ -578,6 +578,8 @@ class TestPreDeploymentCrate(TestUtils):
                     fails_counter = 0
                     for n in range(n_checks):
                         d = i.capture_adc_eye_diagram(channels=[channel])[0] # grab a diagram
+                    
+
                         nz_idx = np.where(d != 0)
                         pairs = []
                         for j in range(len(nz_idx[0])):
@@ -588,6 +590,11 @@ class TestPreDeploymentCrate(TestUtils):
                         # add the motherboard index and channel number to unstable_channels if not already present
                         if not pairs.issubset(ref_nz_idx):
                             print(f'Fail on diagram {n+1}')
+                            print(f'Pairs \n  {pairs}')
+                            print(f'Nzindex \n {nz_idx}')
+                            print(f'Diff: \n {pairs - ref_nz_idx}')
+                            print(f'Capured \n{d}')
+
                             fails_counter += 1
                             if (fails_counter > n_fails_accept and n == n_checks-1):
                                 # If accetpable fails is exceeded, and we've reached the last diagram check, append the channel:
@@ -620,8 +627,8 @@ class TestPreDeploymentCrate(TestUtils):
         percent_accept = cfg.percent_accept
         n_fails_accept = int(percent_accept*n_cycles) # Define number of acceptable fails
         t_cycle = cfg.t_cycle
-        run_all_tests = cfg.run_all_tests
-        minutes = cfg.t_pause_crate_init
+        # run_all_tests = cfg.run_all_tests
+        # minutes = cfg.t_pause_crate_init
 
         test_results = NameSpace()
 
