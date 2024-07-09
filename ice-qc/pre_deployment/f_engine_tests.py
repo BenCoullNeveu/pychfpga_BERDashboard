@@ -140,13 +140,14 @@ class TestPreDeploymentCrate(TestUtils):
         self.cfg = xr.config  # get the test config NameSpace
         # pre-define instrument variable. We'll load them only as needed by the tests.
         self.ps = None
-        # self.model = None # should be set by the test
-        # self.serial = None # should be set by the test
+        self.model = None # should be set by the test
+        self.serial = None # should be set by the test
+        
         yield  # pass control to the test and return
 
         # pass the model and serial number we discoverd back to XReport so the test result files can be named appropriately
-        xr.params.model = self.model
-        xr.params.serial = self.serial
+        # xr.params.model = self.model
+        # xr.params.serial = self.serial
 
         # turn off power supply
         if self.ps:
@@ -182,7 +183,7 @@ class TestPreDeploymentCrate(TestUtils):
                 # open connection to power supply
                 #********************************************************************************************************************************
                 #if this test fails, place this line outside of the for loop - maybe opening the connection everytime is the source of the problem
-                #********************************************************************************************************************************
+                #***********************************************v = TestMenu(TEST_CONFIG_FILE).run()*********************************************************************************
                 self.ps = self.open_ps()
 
 
@@ -540,65 +541,97 @@ class TestPreDeploymentCrate(TestUtils):
         xr.header('ADC Eye Test')
         cfg = self.cfg.f_engine_tests.adc_eye_test
         n_checks = cfg.n_checks
+        max_spread = cfg.max_spread
         n_refs = cfg.n_refs
         n_fails_accept = cfg.n_fails_accept # number of allowable fails. if exceeded, board/channel pair fails.
         test_results = NameSpace()
 
         unstable_channels = []
-
+        spreads = []
         # Initialize the crate:
         passed = False
+
         try:
             # input('Turn on the power supply. Press ENTER to continue. (Q:Exit) ')
             self.ca = self.crate_init()
 
-            for i in self.ca.ib:
-                for channel in range(16):
-                    print(f'=============================================================')
-                    print(f'Checking ADC eye diagrams for {i}, ADC channel {channel}')
 
-                    ref_nz_idx = [] # 'reference non-zero indices', checks where non-zero values are in eye diagram
+            for i in self.ca.ib:
+                
+                eye_diagram = np.zeros((16, 32, 11), np.uint8)
+                eye_diagram = np.unpackbits(eye_diagram, axis=2)
+
+                for n in range(n_checks):
+                    try:
+                        eye_diagram_capture = i.capture_adc_eye_diagram()
+                        eye_diagram_capture = np.unpackbits(eye_diagram_capture, axis=2)
+
+                        eye_diagram = np.bitwise_or(eye_diagram, eye_diagram_capture)
+                    finally:
+                        break
+                        
+
+                spread = np.sum(eye_diagram, axis=2)
+                spreads.append(spread)
+
+                unstable_channels.append(np.argwhere(spread > max_spread))
+                
+                for i, spread in enumerate(spreads):
+                    print(f'++++++++++Board {i} spread++++++++++++')
+                    print(spread)
+                    
+            
+
+                # for channel in range(16):
+                #     print(f'=============================================================')
+                #     print(f'Checking ADC eye diagrams for {i}, ADC channel {channel}')
+
+                #     ref_nz_idx = [] # 'reference non-zero indices', checks where non-zero values are in eye diagram
 
                     # Gather non-zero indices for a few reference eye diagrams. n_refs should be large enough
                     # to capture any small jitters. If there really are weird, large jitters, they should move
                     # around enough that they're not capture by the reference diagrams. If it's just small jitters,
                     # they should be captured by the reference diagrams.
 
-                    for n in range(n_refs):
-                        ref_d = i.capture_adc_eye_diagram(channels=[channel])[0] # sample reference diagram
-                        nz_idx = np.where(ref_d != 0) # non-zero indices
-                        for j in range(len(nz_idx[0])):
-                            pair = [nz_idx[0][j], nz_idx[1][j]] # generates index pairs
-                            if pair not in ref_nz_idx:
-                                ref_nz_idx.append(pair) # if pair not already in ref_nz_idx, add it
+                
 
-                    ref_nz_idx = set(tuple(x) for x in ref_nz_idx) # change ref_nz_idx to a set so we can use issubset
-
-                    # Now iterate through n_checks more diagrams to check stability
-                    fails_counter = 0
-                    for n in range(n_checks):
-                        d = i.capture_adc_eye_diagram(channels=[channel])[0] # grab a diagram
                     
 
-                        nz_idx = np.where(d != 0)
-                        pairs = []
-                        for j in range(len(nz_idx[0])):
-                            pairs.append([nz_idx[0][j], nz_idx[1][j]]) # add every pair to pairs
-                        pairs = set(tuple(x) for x in pairs) # change pairs to set
+                    # for n in range(n_refs):
+                    #     ref_d = i.capture_adc_eye_diagram(channels=[channel])[0] # sample reference diagram
+                    #     nz_idx = np.where(ref_d != 0) # non-zero indices
+                    #     for j in range(len(nz_idx[0])):
+                    #         pair = [nz_idx[0][j], nz_idx[1][j]] # generates index pairs
+                    #         if pair not in ref_nz_idx:
+                    #             ref_nz_idx.append(pair) # if pair not already in ref_nz_idx, add it
 
-                        # If pairs is not a subset of ref_nz_idx, i.e. the channel is unstable,
-                        # add the motherboard index and channel number to unstable_channels if not already present
-                        if not pairs.issubset(ref_nz_idx):
-                            print(f'Fail on diagram {n+1}')
-                            print(f'Pairs \n  {pairs}')
-                            print(f'Nzindex \n {nz_idx}')
-                            print(f'Diff: \n {pairs - ref_nz_idx}')
-                            print(f'Capured \n{d}')
+                    # ref_nz_idx = set(tuple(x) for x in ref_nz_idx) # change ref_nz_idx to a set so we can use issubset
 
-                            fails_counter += 1
-                            if (fails_counter > n_fails_accept and n == n_checks-1):
-                                # If accetpable fails is exceeded, and we've reached the last diagram check, append the channel:
-                                unstable_channels.append([f'{i}', f'Channel {channel}', f'{fails_counter} fails'])
+                    # # Now iterate through n_checks more diagrams to check stability
+                    # fails_counter = 0
+                    # for n in range(n_checks):
+                    #     d = i.capture_adc_eye_diagram(channels=[channel])[0] # grab a diagram
+                    
+
+                    #     nz_idx = np.where(d != 0)
+                    #     pairs = []
+                    #     for j in range(len(nz_idx[0])):
+                    #         pairs.append([nz_idx[0][j], nz_idx[1][j]]) # add every pair to pairs
+                    #     pairs = set(tuple(x) for x in pairs) # change pairs to set
+
+                    #     # If pairs is not a subset of ref_nz_idx, i.e. the channel is unstable,
+                    #     # add the motherboard index and channel number to unstable_channels if not already present
+                    #     if not pairs.issubset(ref_nz_idx):
+                    #         print(f'Fail on diagram {n+1}')
+                    #         print(f'Pairs \n  {pairs}')
+                    #         print(f'Nzindex \n {nz_idx}')
+                    #         print(f'Diff: \n {pairs - ref_nz_idx}')
+                    #         print(f'Capured \n{d}')
+
+                    #         fails_counter += 1
+                    #         if (fails_counter > n_fails_accept and n == n_checks-1):
+                    #             # If accetpable fails is exceeded, and we've reached the last diagram check, append the channel:
+                    #             unstable_channels.append([f'{i}', f'Channel {channel}', f'{fails_counter} fails'])
 
             assert not unstable_channels, f'Unstable channels: {unstable_channels}'
             passed = True
@@ -683,7 +716,7 @@ class TestPreDeploymentCrate(TestUtils):
                         print('bp_errs: ', bp_errs)
                         backplane_fails += 1
                         backplane_err_tags.append({'Cycle': n,
-                                                  'ib': i,
+                                                  'ib': "none",
                                                   'bp_errs': bp_errs})
 
                     print('Got an IceBoard array')
