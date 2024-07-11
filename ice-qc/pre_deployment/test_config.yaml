@@ -126,6 +126,7 @@ f_engine_tests:
     n_checks: 50
     n_refs: 25
     n_fails_accept: 5
+    max_spread: 16
 
   p_cycle_test:
     # n_cycles: 20 

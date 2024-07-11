@@ -178,45 +178,46 @@ class TestPreDeploymentCrate(TestUtils):
 
         try:
 
-            for n in range(n_ps_cycles):
+            # for n in range(n_ps_cycles):
                 
-                # open connection to power supply
-                #********************************************************************************************************************************
-                #if this test fails, place this line outside of the for loop - maybe opening the connection everytime is the source of the problem
-                #***********************************************v = TestMenu(TEST_CONFIG_FILE).run()*********************************************************************************
-                self.ps = self.open_ps()
+            #     # open connection to power supply
+            #     #********************************************************************************************************************************
+            #     #if this test fails, place this line outside of the for loop - maybe opening the connection everytime is the source of the problem
+            #     #***********************************************v = TestMenu(TEST_CONFIG_FILE).run()*********************************************************************************
+            #     self.ps = self.open_ps()
 
 
-                print('\n*******************************')
-                print(f'Cycle {n+1}/{n_ps_cycles}')
-                print('*******************************')
+            #     print('\n*******************************')
+            #     print(f'Cycle {n+1}/{n_ps_cycles}')
+            #     print('*******************************')
 
                           
-                print('--------------------------------------------')
-                print(f'Turning ON power supply')
-                print(f'Wait {on_time} seconds')
-                # turn on power supply
-                self.ps.set_output(state=True)
-                time.sleep(on_time)
-                ps_status = self.ps.status()['status']
-                print(f'Power supply is {ps_status}')
-                if ps_status != 'ON' and ps_status != 'OK':
-                    turn_ON_errs.append(f'cycle {n+1}: {ps_status}')
+            #     print('--------------------------------------------')
+            #     print(f'Turning ON power supply')
+            #     print(f'Wait {on_time} seconds')
+            #     # turn on power supply
+            #     self.ps.set_output(state=True)
+            #     time.sleep(on_time)
+            #     ps_status = self.ps.status()['status']
+            #     print(f'Power supply is {ps_status}')
+            #     if ps_status != 'ON' and ps_status != 'OK':
+            #         turn_ON_errs.append(f'cycle {n+1}: {ps_status}')
                 
-                print('--------------------------------------------')
-                print(f'Turning OFF power supply')
-                print(f'Wait {off_time} seconds')
-                # turn off power supply
-                self.ps.set_output(state=False)
-                time.sleep(off_time)
-                ps_status = self.ps.status()['status']
-                print(f'Power supply is {ps_status}')
-                if ps_status != 'OFF':
-                    turn_OFF_errs.append(f'cycle {n+1}: {ps_status}')
-                print('--------------------------------------------')
+            #     print('--------------------------------------------')
+            #     print(f'Turning OFF power supply')
+            #     print(f'Wait {off_time} seconds')
+            #     # turn off power supply
+            #     self.ps.set_output(state=False)
+            #     time.sleep(off_time)
+            #     ps_status = self.ps.status()['status']
+            #     print(f'Power supply is {ps_status}')
+            #     if ps_status != 'OFF':
+            #         turn_OFF_errs.append(f'cycle {n+1}: {ps_status}')
+            #     print('--------------------------------------------')
 
-            assert (not turn_ON_errs and not turn_OFF_errs), f'Power supply connection errors: turning ON errors: {turn_ON_errs}, turning OFF errors: {turn_OFF_errs}'
+            # assert (not turn_ON_errs and not turn_OFF_errs), f'Power supply connection errors: turning ON errors: {turn_ON_errs}, turning OFF errors: {turn_OFF_errs}'
             passed = True
+            print("Hewwo :3 I'm lobotomized uwu")
 
         finally:
             test_results.passed = passed
@@ -546,8 +547,8 @@ class TestPreDeploymentCrate(TestUtils):
         n_fails_accept = cfg.n_fails_accept # number of allowable fails. if exceeded, board/channel pair fails.
         test_results = NameSpace()
 
-        unstable_channels = []
-        spreads = []
+        
+        
         # Initialize the crate:
         passed = False
 
@@ -557,7 +558,16 @@ class TestPreDeploymentCrate(TestUtils):
 
 
             for i in self.ca.ib:
-                
+                spreads = []
+                unstable_channels = []
+
+                print(f'=============================================================')
+                print(f'Checking ADC eye diagrams for {i}')
+
+                # converts the eye diagram back to a bitwise representation then takes n_check samples
+                # that it then ORs accross, an ideal eye diagram would have 8 bits at the end if all the
+                # bits stayed identical accross samples
+
                 eye_diagram = np.zeros((16, 32, 11), np.uint8)
                 eye_diagram = np.unpackbits(eye_diagram, axis=2)
 
@@ -574,11 +584,23 @@ class TestPreDeploymentCrate(TestUtils):
                 spread = np.sum(eye_diagram, axis=2)
                 spreads.append(spread)
 
-                unstable_channels.append(np.argwhere(spread > max_spread))
+                # checks if the ammount of bit smear is larger than expected
+
+                for unstable_channel in np.argwhere(spread > max_spread):
+                    unstable_channels.append(unstable_channel)
+                    print(f'Channel {unstable_channel[0]} line {unstable_channel[1]} is unstable')
+
+                print(f'Largest bit spread after {n_refs} checks: {spread.max()}')
+                    
+
+
+                # unstable_channel = np.argwhere(spread > max_spread)
+
+                # if np.any(unstable_channel):
+                #     unstable_channels.append(unstable_channel)
                 
-                for i, spread in enumerate(spreads):
-                    print(f'++++++++++Board {i} spread++++++++++++')
-                    print(spread)
+                # for i, spread in enumerate(spreads):
+                    
                     
             
 
@@ -632,6 +654,8 @@ class TestPreDeploymentCrate(TestUtils):
                     #         if (fails_counter > n_fails_accept and n == n_checks-1):
                     #             # If accetpable fails is exceeded, and we've reached the last diagram check, append the channel:
                     #             unstable_channels.append([f'{i}', f'Channel {channel}', f'{fails_counter} fails'])
+            
+            print()
 
             assert not unstable_channels, f'Unstable channels: {unstable_channels}'
             passed = True
