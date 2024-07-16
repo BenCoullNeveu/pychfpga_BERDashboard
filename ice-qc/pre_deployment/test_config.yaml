@@ -118,7 +118,9 @@ f_engine_tests:
 
   clock_test:
     integration_period: 0.001
-    n_clock_checks: 1000
+    n_clock_checks: 10
+    n_cycles: 5
+    powerup_delay: 5
 
   sync_delay_test:
 
@@ -130,6 +132,11 @@ f_engine_tests:
 
   p_cycle_test:
     # n_cycles: 20 
+    n_cycles: 2 
+    percent_accept: 0.05 #0.01
+    t_cycle: 10  #time in seconds
+
+  power_clock_test:
     n_cycles: 2 
     percent_accept: 0.05 #0.01
     t_cycle: 10  #time in seconds

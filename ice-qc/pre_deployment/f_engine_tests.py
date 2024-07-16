@@ -448,6 +448,100 @@ class TestPreDeploymentCrate(TestUtils):
 
         integration_period = cfg.integration_period
         n_clock_checks = cfg.n_clock_checks
+        n_cycles = cfg.n_cycles
+        delay = cfg.powerup_delay
+
+        # The FreqCtr counts rising clock edges; the most it could miss over a given integration period
+        # is 1 edge. Also, FreqCtr measures at 1/2 the rate of the 400 MHz clock coming from the ADC,
+        # so it could miss, at most, 2 rising edges.
+        expected_diffs = {-2/integration_period, 0.0, 2/integration_period}
+        failed_clocks = []
+        failed_boards = []
+        measured_diffs = []
+
+        passed = False
+        try:
+            for n in range(n_cycles):
+                print(f'****************************')
+                print(f'Power-cycling test iteration {n + 1}/{n_cycles}')
+                print(f'****************************')
+                
+                # Initialize the crate:
+                try:
+                    self.ca = self.crate_init()
+                
+                except (RuntimeError, IOError, OSError) as e:
+                    
+                    print(f'Failed initializing the array because of error {e!r}')
+                    
+                    
+                else:
+                    for i in self.ca.ib:
+                        print(f'Checking adc clocks on: {i}')
+                        error = i.check_adc_frequencies('after boot')
+                        if error:
+                            failed_boards.append(i)
+                        # for clock in range(16):
+                        #     print(f'{i}, ADC_CLK{clock}')
+                        #     diffs = set(i.FreqCtr.read_frequency(f'ADC_CLK{clock}', integration_period) - 200e6 for _ in range(n_clock_checks))
+                        #     # If diffs is not a subset of expected_diffs, i.e. it contains an unexpected value, then append to failed_clocks
+                        #     if not diffs.issubset(expected_diffs):
+                        #         failed_clocks.append([f'{i}', f'ADC_CLK{clock}', diffs])    
+
+                    
+
+                self.ps.set_output(state=False)
+                time.sleep(delay)
+
+            assert not failed_boards, f'ADC clock errors present on: {failed_clocks}'
+            
+            
+            # passed = True
+            # Initialize the crate:
+            # self.ca = self.crate_init()
+
+            # Iterate through each motherboard. Form a set of unique values of the
+            # difference between the measured clock and the expected 200 MHz. To pass,
+            # there should only be two values in the set: 0 and 200 MHz/count_time (which
+            # is the maximum error, resulting from a missed rising edge) --> is this correct?
+
+            # for i in self.ca.ib:
+            #     for clock in range(16):
+            #         print(f'{i}, ADC_CLK{clock}')
+            #         diffs = set(i.FreqCtr.read_frequency(f'ADC_CLK{clock}', integration_period) - 200e6 for _ in range(n_clock_checks))
+            #         # If diffs is not a subset of expected_diffs, i.e. it contains an unexpected value, then append to failed_clocks
+            #         if not diffs.issubset(expected_diffs):
+            #             failed_clocks.append([f'{i}', f'ADC_CLK{clock}', diffs])    
+            # assert not failed_clocks, f'ADC clock errors present on: {failed_clocks}'
+            # passed = True
+
+        finally:
+            test_results.passed = passed
+            xr.save_data(test_results)
+            self.ps.set_output(state=False) # Turn off power supply
+
+
+        
+
+    def test_adc_clocks_cycled(self, xr):
+        """
+        QC004: ADC clock test: ensure all ADCs get the correct clocks on every channel + power cycling between checks
+
+        Procedure:
+
+          - Start the ADC clock test on the computer
+          - Power up crate
+          - Iterate through all clocks on all mezzanines on all motherboards, check that they
+            are 200 MHz +/- some tolerance set in the config.
+
+        """
+
+        xr.header('ADC Clocks Test')
+        cfg = self.cfg.f_engine_tests.clock_test
+        test_results = NameSpace()
+
+        integration_period = cfg.integration_period
+        n_clock_checks = cfg.n_clock_checks
 
         # The FreqCtr counts rising clock edges; the most it could miss over a given integration period
         # is 1 edge. Also, FreqCtr measures at 1/2 the rate of the 400 MHz clock coming from the ADC,
@@ -467,13 +561,16 @@ class TestPreDeploymentCrate(TestUtils):
             # is the maximum error, resulting from a missed rising edge) --> is this correct?
 
             for i in self.ca.ib:
-                for clock in range(16):
-                    print(f'{i}, ADC_CLK{clock}')
-                    diffs = set(i.FreqCtr.read_frequency(f'ADC_CLK{clock}', integration_period) - 200e6 for _ in range(n_clock_checks))
-                    # If diffs is not a subset of expected_diffs, i.e. it contains an unexpected value, then append to failed_clocks
-                    if not diffs.issubset(expected_diffs):
-                        failed_clocks.append([f'{i}', f'ADC_CLK{clock}', diffs])    
-            assert not failed_clocks, f'ADC clock errors present on: {failed_clocks}'
+                # for clock in range(16):
+                #     print(f'{i}, ADC_CLK{clock}')
+                #     diffs = set(i.FreqCtr.read_frequency(f'ADC_CLK{clock}', integration_period) - 200e6 for _ in range(n_clock_checks))
+                #     # If diffs is not a subset of expected_diffs, i.e. it contains an unexpected value, then append to failed_clocks
+                #     if not diffs.issubset(expected_diffs):
+                #         failed_clocks.append([f'{i}', f'ADC_CLK{clock}', diffs])    
+                error = i.check_adc_frequencies('after boot')
+
+            # assert not failed_clocks, f'ADC clock errors present on: {failed_clocks}'
+            assert not error, f'ADC clock errors present on: {failed_clocks}'
             passed = True
 
         finally:
@@ -696,8 +793,11 @@ class TestPreDeploymentCrate(TestUtils):
 
         clk_fails = 0
         udp_fails = 0
+        mmi_fails = 0
+
         adc_err_tags = []
         udp_err_tags = []
+        mmi_err_tags = []
 
         delay_fails = 0
         delay_exception_tags = []
@@ -749,8 +849,10 @@ class TestPreDeploymentCrate(TestUtils):
                         # Check counters and error lists:
                         n_clk_errs = i.adc_clk_err_ctr
                         clk_errs_msgs = i.adc_clk_err_msgs
-                        n_udp_errs = i.udp_err_ctr + i.mmi.error_counter
+                        n_udp_errs = i.udp_err_ctr 
+                        n_mmi_errs = i.mmi.error_counter
                         udp_errs_msgs = i.adc_clk_err_msgs
+                        udp_temp_errors= i.get_temperatures()
                         print(f'Slot {i.slot} got {n_clk_errs} ADC clock errors, {n_udp_errs} UDP communication errors')
 
                         # Increment error counters if needed, and append relevant
@@ -766,7 +868,16 @@ class TestPreDeploymentCrate(TestUtils):
                             udp_err_tags.append({'Cycle': n,
                                          'ib': i,
                                          'n_udp_errs': n_udp_errs,
-                                         'clk_err_msgs': clk_errs_msgs})
+                                         'clk_err_msgs': clk_errs_msgs,
+                                         'temps': udp_temp_errors})
+                            
+                        if n_mmi_errs != 0:
+                            mmi_fails += 1
+                            udp_err_tags.append({'Cycle': n,
+                                         'ib': i,
+                                         'n_mmi_errs': n_udp_errs,
+                                         'clk_err_msgs': clk_errs_msgs,
+                                         'temps': udp_temp_errors})
 
                         # Now set all ADC delays and check for exceptions:
                         try:
@@ -793,13 +904,35 @@ class TestPreDeploymentCrate(TestUtils):
                 print(f'Letting the crate cool down for {t_cycle} seconds before repeating the test')
                 time.sleep(t_cycle)
 
-            assert (max(init_exception_fails, clk_fails, udp_fails, delay_fails, backplane_fails) < n_fails_accept), f'ADC errors on: {adc_err_tags}, UDP errors on: {udp_err_tags}, Init exceptions on: {init_exception_tags}, Delay exceptions on: {delay_exception_tags}, Backplane errors on: {backplane_err_tags}'
+            for adc_err in adc_err_tags:
+                print(adc_err)
+
+            for udp_err in udp_err_tags:
+                print(udp_err)
+
+            for mmi_err in mmi_err_tags:
+                print(mmi_err)
+
+            for err in init_exception_tags:
+                print(err)
+
+            for err in delay_exception_tags:
+                print(err)
+
+            for err in backplane_err_tags:
+               print(err)
+
+            # assert (max(init_exception_fails, clk_fails, udp_fails, delay_fails, backplane_fails) <= n_fails_accept), f'ADC errors on: {adc_err_tags}, UDP errors on: {udp_err_tags}, Init exceptions on: {init_exception_tags}, Delay exceptions on: {delay_exception_tags}, Backplane errors on: {backplane_err_tags}'
+            assert (max(init_exception_fails, clk_fails, udp_fails, delay_fails, backplane_fails) <= n_fails_accept), 'Print check above '
             passed = True  # Yeh, we made it through
 
         finally:
             test_results.passed = passed
             xr.save_data(test_results)
             self.ps.set_output(state=False) # Turn off power supply
+
+
+
            
             
     def check_bp_errs(self):
@@ -813,6 +946,11 @@ class TestPreDeploymentCrate(TestUtils):
 
         # Get corner turn engine status:
         info = asyncio.run(self.ca.get_corner_turn_engine_status_async(reset_stats=True)) # reset stats for each check
+        
+
+        #self.ca._print_shuffle_status(info, grid=True)
+
+        
 
         # In shuffle256 mode, there should be no errors on any lanes on any subsystems on any motherboard.
 

@@ -4645,12 +4645,14 @@ class FPGAArray(object):
                         # generate a subsystem status summary
                         subsystem['status'] = any(status_dict['status'] for status_dict in subsystem['lanes'].values())
         return info
-
-    async def print_shuffle_status(self, reset_stats=False, verbose=1, grid=False):
-        """ Prints status information of the corner-turn engine
+    
+    def _print_shuffle_status(self, info, verbose=1, grid=False) -> None:
+        """ Formats and prints the status information of the corner-turn engine 
 
 
         Parameters:
+
+            info (list[dict]): output of get_corner_turn_engine_status_async that we wish to print
 
             reset_stats (bool): if True, the statistics on the corner turn subsystems will be reset before being measured.
 
@@ -4665,8 +4667,6 @@ class FPGAArray(object):
             grid (bool): If true, line separators will be used
 
         """
-
-        info = await self.get_corner_turn_engine_status_async(reset_stats=reset_stats)
         for crate in info:
             # Print the table
             corner_label = 'Slot->\nS/N ->\n\\|/Lane'
@@ -4712,6 +4712,30 @@ class FPGAArray(object):
             self.print_table(
                 data, row_labels=row_labels, col_labels=col_labels,
                 corner_label=corner_label, line_sep=grid)
+            
+    async def print_shuffle_status(self, reset_stats=False, verbose=1, grid=False):
+        """ Prints status information of the corner-turn engine
+
+
+        Parameters:
+
+            reset_stats (bool): if True, the statistics on the corner turn subsystems will be reset before being measured.
+
+            verbose (int): Determine how much status information is returned
+
+                verbose=0: Will provide the '-' or 'ERR' for each subsystem  depending on whether there are any errors on any lane in the subsystem
+
+                verbose=1: Will provide '-' or 'ERR' for each lane of the sybsystem depending on whether there are any errors on for each lane in the subsystem
+
+                verbose=2: Will provide detailed status info on each lane of the subsystem in the form of a dict. Will also add the coordinates of the Tx/Rx pairs involved in backplane links.
+
+            grid (bool): If true, line separators will be used
+
+        """
+
+        info = await self.get_corner_turn_engine_status_async(reset_stats=reset_stats)
+        self._print_shuffle_status(info, verbose=verbose, grid=grid)
+
 
     def print_table(self, data=None,
                     row_labels=None, col_labels=None, corner_label=None,
