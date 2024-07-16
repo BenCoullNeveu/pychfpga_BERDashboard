@@ -493,7 +493,9 @@ class TestPreDeploymentCrate(TestUtils):
                 self.ps.set_output(state=False)
                 time.sleep(delay)
 
-            assert not failed_boards, f'ADC clock errors present on: {failed_clocks}'
+            print(f'{failed_boards=}')
+
+            assert not failed_boards, f'ADC clock errors present on: {failed_boards}'
             
             
             # passed = True
