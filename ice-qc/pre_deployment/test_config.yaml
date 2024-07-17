@@ -37,6 +37,7 @@ test_list:
     syncdel: {description: 'ADC sync delays test',          path: 'f_engine_tests.py::TestPreDeploymentCrate::test_sync_delays',    required: yes, require_serial_number: yes, dependencies: null}
     eye:     {description: 'ADC eye test',                  path: 'f_engine_tests.py::TestPreDeploymentCrate::test_adc_eye',        required: yes, require_serial_number: yes, dependencies: null}
     cycle:   {description: 'Power cycle test',              path: 'f_engine_tests.py::TestPreDeploymentCrate::test_power_cycle',    required: yes, require_serial_number: yes, dependencies: null}
+    network: {description: 'Network connection test',       path: 'f_engine_tests.py::TestPreDeploymentCrate::test_network',        required: yes, require_serial_number: yes, dependencies: null}
 
 menu:
     # The menu item will match the user input to either the 'key' field or to the regular expression 'regex'. The matching dictionary is returned.
@@ -56,6 +57,7 @@ menu:
     - { key: '5',                    action: run_test, test_tag: syncdel}
     - { key: '6',                    action: run_test, test_tag: eye}
     - { key: '7',                    action: run_test, test_tag: cycle}
+    - { key: '8',                    action: run_test, test_tag: network}
     - { key: 'S',                    action: push,    description: 'Send all new test results data to McGill'}
     - { key: 'R',                    action: summary, description: 'Generate summary of all tests'           }
     - { key: 'Q',                    action: exit,    description: 'Exit'                                    }
@@ -99,7 +101,7 @@ f_engine_tests:
       ignore_missing_boards: True # only for KKO F-Engine
       mode: 'shuffle256' # All else
       sync_method: 'irigb'
-      mdns_timeout: 60
+      mdns_timeout: 20
 
 
   ps_connection_test:
@@ -115,6 +117,21 @@ f_engine_tests:
 
   sync_test:
     n_syncs: 100
+
+  network_test:
+    n_cycles: 10
+    t_cycle: 5
+    fpga_array_params:
+      hwm: 'bp16 25:0' # McGill kitchen test rack
+
+      stderr_log_level: 'info'
+      prog: 0
+      open: 0
+      #mode: 'shuffle128' # only for KKO F-Engine
+      ignore_missing_boards: True # only for KKO F-Engine
+      mode: 'shuffle256' # All else
+      sync_method: 'local'
+      mdns_timeout: 20
 
   clock_test:
     integration_period: 0.001

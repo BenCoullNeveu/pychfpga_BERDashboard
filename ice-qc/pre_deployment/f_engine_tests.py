@@ -468,7 +468,12 @@ class TestPreDeploymentCrate(TestUtils):
                 
                 # Initialize the crate:
                 try:
-                    self.ca = self.crate_init()
+                    self.ca = self.crate_init(reset_power=False)
+
+                    # if len(self.ca) < 16:
+                    #     while True:
+                    #         pass
+                
                 
                 except (RuntimeError, IOError, OSError) as e:
                     
@@ -490,7 +495,7 @@ class TestPreDeploymentCrate(TestUtils):
 
                     
 
-                self.ps.set_output(state=False)
+                # self.ps.set_output(state=False)
                 time.sleep(delay)
 
             print(f'{failed_boards=}')
@@ -520,7 +525,7 @@ class TestPreDeploymentCrate(TestUtils):
         finally:
             test_results.passed = passed
             xr.save_data(test_results)
-            self.ps.set_output(state=False) # Turn off power supply
+            # self.ps.set_output(state=False) # Turn off power supply
 
 
         
@@ -763,6 +768,100 @@ class TestPreDeploymentCrate(TestUtils):
             test_results.passed = passed
             xr.save_data(test_results)
             self.ps.set_output(state=False) # Turn off power supply
+
+
+    def test_network(self, xr):
+        xr.header('Network Test')
+        cfg = self.cfg.f_engine_tests.network_test
+
+        test_results = NameSpace()
+        n_cycles = cfg.n_cycles
+        t_cycle = cfg.t_cycle
+
+        missing_slot_errors = []
+        error_total = 0
+
+        try:
+
+            for n in range(n_cycles):
+                print(f'****************************')
+                print(f'Power-cycling test iteration {n + 1}/{n_cycles}')
+                print(f'****************************')
+                
+                # Initialize the crate:
+                try:
+                    if not self.ps:
+                        self.ps = self.open_ps()
+                    # Check status of power supply:
+                    ps_status = self.ps.status()['status']
+                    if ps_status == 'ON' or ps_status == 'OK':
+                        print(f'Power supply is {ps_status}')
+                        # Turning off power supply
+                        print(f'Turning off power supply...')
+                        self.ps.set_output(state=False) # Force power cycle if power supply is on
+                        ps_status = self.ps.status()['status']
+                        print(f'Power supply is now {ps_status}')
+                        time.sleep(5) # Give it a few seconds before turning back on
+                    else:
+                        print(f'Power supply is {ps_status}')
+                    # Turn power supply back on:
+                    print(f'Turning on power supply...')
+                    self.ps.set_output(state=True)
+                    delay = 40
+                    print(f'Waiting for {delay} seconds to let the boards boot')
+                    time.sleep(delay) # Sleep to let the crate boot
+
+                    # self.ca = self.crate_init()
+                    fpga_array_params = cfg.fpga_array_params
+                    self.ca = fpga_array.FPGAArray(**fpga_array_params)
+                    
+                    ic = self.ca.ic
+                    from pychfpga.hardware import Crate
+                    missing_slots = {
+                        (ic.part_number, ic.serial, ic.crate_number): set(range(1, ic.NUMBER_OF_SLOTS + 1)) - set(ic.slot)
+                        for ic in Crate.get_all_instances()}
+                    
+                    # for i in boards_to_ping:
+                    #     if i not in self.ca.ib.values():
+                    #         # print('********************************')
+                    #         print(f'Failed to connect to board {i}')
+
+                    if any(missing_slots.values()):
+                        missing_slots_str = '\n'.join(
+                            '    Crate #{number} ({model} SN{serial}): slots {slots}'.format(
+                                number=number,
+                                model=model,
+                                serial=serial,
+                                slots=', '.join(str(s) for s in slots))
+                            for ((model, serial, number), slots) in missing_slots.items() if slots)
+                        print(f'{self!r}: The following slots are missing:\n{missing_slots_str}')
+                        missing_slot_errors.append(tuple(n, missing_slots_str))
+                        error_total += len(missing_slots)
+                    
+
+                except (RuntimeError, IOError, OSError) as e:
+                    print("*"*10)
+                    print(f'Failed initializing the array because of error {e!r}')
+                
+            
+
+                    
+                print('Turning OFF the crate')
+                self.ps.set_output(state=False)
+                print(f'Letting the crate cool down for {t_cycle} seconds before repeating the test')
+                time.sleep(t_cycle)
+
+
+            assert not missing_slot_errors, f'The following slots failed to appear: \n{missing_slot_errors} \n Total of {error_total} errors'
+
+        finally:
+
+
+            test_results.passed = True
+            xr.save_data(test_results)
+            self.ps.set_output(state=False) # Turn off power supply
+
+
 
     def test_power_cycle(self, xr):
         """
