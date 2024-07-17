@@ -4881,21 +4881,27 @@ class FPGAArray(object):
 
         # Create an OrderedSet of valid crates. Use the OrderedDict trick to impelment an OrderedSet
         valid_crates = list(OrderedDict((ib.crate, None) for ib in iceboards if ib.crate and ib.crate.serial).keys())
-
+        
         for crate in valid_crates:
             corner_label = '%s\nCrate #%s' % (crate.get_string_id(), crate.crate_number)
             slot_range = list(range(1, crate.NUMBER_OF_SLOTS + 1))
             col_labels = ['%i' % (s) for s in slot_range]
+            
+            
+
             if add_serial:
                 for i, slot in enumerate(slot_range):
-                    col_labels[i] += ('\nSN' + crate.slot[slot].serial) if slot in crate.slot else '\n-'
+                    # if slot in crate.slot:
+                    #     crate.slot[slot].serial = None
+                    col_labels[i] += (f'\nSN {crate.slot[slot].serial}') if slot in crate.slot else '\n-'
             if add_serial:
                 for i, slot in enumerate(slot_range):
-                    col_labels[i] += ('\n%s' % crate.slot[slot].hostname) if slot in crate.slot else '\n-'
+                    col_labels[i] += (f'\n{crate.slot[slot].hostname}') if slot in crate.slot else '\n-'
 
             table = []
             # local_row_labels = [row_labels for crate in valid_crates]
             for slot in slot_range:
+                
                 # col_data = []
                 if slot in crate.slot.keys():
                     cell = data[crate.slot[slot]] if data else ''
