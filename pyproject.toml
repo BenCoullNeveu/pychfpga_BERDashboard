@@ -78,8 +78,9 @@
     docs = [
         "sphinx",
         "sphinx_rtd_theme",
-        "sphinxcontrib.restbuilder",  # used for debugging output
+        "sphinxcontrib.restbuilder",  # used for debugging outputs
         ]
+
     qc = [
         # Private packages
         "wtl.pytest-xreport @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.pytest-xreport.git@jfc/dev",
