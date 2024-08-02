@@ -12,7 +12,8 @@ model_number: 'MGK7BP16'
 fpga_bit_file: '../../pychfpga/fpga_firmware/bitstreams/chFPGA_MGK7MB_Rev2.bit'
 
 instruments:
-  ps:     {labpy_object: 'agilent_N5700', adapter: 'TCPIP::10.10.10.151'}  # Agilent N5764A power supply, McGill kitchen rack
+  # ps:     {labpy_object: 'agilent_N5700', adapter: 'TCPIP::10.10.10.115'}  # Agilent N5764A power supply, McGill kitchen rack top
+  ps:     {labpy_object: 'agilent_N5700', adapter: 'TCPIP::10.10.10.234'}  # Agilent N5764A power supply, McGill kitchen rack top
   # ps:     {labpy_object: 'agilent_N5700', adapter: 'TCPIP::10.42.200.54'} # Agilent power supply, GBO-F-Engine in McGill FRB testbed
 ?: &default_fpga_array # Shouldn't really be used
     iceboards: 0047
@@ -74,7 +75,8 @@ f_engine_tests:
     ps_current: 76   # Amps. Maximum current limit to set on the F-Engine power supply
     ps_t_sleep: 60 # Time in seconds to let the power supply sleep upon power cycle to allow crate to boot
     fpga_array_params:
-      hwm: 'bp16 25:0' # McGill kitchen test rack
+      # hwm: 'bp16 25:0' # McGill kitchen test rack top
+      hwm: 'bp16 29:0' # McGill kitchen test rack bottom
       # hwm: 'bp16 33:0' # GBO-F-Engine in McGill FRB testbed
       # hwm: 'bp16 32:0' # HCO-F-Engine
       # hwm:
@@ -98,10 +100,10 @@ f_engine_tests:
       stderr_log_level: 'info'
       prog: 2
       #mode: 'shuffle128' # only for KKO F-Engine
-      ignore_missing_boards: True # only for KKO F-Engine
+      #ignore_missing_boards: True # only for KKO F-Engine
       mode: 'shuffle256' # All else
       sync_method: 'irigb'
-      mdns_timeout: 20
+      mdns_timeout: 40
 
 
   ps_connection_test:
@@ -122,13 +124,13 @@ f_engine_tests:
     n_cycles: 10
     t_cycle: 5
     fpga_array_params:
-      hwm: 'bp16 25:0' # McGill kitchen test rack
+      hwm: 'bp16 29:0' # McGill kitchen test rack
 
       stderr_log_level: 'info'
       prog: 0
       open: 0
       #mode: 'shuffle128' # only for KKO F-Engine
-      ignore_missing_boards: True # only for KKO F-Engine
+      ignore_missing_boards: False # only for KKO F-Engine
       mode: 'shuffle256' # All else
       sync_method: 'local'
       mdns_timeout: 20
@@ -149,7 +151,7 @@ f_engine_tests:
 
   p_cycle_test:
     # n_cycles: 20 
-    n_cycles: 2 
+    n_cycles: 5 
     percent_accept: 0.05 #0.01
     t_cycle: 10  #time in seconds
 

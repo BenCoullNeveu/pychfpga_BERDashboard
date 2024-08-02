@@ -826,7 +826,7 @@ class TestPreDeploymentCrate(TestUtils):
                     # Turn power supply back on:
                     print(f'Turning on power supply...')
                     self.ps.set_output(state=True)
-                    delay = 40
+                    delay = 60
                     print(f'Waiting for {delay} seconds to let the boards boot')
                     time.sleep(delay) # Sleep to let the crate boot
 
