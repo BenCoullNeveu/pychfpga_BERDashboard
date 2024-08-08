@@ -13,7 +13,7 @@ fpga_bit_file: '../../pychfpga/fpga_firmware/bitstreams/chFPGA_MGK7MB_Rev2.bit'
 
 instruments:
   # ps:     {labpy_object: 'agilent_N5700', adapter: 'TCPIP::10.10.10.115'}  # Agilent N5764A power supply, McGill kitchen rack top
-  ps:     {labpy_object: 'agilent_N5700', adapter: 'TCPIP::10.10.10.234'}  # Agilent N5764A power supply, McGill kitchen rack top
+  ps:     {labpy_object: 'agilent_N5700', adapter: 'TCPIP::10.10.10.234'}  # Agilent N5764A power supply, McGill kitchen rack bottom
   # ps:     {labpy_object: 'agilent_N5700', adapter: 'TCPIP::10.42.200.54'} # Agilent power supply, GBO-F-Engine in McGill FRB testbed
 ?: &default_fpga_array # Shouldn't really be used
     iceboards: 0047
@@ -151,11 +151,11 @@ f_engine_tests:
 
   p_cycle_test:
     # n_cycles: 20 
-    n_cycles: 5 
+    n_cycles: 100 
     percent_accept: 0.05 #0.01
     t_cycle: 10  #time in seconds
 
   power_clock_test:
-    n_cycles: 2 
+    n_cycles: 100 
     percent_accept: 0.05 #0.01
     t_cycle: 10  #time in seconds
