@@ -1051,6 +1051,34 @@ class TestPreDeploymentCrate(TestUtils):
             xr.save_data(test_results)
             self.ps.set_output(state=False) # Turn off power supply
 
+    def test_crate_ramp(self, xr):
+
+        xr.header('Ramp Test')
+        cfg = self.cfg.f_engine_tests.ramp_test
+        
+        self.ca = self.crate_init()
+
+
+        ramps_ok = []
+        failed_boards = []
+        errors  = []
+        for ice in self.ca.ib:
+            ice.set_adc_delays(compute_delays=2, save_delays=False, check_sync_delays=True, check_adc_delays=20, verbose=0, retry=5)
+            num_mismatch = ice.check_ramp_errors()
+            ramps_ok.append(not num_mismatch)
+
+            if num_mismatch:
+                failed_boards.append(ice)
+                errors.append(num_mismatch)
+
+
+        for failed, error in zip(failed_boards, errors):
+            print(f"There were {error} word errors on board {failed}")
+
+        
+        assert all(ramps_ok), f'Test failed - : Boards {failed_boards} did not pass ramp test'
+
+
 
 
            

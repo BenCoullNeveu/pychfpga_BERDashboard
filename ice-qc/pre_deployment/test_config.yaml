@@ -39,6 +39,7 @@ test_list:
     eye:     {description: 'ADC eye test',                  path: 'f_engine_tests.py::TestPreDeploymentCrate::test_adc_eye',        required: yes, require_serial_number: yes, dependencies: null}
     cycle:   {description: 'Power cycle test',              path: 'f_engine_tests.py::TestPreDeploymentCrate::test_power_cycle',    required: yes, require_serial_number: yes, dependencies: null}
     network: {description: 'Network connection test',       path: 'f_engine_tests.py::TestPreDeploymentCrate::test_network',        required: yes, require_serial_number: yes, dependencies: null}
+    ramp:    {description: 'Crate level ramp test',         path: 'f_engine_tests.py::TestPreDeploymentCrate::test_crate_ramp',     required: yes, require_serial_number: yes, dependencies: null}
 
 menu:
     # The menu item will match the user input to either the 'key' field or to the regular expression 'regex'. The matching dictionary is returned.
@@ -59,6 +60,7 @@ menu:
     - { key: '6',                    action: run_test, test_tag: eye}
     - { key: '7',                    action: run_test, test_tag: cycle}
     - { key: '8',                    action: run_test, test_tag: network}
+    - { key: '9',                    action: run_test, test_tag: ramp}
     - { key: 'S',                    action: push,    description: 'Send all new test results data to McGill'}
     - { key: 'R',                    action: summary, description: 'Generate summary of all tests'           }
     - { key: 'Q',                    action: exit,    description: 'Exit'                                    }
@@ -159,3 +161,6 @@ f_engine_tests:
     n_cycles: 100 
     percent_accept: 0.05 #0.01
     t_cycle: 10  #time in seconds
+
+  ramp_test:
+    n_checks: 1
