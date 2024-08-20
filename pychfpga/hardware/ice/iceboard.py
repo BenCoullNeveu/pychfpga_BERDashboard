@@ -1,19 +1,17 @@
 """ Handler for the IceBoard's FPGA core UDP communication and hardware management firmware.
 """
 # Standard Python packages
-import logging
 import time
-import zlib
 import base64
-from collections import OrderedDict
-import socket
 import asyncio
 import bz2
 import subprocess
 import shlex
 import traceback
 
+# Pypi packages
 import nest_asyncio
+
 # External private packages
 
 from wtl.metrics import Metrics
@@ -164,6 +162,10 @@ class IceBoard(Motherboard, TuberIceBoardBase):
     # _POWER_FMCB3V3_I2C_ADDR   = 0b1000101 #0x45
     # _POWER_FMCBVADJ_I2C_ADDR  = 0b1000110 #0x46
 
+    # SSH options used to acess the IceBoard via ssh or scp
+    # The ARM runs an old version of linux, so we need to downgrade the security protocols
+    # we also disable host key check so we don't have an interactive prompt to accept a new host
+    SSH_OPTIONS = '-o KexAlgorithms=diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-dss -o StrictHostKeyChecking=no'
 
     def __init__(self,
                  hostname=None,
@@ -1780,10 +1782,13 @@ class IceBoard(Motherboard, TuberIceBoardBase):
     async def _call_subprocess(self, cmd):
         """
         Executes a subprocess in a non-blocking way.
+
+        Parameters:
+
+            cmd (str): Shell command to execute locally
         """
         pipe = subprocess.PIPE
 
-        # ssh_cmd = "ssh root@%s '%s'" % (self.hostname, cmd)
         split_cmd = shlex.split(cmd)
         p = subprocess.Popen(split_cmd, stdout=pipe, stderr=pipe)
         while p.poll() is None:
@@ -1798,9 +1803,14 @@ class IceBoard(Motherboard, TuberIceBoardBase):
     async def arm_exec(self, cmd):
         """
         Executes a command on the ARM over SSH.
+
+        Parameters:
+
+            cmd (str): shell command to execute on the ARM processor
+
         """
-        self.logger.info("%r: Executing command '%s' on the ARM" % (self, cmd))
-        ssh_cmd = 'ssh -o "StrictHostKeyChecking no" -oKexAlgorithms=+diffie-hellman-group1-sha1 root@%s "%s"' % (self.hostname, cmd)
+        self.logger.info(f"{self!r}: Executing command '{cmd}' on the ARM")
+        ssh_cmd = f'ssh {self.SSH_OPTIONS} root@{self.hostname} "{cmd}"'
         result = await self._call_subprocess(ssh_cmd)
         return result
 
@@ -1808,14 +1818,8 @@ class IceBoard(Motherboard, TuberIceBoardBase):
         """
         Sends a file to the arm using scp.
         """
-        self.logger.info('%r: Sending image file %s to the ARM in %s' % (
-            self,
-            source_filename,
-            destination_filename))
-        scp_cmd = 'scp -o "StrictHostKeyChecking no" -oKexAlgorithms=+diffie-hellman-group1-sha1 %s root@%s:%s' % (
-            source_filename,
-            self.hostname,
-            destination_filename)
+        self.logger.info(f'{self!r}: Sending image file {source_filename} to the ARM in {destination_filename}')
+        scp_cmd = f'scp {self.SSH_OPTIONS} {source_filename} root@{self.hostname}:{destination_filename}'
         result = await self._call_subprocess(scp_cmd)
         return result
 

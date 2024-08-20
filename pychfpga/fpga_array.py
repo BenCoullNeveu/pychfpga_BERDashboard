@@ -1115,6 +1115,7 @@ class FPGAArray(object):
                     ) for ib in self.ib])
 
 
+            if init >= 3: # initialize the backplane
                 ########################
                 # Initializing backplane hardware communication firmware
                 ########################
@@ -2573,7 +2574,7 @@ class FPGAArray(object):
 
             # Print links
             for ib in self.ib:
-                for i in range(ib.NUMBER_OF_CROSSBAR_OUTPUTS):
+                for i in range(ib.NUMBER_OF_CROSSBAR1_OUTPUTS):
                     if ib.slot is None:
                         continue
                     rx = (ib.slot, i)
