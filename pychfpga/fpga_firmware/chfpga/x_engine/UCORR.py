@@ -432,8 +432,6 @@ class UCorrFrameReceiver(object):
             else:
                 self.n += 1
 
-            tt.append(ts)
-
             # packets += n
             # chunks += 1
             # packets_per_chunk += n
