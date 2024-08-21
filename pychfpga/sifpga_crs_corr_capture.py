@@ -185,28 +185,6 @@ class CRS_CORR_CAPTURE:
                                                       verbose = verbose)
         d_adc = d_adc >> 2 # shift to 14 bits
 
-        # ==================
-        # Old: note that n_captures --> ncap
-
-        # # Create buffer with shape (channel, capture_number, frequency_bin)
-        # adc_data = np.zeros((self.n_frames_per_capture*n_captures, self.NPOLS, self.M), dtype = '>i2')
-        
-        # # Fill the buffer!
-        # for n in range(n_captures):
-        #     print(f'ADC capture {n}')
-        
-        #     t, d, c = self.u_receiver.read_raw_frames(verbose = 0) #, flush = flush) # read raw frames from UCAP receiver
-        #     # d = d.view('>i2') # view the data in two bytes
-        #     d = d >> 2 # Shift by two bits to get the 14-bit resolution of the ADC
-
-        #     # Split the flat d array into individual frames:
-        #     d_frames = np.array(np.split(d, self.n_frames_per_capture, axis = 1))
-            
-        #     # Fill the buffer. Since we have n_frames_per_capture, we will fill the buffer
-        #     # in sets of length n_frames_per_capture:
-        #     adc_data[self.n_frames_per_capture*n:self.n_frames_per_capture*(n + 1), :, :] = d_frames
-        # ==================
-
         return d_adc
 
     def read_fft_frames(self, 
@@ -258,37 +236,6 @@ class CRS_CORR_CAPTURE:
                                                       split = split,
                                                       verbose = verbose)
         d_fft *= 2**2 # shift by two bits so we have 18+18 - we need to promote the data to np.float64 to do this!
-
-        # ==================
-        # Old
-        
-        # Create buffer with shape (channel, capture_number, frequency_bin)
-        # fft_data = np.zeros((self.n_frames_per_capture*n_captures, self.NPOLS, self.NBINS), dtype = np.complex128)
-        
-        # # Fill the buffer!
-        # for n in range(n_captures):
-        #     print(f'FFT capture {n}')
-            
-        #     # if n == 0:
-        #     #     flush = True # only flush on first capture
-        #     # else:
-        #     #     flush = False
-        
-        #     t, d, c = self.u_receiver.read_raw_frames(verbose = 0)# , flush = flush) # read raw frames from UCAP receiver
-        #     d = d.view('>i2') # view the data in two bytes
-            
-        #     # Form complex FFT bins
-        #     re = d[:,  ::2]
-        #     im = d[:, 1::2]
-        #     cmplx_flat = re + 1j*im
-
-        #     # Split the cmplx_flat array into individual frames:
-        #     cmplx_frames = np.array(np.split(cmplx_flat, self.n_frames_per_capture, axis = 1))
-            
-        #     # Fill the buffer. Since we have n_frames_per_capture, we will fill the buffer
-        #     # in sets of length n_frames_per_capture:
-        #     fft_data[self.n_frames_per_capture*n:self.n_frames_per_capture*(n + 1), :, :] = cmplx_frames
-        # ==================
         
         return d_fft
 
@@ -338,33 +285,6 @@ class CRS_CORR_CAPTURE:
                                                          split = True,
                                                          verbose = verbose)
         d_scaler /= 2**12 # shift by 12 bits so we have 4+4 - we need to promote the data to np.float64 to do this!
-
-        # ==================
-        # Old:
-
-        # Create buffer with shape (channel, capture_number, frequency_bin)
-        # scaler_data = np.zeros((self.n_frames_per_capture*n_captures, self.NPOLS, self.NBINS), dtype = np.complex128)
-        
-        # # Fill the buffer!
-        # for n in range(n_captures):
-        #     print(f'Scaler capture {n}')
-        
-        #     t, d, c = self.u_receiver.read_raw_frames(verbose = 0) # read raw frames from UCAP receiver
-        #     d = d.view('>i2') # view the data in two bytes
-        #     d = d >> 12 # shift by 12 bits, since SCALER is 4+4 bits
-            
-        #     # Form complex FFT bins
-        #     re = d[:,  ::2]
-        #     im = d[:, 1::2]
-        #     cmplx_flat = re + 1j*im
-
-        #     # Split the cmplx_flat array into individual frames:
-        #     cmplx_frames = np.array(np.split(cmplx_flat, self.n_frames_per_capture, axis = 1))
-            
-        #     # Fill the buffer. Since we have n_frames_per_capture, we will fill the buffer
-        #     # in sets of length n_frames_per_capture:
-        #     scaler_data[self.n_frames_per_capture*n:self.n_frames_per_capture*(n + 1), :, :] = cmplx_frames
-        # ==================
 
         return d_scaler
 
@@ -521,11 +441,12 @@ class CRS_CORR_CAPTURE:
             self.i.chan[n].SCALER.set_gain_table(lin_gain[n], bank = 0)
             self.i.chan[n].SCALER.SHIFT_LEFT = log_gain[n]
 
-        return # nothing
+        return 
   
     def compute_gains(self,
-                      gain_type = 'smooth', 
-                      number_of_fft_averages = 100,
+                      target = 1.5*np.sqrt(2), # default value borrowed from CHIME
+                      gain_type = 'raw', 
+                      number_of_fft_averages = 250,
                       rms_accuracy_tol = None, # %
                       save_gains = False
                       ):
@@ -577,22 +498,22 @@ class CRS_CORR_CAPTURE:
             if all(fft_overflows == 0):
                 break
         
+        # ==================
         # Compute FFT RMS. The np.abs just converts the np.complex128 to np.float64, since the magnitude is real-valued
         fft_rms = np.sqrt(np.mean(np.abs(fft_data*np.conj(fft_data)), axis = 1))
 
-        # check fft rms is big enough - if not, adjust shift schedule
-
-        # ==================
-        # Set the target RMS
-        target = 1.5*np.sqrt(2) * 2**31 # target RMS is scaled by 31 bits, since the scaler takes 4 MSBs of 35 bit number
+        # Check the target Scaler RMS
+        if target < 0 or target > np.sqrt(7**2 + 7**2):
+            raise ValueError(f'Scaler target magnitude {target} is outside of bounds 0 < target < {np.sqrt(7**2 + 7**2)}')
+        target *= 2**31 # target RMS is scaled by 31 bits, since the scaler takes 4 MSBs of 35 bit number
 
         # Compute the gain needed to shift the fft_rms to the target
         gain = target / fft_rms
 
         # Treat any possible infinities
         gain[gain == np.inf] = 2**31 
-        # print(np.where(gain == np.inf))
 
+        # ==================
         # Break down the raw gains into linear and log gains, where gain = lin * 2**log
 
         # IMPORTANT! let the linear gains absorb some of the bits that would otherwise 
@@ -662,9 +583,14 @@ class CRS_CORR_CAPTURE:
             # Set lin = lin_smooth
             print('Setting gains to smooth')
             lin = lin_smooth
-            # self.set_gains(lin_smooth, [int(n) for n in log]) # cast log gains to int
 
+        # Cast the linear gains to np.int16
         lin = lin.astype(np.int16)
+
+        # Anywhere that the linear gain is saturated (> 32767) or negative shall be set to 0
+        lin = np.where((0 < lin) & (lin < 32767), lin, 0)
+
+        # Set the gains
         self.set_gains(lin, [int(n) for n in log]) # cast log gains to int
 
         # ==================
@@ -747,7 +673,7 @@ class CRS_CORR_CAPTURE:
 
         f.close()
 
-        return # nothing
+        return
 
     def make_time_string(self):
         """
@@ -796,13 +722,15 @@ class CRS_CORR_CAPTURE:
         if len(str(s)) == 1:
             s = f'0{s}'
 
+        return f'{y}{mth}{d}T{h}{m}{s}Z'
+
     def observe(self, 
                 n_vis_per_file = 256,
                 integration_time = 10,
-                optimize_shift = True,
-                compute_gains = True,
+                optimize_shift = False,
+                gain_target = 1.5*np.sqrt(2), # borrowed from CHIME
                 number_of_fft_averages = 1000,
-                gain_type = 'smooth',
+                gain_type = 'raw',
                 capture_adc_bursts = True,
                 n_adc_bursts = 5,
                 capture_fft_bursts = True,
@@ -845,19 +773,19 @@ class CRS_CORR_CAPTURE:
         # ===========
         # Compute gains.
 
-        if compute_gains:
-            print('')
-            print('')
-            print('===================================')
-            print('')
-            print('--- C O M P U T E   G A I N S  ---')
-            print('')
-            self.compute_gains(gain_type = gain_type, 
-                               number_of_fft_averages = number_of_fft_averages, 
-                               rms_accuracy_tol = None, # let's just ignore this parameter for now
-                               save_gains = True)
-            print('Gain computation completed!')
-            print('')
+        print('')
+        print('')
+        print('===================================')
+        print('')
+        print('--- C O M P U T E   G A I N S  ---')
+        print('')
+        self.compute_gains(target = gain_target,
+                           gain_type = gain_type, 
+                           number_of_fft_averages = number_of_fft_averages, 
+                           rms_accuracy_tol = None, # let's just ignore this parameter for now
+                           save_gains = True)
+        print('Gain computation completed!')
+        print('')
 
         # ===========
         # Configure the channelizer and correlator. This is done after gain
@@ -908,8 +836,7 @@ class CRS_CORR_CAPTURE:
         # Run data capture until keyboard interrupt
         file_number = 0 # starting hdf5 file number
 
-        # Calculate how many frames we need for desired of integration time
-
+        # Calculate how many frames we need for desired  integration time
         s_per_frame = 2**14*(1/(self.fs*1e6)) # samples/frame * seconds/sample. Make sure sampling frequency is in Hz
         set_integration_time = integration_time # s
         n_firmware_frames = self.corr.INTEGRATION_PERIOD + 1
@@ -941,9 +868,9 @@ class CRS_CORR_CAPTURE:
                 dset_sat    = f.create_dataset('sat', (n_vis_per_file, self.NBINS, self.NCORR_PROD), dtype = np.complex64) # Create vis dataset
 
                 # Assign attributes to vis dataset:
-                dset_vis.attrs['n_firmware_frames'] = n_firmware_frames
-                dset_vis.attrs['n_software_frames'] = n_software_frames
-                dset_vis.attrs['fft_shift_schedule'] = final_shift
+                dset_vis.attrs['n_firmware_frames'] = n_firmware_frames # Number of firmware frames per visibility
+                dset_vis.attrs['n_software_frames'] = n_software_frames # Number of software frames per visibility
+                dset_vis.attrs['fft_shift_schedule'] = final_shift # Final shift schedule, represented as an int
 
                 # Make index_map group
                 index_map_grp = f.create_group('index_map')
@@ -966,6 +893,7 @@ class CRS_CORR_CAPTURE:
                 dset_ADC_OVERFLOWS = stats_grp.create_dataset('adc_overflows', (n_vis_per_file, self.NPOLS), dtype = int)
                 dset_FFT_OVERFLOWS = stats_grp.create_dataset('fft_overflows', (n_vis_per_file, self.NPOLS), dtype = int)
                 dset_SCALER_OVERFLOWS = stats_grp.create_dataset('scaler_overflows', (n_vis_per_file, self.NPOLS), dtype = int)
+                dset_SCALER_STATS_READY = stats_grp.create_dataset('scaler_stats_ready', (n_vis_per_file, self.NPOLS), dtype = int)
                 dset_CORR_OVERRUN = stats_grp.create_dataset('corr_overrun', (n_vis_per_file, ), dtype = int)
 
                 # Make numpy buffers for statistics
@@ -973,14 +901,11 @@ class CRS_CORR_CAPTURE:
                 adc_overflows_buf = np.zeros((n_vis_per_file, self.NPOLS), dtype = int)
                 fft_overflows_buf = np.zeros((n_vis_per_file, self.NPOLS), dtype = int)
                 scaler_overflows_buf = np.zeros((n_vis_per_file, self.NPOLS), dtype = int)
+                scaler_stats_ready_buf = np.zeros((n_vis_per_file, self.NPOLS), dtype = int)
                 corr_overrun_buf = np.zeros(n_vis_per_file, dtype = int)
 
-                # Capture some ADC data... here? But then we would need to reconfigure the channelizer...
-                # If so, then record maybe 10 captures. Or let it be a user-defined variable.
-                # 10 captures for 256 timestamps is over half a GB of data. maybe need a separate file for this.
-
                 if capture_adc_bursts:
-                    # Create ADC quick look capture. Note: a single capture for all 8 pols in mode 0 is equal to
+                    # Capture ADC data. Note: a single capture for all 8 pols in mode 0 is equal to
                     # 2*16384*16*8/8/1e6 = 0.524288 MB of data.
 
                     # Create data set
@@ -997,7 +922,7 @@ class CRS_CORR_CAPTURE:
                     dset_adc[...] = d_adc
 
                 if capture_fft_bursts:
-                    # Create FFT quick look capture. Note: a single capture for all 8 pols in mode 0 is equal to
+                    # Capture FFT data. Note: a single capture for all 8 pols in mode 0 is equal to
                     # 2*8192*(16+16)*8/8/1e6 = 0.524288 MB of data.
 
                     # Create data set
@@ -1023,27 +948,19 @@ class CRS_CORR_CAPTURE:
                     print('<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>')
                     print(f'Capture {n} for file {file_name}')
 
-                    print('Capturing statistics')
-                    # Capture statistics
+                    # Pulse resets
                     for m in range(self.NPOLS):
 
-                        # FFT stats
-                        self.i.chan[m].FFT.OVERFLOW_RESET = 1
-                        self.i.chan[m].FFT.OVERFLOW_RESET = 0
-                        fft_overflows_buf[n, m] = self.i.chan[m].FFT.OVERFLOW_COUNT
+                        # ADC stats reset
+                        self.i.chan[m].FUNCGEN.RESET_STATS = 1
+                        self.i.chan[m].FUNCGEN.RESET_STATS = 0
+
+                        # FFT stats reset
                         self.i.chan[m].FFT.OVERFLOW_RESET = 1
                         self.i.chan[m].FFT.OVERFLOW_RESET = 0
 
-                        # SCALER stats
-                        scaler = ccc.i.chan[m].SCALER
-                        scaler.STATS_CAPTURE = 1 # capture new stats
-                        if scaler.STATS_READY: # make sure new stats are ready
-                            frame_count_buf[n, m] = scaler.STATS_FRAME_COUNT # need to check what this does
-                            adc_overflows_buf[n, m] = scaler.STATS_ADC_OVERFLOWS
-                            scaler_overflows_buf[n, m] = scaler.STATS_SCALER_OVERFLOWS
-
-                    # CORR stats
-                    corr_overrun_buf[n] = ccc.corr.OVERRUN # maybe this should be somewhere else or captured more often?
+                        # Scaler stats reset
+                        self.i.chan[m].SCALER.STATS_CAPTURE = 1
 
                     # Capture data, filling the numpy buffer on each iteration
                     if n == 0:
@@ -1067,15 +984,54 @@ class CRS_CORR_CAPTURE:
                     vis_buf[n] = vis[0] # vis is a 3D array even if we only request 1 result
                     counts_buf[n] = counts[0] # counts is 2D, but 0 axis has length of just 1
                     sat_buf[n] = sat
-                
+
+                    # Capture statistics after recording correlator data
+                    print('Capturing statistics')
+                    for m in range(self.NPOLS):
+
+                        # ADC stats
+                        adc_overflows_buf[n, m] = self.i.chan[m].FUNCGEN.ADC_OVERFLOW_CTR
+
+                        # FFT stats
+                        fft_overflows_buf[n, m] = self.i.chan[m].FFT.OVERFLOW_COUNT
+
+                        # Scaler stats
+                        scaler = self.i.chan[m].SCALER
+                        if scaler.STATS_READY:
+                            scaler_stats_ready_buf[n, m] = scaler.STATS_READY
+                            frame_count_buf[n, m] = scaler.STATS_FRAME_COUNT
+                            scaler_overflows_buf[n, m] = scaler.STATS_SCALER_OVERFLOWS
+                        else:
+                            print('Scaler stats not ready')
+                        scaler.STATS_CAPTURE = 0 # reset Scaler stats capture
+
+                    # Correlator stats
+                    corr_overrun_buf[n] = self.corr.OVERRUN
+
+                    # Print some statistics:
+                    print(f'FFT Overflows: {fft_overflows_buf[n]}')
+                    print(f'Scaler Overflows: {scaler_overflows_buf[n]}')
+                    print(f'Correlator Overflows: {corr_overrun_buf[n]}')
+
                 # Once the loop is complete, write the numpy buffers to disk
                 print('')
                 print('=================================')
                 print(f'Writing {file_name} to disk...')
+
+                # Write data returned by correlator
                 dset_time[...] = t_buf
                 dset_vis[...] = vis_buf
                 dset_counts[...] = counts_buf
                 dset_sat[...] = sat_buf
+
+                # Write statistics
+                dset_FRAME_COUNT[...] = frame_count_buf
+                dset_ADC_OVERFLOWS[...] = adc_overflows_buf
+                dset_FFT_OVERFLOWS[...] = fft_overflows_buf
+                dset_SCALER_OVERFLOWS[...] = scaler_overflows_buf
+                dset_SCALER_STATS_READY[...] = scaler_stats_ready_buf
+                dset_CORR_OVERRUN[...] = corr_overrun_buf
+
                 print('Data written!')
 
                 # Close file
@@ -1089,6 +1045,24 @@ class CRS_CORR_CAPTURE:
             print('')
             print('')
             print('===================================')
+            print('')
+            print('Saving the buffer before ending observation...')
+
+            # Write data returned by correlator
+            dset_time[...] = t_buf
+            dset_vis[...] = vis_buf
+            dset_counts[...] = counts_buf
+            dset_sat[...] = sat_buf
+
+            # Write statistics
+            dset_FRAME_COUNT[...] = frame_count_buf
+            dset_ADC_OVERFLOWS[...] = adc_overflows_buf
+            dset_FFT_OVERFLOWS[...] = fft_overflows_buf
+            dset_SCALER_OVERFLOWS[...] = scaler_overflows_buf
+            dset_SCALER_STATS_READY[...] = scaler_stats_ready_buf
+            dset_CORR_OVERRUN[...] = corr_overrun_buf
+
+            print('Done!')
             print('')
             print(f'Ending observation {self.acq_string}.')
             print('')
@@ -1105,35 +1079,22 @@ class CRS_CORR_CAPTURE:
 # final_fft_shift = ccc.optimize_fft_shift()
 # fft_data, fft_rms, gain, lin, log, scaler_data  = ccc.compute_gains(1000)
 
-
 # Observation mode:
-ccc = CRS_CORR_CAPTURE(hwm = 'crs 0016',
+ccc = CRS_CORR_CAPTURE(hwm = 'crs 0022',
                        stderr_log_level = 'debug',
                        prog = 2,
                        mode = 'corr8',
                        make_directories = True,
-                       data_path = '/home/chiveremote/D3A_acq/data')
+                       data_path = '/home/ih/D3A_acq/data')
 
-ccc.observe(n_vis_per_file = 5,
-           integration_time = 10,
-           optimize_shift = False,
-           compute_gains = True,
-           number_of_fft_averages = 1000,
-           gain_type = 'raw',
-           capture_adc_bursts = True,
-           n_adc_bursts = 5,
-           capture_fft_bursts = True,
-           n_fft_bursts = 5
-           )
-
-# ccc.observe(n_vis_per_file = 256,
-#             integration_time = 10,
+# ccc.observe(n_vis_per_file = 5, # 128,
+#             integration_time = 1,
 #             optimize_shift = False,
-#             compute_gains = True,
+#             gain_target = 1.5*np.sqrt(2),
 #             number_of_fft_averages = 1000,
-#             gain_type = 'raw', # 'smooth',
+#             gain_type = 'raw',
 #             capture_adc_bursts = True,
-#             n_adc_bursts = 5,
+#             n_adc_bursts = 100,
 #             capture_fft_bursts = True,
-#             n_fft_bursts = 5
+#             n_fft_bursts = 100
 #             )
