@@ -1,6 +1,9 @@
 #Pull request pipeline
 #Validation of pull requests into the main deployment branch
 
+clone:
+  lfs: true  # make sure LFS files are fetched, otherwise we don't have our images...
+
 image: python:3.8
 
 pipelines:
