@@ -411,7 +411,7 @@ class GainCalc(object):
                 filtered_mask_signal[filtered_mask_signal.mask] = signal[filtered_mask_signal.mask]
         else:
             raise ValueError
-        filtered_mask_signal = (filtered_mask_signal.real).astype(np.int32).astype(np.complex64)
+        filtered_mask_signal = (filtered_mask_signal.real).astype(np.int32).astype(np.complex64) #
         return filtered_mask_signal
 
     def fourier_filter(self, signal, num_components):
