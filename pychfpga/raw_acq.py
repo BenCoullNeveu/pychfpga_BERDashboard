@@ -1355,6 +1355,7 @@ class RawPacketProcessor(object):
     #     #         self.old_timestamp = None
     #     #         self.capture_start = False
 
+    #TODO: Seemingly deprecated function consider modifying or removing
     async def get_data_async(self):
         """
         Grab data from the queue until we have a frame for all channels for a single timestamp.
@@ -2755,7 +2756,7 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
                 comet_port = comet_config['port']
             except KeyError as exc:
                 msg = "Failure registering initial config with comet broker: 'comet_broker/{}' " \
-                      "not defined in config.".format(exc[0])
+                      "not defined in config.".format(exc)
                 self.log.error(msg)
                 raise RuntimeError(f'Cannot start comet broker: {msg}')
             comet_manager = comet.Manager(comet_host, comet_port)

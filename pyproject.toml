@@ -46,7 +46,7 @@
         "PyYAML",  # was 3.13, testing 5.3.1
         "psutil",  # was ==5.4.7, now testing 5.7.3
         "netifaces",   # was not specified, now using 0.10.9
-        "zeroconf",  # new, was tested with 0.34.3
+        "zeroconf==0.34.3",  # new, was tested with 0.34.3
 
         ]
 
@@ -67,11 +67,38 @@
 
 [tool.setuptools.packages.find]
     where = ["."]  # Don't include packages in qc or docs
-    exclude = ["tests", "docs", "old-scripts", "ice-qc"]
+    exclude = ["tests", "docs", "old-scripts"]
     namespaces = false
 
 [tool.setuptools_scm]
     version_file = "pychfpga/_version_scm.py"
+
+[tool.pylint.main]
+# recursive = true
+# source-roots = ["pychfpga/"]
+py-version =  "3.8"
+ignore = ["unused"]
+
+# jobs will specify the number of cores to run pylint with
+# jobs = 0 will autodetect the number of available cores
+
+jobs = 0
+
+[tool.pylint."messages control"]
+disable = ["raw-checker-failed",
+            "possibly-used-before-assignment",
+            "bad-inline-option",
+            "locally-disabled", 
+            "file-ignored", 
+            "suppressed-message", 
+            "useless-suppression", 
+            "deprecated-pragma", 
+            "use-implicit-booleaness-not-comparison-to-string", 
+            "use-implicit-booleaness-not-comparison-to-zero", 
+            "use-symbolic-message-instead"
+            ]
+errors-only = true
+
 
 
 [project.optional-dependencies]
@@ -83,18 +110,21 @@
     qc = [
         # Private packages
         "wtl.pytest-xreport @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.pytest-xreport.git@jfc/dev",
-        "labpy @ git+ssh://git@bitbucket.org/winterlandcosmology/labpy.git@1.1.0",
+        "labpy @ git+ssh://git@bitbucket.org/winterlandcosmology/labpy.git@qc",
+        
 
         # Pypi packages
         "numpy",
         "matplotlib",
         "py", # no longer a dependency brought in by pytest, but we need it
+        "prettytable", 
 
         # test-specific packages
         "pyserial", # (tested with 0.0.97 on Ubuntu) for memtest
         "pyftdi", # (tested with 0.53.3 on Ubuntu) tested with for PLL programming. Newer versions have another interface
 
         # pytest-asyncio  # (tested with 0.21.1 on Ubuntu). Is this needed anymore?
+
 
         ]
 

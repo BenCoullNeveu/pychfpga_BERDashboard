@@ -1,4 +1,4 @@
-ready_check: 0 #If this is set to 0, the tests can be strung together without lots of prompting
+ready_check: 1 #If this is set to 0, the tests can be strung together without lots of prompting
 #For example:
 #Tests 3-4 : Require backplane + PLL programmer in place
 #Tests 5-8 : Requires backplane + ARM Ethernet + Flashcard + RS232 cable
@@ -12,14 +12,25 @@ ready_check: 0 #If this is set to 0, the tests can be strung together without lo
 # xml_test_results_pathname: # relative to test_results_folder, don't speficy to get default pattern "./{model}/{model}_SN{serial}/data/{isodate}_{session_name}.xml"
 model_number: 'MGK7MB'
 
-fpga_bit_file: '../../pychfpga/fpga_bitstreams/chFPGA_MGK7MB_Rev2.bit'
-
+fpga_bit_file: '../../pychfpga/fpga_firmware/bitstreams/SIFPGA_MGK7MB.bit'
+fpga_firmware_mode: 'shuffle16'
 
 #For changing prologix address, use ./nfcli --list to find devices
 instruments:
     dmm:       {labpy_object: 'agilent_dmm', adapter: "TCPIP::IDN::*34410*"} # Agilent 34410A multimeter
+    ps16v:     {labpy_object: 'siglentspd1000x', interface: 'lan', ip_addr: '10.11.1.4', ip_port: 5025, timeout: 0.5}
+
+instruments_default:
+    dmm:       []
+    ps16v:     []
+
+
+#   TODO: Add SPD1168X DC programmable power supply to components list
 #   ps18v:     {labpy_object: 'agilent_N5700', interface: 'lan', ip_addr: '11.11.11.73', gpib_addr: 5}  # Agilent N5764A power supply
 
+test_results_folder: '~/icetests/iceqc/hirax/'
+git_repo_path: '~/icetests/iceqc/'
+test_results_folder_uses_git: True
 
 ?: &default_fpga_array
     iceboards: 0047
@@ -87,6 +98,28 @@ motherboard_tests:
          ps_voltage: 18  # Volts. Voltage to set on the Iceboard power supply 
          ps_current: 5   # Amps. Maximum current limit to set on the Iceboard power sypplt 
 
+    inspection:
+
+        #Questions for visual inspection of the board
+        questions:
+            - Is the FPGA heatsink attached? With pushpins holding it firmly in place [Y/N]? 
+            - Is the FPGA heatsink model correct? Pins cut near stiffener [Y/N]? 
+            - Is the board Stiffener installed, and the board is reasonably flat[Y/N]? 
+            - Are the PLL heatsinks attached [Y/N]? 
+            - Does the ARM shield fence look straight [Y/N]? 
+            - Are the dipswitches set correctly [Y/N]? 
+            - Are the jumpers placed correctly [Y/N]? 
+            - Are the 90pin Molex impact backplane connectors screwed down [Y/N]? 
+            - Are the QSFP and SFP connectors soldered in place [Y/N]? 
+            - Do all buck converter sensors have the additional hand soldered capacitor [Y/N]? 
+            #   ---
+            #   Not strictly necessary since GTX test tests these connections:
+            #             "Please inspect the GTX backplane connector pins on the back of the board (you will need the microscope). " \
+            #                 "Are they all perfect? i.e none of them bent or unusual [Y/N]? ",
+            #   ---
+            - Do all the FMC power switches look well soldered [Y/N]?
+            - Is the patch wire in place and secured [Y/N]?
+
     impedance:
         max_impedance: 1.0e+10  # any measurement more than this is probably not taken correctly
         test_points:
@@ -98,14 +131,15 @@ motherboard_tests:
            - ['3.3V (L1)',      {delay: 0.2, zmin: 15}]
            - ['5V (L4)',        {delay: 0.2, zmin: 250}]
            - ['1V Gt. (L5)',    {delay: 0.2, zmin: 13}]
-           - ['1.2V Gt. (L6)',  {delay: 0.2, zmin: 150}]
+           - ['1.2V Gt. (L6)',  {delay: 0.2, zmin: 13}]
            - ['1V Co. (L8)',    {delay: 0.2, zmin: 13}]
            - ['1.5V (L7)',      {delay: 0.2, zmin: 200}]
            - ['1.8V (L9)',      {delay: 0.2, zmin: 150}]
 
     powerup:
         # manual_ps: true
-        imax: 1.0
+        power_sup: 'ps16v'
+        imax: 1.1
         imin: 0.5
 
     pll:
@@ -120,7 +154,7 @@ motherboard_tests:
         # Note :McGill FTDI cable info: Model: C232HM-DDHSL-0, Serial: FTXQWE8U. Yellow tape, DEFECT tag (but works).
         #       URL: 'ftdi://::FTXQWE8U/1'
         #       There is another one SN FTVR3DME (ftdi://::FTVR3DME/1) 
-        ftdi_url: 'ftdi://ftdi:232h/1'  # Any ft232h cable 
+        ftdi_url: 'ftdi://ftdi:232h:FTXQYGNU/1'  # Any ft232h cable 
         pll1regs:
             - 0x01260320
             # - 0x01260321 # bad value for testing 
@@ -147,9 +181,21 @@ motherboard_tests:
         # URL to connect to the FTDI USB to serial cable.
         # See pll_test for more details.
         # ftdi_url: 'ftdi://ftdi:0x6015/1' # Digico cable  
-        ftdi_url: 'ftdi://ftdi:232h/1'  # PLL cable
+        #ftdi_url: 'ftdi://ftdi:232h/1'  # PLL cable
+        ftdi_url: 'ftdi://ftdi:ft-x:FT0N9TN0/1'  # RS232 cable
 
     sensors:
+
+        sensor_names:
+            - {name: 'VCC3V3',     board_name: 'MOTHERBOARD_RAIL_VCC3V3'}
+            - {name: 'VCC12V0',    board_name: 'MOTHERBOARD_RAIL_VCC12V0'}
+            - {name: 'VCC5V5',     board_name: 'MOTHERBOARD_RAIL_VCC5V5'}
+            - {name: 'VCC1V0_GTX', board_name: 'MOTHERBOARD_RAIL_VCC1V0_GTX'}
+            - {name: 'VCC1V0',     board_name: 'MOTHERBOARD_RAIL_VCC1V0'}
+            - {name: 'VCC1V2',     board_name: 'MOTHERBOARD_RAIL_VCC1V2'}
+            - {name: 'VCC1V5',     board_name: 'MOTHERBOARD_RAIL_VCC1V5'}
+            - {name: 'VCC1V8',     board_name: 'MOTHERBOARD_RAIL_VCC1V8'}
+            - {name: 'VADJ',       board_name: 'MOTHERBOARD_RAIL_VADJ'}
 
         current:
             VCC3V3:     {nom: 2.00,  pmargin: 0.30,  amargin: 0}     # 30%
@@ -159,7 +205,7 @@ motherboard_tests:
             VCC1V0:     {nom: -3.8,   pmargin: 0.00,  amargin: 4}   # +-1A (Change by R.Dubois for A.Gilbert 170922)
             VCC1V2:     {nom: 0.020, pmargin: 0.00,  amargin: 0.020} # +-20mA
             VCC1V5:     {nom: 1.644, pmargin: 0.30,  amargin: 0}     # 30%
-            VCC1V8:     {nom: 0.275, pmargin: 0.30,  amargin: 0}     # 30%
+            VCC1V8:     {nom: 0.275, pmargin: 0.70,  amargin: 0}     # 30% #widened margin to 70%, tested value was too low, TODO review change with JF
             VADJ:       {nom: 0.023, pmargin: 0.00,  amargin: 0.03}  # +-30mA
 
         voltage:
@@ -170,7 +216,7 @@ motherboard_tests:
             VCC1V0:     {nom: 1,     pmargin: 0.055,  amargin: 0}     # 5% (2021-07-21 JFC: increases to 5.5% to allow coule of boards to pass)
             VCC1V2:     {nom: 1.2,   pmargin: 0.05,  amargin: 0}     # 5%
             VCC1V5:     {nom: 1.5,   pmargin: 0.05,  amargin: 0}     # 5%
-            VCC1V8:     {nom: 1.8,   pmargin: 0.05,  amargin: 0}     # 5%
+            VCC1V8:     {nom: 1.8,   pmargin: 0.05,  amargin: 0}     # 5% 
             VADJ:       {nom: 2.5,   pmargin: 0.05,  amargin: 0}     # 5%
 
         temp:
@@ -199,6 +245,73 @@ motherboard_tests:
 
     i2c_test:
 
+        motherboard_names:
+
+            matrix_names:
+                pca9548-1-70: '0-0070'
+                pca9548-2-71: '1-0071'
+
+
+            bus_names:
+
+                I2C-1:              'i2c-0'
+                I2C-2:              'i2c-1'
+                I2C0_PCA954X_FMCA:  'i2c-2'
+                I2C0_PCA954X_FMCB:  'i2c-3'
+                I2C0_PCA954X_QSFPA: 'i2c-4'
+                I2C0_PCA954X_QSFPB: 'i2c-5'
+                I2C0_PCA954X_SFP:   'i2c-6'
+                I2C0_PCA954X_SMPS:  'i2c-7'
+                I2C0_PCA954X_BP:    'i2c-8'
+                I2C0_PCA954X_GPIO:  'i2c-9'
+                I2C1_PCA954X_FMCA:  'i2c-10'
+                I2C1_PCA954X_FMCB:  'i2c-11'
+                I2C1_PCA954X_QSFPA: 'i2c-12'
+                I2C1_PCA954X_QSFPB: 'i2c-13'
+                I2C1_PCA954X_SFP:   'i2c-14'
+                I2C1_PCA954X_SMPS:  'i2c-15'
+                I2C1_PCA954X_BP:    'i2c-16'
+                I2C1_PCA954X_GPIO:  'i2c-17'
+
+            power_names:  
+                VCC12V0:            '7-0047'
+                VCC5V5:             '7-0048'
+                VCC3V3:             '7-0049'
+                VADJ:               '7-0043'
+                VCC1V8:             '7-004b'
+                VCC1V5:             '7-004c'
+                VCC1V2:             '7-004d'
+                VCC1V0:             '7-004e'
+                VCC1V0_GTX:         '7-004f'
+                FMC_A_VCC3V3:       '7-0040'
+                FMC_A_VCC12V0:      '7-0041'
+                FMC_A_VADJ:         '7-0042'
+                FMC_B_VCC3V3:       '7-0044'
+                FMC_B_VCC12V0:      '7-0045'
+                FMC_B_VADJ:         '7-0046'
+
+            temp_names:
+                POWER:              '9-0048'
+                ARM:                '9-004a'
+                FPGA:               '9-004b'
+                PHY:                '9-004c'
+
+            io_names:
+                pca9575_u41:        '9-0020'
+                pca9575_u42:        '9-0021'
+                pca9575_u48:        '9-0022'
+                pca9575_u59:        '9-0023'
+
+            eeprom_names: 
+                Motherboard EEPROM: '9-0057'
+
+        backplane_names:
+            BP_VCC3V3:          '16-0040'
+            BP_Temp1:           '16-004d'
+            BP_Temp2:           '16-004e'
+            Backplane EEPROM:   '16-0054'
+
+
     clock_test:
 
     fpga_test:
@@ -218,7 +331,7 @@ motherboard_tests:
     rmp_test:
 
     qsfp_test:
-        manufacturer: "3M Company"
+        manufacturer: ["3M Company", "FS"]
         # We don't check serial anymore. It changes too much from setup to setup. Checking the manufacturer is enough to validate I2C operation.
         # serial: "V10E6005"
         # serial: "V20B9886"

@@ -1,0 +1,25 @@
+\contentsline {section}{\numberline {1}MGADC08 - CHIME Mezzanine}{2}% 
+\contentsline {subsection}{\numberline {1.1}Impedance Test}{3}% 
+\contentsline {subsection}{\numberline {1.2}Smoke Test}{5}% 
+\contentsline {subsection}{\numberline {1.3}Carrier Tests - Mezzanine loaded onto motherboard}{7}% 
+\contentsline {subsection}{\numberline {1.4}EEPROM Test}{8}% 
+\contentsline {subsection}{\numberline {1.5}Power Test}{8}% 
+\contentsline {subsection}{\numberline {1.6}SPI / PLL Test}{8}% 
+\contentsline {subsection}{\numberline {1.7}Ramp Test}{9}% 
+\contentsline {subsection}{\numberline {1.8}S11}{9}% 
+\contentsline {section}{\numberline {2}MGK7MB - ICE Motherboard}{10}% 
+\contentsline {subsection}{\numberline {2.1}Inspection Test}{11}% 
+\contentsline {subsection}{\numberline {2.2}Impedance Test}{16}% 
+\contentsline {subsection}{\numberline {2.3}Power Test}{17}% 
+\contentsline {subsection}{\numberline {2.4}PLL Programming}{19}% 
+\contentsline {subsection}{\numberline {2.5}Memory test}{20}% 
+\contentsline {subsection}{\numberline {2.6}Tests that require networking}{21}% 
+\contentsline {subsection}{\numberline {2.7}Serial number programming}{22}% 
+\contentsline {subsection}{\numberline {2.8}Clock testing}{22}% 
+\contentsline {subsection}{\numberline {2.9}I2C}{24}% 
+\contentsline {subsection}{\numberline {2.10}Sensors}{24}% 
+\contentsline {subsection}{\numberline {2.11}FPGA Test - and all ensuing tests}{24}% 
+\contentsline {subsection}{\numberline {2.12}QSFP test}{26}% 
+\contentsline {subsection}{\numberline {2.13}GTX test}{27}% 
+\contentsline {subsection}{\numberline {2.14}Mezzanine test}{27}% 
+\contentsline {subsection}{\numberline {2.15}Ramp test}{27}% 

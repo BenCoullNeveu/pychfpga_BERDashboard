@@ -209,7 +209,7 @@ class PROBER(MMI):
     def status(self):
         """ Displays the status of the data capture module"""
         print('-------------- CHAN[%i] data capture --------------' % self.instance_number)
-        print(' Capture frame(s) every %s frames' % (self.BURST_LENGTH, self.get_burst_period()), end=' ')
+        print(' Capture frame(%s) every %s frames' % (self.BURST_LENGTH, self.get_burst_period()), end=' ')
         # if self.BURST_NUMBER:
         #     print 'for %i bursts' % self.BURST_NUMBER
         # else:
@@ -373,7 +373,23 @@ class RawFrameReceiver(object):
             flush=True,
             data_timeout=0.01,
             flush_timeout=0.001):
-        """ Reads the specified number of raw data frames.
+        """ 
+        Reads 2048 frames for each 16 adc channel
+        
+        Parameters:
+
+            stream_ids (list of int): List of adc channels to capture
+            flush (bool): Indicates if the buffer should be flushed
+            data_timeout (float): unknown
+            flush_timeout (float): unknown
+
+        Returns:
+            [times_stamp, data, data_count]
+
+
+        *The following discription is outdate but retained for reference:
+
+        Reads the specified number of raw data frames.
 
         Parameters:
 

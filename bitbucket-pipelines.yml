@@ -1,14 +1,25 @@
-# This is a sample build configuration for Python.
-# Check our guides at https://confluence.atlassian.com/x/x4UWN for more examples.
-# Only use spaces to indent your .yml configuration.
-# -----
-# You can specify a custom docker image from Docker Hub as your build environment.
+#Pull request pipeline
+#Validation of pull requests into the main deployment branch
+
 clone:
   lfs: true  # make sure LFS files are fetched, otherwise we don't have our images...
 
 image: python:3.8
 
 pipelines:
+  pull-requests:
+    '**':
+      - step:
+          name: Automatic static code analysis
+          # Test which require no configuaration of hardware components and are therefore platform agnostic
+          # This test will ensure that none of the modifications made into the deploy branch cause any disturbances to other elements of the project
+          caches:
+            - pip
+          script:
+            - if [ -f pyproject.toml ]; then pip install -e .; fi
+            - pip install pylint
+            #the errors only tags limits the scope of the linter to purely functional errors and ignores style concerns
+            - pylint pychfpga/ --errors-only
   branches:
     '{master,develop,jfc/dev}':
       - step:
@@ -35,4 +46,5 @@ pipelines:
             - git add --all $DOC_PUBLISH_FOLDER
             - git diff-index --quiet HEAD -- || git commit -a -m "bitbucket-pipelines updated $BITBUCKET_BRANCH branch into $DOC_PUBLISH_FOLDER sphinx-generated documentation"
             - git push
+
 

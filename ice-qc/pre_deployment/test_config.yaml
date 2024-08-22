@@ -12,8 +12,8 @@ model_number: 'MGK7BP16'
 fpga_bit_file: '../../pychfpga/fpga_firmware/bitstreams/chFPGA_MGK7MB_Rev2.bit'
 
 instruments:
-  # ps:     {labpy_object: 'agilent_N5700', adapter: 'TCPIP::10.10.10.151'}  # Agilent N5764A power supply, McGill kitchen rack
-  ps:     {labpy_object: 'agilent_N5700', adapter: 'TCPIP::10.42.200.54'} # Agilent power supply, GBO-F-Engine in McGill FRB testbed
+  ps:     {labpy_object: 'agilent_N5700', adapter: 'TCPIP::10.10.10.151'}  # Agilent N5764A power supply, McGill kitchen rack
+  # ps:     {labpy_object: 'agilent_N5700', adapter: 'TCPIP::10.42.200.54'} # Agilent power supply, GBO-F-Engine in McGill FRB testbed
 ?: &default_fpga_array # Shouldn't really be used
     iceboards: 0047
     mdns_delay: 1
@@ -70,13 +70,13 @@ f_engine_tests:
     eth_interface: 'eno1' # Check if correct. Name of ethernet interface on which the crate is connected. Used to check jumbo frames.
     ps_voltage: 20  # Volts. Voltage to set on the F-Engine power supply
     ps_current: 76   # Amps. Maximum current limit to set on the F-Engine power supply
-    ps_t_sleep: 120 # Time in seconds to let the power supply sleep upon power cycle to allow crate to boot
+    ps_t_sleep: 60 # Time in seconds to let the power supply sleep upon power cycle to allow crate to boot
     fpga_array_params:
-      # hwm: 'bp16 25:0' # McGill kitchen test rack
+      hwm: 'bp16 25:0' # McGill kitchen test rack
       # hwm: 'bp16 33:0' # GBO-F-Engine in McGill FRB testbed
       # hwm: 'bp16 32:0' # HCO-F-Engine
-      hwm:
-               - {class: "IceCrate_MGK7BP16", serial: "032", crate_number: 0}
+      # hwm:
+              #  - {class: "IceCrate_MGK7BP16", serial: "032", crate_number: 0}
                  #- {class: "IceBoard", hostname: "10.42.200.39", crate_number: 0}
                  #- {class: "IceBoard", hostname: "10.42.200.38", crate_number: 0}
                  #- {class: "IceBoard", hostname: "10.42.200.37", crate_number: 0}
@@ -96,7 +96,7 @@ f_engine_tests:
       stderr_log_level: 'info'
       prog: 2
       #mode: 'shuffle128' # only for KKO F-Engine
-      #ignore_missing_boards: True # only for KKO F-Engine
+      ignore_missing_boards: True # only for KKO F-Engine
       mode: 'shuffle256' # All else
       sync_method: 'irigb'
       mdns_timeout: 60

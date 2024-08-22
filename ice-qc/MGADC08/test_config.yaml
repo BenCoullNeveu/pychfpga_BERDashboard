@@ -5,12 +5,20 @@
 model_number: 'MGADC08' # required to run the tests (generate data folder name, configure EEPROM etc.)
 default_serial: null
 
+
+test_results_folder: '~/icetests/iceqc/hirax'
+git_repo_path: '~/icetests/iceqc'
+test_results_folder_uses_git: True
+
+
 instruments:
     # Digico setup 
-    dmm:       {labpy_object: 'agilent_dmm', adapter: 'TCPIP::VXI11::IDN::*Agilent*34410*'} # Agilent 34410A multimeter (we don't use the LAN connection so we can go back in local mode remotely)
-    ps12v:     {labpy_object: 'AgilentE3648A',   adapter: 'TCPIP::PROLOGIX::01-1d-d9::GPIB::5'}  # Agilent E3648A dual output power supply  12V on output 1, output 2 not used
-    ps3v3_2v5: {labpy_object: 'AgilentE3648A',   adapter: 'TCPIP::PROLOGIX::01-1d-d9::GPIB::6'}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
+    dmm:       {labpy_object: 'agilent_dmm', adapter: 'TCPIP::IDN::*34410*'} # Agilent 34410A multimeter (we don't use the LAN connection so we can go back in local mode remotely)
+    ps12v:     {labpy_object: 'siglentspd1000x', interface: 'lan', ip_addr: '10.11.1.4', ip_port: 5025, timeout: 0.5}  #Siglentspd1186 power supply for 12V power, static IP
+    ps3v3_2v5: {labpy_object: 'AgilentE3648A',   adapter: 'TCPIP::PROLOGIX::01-09-13::GPIB::6'}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
     na:        {labpy_object: 'KeysightN9923', adapter: 'TCPIP::IDN::*Keysight*N9923*'} # Keysight portable Network Analyzer
+    ps16v:     {labpy_object: 'siglentspd1000x', interface: 'lan', ip_addr: '10.11.1.4', ip_port: 5025, timeout: 0.5}
+
 
 
     # McGill setup
@@ -24,7 +32,7 @@ instruments:
 
 ?: &default_fpga_array
     # hwm: 'mb 106' # Digico golden Iceboard
-    hwm: 'mb 455'
+    hwm: 'mb 498' #Mcgill golden board
 
 test_list:
     # This list all the tests that will be done my the test software, in the proper order
@@ -107,16 +115,16 @@ bench_tests:
 carrier_tests:
     setup: # These are parameters common to all carrier tests
         fmc_slot: 2 # This is the FMC slot where we expect the Mezzanine to be. 1 = FMCA and 2=FMCB
-        instruments: []  # Add 'ps18v' if we want power controlled automatically
+        instruments: ['ps16v']  # Add 'ps18v' if we want power controlled automatically
         configure_ps: false # if False, the power supply settings will not be changed
-        vlt: 18
+        vlt: 16 #can also be 18 
         curlmt: 5
         check_mtu: False
         # fpga_array: {<<: *default_fpga_array, no_mezz: True, prog: 0,  open: 0, mdns_timeout: 30}
 
     eeprom_test:
         instruments: [dmm] # Subset of instruments we use in these tests
-        fpga_array: {<<: *default_fpga_array, no_mezz: False, prog: 1,  open: 1}
+        fpga_array: {<<: *default_fpga_array, firmware_mode: 'corr16', no_mezz: False, prog: 1,  open: 1}
         revision_table:
             2: {sn_min: 0, sn_max: 42}
             3: {sn_min: 43, sn_max: 1000}
@@ -124,7 +132,7 @@ carrier_tests:
 
     test_power:
         # instruments: [dmm] # Subset of instruments we use in these tests
-        fpga_array: {<<: *default_fpga_array, no_mezz: false, prog: 1,  open: 1}
+        fpga_array: {<<: *default_fpga_array, firmware_mode: 'corr16', no_mezz: false, prog: 1,  open: 1}
 
         pow_stab_time: 0.5  # Time to wait after board power on and voltage measurmeents
         rails:
@@ -134,7 +142,7 @@ carrier_tests:
 
     spi_pll_test:
         # instruments: [dmm] # Subset of instruments we use in these tests
-        fpga_array: {<<: *default_fpga_array, no_mezz: false, prog: 1,  open: 1}
+        fpga_array: {<<: *default_fpga_array, firmware_mode: 'corr16', no_mezz: false, prog: 1,  open: 1}
 
         pcb_temp: {tmin: 10, tmax: 60, iterations: 10}
         adc_temp: {tmin: 10, tmax: 85, iterations: 10}
@@ -154,12 +162,12 @@ carrier_tests:
 
     ramp_test:
         # instruments: [dmm] # Subset of instruments we use in these tests
-        fpga_array: {<<: *default_fpga_array, prog: 1,  open: 1}
+        fpga_array: {<<: *default_fpga_array, firmware_mode: 'corr16', prog: 1,  open: 1}
 
     s11_test:
         instruments: [na] # Subset of instruments we use in these tests
         dummy_instruments: no
-        fpga_array: {<<: *default_fpga_array, prog: 1,  open: 1, adc_bandwidth=1}
+        fpga_array: {<<: *default_fpga_array, firmware_mode: 'corr16', prog: 1,  open: 1, adc_bandwidth: 1}
         s11_max : -15 # in dB # CHIME
         # fpga_array: {<<: *default_fpga_array, prog: 1,  open: 1, adc_bandwidth=1} # CHORD
         # s11_max : -10 # in dB # CHORD

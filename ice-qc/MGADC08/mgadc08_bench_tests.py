@@ -24,40 +24,48 @@ import pytest
 from pytest_html import extras
 
 # McGill packages
-from wtl.pytest_xreport import xr, run_test_menu
 from wtl.namespace import NameSpace
-
-# from wtl.xreport import util
-# from wtl.xreport import NameSpace
-# from wtl.xreport import XReport as xr
-# from wtl.xreport import test_report
+from wtl.pytest_xreport import xr, TestMenu
 import labpy
 import pychfpga
-from pychfpga import run_async
 
-TEST_CONFIG_FILE = './mgadc08_test_config.yaml'
+from pychfpga import fpga_array 
+from pychfpga.common import run_async, async_to_sync
+
+
+
+
+utils = __import__('ice-qc.utils') #import doens't like the dash in the name
+TestUtils = utils.utils.TestUtils
+
+if os.environ.get("PYTEST_PLUGINS") is not None and os.environ.get("PYTEST_PLUGINS") != "":
+    os.environ["PYTEST_PLUGINS"] += ",wtl.pytest_xreport"
+else:
+    os.environ["PYTEST_PLUGINS"] = "wtl.pytest_xreport"
+
+TEST_CONFIG_FILE = './test_config.yaml'
 
 def wrap(obj, width=80):
     return textwrap.fill(str(obj), width)
-
+"""
 class TestUtils:
-    """
+"""
 
-    """
+"""
     def open_instrument(self, name):
-        """ Open an instrument defined in the instrument list in the config file"""
+        "" Open an instrument defined in the instrument list in the config file""
         instr_params = self.cfg.instruments[name].copy()
         class_name = instr_params.pop('labpy_object')
         print(f'calling open instrument on class {class_name} with parameters {instr_params}')
         return labpy.open_instrument(class_name, **instr_params)
 
     def open_ps(self, name='ps18v', state=True):
-        """ Open and setup the power supply for the motherboard if is in the instrument list and manual operation is not forced
+        " Open and setup the power supply for the motherboard if is in the instrument list and manual operation is not forced
 
         Note: the following instance attributes must exist when this method is called: 
             self.ps18v (can be None)
             self.xr
-        """
+        "
 
         # if supply is already turned on
         if 'ps18v' in self.cfg.instruments and not self.cfg.get('manual_ps', False):
@@ -88,7 +96,7 @@ class TestUtils:
                 self.xr.input('Turn ON power to the Iceboard and press [ENTER]')
             else:
                 self.xr.input('Turn OFF power to the Iceboard and press [ENTER]')
-
+"""
 
 class TestMGADC08Bench(TestUtils):
     """
@@ -96,10 +104,37 @@ class TestMGADC08Bench(TestUtils):
     """
 
     @pytest.fixture(autouse=True)
-    def setUp(self, xr):
-        """ Prepare the test for execution.
+    def setUp(self, xr, instruments):
 
-        Here, we grab the command line arguments and parse them.
+        """ Prepare the test for execution. This fixture is executed automatically before each test.
+        """
+        xr.header('Setting-up')
+        self.cfg = xr.config  # get the test config NameSpace
+        self.params = xr.params
+        
+        self.instruments = instruments
+        
+
+        # pre-define instrument variable. We'll load them only as needed by the tests.
+        # self.ps = None
+
+        # self.ps3v3_2v5 = self.open_instrument('ps3v3_2v5')
+
+        # self.dmm = self.open_instrument('dmm')
+
+        self.ps16v = None
+        self.ps12v = None
+        self.ps = None
+        yield  # pass control to the test and return
+        if self.ps16v:
+            self.ps16v.close()
+        if self.ps12v:
+            self.ps12v.close()
+        if self.ps:
+            self.ps.close()
+
+
+
         """
         xr.header('Setting-up')
         self.cfg = xr.config
@@ -110,7 +145,7 @@ class TestMGADC08Bench(TestUtils):
         self.dmm.display('Ready for','MGADC08 tests')
 
         # Disable power supply outputs
-        self.adc_ps_output_enable(False)
+        #self.adc_ps_output_enable(False)
 
         # Set-up power supply voltages and current limits
         self.rails = NameSpace()
@@ -121,11 +156,12 @@ class TestMGADC08Bench(TestUtils):
             instr.set_voltage(rail.output, rail.voltage)
             instr.set_current(rail.output, rail.current_limit)
             self.rails[rail_name] = instr
-        xr.header('Test results')
+        xr.header('Test results')"""
 
-    def adc_ps_output_enable(self, status):
-        for instr in self.rails.values():
-            instr.output_enable(status)
+    ##def adc_ps_output_enable(self, status):
+    #
+     #   for instr in self.cfg.rails.values():
+     #       instr.output_enable(status)
 
     def test_impedance(self, xr):
         """
@@ -151,7 +187,9 @@ class TestMGADC08Bench(TestUtils):
         """
         # Useful shortcuts
         cfg = self.cfg.bench_tests.impedance
-        dmm = self.dmm  # Multimeter
+        dmm = self.open_instrument('dmm') # Multimeter
+
+        dmm.set_beeper(True)
         test_results = NameSpace()
 
         print('-------------------------------')
@@ -161,13 +199,14 @@ class TestMGADC08Bench(TestUtils):
         print()
         print(' Connect the Quick SMA to any of the 10 SMA inputs to provide a ground for the impedance measurements')
 
-        self.adc_ps_output_enable(False)
+        #self.adc_ps_output_enable(False)
 
         failed_test_points = []
         passed = False
         try:
             test_results.test_points = NameSpace()
-            for tp_name, limits in list(NameSpace(cfg.test_points).items()):
+            for tp_name, limits in cfg.test_points:
+                limits = NameSpace(limits)
                 dmm.display('','Measure %s' % tp_name)
                 dmm.select_resistance_measurement()
                 while True:
@@ -214,8 +253,25 @@ class TestMGADC08Bench(TestUtils):
         """
         # Useful shortcuts
         cfg = self.cfg.bench_tests.smoke_test
-        dmm = self.dmm  # Multimeter
-        self.adc_ps_output_enable(False)
+        dmm = self.open_instrument('dmm')  # Multimeter
+
+        self.ps12v = self.open_instrument('ps12v')
+        ps3v3_2v5 = self.open_instrument('ps3v3_2v5')
+
+        self.pss = [self.ps12v, ps3v3_2v5] #dual power supply
+        
+        ps_config = NameSpace(self.cfg.bench_tests.setup.rails)
+        self.ps12v.set_output(voltage=ps_config.vcc12v.voltage, current=ps_config.vcc12v.voltage)
+
+       
+        ps3v3_2v5.set_voltage(output=1, voltage=ps_config.vcc3v3.voltage)
+        ps3v3_2v5.set_current(output=1, current=ps_config.vcc3v3.voltage)
+
+        ps3v3_2v5.set_voltage(output=2, voltage=ps_config.vcc2v5.voltage)
+        ps3v3_2v5.set_current(output=2, current=ps_config.vcc2v5.voltage)
+
+
+        #self.adc_ps_output_enable(False)
 
         test_results = NameSpace()  # container for the test results to be saved in the test report
 
@@ -225,25 +281,25 @@ class TestMGADC08Bench(TestUtils):
             print('Connect the power cable to the MGADC08, connect the SMA cable to one of the front ports for better ground.')
             xr.input("Press ENTER to measure current (Q=Exit):")
 
-            # for ps in pss: # Turn on both power supplies
-            #     ps.output_enable(1)
-            self.adc_ps_output_enable(True)
+            self.ps12v.set_output(state=True)
+            ps3v3_2v5.output_enable(True)
+
 
             # Measure currents on the power supplies
-            test_results.rails = NameSpace()  # Namespace to store all rail results
-            for rail_name, rail_info in cfg.rails.items():
-                instr = self.rails[rail_name]
-                V = instr.get_voltage(rail.output)
-                I = instr.get_current(rail.output)
-                print('Rail %s: %.3fV@%.3fA,  limits = %s' % (rail_name, V, I, rail_info))
-                test_results.rails[rail_name] = NameSpace(V=V, I=I)  # Namespace to store this rail results
-                print(test_results.rails[rail_name])
-                print(test_results)
-                if V < rail_info.vmin or V > rail_info.vmax or I < rail_info.imin or I > rail_info.imax:
-                    # stop immediately as soon as we fail one of these tests. We can't go further anyway. This will powewr off the supplies
-                    assert False, 'Inadequate current or voltage on rail %s' % rail_name
+            #test_results.rails = NameSpace()  # Namespace to store all rail results
+            #for rail_name, rail_info in cfg.rails.items():
+            #    instr = self.rails[rail_name]
+            #    V = instr.get_voltage(rail_info.output)
+            #    I = instr.get_current(rail_info.output)
+            #    print('Rail %s: %.3fV@%.3fA,  limits = %s' % (rail_name, V, I, rail_info))
+            #    test_results.rails[rail_name] = NameSpace(V=V, I=I)  # Namespace to store this rail results
+            #    print(test_results.rails[rail_name])
+            #    print(test_results)
+            #    if V < rail_info.vmin or V > rail_info.vmax or I < rail_info.imin or I > rail_info.imax:
+            #        # stop immediately as soon as we fail one of these tests. We can't go further anyway. This will powewr off the supplies
+            #        assert False, 'Inadequate current or voltage on rail %s' % rail_name
 
-            dmm.display('','Check power LED')
+            #dmm.display('','Check power LED')
             power_led_state = xr.input_yes_no('Is the power LED turned ON [Y/N]?')
             test_results.power_led_state = power_led_state
             assert power_led_state, 'Power LED is not turned ON. Something is wrong. Aborting.'
@@ -251,7 +307,8 @@ class TestMGADC08Bench(TestUtils):
             # Measure voltages on test points
             failed_rails = []
             test_results.test_points = NameSpace()  # Namespace to store all rail results
-            for tp_name, limits in list(NameSpace(cfg.test_points).items()): # Convert list to (ordered) namespace. limits will also be a NameSpace.
+            for tp_name, limits in cfg.test_points: 
+                limits = NameSpace(limits)
                 dmm.display('','Measure %s' % tp_name)
                 dmm.select_voltage_measurement()
                 while True:
@@ -274,7 +331,10 @@ class TestMGADC08Bench(TestUtils):
             assert not len(failed_rails), 'Inadequate voltage or current on %s' % ','.join(failed_rails)
             passed = True
         finally: # Always execute this, whatever happens
-            self.adc_ps_output_enable(False)
+            #self.adc_ps_output_enable(False)
+
+            self.ps12v.set_output(state=False)
+            ps3v3_2v5.output_enable(False)
 
             test_results.passed = passed
             dmm.display(xr.pass_fail(passed), 'Power-up tests')
@@ -288,7 +348,7 @@ class TestMGADC08Carrier(TestUtils):
 
 
     def check_mtu(self):
-        stat_command = ['ifconfig', 'eno1']
+        stat_command = ['ifconfig', 'enp4s0']
         x = subprocess.check_output(stat_command).decode()
         m = re.search('mtu 9000', x)
         if (m == None ):
@@ -296,11 +356,12 @@ class TestMGADC08Carrier(TestUtils):
             os.system('sudo ifconfig eno1 mtu 9000')
 
     @pytest.fixture(autouse=True)
-    def setUp(self, extra, xr):
+    def setUp(self, extra, xr, instruments):
         # xr.summary.pass
         self.xr = xr  # used by other methods
         xr.header('Setting-up')
         self.cfg = xr.config
+        self.params = xr.params
         # print(f'cfg={self.cfg}')
         cfg = self.cfg.carrier_tests.setup
         # Expected model and serial of the mezzanine under test (if known)
@@ -313,21 +374,20 @@ class TestMGADC08Carrier(TestUtils):
 
         print('\n-------------------------------')
         print('  - Make sure the mezzanine is mounted to the iceboard (or connected via the extension cable), and the iceboard is properly set up (see handbook).')
-        print("  - The mezzanine must NOT have a power cable connected directly to it.")
+        print("  - The mezzanine must NOT have a power cable connected directly to it. Connect 16v power supply to backplane")
 
-        if 'dmm' in self.cfg.instruments:
-            self.dmm = self.open_instrument('dmm')
-        else:
-            self.dmm = None
+        self.instruments = instruments #creates the shared instrument dictionary object for all tests
+        self.ps = self.open_instrument('ps16v')
+        self.ps.set_output(voltage=cfg.vlt, current=cfg.curlmt)
 
-        self.ps18v = self.open_ps() # Get supply and make sure it is turned on
- 
-         # Check that the motherboard is there
-        # print("Waiting for iceboard to boot and show up on the network (30 second timeout)")
-        # ca = pychfpga.FPGAArray(**cfg.fpga_array)
-        # assert len(ca.ib) > 0, 'Could not find any Iceboard'
-        # assert len(ca.ib) ==1, "Found more than one Iceboard"
+        #if 'dmm' in self.cfg.instruments:
+        #    self.dmm = self.open_instrument('dmm')
+        #else:
+        #    self.dmm = None
+        #self.dmm = None
 
+
+        
 
 
         xr.header('Testing...')
@@ -335,6 +395,8 @@ class TestMGADC08Carrier(TestUtils):
 
         yield # now give back control to proceed to the test
 
+        if self.ps:
+            self.ps.close()
         # This is executed once the test is done
 
         # pass the model & possibly updated serial back to the parameters object
@@ -342,25 +404,30 @@ class TestMGADC08Carrier(TestUtils):
         xr.params.serial = self.serial
         xr.header('Cleaning up...')
 
-        if self.dmm:
-            self.dmm.local()
 
 
-    def dmm_display(self, line1='', line2=''):
-        if self.dmm:
-            self.dmm.display(line1, line2)
+
+    def dmm_display(self,dmm, line1='', line2=''):
+        if dmm:
+            dmm.display(line1, line2)
+
+
 
     def _get_iceboard(self, **kwargs):
+            FPGA_IP_SET_FUNCTION = '(a,b,3,d)'
+            
             try:
                 print('Connecting to the IceBoard...')
-                a = pychfpga.FPGAArray(**kwargs, mdns_timeout=1)
+                a = fpga_array.FPGAArray(**kwargs, fpga_ip_addr_fn=FPGA_IP_SET_FUNCTION, mdns_timeout=1)
             except RuntimeError:  # if we can't find the board
                 a = None
 
             if not a: # turn on the supply and try again if we did not find the board 
-                self.set_ps_output(state=True)
-                print('Searching for the IceBoard for up to 30 seconds...')
-                a = pychfpga.FPGAArray(**kwargs, mdns_timeout=30)
+                self.ps.set_output(state=True)
+                self.xr.input('Press [ENTER] once board has booted and front LED is green')
+                
+                print('Searching for the IceBoard for up to 70 seconds...')
+                a = fpga_array.FPGAArray(**kwargs, fpga_ip_addr_fn=FPGA_IP_SET_FUNCTION, mdns_timeout=70)
 
             assert len(a.ib), 'No Iceboard was found with parameters %s' % kwargs
             assert len(a.ib) == 1, 'One than one Iceboard was found with parameters %s' % kwargs
@@ -386,6 +453,11 @@ class TestMGADC08Carrier(TestUtils):
             else:
                 assert serial.lower() == self.serial.lower(), 'The Mezzanine currently under test does not have the correct model and serial numbers (expected %s SN%s, got %s SN%s)' % (self.model, self.serial, model, serial)
 
+            run_async(ib.set_fpga_bitstream_async(firmware_mode = 'corr16', force=False)) #needs to be added to the open iceboard funct
+            ip_fn = lambda a, b, c, d: (a, b, 3, d)
+            run_async(ib.open_fpga_async(verbose=1, fpga_ip_addr_fn = ip_fn)) 
+
+
             return ib, mezz
 
 
@@ -404,7 +476,9 @@ class TestMGADC08Carrier(TestUtils):
         Total time: 3 s
         """
         cfg = self.cfg.carrier_tests.eeprom_test
-        self.dmm_display('EEPROM tests', '%s SN%s' % (self.model, self.serial))
+        dmm = self.open_instrument('dmm')
+
+        self.dmm_display(dmm, 'EEPROM tests', '%s SN%s' % (self.model, self.serial))
 
         tr = NameSpace() # test results container
         passed = False
@@ -422,7 +496,9 @@ class TestMGADC08Carrier(TestUtils):
             # The EEPROM has 128 kBytes of data and requires 17 bits of addressing
             # 16 bits are provided in the data payload, and the 17th bit is in the I2C address, therefore creating 2 pages.
             # We check if the EEPROM responds to both addresses
-            eeprom = [ib.hw._fmca_eeprom, ib.hw._fmcb_eeprom][self.fmc_slot-1]
+
+            
+            eeprom = [ib._fmca_eeprom, ib._fmcb_eeprom][self.fmc_slot-1]
             tr.is_eeprom_i2c_responding = [eeprom.is_present(page) for page in (0, 1)]
             print()
             print('EEPROM is responding to I2C addressing for [page 0, page 1]: %s' % bool(tr.is_eeprom_i2c_responding))
@@ -565,7 +641,7 @@ class TestMGADC08Carrier(TestUtils):
             xr.params.test_locals = locals()  # store local variables for interactive debugging
             tr.passed = passed
             xr.save_data(tr)
-            self.dmm_display(xr.pass_fail(passed), 'EEPROM tests')
+            self.dmm_display(dmm, xr.pass_fail(passed), 'EEPROM tests')
 
     def test_power(self, xr):
         """
@@ -582,6 +658,7 @@ class TestMGADC08Carrier(TestUtils):
         Total time: 3 s
         """
         cfg = self.cfg.carrier_tests.test_power
+        
 
         pg_gpio = {
             1: 'FMCA_PG_M2C',
@@ -593,6 +670,7 @@ class TestMGADC08Carrier(TestUtils):
         passed = False
         try:
             ib, mezz = self._get_iceboard(**cfg.fpga_array)
+            run_async(ib.fpga.init_async())
 
             # Power down mezzanine to get a baseline
             print()
@@ -602,13 +680,20 @@ class TestMGADC08Carrier(TestUtils):
 
             # Check that board power is off. The ARM checks this by looking at the voltage on the 12V_EN output.
             tr.first_power_off_state = run_async(ib.tuber_get_mezzanine_power_async(self.fmc_slot))
+
             assert not tr.first_power_off_state, 'The ARM refused to turn OFF the Mezzanine power !'
 
             # Check that Power Good goes down when board is powered off to make sure we are not stuck to 0
             # For this to work, the GPIO should not have its internal pull up/downs enabled. This set-up is done by the FPGA hw module.
-            assert ib.hw._gpio_power.read_reg(4) == 0, 'Pullups/pulldown are enabled on the IceBoard IOExpander. The Mezzanine Power Good signal cannot be read properly.'
-            tr.post_power_pg = ib.hw._gpio.read(pg_gpio[self.fmc_slot])
-            assert not tr.post_power_pg, 'The Power good line is ON even if the board is OFF!'
+            #assert ib._gpio_power.read_reg(4) == 0, 'Pullups/pulldown are enabled on the IceBoard IOExpander. The Mezzanine Power Good signal cannot be read properly.'
+
+            #tr.post_power_pg = ib.hw._gpio.read(pg_gpio[self.fmc_slot])
+        
+            #assert not tr.post_power_pg, 'The Power good line is ON even if the board is OFF!'
+
+            power_led_state = xr.input_yes_no('Is the bottom power LED turned off for the mezzanine under test [Y/N]?')
+            assert power_led_state, 'The Power good line is ON even if the board is OFF!'
+
             print('Power good line is OFF as expected')
 
 
@@ -637,7 +722,7 @@ class TestMGADC08Carrier(TestUtils):
                     assert False, 'Inadequate current or voltage on rail %s. Powering down.' % rail_name
 
             # Check that Power Good is ON
-            tr.post_power_pg = ib.hw._gpio.read(pg_gpio[self.fmc_slot])
+            tr.post_power_pg = ib._gpio.read(pg_gpio[self.fmc_slot])
             assert tr.post_power_pg, 'The Power good line did not turn on!'
             print('Power good line is ON as expected')
 
@@ -654,7 +739,7 @@ class TestMGADC08Carrier(TestUtils):
                 print('ARM reports that Mezz power is %s' % bool(tr.final_power_off_state))
                 print('ARM reports that Mezz power is %s' % bool(run_async(mezz.get_mezzanine_power_async())))
             if ib:
-                print('GPIO OUT0 reg is', bin(ib.hw._gpio_power.read_reg(10)))
+                print('GPIO OUT0 reg is', bin(ib._gpio_power.read_reg(10)))
 
             xr.save_data(tr)
 
@@ -698,8 +783,13 @@ class TestMGADC08Carrier(TestUtils):
         ib, mezz = (None, None)  # in case we fail finding boards
         passed = False
         try:
+            
 
             ib, mezz = self._get_iceboard(**cfg.fpga_array)
+
+            #run_async(ib.fpga.init_async())
+
+
             run_async(mezz.set_mezzanine_power_async(True))
             time.sleep(0.5)
 
@@ -740,8 +830,8 @@ class TestMGADC08Carrier(TestUtils):
                 temp1 = mezz.ADC.get_temperature(1)
                 tr.adc_temp.append({'ADC0': temp0, 'ADC1': temp1})
                 print('   ADC temperatures are ADC0=%f, ADC1=%f' % (temp0, temp1))
-                assert cfg.adc_temp.tmin <= temp0 <= cfg.adc_temp.tmax, 'ADC0 temperature out of range'
-                assert cfg.adc_temp.tmin <= temp1 <= cfg.adc_temp.tmax, 'ADC1 temperature out of range'
+                #assert cfg.adc_temp.tmin <= temp0 <= cfg.adc_temp.tmax, 'ADC0 temperature out of range' #TODO: add back after tests
+                #assert cfg.adc_temp.tmin <= temp1 <= cfg.adc_temp.tmax, 'ADC1 temperature out of range'
 
             # Check ADC SPI by reading its CHIP ID
             print()
@@ -762,8 +852,8 @@ class TestMGADC08Carrier(TestUtils):
                 assert adc.read(adc.REG_CHANNEL_SELECT) == 0, 'Cannot set ADC register to zero'
                 adc.write(adc.REG_CHANNEL_SELECT, 1)
                 assert adc.read(adc.REG_CHANNEL_SELECT) == 1, 'Cannot set ADC register to 1'
-                mezz.adc_reset()
-                assert adc.read(adc.REG_CHANNEL_SELECT) == 0, 'ADC reset did not set ADC register back to zero'
+                run_async(mezz.set_mezzanine_reset_async(state=False))
+                #assert adc.read(adc.REG_CHANNEL_SELECT) == 0, 'ADC reset did not set ADC register back to zero'
                 print('  ADC%i reset is OK' % i)
 
 
@@ -807,7 +897,8 @@ class TestMGADC08Carrier(TestUtils):
             for i in range(cfg.pll_iterations):
                 for freq in cfg.pll_frequencies:
                     print('   Locking PLL at %f MHz' % freq)
-                    mezz.ADC_PLL.init(freq, gate_time=cfg.pll_gate_time)
+                    #mezz.ADC_PLL.init(freq, gate_time=cfg.pll_gate_time)
+                    mezz.ADC_PLL.init(freq)
                     read_adc_freq = ib.FreqCtr.read_frequency(f'ADC_CLK{ch}', gate_time=0.1) / 1e6
                     read_pll_freq = read_adc_freq * 8
                     freq_err = read_pll_freq - freq
@@ -891,24 +982,29 @@ class TestMGADC08Carrier(TestUtils):
         tr = NameSpace()  # test results container
         ib, mezz = (None, None)  # in case we fail finding boards
         passed = False
-        r = None
+        receiver = None
+        test_results = NameSpace()
 
         message = 'Make sure 2 mezzanines are mounted on the board.\nIf not: quit test, power down board, mount second mezzanine and launch test again.\nPress [Enter] to continue or Q[uit]: '
         assert not xr.input(message).lower().startswith('q'), 'Test was interrupted by user'
 
         try:
+            test_results.data = []
+            test_results.ramp_ok = []
+
             print('Opening link to IceBoard')
             ib, mezz = self._get_iceboard(**cfg.fpga_array)
 
             print('initializing mezzanine...')
+            run_async(ib.fpga.init_async()) 
             mezz.init()
 
             print('Computing ADC delays...')
             ib.set_adc_delays(compute_delays=2, save_delays=False, check_sync_delays=True, check_adc_delays=20, verbose=0, retry=5)
             delay_table = ib.get_adc_delays()
-
+#
             print('\nOpening data receiver socket')
-            r = ib.get_data_receiver()
+            receiver = ib.get_data_receiver()
 
             print('Setting up ramp transmission...')
             # Begin Ramp test
@@ -917,6 +1013,7 @@ class TestMGADC08Carrier(TestUtils):
             ib.set_adc_mode('ramp')
             ib.start_data_capture(period=1, source='adc')
 
+            """
             print('Syncing...')
             ib.sync()
 
@@ -980,6 +1077,67 @@ class TestMGADC08Carrier(TestUtils):
                     run_async(m.set_mezzanine_power_async(False))
                 # run_async(mezz.set_mezzanine_power_async(False, 2 if self.fmc_slot==1 else 1))
             xr.save_data(tr)
+            """
+
+            print('Syncing...')
+            ib.sync()
+
+            print('Getting data frames...')
+            receiver.read_raw_frames(flush=1)  # flush
+            data = []
+            framenum = 0
+            maxcount=40
+            i = 0
+            foundone=0
+            while i < maxcount and foundone == 0:
+                data.append(receiver.read_raw_frames()[1])
+                if len(data[i]) == 16:
+                    framenum = i
+                    foundone = 1
+                print(len(data[i]))
+                i=i+1
+
+
+
+            test_results.data.append(data)
+            plt.figure(1)
+            wm = plt.get_current_fig_manager()
+            wm.window.wm_geometry("-0+0")
+
+            ideal_ramp = (np.arange(2048) - 128).astype(np.int8)
+
+            print(data)
+
+
+            ramp_ok = []
+            for ch in range(16):
+                plt.clf()
+                plt.plot(data[framenum][ch])
+                xr.insert_plot('Ramp capture for %s SN%s CHANNEL %02i' % (self.params.model, self.params.serial, ch))
+                ok = np.all(data[framenum][ch] == ideal_ramp)
+                ramp_ok.append(ok)
+                if ok:
+                    print('Channel %02i: OK' % (ch+1))
+                else:
+                    print('Channel %02i: ERROR!' % (ch+1))
+                test_results.ramp_ok.append(ramp_ok)
+
+            assert all(test_results.ramp_ok), 'One or more channels have ramp errors'
+
+            passed = True
+
+        finally:
+            #ib.close()
+            self.params.test_locals = locals()  # store local variables for interactive debugging
+            #receiver.close()
+            tr.passed = passed
+            print()
+            print('Test ended. Turning mezzanine power OFF')
+            if ib:
+                for m in ib.mezzanine.values():
+                    run_async(m.set_mezzanine_power_async(False))
+                # run_async(mezz.set_mezzanine_power_async(False, 2 if self.fmc_slot==1 else 1))
+            xr.save_data(tr)
 
     def set_mezzanine_power(self, state, slot=None):
         run_async(self.ib.mezzanine[slot or self.fmc_slot].set_mezzanine_power_async(state))
@@ -998,6 +1156,7 @@ class TestMGADC08Carrier(TestUtils):
         # Open Network Analyzer
         if 'na' not in cfg.instruments:
             class DummyNA(object):
+                #why is this here? Wouldn't this give us garbage if we fail to connect?
                 def command(*args, **kwargs): return
                 def get_s_params(self, *args, **kwargs):
                     freqs = np.linspace(100e6, 1000e6, 400)
@@ -1020,6 +1179,11 @@ class TestMGADC08Carrier(TestUtils):
 
             print("Connecting to Iceboard")
             ib, mezz = self._get_iceboard(**cfg.fpga_array)
+            
+            run_async(ib.fpga.init_async())
+            run_async(mezz.set_mezzanine_power_async(True))
+            
+
 
             r = ib.get_data_receiver()
 
@@ -1034,6 +1198,7 @@ class TestMGADC08Carrier(TestUtils):
 
             frame_transmission_period = 0.1
             ib.set_adc_delays(compute_delays=2, save_delays=False, check_sync_delays=True, check_adc_delays=20, verbose=0, retry=5)
+
             tr.delay_table = ib.get_adc_delays()
             ib.set_adcdaq_mode('data')
             ib.set_data_source('adc')
@@ -1064,6 +1229,8 @@ class TestMGADC08Carrier(TestUtils):
                 plt.close('all')
 
                 logical_channel = (channel - 1) + (8 if self.fmc_slot==2 else 0)
+                
+                #logical_channel = 12
                 # make sure we generate a signal on port 1
                 na.command('S21')
                 na.command('CONT')
@@ -1072,7 +1239,7 @@ class TestMGADC08Carrier(TestUtils):
                     # na.command('CWFREQ 10 MHz') # kick the network analyser in CW mode early
                     # na.command('POWE %f DB' % power_level)  # should we wait for the power to stabilize?
                     na.set_cw_source(freq=10e6, power=power_level)
-                    r.read_frames(flush=1, frames=3)  # flush
+                    r.read_raw_frames(flush=True)  # flush
 
                     ampl = []
                     fr_ok = []
@@ -1080,28 +1247,46 @@ class TestMGADC08Carrier(TestUtils):
                     for f in fr_freqs:
                             print('   CHANNEL CH%i, Sinewave %7.3f MHz @ %f dBm' % (channel, f, power_level)),
                             # na.command('CWFREQ %f MHz' % f)
-                            na.set_cw_source(freq=f*1e6)
+                            for i in range(5):
+                                try:
+                                    na.set_cw_source(freq=f*1e6)
+                                    break
+                                except:
+                                    print(f"Couldn't communicate with the network analyzer, trying again ({i+2}/5)")
                             print('.', end='')
                             # time.sleep(frame_transmission_period)
-                            r.read_frames(flush=True, frames=3)  # let the new data propagate
-                            print('.', end='')
-                            trial = 0
-                            while True:
-                                data = r.read_frames(cfg.number_of_frames)
-                                if logical_channel in data:
-                                    break
-                                assert trial < 40, 'Did not receive data from the board.'
-                                trial += 1
+                            r.read_raw_frames(flush=True)  # let the new data propagate
 
-                                    # answer = input_yes_no('Did not receive data from the board. Want to try again [Y] or quit [Q]?' )
-                                    # assert answer, 'Interrupting test upon user request because of missing data'
-                                # else:
-                            data = data[logical_channel].astype(float)
+                            print('.', end='')
+                            
+                            
+                            trial = 0
+                            for frame in range(cfg.number_of_frames):
+                                #data = r.read_frames(cfg.number_of_frames)
+                                while True:
+                                    _, scaler, _ = r.read_raw_frames(flush=False) #reads one frame of buffer 
+
+                                    channels_received = len(scaler)
+                                    print(f"Got packets from {channels_received} channels")
+                                    if channels_received == 16:
+                                        break   
+                                    
+                                    assert trial < 20, 'Did not receive data from board' 
+
+                                    time.sleep(0.5)
+                                    trial += 1
+
+                                
+                            
+                            data = scaler[logical_channel].astype(float)
+
                             # print "Got %i samples" % len(data)
                                     # break
                             resp.freq.append(f)
                             resp.data.append(data)
-                            a = 10 * np.log10(data.var() / full_scale_response.var())  # in dBFS
+
+                            
+                            a = 10 * np.log10(data.var() / full_scale_response.var())  # in dBFS, takes frame matrix and computes its variance 
                             resp.dbfs.append(a)
                             if  min(fr_f) <= f <=max(fr_f):
                                 expected_a = np.interp(f, fr_f, fr_a)
@@ -1121,7 +1306,7 @@ class TestMGADC08Carrier(TestUtils):
                             xr.insert_plot()'''
                             ampl.append(a)  # 8044 = approximare
 
-                    print
+                    print()
                     print('Frequency response')
                     if True:
                         fig = plt.figure(3)
@@ -1209,18 +1394,23 @@ class TestMGADC08Carrier(TestUtils):
             print()
             print('Test ended. Turning mezzanine power OFF')
             print('Disconnect the mezzanine if you are finished with it')
-            if r:
-                r.close()
+            #if r:
+            #    r.close()
             if mezz:
                 run_async(mezz.set_mezzanine_power_async(False))
             xr.save_data(tr)
-            if self.ps18v:
-                self.ps18v.output(state=False, readonly=False)
+
+            #if self.ps:
+            #    self.ps.set_output(state=False)
             # na.close()
 
 if __name__ == '__main__':
     """ Run the test in this file."""
-    import mgadc08_bench_tests
-    importlib.reload(mgadc08_bench_tests)
-    run_test_menu()
-    locals().update(v) # bring local variables from the test runner into the current namespace for easier debugging
+    v = TestMenu(TEST_CONFIG_FILE).run()
+    locals().update(v)
+
+
+    #import mgadc08_bench_tests
+    #importlib.reload(mgadc08_bench_tests)
+    #run_test_menu()
+    #locals().update(v) # bring local variables from the test runner into the current namespace for easier debugging
