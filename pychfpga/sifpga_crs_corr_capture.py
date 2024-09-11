@@ -1,16 +1,14 @@
 """
-Module for capturing and writing raw corelated data from an RFSoC.
+Module for capturing and writing raw corelated data from a t0.CRS board.
 
 The script can be run within an ipython session.
 
 Make sure you've got the latest firmware that supports corr8 mode with all 8 channelizers!
 
-Run from ipython with
+You can connect to a board with serial number 0016 in ipython by running
 
-    run sifpga_crs_corr_capture.py
+    run sifpga_crs_corr_capture.py --serial 0016 --stderr_log_level info --prog 2
 
-If you want to change some parameters, write them directly in the file. Command-line
-arguments are not yet supported.
 """
 
 # Import common packages
@@ -19,6 +17,7 @@ import h5py
 import time
 import datetime
 import os
+import argparse
 
 # Import custom packages
 from pychfpga import fpga_array
@@ -31,9 +30,7 @@ class CRS_CORR_CAPTURE:
                  hwm,
                  stderr_log_level,
                  prog,
-                 mode,
-                 make_directories = False,
-                 data_path = None):
+                 ):
         """
         Description.
 
@@ -51,7 +48,7 @@ class CRS_CORR_CAPTURE:
         ca = fpga_array.FPGAArray(hwm = hwm,
                                   stderr_log_level = stderr_log_level,
                                   prog = prog,
-                                  mode = mode
+                                  mode = 'corr8' # Always used corr8 for CCC
                                   )
 
         # Define some useful objects
@@ -94,47 +91,6 @@ class CRS_CORR_CAPTURE:
 
         # Define a bool to check if the correlator is configured
         self.corr_is_configured = False # we'll configur the correlator later
-            
-        if make_directories:
-            # Configure data paths
-            time_string = self.make_time_string()
-            self.acq_string = f'{time_string}_D3A_rfsoc'
-            self.data_path = data_path # f'/home/basil/rfsoc/rfsoc_data'
-            self.digital_gains_path = f'{self.data_path}/digital_gains'
-            self.vis_dir_name = f'{self.data_path}/{self.acq_string}'
-            self.gain_file_name = f'{self.digital_gains_path}/{self.acq_string}_digitalgain'
-
-            # Make general directories
-
-            # Data parent directory (vis + digital gains)
-            if not os.path.exists(self.data_path):
-                print(f'Creating data directory at {self.data_path}')
-                os.mkdir(self.data_path)
-            else:
-                print(f'Data directory is {self.data_path}')
-
-            # General digital gains directory
-            if not os.path.exists(self.digital_gains_path):
-                print(f'Creating general digital gains directory at {self.digital_gains_path}')
-                os.mkdir(self.digital_gains_path)
-            else:
-                print(f'General digital gains directory is {self.digital_gains_path}')
-
-            # Make acq-specific directories
-
-            # Gains
-            if not os.path.exists(self.gain_file_name):
-                print(f'Creating general digital gains directory at {self.gain_file_name}')
-                os.mkdir(self.gain_file_name)
-            else:
-                print(f'Acquisition igital gains directory is {self.gain_file_name}')
-
-            # Vis
-            if not os.path.exists(self.vis_dir_name):
-                print(f'Creating vis directory at {self.vis_dir_name}')
-                os.mkdir(self.vis_dir_name)
-            else:
-                print(f'Acquisition vis directory is {self.vis_dir_name}')
 
     def read_adc_frames(self,
                         period = 0.02,
@@ -288,6 +244,35 @@ class CRS_CORR_CAPTURE:
 
         return d_scaler
 
+    def configure_corr(self,
+                       autocorr_only = 0,
+                       no_accum = 0,
+                       n_firmware_frames = 16384 - 1
+                       ):
+        """
+        Description.
+
+        Parameters
+        ----------
+        the : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        None.
+
+        """
+
+        self.corr = self.i.CORR # corr object
+        self.corr_receiver = self.i.get_corr_receiver() # corr receiver object
+        self.corr.AUTOCORR_ONLY = autocorr_only # 0: all products
+        self.corr.NO_ACCUM = no_accum # 0: do accumulate
+        self.NCORR_PROD = int(self.NPOLS*(self.NPOLS + 1) // 2)
+        self.corr.INTEGRATION_PERIOD = n_firmware_frames # Default: 16384 - 1, minimum (all N^2 products): 8192 -1, maximimum: 65536 - 1
+        
+        # Update corr_is_configured
+        self.corr_is_configured = True
+
     def read_corr_frames(self,
                          data_source = 'adc',
                          soft_integ_period = 1,
@@ -299,7 +284,10 @@ class CRS_CORR_CAPTURE:
                          flush_timeout = 0.01,
                          return_format = 'raw',
                          verbose = 0,
-                         corr_is_configured = False
+                         corr_is_configured = False,
+                         autocorr_only = 0,
+                         no_accum = 0,
+                         n_firmware_frames = 16384 - 1
                          ):
         """
         Description.
@@ -329,15 +317,10 @@ class CRS_CORR_CAPTURE:
 
         # Configure correlator if not done so already
         if not self.corr_is_configured:
-            self.corr = self.i.CORR # corr object
-            self.corr_receiver = self.i.get_corr_receiver() # corr receiver object
-            self.corr.AUTOCORR_ONLY = 0 # 0: all products
-            self.corr.NO_ACCUM = 0 # 0: do accumulate
-            self.NCORR_PROD = int(self.NPOLS*(self.NPOLS + 1) // 2)
-            self.corr.INTEGRATION_PERIOD = 16384 - 1 # 32768 - 1 # 65536 - 1 # 32768 - 1 # Default: 16384 - 1, maximimum: 65536 - 1
-            
-            # Update corr_is_configured
-            self.corr_is_configured = True
+            self.configure_corr(autocorr_only = autocorr_only,
+                                no_accum = no_accum,
+                                n_firmware_frames = n_firmware_frames
+                                )
 
         t1 = time.time() # This is our timestamp
         d, count, sat, = self.corr_receiver.read_corr_frames(soft_integ_period = soft_integ_period,
@@ -653,11 +636,11 @@ class CRS_CORR_CAPTURE:
         else:
             print(f'Digital gains directory is {self.digital_gains_path}')
 
-        digital_gain_file_name = f'{self.gain_file_name}/gains.hdf5'
+        digital_gain_file_name = f'{self.gain_file_path}/gains.hdf5'
         print(f'Creating digital gains file {digital_gain_file_name}')
 
         # Create the gain hdf5 file
-        f = h5py.File(f'{self.gain_file_name}/gains.hdf5', 'w')
+        f = h5py.File(f'{self.gain_file_path}/gains.hdf5', 'w')
 
         lin_gain_dset = f.create_dataset('lin',
                                          (self.NPOLS, self.NBINS),
@@ -725,9 +708,13 @@ class CRS_CORR_CAPTURE:
         return f'{y}{mth}{d}T{h}{m}{s}Z'
 
     def observe(self, 
+                data_path = None, # No default data path
+                digital_gains_path = None, 
                 n_vis_per_file = 256,
                 integration_time = 10,
-                optimize_shift = False,
+                autocorr_only = 0, # Get all products by default
+                no_accum = 0, # accumulate by default
+                n_firmware_frames = 16384 - 1,
                 gain_target = 1.5*np.sqrt(2), # borrowed from CHIME
                 number_of_fft_averages = 1000,
                 gain_type = 'raw',
@@ -750,42 +737,71 @@ class CRS_CORR_CAPTURE:
         """
 
         # ===========
-        # Start by optimizing the FFT shift schedule.
-        if optimize_shift:
+        # Configure data paths
+        time_string = self.make_time_string()
+        self.acq_string = f'{time_string}_D3A_rfsoc'
+        self.data_path = data_path
+        self.vis_dir_name = f'{self.data_path}/{self.acq_string}'
+
+        # Create general data parent directory if it doesn't exist --- this will house both the visibility data and the digital gains
+        if not os.path.exists(self.data_path):
+            print(f'Creating data directory at {self.data_path}')
+            os.mkdir(self.data_path)
+        else:
+            print(f'Data directory is {self.data_path}')
+
+        # Create acquisition-specific directory for the visibilities
+        if not os.path.exists(self.vis_dir_name):
+            print(f'Creating visibility directory at {self.vis_dir_name}')
+            os.mkdir(self.vis_dir_name)
+        else:
+            print(f'Visibility directory is {self.vis_dir_name}')
+
+        if digital_gains_path is None:
+            self.digital_gains_path = f'{self.data_path}/digital_gains'
+            self.gain_file_path = f'{self.digital_gains_path}/{self.acq_string}_digitalgain'
+
+            # Create general digital gains directory if it doesn't exist yet
+            if not os.path.exists(self.digital_gains_path):
+                print(f'Creating general digital gains directory at {self.digital_gains_path}')
+                os.mkdir(self.digital_gains_path)
+            else:
+                print(f'General digital gains directory is {self.digital_gains_path}')
+
+            # Make acquisition-specific directory for the digital gains
+            if not os.path.exists(self.gain_file_path):
+                print(f'Creating digital gains directory at {self.gain_file_path}')
+                os.mkdir(self.gain_file_path)
+            else:
+                print(f'Digital gains directory is {self.gain_file_path}')
+
+            # ===========
+            # Compute gains.
+
             print('')
             print('')
             print('===================================')
             print('')
-            print('--- O P T I M I Z E   F F T   S H I F T  ---')
+            print('--- C O M P U T E   G A I N S  ---')
             print('')
-            final_shift = self.optimize_fft_shift()
+            self.compute_gains(target = gain_target,
+                               gain_type = gain_type, 
+                               number_of_fft_averages = number_of_fft_averages, 
+                               rms_accuracy_tol = None, # let's just ignore this parameter for now
+                               save_gains = True)
+            print('Gain computation completed!')
             print('')
+
         else:
-            shifts = np.zeros(self.NPOLS)
-            for n in range(self.NPOLS):
-                shifts[n] = self.i.chan[n].FFT.FFT_SHIFT
-            unique_shifts = np.unique(shifts)
-            if len(unique_shifts) == 1:
-                final_shift = unique_shifts[0]
-            # else:
-                # raise ValueError('')
-
-        # ===========
-        # Compute gains.
-
-        print('')
-        print('')
-        print('===================================')
-        print('')
-        print('--- C O M P U T E   G A I N S  ---')
-        print('')
-        self.compute_gains(target = gain_target,
-                           gain_type = gain_type, 
-                           number_of_fft_averages = number_of_fft_averages, 
-                           rms_accuracy_tol = None, # let's just ignore this parameter for now
-                           save_gains = True)
-        print('Gain computation completed!')
-        print('')
+            print('')
+            print('')
+            print('===================================')
+            print('')
+            print(f'--- Loading digital gains from file {self.digital_gains_path}/gains.hdf5 ---')
+            print('')
+            digital_gains_file = h5py.File(f'{self.digital_gains_path}/gains.hdf5', 'r')
+            lin = digital_gains_file['lin'][:]
+            log = digital_gains_file['log'][:]
 
         # ===========
         # Configure the channelizer and correlator. This is done after gain
@@ -810,16 +826,10 @@ class CRS_CORR_CAPTURE:
 
         # Configure correlator
         if not self.corr_is_configured:
-            self.ucap.OUTPUT_SOURCE_SEL = 1 # u.OUTPUT_SOURCE_SEL = 1 --> correlator data
-            self.corr = self.i.CORR # corr object
-            self.corr_receiver = self.i.get_corr_receiver() # corr receiver object
-            self.corr.AUTOCORR_ONLY = 0 # 0: all products
-            self.corr.NO_ACCUM = 0 # 0: do accumulate
-            self.NCORR_PROD = int(self.NPOLS*(self.NPOLS + 1) // 2)
-            self.corr.INTEGRATION_PERIOD = 16384 - 1 # 32768 - 1 # 65536 - 1 # 32768 - 1 # Default: 16384 - 1, maximimum: 65536 - 1
-            
-            # Update the corr configure check
-            self.corr_is_configured = True
+            self.configure_corr(autocorr_only = autocorr_only,
+                                no_accum = no_accum,
+                                n_firmware_frames = n_firmware_frames
+                                )
 
         print(self.corr.status()) # print corr configuration status
 
@@ -870,7 +880,15 @@ class CRS_CORR_CAPTURE:
                 # Assign attributes to vis dataset:
                 dset_vis.attrs['n_firmware_frames'] = n_firmware_frames # Number of firmware frames per visibility
                 dset_vis.attrs['n_software_frames'] = n_software_frames # Number of software frames per visibility
-                dset_vis.attrs['fft_shift_schedule'] = final_shift # Final shift schedule, represented as an int
+
+                shifts = np.zeros(self.NPOLS)
+                for n in range(self.NPOLS):
+                    shifts[n] = self.i.chan[n].FFT.FFT_SHIFT
+                unique_shifts = np.unique(shifts)
+                if len(unique_shifts) == 1:
+                    dset_vis.attrs['fft_shift_schedule'] = unique_shifts[0] # Final shift schedule, represented as an int
+                else:
+                    raise ValueError('The FFT shift schedule is different for each channelizer. Please ensure that the shift schedule is the same for each channzelizer!')
 
                 # Make index_map group
                 index_map_grp = f.create_group('index_map')
@@ -968,16 +986,10 @@ class CRS_CORR_CAPTURE:
                     else:
                         flush = False # Otherwise, no flush
                         
-                    t, vis, counts, sat = self.read_corr_frames(data_source = 'adc',
-                                                                soft_integ_period = n_software_frames,
+                    # Capture correlated data (note that many default arguments are used here)
+                    t, vis, counts, sat = self.read_corr_frames(soft_integ_period = n_software_frames,
                                                                 number_of_results = 1,
-                                                                filename = None,
                                                                 flush = flush,
-                                                                align = False,
-                                                                data_timeout = 0.1,
-                                                                flush_timeout = 0.01,
-                                                                return_format = 'raw',
-                                                                verbose = 0,
                                                                 corr_is_configured = self.corr_is_configured)
 
                     t_buf[n] = t
@@ -1069,32 +1081,77 @@ class CRS_CORR_CAPTURE:
 
         return
 
-# Sandbox mode:
-# ccc = CRS_CORR_CAPTURE(hwm = 'crs 0016',
-#                        stderr_log_level = 'debug',
-#                        prog = 2,
-#                        mode = 'corr8',
-#                        make_directories = False)
 
-# final_fft_shift = ccc.optimize_fft_shift()
-# fft_data, fft_rms, gain, lin, log, scaler_data  = ccc.compute_gains(1000)
+def create_ccc(args = None):
+    """
+    Creates CCC object in the command line using argparse. 
 
-# Observation mode:
-ccc = CRS_CORR_CAPTURE(hwm = 'crs 0022',
-                       stderr_log_level = 'debug',
-                       prog = 2,
-                       mode = 'corr8',
-                       make_directories = True,
-                       data_path = '/home/ih/D3A_acq/data')
+    Returns
+    -------
+    ccc object - see the CRS_CORR_CAPTURE docstring.
 
-# ccc.observe(n_vis_per_file = 5, # 128,
-#             integration_time = 1,
-#             optimize_shift = False,
-#             gain_target = 1.5*np.sqrt(2),
-#             number_of_fft_averages = 1000,
-#             gain_type = 'raw',
-#             capture_adc_bursts = True,
-#             n_adc_bursts = 100,
-#             capture_fft_bursts = True,
-#             n_fft_bursts = 100
-#             )
+    """
+    
+    # The description is that which is included in the CCC docstring,
+    # not including the parameters/returns. Grab parser object:
+    parser = argparse.ArgumentParser()
+    
+    # ====================
+    # Add arguments:
+        
+    parser.add_argument('--serial', type = str, 
+                        help = '(str) The serial number of the target hardware. The CCC class is designed'
+                        'to be used with a single t0.CRS board; therefore, when creating the FPGAArray instance,'
+                        'the part \'crs\' is automatically assumed.'
+                        )
+
+    parser.add_argument('--stderr_log_level', type = str, 
+                        help = '(str) The level of logging printed to the screen when controlling the CRS board. Options are:'
+                        '\'error\' (only shows errors)'
+                        '\'warning\' (quiet, only shows warnings)'
+                        '\'info\' (standard, provides key information)'
+                        '\'debug\' (lowest-level, provides highest density of information)'
+                        )
+
+    parser.add_argument('--prog', type = int, 
+                        help = '(int) The prog argument defines whether to force the FPGA to be reprogrammed when the script is re-run.'
+                        'The FPGA will be programmed by default if the CRS board is power cycled. The options for prog are:'
+                        '0: do not program the FPGA'
+                        '1: do not force the FPGA to be re-programmed (if, for instance, the script is re-run)'
+                        '2: force the FPGA to be programmed'
+                        )
+
+    args = parser.parse_args() # args is a Namespace
+
+    # # If a config is specified, load it:
+    # if args.config is not None:
+    #     with open(args.config, 'r') as file:
+    #         config_args = yaml.safe_load(file)
+    #         parser.set_defaults(**config_args)
+            
+    #     # Reload arguments to override config file values with command line values
+    #     args = parser.parse_args()
+        
+    # ====================
+    # Applying some processing to certain parameters that accept multiple types:
+    
+    # First change args from Namespace to dict:
+    args_dict = vars(args) # vars([object]) -> dictionary
+
+    # Add 'crs' to serial number to create a hwm:
+    args_dict['hwm'] = 'crs ' + args_dict['serial']
+
+    args_dict.pop('serial')
+    
+    # Need to convert some strings to ints explicitly:
+    args_dict['prog'] = int(args_dict['prog'])
+        
+    # ====================
+    # Instantiate and return the SOIL object:
+
+    ccc = CRS_CORR_CAPTURE(**args_dict)
+    
+    return ccc
+
+if __name__ == '__main__':
+    ccc = create_ccc()
