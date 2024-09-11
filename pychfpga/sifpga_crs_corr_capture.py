@@ -793,9 +793,12 @@ class CRS_CORR_CAPTURE:
             print('')
 
         else:
+            self.digital_gains_path = digital_gains_path
             print('')
             print('')
             print('===================================')
+            print('')
+            print('---     L O A D   G A I N S    ---')
             print('')
             print(f'--- Loading digital gains from file {self.digital_gains_path}/gains.hdf5 ---')
             print('')
