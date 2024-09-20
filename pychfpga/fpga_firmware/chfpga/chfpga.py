@@ -129,7 +129,7 @@ class chFPGA(FPGAFirmware):
         ("MGK7MB", "siFPGA", ("corr16",)): dict(firmware_url='SIFPGA_MGK7MB.bit', sampling_frequency=800e6, processing_frequency = 200e6, adc_clock_divider=4),
         ("MGK7MB", "chordFPGA", ("chord16",)): dict(firmware_url='chordFPGA_MGK7MB_Rev2.bit', sampling_frequency=1200e6, processing_frequency = 300e6),
         ("ZCU111", "siFPGA", ("corr4", "corr8")): dict(firmware_url='sifpga_zcu111_wrapper.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
-        ("ZCU111", "chFPGA", ("chan8",)): dict(firmware_url='chfpga_zcu111.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
+        ("ZCU111", "chFPGA", ("chan8", "shuffle8",)): dict(firmware_url='chfpga_zcu111_ct.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
         ("CRS",    "siFPGA", ("corr4","corr8")): dict(firmware_url='chfpga_crs_corr.bit', sampling_frequency=3200e6, processing_frequency = 3200e6/8, adc_clock_divider=32),
         ("CRS",    "chFPGA", ("chan8", "shuffle8")): dict(firmware_url='chfpga_crs_ct.bit', sampling_frequency=3200e6, processing_frequency = 3200e6/8, adc_clock_divider=32),
     }
@@ -1374,7 +1374,7 @@ class chFPGA(FPGAFirmware):
 
         """
         if not self.is_open():
-            return 
+            return
 
         if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
             self.logger.warning(f'{self!r} ZCU111 platform has no UDP metrics')
