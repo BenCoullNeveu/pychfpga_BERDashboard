@@ -28,16 +28,32 @@ class CRS_CORR_CAPTURE:
 
     def __init__(self,
                  hwm,
-                 stderr_log_level,
+                 stderr_log_level = 'info',
                  prog,
                  ):
         """
-        Description.
+        The CRS_CORR_CAPTURE class is a wrapper for fpga_array.py designed to optimize data collection with a t0.CRS
+        board. It provides an additional layer of processing to simplify measuremsnts of ADC, FUNCGEN, FFT, Scaler,
+        and correlated data. 
+
+        This class was initially designed to function as an automated script to function as a single-board digital backend 
+        for computing and storing visibilities at the Deep Dish Development Array (D3A) at the Dominion Radio Astrophysical 
+        Observatory (DRAO), the site of the Canadian Hydrogen Observatory and Radio transient Detector (CHORD).
 
         Parameters
         ----------
-        the : TYPE
-            DESCRIPTION.
+        hwm : (str) The hardware map (hwm) provides a description of the part number and serial number of the part
+        to which you'd like to connect. This script is designed for t0.CRS boards, so the part number will always
+        be "crs" (unless this script is upgraded in the future.) 
+
+        Ex) hwm = 'crs 0016' will search the network for t0.CRS SN0016.
+
+        stderr_log_level : (str) Specifies the logging level. See pychfpga/pychfpga/fpga_array.py for details.
+        Default is 'info'. 'debug' provides the most information, while 'warning' is the most silent.
+
+        prog : (str) Specifies whether to force the FPGA to be programmed. '0' does not program the FPGA.
+        '1' programs the FPGA only if it is not already programmed; if it is, the board is not re-programmed.
+        '2' forces the FPGA to be programmed, even if it is already programmed.
 
         Returns
         -------
@@ -725,14 +741,65 @@ class CRS_CORR_CAPTURE:
                 ):
 
         """
-        Runs overnight acquisitions, handling data capture and file writing.
+        A method for computing and storing visibility data. 
+
+        Keep in mind that the default UCAP mode is 0, meaning that bursts of ADC and FFT data have 2 frames per input channel. Therefore, any burst 
+        of ADC or FFT data will return double the number of frames requested. 
 
         Parameters
         ----------
+        data_path : (str) The path to the directory to which visibility data will be written. If it doesn't exist, a parent directory will be created according
+        to data_path. Within this directory, another directory will be created according to the date and time of the acquisition. HDF5 files will be written within 
+        this directory, beginning with 0.hdf5 and incrementing the number by 1 with each new file. In this manner, all data can be stored in a parent directory,
+        with specific acquisitions identified by the date and time of the acquisiton.
+
+        digital_gains_path : (str) The path to which digital gains will be stored, or the file from which digital gains will be called. If None, then observe()
+        will compute the digital gains with self.compute_gains(), which will be stored in the directory f'{data_path}/digital_gains/{acq_string}_digitalgain' as
+        the file 'gains.hdf5'. The acq_string corresponds to the date and time of the acquisition, as with the data itself.
+
+        If digitial_gains_path is specified, observe() will search for a 'gains.hdf5' file within the specified directory. These gains will be opened and set 
+        in the Scaler during the observation. 
+
+        n_vis_per_file : (int) The number of visibilities to store per HDF5 file. Increasing this number will increase the size of each HDF5 file. Reducing this
+        may be useful to collect more ADC and/or FFT snapshots during the observation, as the ADC and/or FFT snapshots are collected when a new HDF5 file is created. 
+
+        integration_time : (int or float) The integration time for correlated data.
+
+        autocorr_only : (int, 0 or 1 only) Specifies whether or not to return all correlated products or autocorrelations only. If '0', all correlation products 
+        are returned. If '1', only autocorrelations are returned. Note that self.prod and the shape of the visibility array are the same in each case.
+
+        no_accum : (int, 0 or 1 only) Specifies whether to accumulate correlated frames or not in the firmware accumulator/integrator. If '0', the accumulation/integration
+        of correlated frames is enabled. If '1', accumulation/integration is disabled.
+
+        n_firmware_frames : (int) The number of frames to be accumulated/integrated in the firmware accumulator/integrator. The minimum is 8192 - 1, the maximum is
+        32768 - 1, and the default is 16384 - 1. Note that the data rate of correlated through the 1G ethernet link is proportional to this setting. The more firmware frames 
+        that are integrated, the slower the data rate --- beware, as this could also lead to the saturation of the firmware accumulator/integrator. Likewise, the 
+        fewer firmware frames that are integrated, the data rate will increase, but there is less likelihood of saturation. 
+
+        gain_target : (float) The mean of the absolute value of many Scaler frames after applying digital gains. The target value balances the minimization of 
+        quantization noise and saturations of the Scaler. The default is 1.5*sqrt(2), inspired by the CHIME value.
+
+        To check that you're meeting the target, run compute_gains(), and then take many (e.g., 100) Scaler frames, compute their magnitude, and take the
+        mean across the frame axis. Compare the mean to the target.
+
+        number_of_fft_averages : (int) The number of FFT frames used to calculate the digital gains. It is recommended to set this to approximately 1000.
+
+        gain_type : (str) Specifies whether any post-processing is applied to the computed digital gains. The default is 'raw', meaning no additional processing
+        is done after computing digital gains. See compute_gains() for further details --- note that 'raw' has performed the best out of the current algorithms.
+
+        capture_adc_bursts : (bool) Specifies whether to capture ADC frames at the beginning of each HDF5 file. If True, capture ADC data. If False, don't capture
+        ADC data.
+
+        n_adc_bursts : (int) The number of ADC frames to capture for each HDF5 file if capture_adc_bursts = True.
+
+        capture_fft_bursts : (bool) Specifies whether to capture FFT frames at the beginning of each HDF5 file. If True, capture FFT data. If False, don't capture
+        FFT data.
+
+        n_fft_bursts : (int) The number of FFT frames to capture for each HDF5 file if capture_fft_bursts = True.
 
         Returns
         -------
-
+        None.
 
         """
 
@@ -798,9 +865,9 @@ class CRS_CORR_CAPTURE:
             print('')
             print('===================================')
             print('')
-            print('---     L O A D   G A I N S    ---')
+            print('---   L O A D   G A I N S ---')
             print('')
-            print(f'--- Loading digital gains from file {self.digital_gains_path}/gains.hdf5 ---')
+            print(f'Loading digital gains from file {self.digital_gains_path}/gains.hdf5 ---')
             print('')
             digital_gains_file = h5py.File(f'{self.digital_gains_path}/gains.hdf5', 'r')
             lin = digital_gains_file['lin'][:]
