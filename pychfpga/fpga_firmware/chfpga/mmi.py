@@ -443,7 +443,7 @@ class MMI(object):
         """
         def entries():  # generator to list all the bitfield values
             for (name, bitfield) in vars(type(self)).items():
-                if isinstnce(bitfield, BitField):
+                if isinstance(bitfield, BitField):
                     value = getattr(self, name)
                     entry = {'name': name,
                              'page': bitfield.page,
@@ -455,7 +455,8 @@ class MMI(object):
                              'doc' : bitfield.doc,
                              'value': value,
                              'bin_value': ('{0:0%ib}' % bitfield.width).format(value),
-                             'hex_value': ('{0:0%iX}' % (bitfield.width + 3) // 4).format(value)
+                            #  'hex_value': ('{0:0%iX}' % (bitfield.width + 3) // 4).format(value)
+                             'hex_value': ('{0:0%iX}' % (bitfield.width + 3)).format(value)
                              }
                     yield entry
         table = list(entries())

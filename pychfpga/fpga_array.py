@@ -882,7 +882,7 @@ class FPGAArray(object):
         ###########################################################################
         for ib in Motherboard.get_all_instances():
             if ib.serial and exclude_iceboards:
-                int_serial = self._to_int(ib.serial)
+                int_serial = self._to_integer(ib.serial)
                 if ib.serial in exclude_iceboards or int_serial in exclude_iceboards:
                     ib.delete_instance()
                     self.logger.info(
@@ -2597,7 +2597,7 @@ class FPGAArray(object):
                 bs = bin_map[(crate % 2, slot)]
                 expected_bins = bs['cb1'][slot][bs['cb2'][crate % 2]][bs['cb3'][lane]]
                 if not all(np.equal(expected_bins, actual_bins)):
-                    print(f'Link {(crate, slot, link)} do not match: '
+                    print(f'Link {(crate, slot, lane)} do not match: '
                           f'Expected bins: {expected_bins!r}, got bins {actual_bins!r}')
                     errors += 1
 
@@ -4090,8 +4090,8 @@ class FPGAArray(object):
                 continue
             (source_crate, source_slot, source_lane) = tx_id
             (dest_crate, dest_slot, dest_lane) = rx_id
-            ic0 = crates[source_crate]
-            ic1 = crates[dest_crate]
+            ic0 = crate_map[source_crate]
+            ic1 = crate_map[dest_crate]
             if (source_slot not in ic0.slot) or (dest_slot not in ic1.slot):
                 continue
             bp0 = ic0.slot[source_slot].BP_SHUFFLE
@@ -4646,11 +4646,13 @@ class FPGAArray(object):
                         subsystem['status'] = any(status_dict['status'] for status_dict in subsystem['lanes'].values())
         return info
 
-    async def print_shuffle_status(self, reset_stats=False, verbose=1, grid=False):
-        """ Prints status information of the corner-turn engine
+    def _print_shuffle_status(self, info, verbose=1, grid=False) -> None:
+        """ Formats and prints the status information of the corner-turn engine
 
 
         Parameters:
+
+            info (list[dict]): output of get_corner_turn_engine_status_async that we wish to print
 
             reset_stats (bool): if True, the statistics on the corner turn subsystems will be reset before being measured.
 
@@ -4665,8 +4667,6 @@ class FPGAArray(object):
             grid (bool): If true, line separators will be used
 
         """
-
-        info = await self.get_corner_turn_engine_status_async(reset_stats=reset_stats)
         for crate in info:
             # Print the table
             corner_label = 'Slot->\nS/N ->\n\\|/Lane'
@@ -4674,6 +4674,7 @@ class FPGAArray(object):
             col_labels = [f"SN{slot['serial']}\n{slot_number}" for slot_number, slot in crate['slots'].items()]
             # row_labels = ['BP PCB Rx\nBP QSFP Rx\nCB2 FIFO\nCB2 ALIGN\nCB2 FRAMEnCB3 FIFO\nCB3 ALIGN\nCB3 FRAME\n']
             row_labels = []
+            data = []
 
             slots = list(crate['slots'].values())
             first_slot = [slot for slot in slots if slot['ib']][0]
@@ -4711,6 +4712,30 @@ class FPGAArray(object):
             self.print_table(
                 data, row_labels=row_labels, col_labels=col_labels,
                 corner_label=corner_label, line_sep=grid)
+
+    async def print_shuffle_status(self, reset_stats=False, verbose=1, grid=False):
+        """ Prints status information of the corner-turn engine
+
+
+        Parameters:
+
+            reset_stats (bool): if True, the statistics on the corner turn subsystems will be reset before being measured.
+
+            verbose (int): Determine how much status information is returned
+
+                verbose=0: Will provide the '-' or 'ERR' for each subsystem  depending on whether there are any errors on any lane in the subsystem
+
+                verbose=1: Will provide '-' or 'ERR' for each lane of the sybsystem depending on whether there are any errors on for each lane in the subsystem
+
+                verbose=2: Will provide detailed status info on each lane of the subsystem in the form of a dict. Will also add the coordinates of the Tx/Rx pairs involved in backplane links.
+
+            grid (bool): If true, line separators will be used
+
+        """
+
+        info = await self.get_corner_turn_engine_status_async(reset_stats=reset_stats)
+        self._print_shuffle_status(info, verbose=verbose, grid=grid)
+
 
     def print_table(self, data=None,
                     row_labels=None, col_labels=None, corner_label=None,
@@ -4821,6 +4846,7 @@ class FPGAArray(object):
             return
 
         # Process func and end up with a dict of {iceboard:cell_text}
+        data = {}
         if func:
             if isinstance(func, dict):
                 data = func
@@ -4860,16 +4886,20 @@ class FPGAArray(object):
             corner_label = '%s\nCrate #%s' % (crate.get_string_id(), crate.crate_number)
             slot_range = list(range(1, crate.NUMBER_OF_SLOTS + 1))
             col_labels = ['%i' % (s) for s in slot_range]
+
+
+
             if add_serial:
                 for i, slot in enumerate(slot_range):
-                    col_labels[i] += ('\nSN' + crate.slot[slot].serial) if slot in crate.slot else '\n-'
+                    col_labels[i] += (f'\nSN {crate.slot[slot].serial}') if slot in crate.slot else '\n-'
             if add_serial:
                 for i, slot in enumerate(slot_range):
-                    col_labels[i] += ('\n%s' % crate.slot[slot].hostname) if slot in crate.slot else '\n-'
+                    col_labels[i] += (f'\n{crate.slot[slot].hostname}') if slot in crate.slot else '\n-'
 
             table = []
             # local_row_labels = [row_labels for crate in valid_crates]
             for slot in slot_range:
+
                 # col_data = []
                 if slot in crate.slot.keys():
                     cell = data[crate.slot[slot]] if data else ''
@@ -5147,7 +5177,7 @@ class FPGAArray(object):
 
         plt.figure(figure_number)
         plt.clf()
-        plt.hold(1)
+        # plt.hold(1)
         for ic in self.ic:
             ib = Ccoll(ic.slot.values())
             t = ib.get_motherboard_temperature(sensor)
@@ -5164,12 +5194,12 @@ class FPGAArray(object):
 
     def _update_arm_firmware(self, image_filename, power_cycle=True):
         """
-        Update the ARM SD card firmware and power cycle all the power supplies. The image must be compressed with bzip2.
+        Update the ARM SD card firmware. The image must be compressed with bzip2 and the boards must be power cycled.
         """
         self.ib._update_arm_firmware(image_filename, delay=120)
-        if self.ps and power_cycle:
-            ps.unlock()
-            ps.power_cycle(delay=4)
+        # if self.ps and power_cycle:
+        #     self.ps.unlock()
+        #     self.ps.power_cycle(delay=4)
 
     async def set_adc_delays_async(self, **kwargs):
         """
