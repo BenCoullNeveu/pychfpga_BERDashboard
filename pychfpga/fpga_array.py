@@ -4645,9 +4645,9 @@ class FPGAArray(object):
                         # generate a subsystem status summary
                         subsystem['status'] = any(status_dict['status'] for status_dict in subsystem['lanes'].values())
         return info
-    
+
     def _print_shuffle_status(self, info, verbose=1, grid=False) -> None:
-        """ Formats and prints the status information of the corner-turn engine 
+        """ Formats and prints the status information of the corner-turn engine
 
 
         Parameters:
@@ -4712,7 +4712,7 @@ class FPGAArray(object):
             self.print_table(
                 data, row_labels=row_labels, col_labels=col_labels,
                 corner_label=corner_label, line_sep=grid)
-            
+
     async def print_shuffle_status(self, reset_stats=False, verbose=1, grid=False):
         """ Prints status information of the corner-turn engine
 
@@ -4881,18 +4881,16 @@ class FPGAArray(object):
 
         # Create an OrderedSet of valid crates. Use the OrderedDict trick to impelment an OrderedSet
         valid_crates = list(OrderedDict((ib.crate, None) for ib in iceboards if ib.crate and ib.crate.serial).keys())
-        
+
         for crate in valid_crates:
             corner_label = '%s\nCrate #%s' % (crate.get_string_id(), crate.crate_number)
             slot_range = list(range(1, crate.NUMBER_OF_SLOTS + 1))
             col_labels = ['%i' % (s) for s in slot_range]
-            
-            
+
+
 
             if add_serial:
                 for i, slot in enumerate(slot_range):
-                    # if slot in crate.slot:
-                    #     crate.slot[slot].serial = None
                     col_labels[i] += (f'\nSN {crate.slot[slot].serial}') if slot in crate.slot else '\n-'
             if add_serial:
                 for i, slot in enumerate(slot_range):
@@ -4901,7 +4899,7 @@ class FPGAArray(object):
             table = []
             # local_row_labels = [row_labels for crate in valid_crates]
             for slot in slot_range:
-                
+
                 # col_data = []
                 if slot in crate.slot.keys():
                     cell = data[crate.slot[slot]] if data else ''
