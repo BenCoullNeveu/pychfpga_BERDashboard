@@ -29,7 +29,7 @@ class CRS_CORR_CAPTURE:
     def __init__(self,
                  hwm,
                  stderr_log_level = 'info',
-                 prog,
+                 prog = 1,
                  ):
         """
         The CRS_CORR_CAPTURE class is a wrapper for fpga_array.py designed to optimize data collection with a t0.CRS
@@ -94,7 +94,7 @@ class CRS_CORR_CAPTURE:
             # fft.FFT_SHIFT = 0b11111000000000 # less aggressive shift schedule
             # fft.FFT_SHIFT = 0b11111110000000
             # fft.FFT_SHIFT = 0b11111111100000
-            fft.FFT_SHIFT = 0b11111111111000
+            fft.FFT_SHIFT = 0b00000111111111
             fft.PIPELINE_DELAY = fft.MEASURED_PIPELINE_DELAY # set pipeline delay equal to measured delay
             print(fft.status())
 
@@ -738,7 +738,7 @@ class CRS_CORR_CAPTURE:
                 n_adc_bursts = 5,
                 capture_fft_bursts = True,
                 n_fft_bursts = 5
-                ):
+                ):\
 
         """
         A method for computing and storing visibility data. 
@@ -872,6 +872,7 @@ class CRS_CORR_CAPTURE:
             digital_gains_file = h5py.File(f'{self.digital_gains_path}/gains.hdf5', 'r')
             lin = digital_gains_file['lin'][:]
             log = digital_gains_file['log'][:]
+            self.set_gains(lin, [int(n) for n in log])
 
         # ===========
         # Configure the channelizer and correlator. This is done after gain
