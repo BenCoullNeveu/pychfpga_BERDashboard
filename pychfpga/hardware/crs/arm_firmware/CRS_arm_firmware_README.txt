@@ -97,6 +97,20 @@ To check the programming:
 		mDNS: Board crs_0026 registered successfully over mDNS at 10.10.10.203:7
 
 
+Resetting the board
+-------------------
+
+xsct
+rst -por
+
+
 Notes
 -----
 
+ 2024-10-23: Programming failed on CRS 011.
+
+   - Launched Hardware manager on Vivado and could see ARM & FPGA, and monitor ARM temperatures. So cable & JTAG is good.
+   - Launched Vitis. tested target: can see FPGA.
+   - Compiled TCPIPE. Created boot.bin (design was for ZCU111, had to change FSBL etc.). programmed flash. had wrong flash type, fixed it. reprogrammed, worked, verify is OK but says programming failed on last line. Does ot boot properly on minicom.
+   - Retry script with image in arm_firmware. Still error on final line, but otherwise programming seems ok now. Reboot. minicom shows normal boot. Can connect with pychfpga.
+   - Not sure what fixed the problem: launchign Hardware manager, or programming with Vitis.
