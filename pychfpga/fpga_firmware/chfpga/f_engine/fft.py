@@ -47,7 +47,8 @@ class FFT(MMI):
         # self.FFT_SHIFT= 2**3 - 1
         # self.FFT_SHIFT = 0b11111111111111
         # self.PIPELINE_DELAY = 3230
-        self.PIPELINE_DELAY = 12533 # self.MEASURED_PIPELINE_DELAY # try
+        # self.PIPELINE_DELAY = 12533 # self.MEASURED_PIPELINE_DELAY # try
+        self.PIPELINE_DELAY = 10452 # Bitgrowth FFT good value=10452 10450= DC@bin 8, 16451 DC @ bin 4,
         # meas_pipeline_delay = self.MEASURED_PIPELINE_DELAY
         # self.PIPELINE_DELAY = meas_pipeline_delay
         # print('set delay, meas delay', self.PIPELINE_DELAY, self.MEASURED_PIPELINE_DELAY)
