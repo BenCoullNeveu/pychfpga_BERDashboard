@@ -103,7 +103,8 @@ class FUNCGEN(MMI):
         # Warning!:
         #   - byte ordering and dtype are changed when using operators (>>, /, +, & etc).
         #   - Use N//2 to make sure  the arange is of integer type.
-        'arb':            (0, lambda data, self=None: data),  # Arbitrary waveform stored in buffer
+        'buffer':         (0, lambda buffer=None, self=None: buffer),  # Arbitrary waveform
+        'arb':            (0, lambda data, self=None: data),  # Arbitrary waveform
         'a':              (1, lambda self, a: np.full(self.NS, a)),  # All bytes are Byte A. 16-bit friendly
         'b':              (2, lambda self, b: np.full(self.NS, b)),  # All bytes are Byte B
         'ab':             (3, lambda self, a, b, : np.tile((a , b ), self.NS // 2)),  # Bytes alternate between A and B.
@@ -112,7 +113,8 @@ class FUNCGEN(MMI):
         '4bit_ramp':      (6, lambda self, **kwargs: np.arange(self.NS) << (self.Nbits - 4)),  # Generates the ramp in the upper 4 bits of the ADC sample (e.g for 8 bits: 0x00, 0x10, 0x20, ... 0xF0.)
         '4bit_real_ramp': (7, lambda self, **kwargs: np.ravel([(i,0) for i in range(self.NS//2)]) << (self.Nbits - 4)),  # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
          # '4bit_split_ramp': (0, FN_BUFFER, ),  # Generates 0x0000, 0x0010, 0x0020, .. 0x00F0, 0x1000, 0x1010 ...
-        'sin':            (8, lambda self, freq=1, ampl=None: (np.sin(np.arange(self.NS) * 2 * np.pi / self.NS * freq) * (ampl if ampl is not None else ((1 << (self.Nbits - 1)) - 1) ))),  # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
+        'sin':            (8, lambda self, freq=1, ampl=None: (np.sin(np.arange(self.NS) * 2 * np.pi / self.NS * freq) * (ampl if ampl is not None else ((1 << (self.Nbits - 1)) - 1) ))),
+        'cos':            (8, lambda self, freq=1, ampl=None: (np.cos(np.arange(self.NS) * 2 * np.pi / self.NS * freq) * (ampl if ampl is not None else ((1 << (self.Nbits - 1)) - 1) ))),
         'crate_slot':     (9, lambda self: np.tile(self.fpga.get_id()[:2], self.NS // 2) << (self.Nbits - 4)),  # Bytes alternate between crate number and slot number (in upper 4 bits). If FFT and scaler are bypassed, then the complex data has the crate number in the real part and slot number in imag part.
         #'crate':          (10, lambda self, N=BUFFER_SIZE: np.tile(np.array([self.get_id()[0]<<4, 0], np.uint8), N / 2)),  # Bytes alternate between crate number (in upper 4 bits) and 0. If FFT and scaler are bypassed, then the complex data has the crate number in the real part.
         'freq_test':      (10, freq_test),
@@ -140,7 +142,7 @@ class FUNCGEN(MMI):
         if self.BYTES_PER_SAMPLE not in(1 , 2):
             raise RuntimeError(f"Only ADC data with 1 or 2 bytes/samples (1-16 bits) is supported. Current value is {self.BYTES_PER_SAMPLE} bytes/sample  ")
 
-        self.dtype = np.dtype(f'>u{self.BYTES_PER_SAMPLE}') # storage format, either dtype 'u1' or 'u2' (MSB is at lower byte address)
+        self.dtype = np.dtype(f'>u{self.BYTES_PER_SAMPLE}') # storage format, either dtype 'u1' or 'u2' (MSB is at lower byte address = big endian)
         self.lshift = self.dtype.itemsize*8 - self.fpga.ADC_BITS_PER_SAMPLE
 
         # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
@@ -150,10 +152,10 @@ class FUNCGEN(MMI):
         """ Resets the function generator"""
         self.pulse_bit('RESET')
 
-    def set_data_source(self, source_name, data=None, seed=None):
+    def set_data_source(self, source_name, data=None, seed=None, **kwargs):
         """
-        Selects the source of the data outputed by the function generator: ADC
-        signal, noise generator, frame counters, waveform buffer.
+        Selects the type of data outputed by the function generator: ADC
+        signal, noise generator, frame counters, predetermined or user-provided waveform.
 
         If the noise generator is selected, the seed can be specified as as 15-bit value in ``seed``.
 
@@ -164,8 +166,17 @@ class FUNCGEN(MMI):
         might be interrupted and might confuse the downstream logic (FFT,
         crossbars, packet aligner etc.)
         """
-        if source_name not in self.DATA_SOURCE_NAMES:
-            raise Exception('Invalid data source name')
+
+        data_sources = self.DATA_SOURCE_NAMES.keys()
+        function_names = self.FUNCTION_NAMES.keys()
+
+        if source_name in function_names:
+            self.set_function(source_name, **kwargs)  # set the buffer with desired waveform
+            source_name = 'buffer'
+        elif source_name not in data_sources:
+            raise ValueError(f"Invalid data source or function name '{source_name}'. "
+                             f"Valid values are {', '.join(list(data_sources) + list(function_names))}")
+
 
         if seed is not None:
             self.BYTE_A = seed & 0xff
@@ -183,9 +194,9 @@ class FUNCGEN(MMI):
         data_source_number = self.FUNCTION  # make sure we read this only once
         return [key for (key, value) in self.DATA_SOURCE_NAMES.items() if value == data_source_number][0]
 
-    def set_function(self, function_name, **kwargs):
+    def set_function(self, function_name, verbose=False, **kwargs):
         """
-        Sets the waveform buffer with a predetermined waveform.
+        Sets the waveform buffer with a predetermined waveform. It is recommended to use set_data_source() instead.
 
         Keyword arguments are passed directly to the function that generate
         the buffer data. The argument 'a' and 'b' can be specified for
@@ -197,8 +208,9 @@ class FUNCGEN(MMI):
         (fn_number, buffer_gen) = self.FUNCTION_NAMES[function_name]
         function_args = ', '.join('%s=%.30r' % (arg, val) for (arg, val) in kwargs.items())
         buffer_info = f'{function_name}({function_args})'
-        print(f'*** Setting function to {buffer_info}')
-        self.set_buffer(buffer_gen(self=self, **kwargs), function_number=fn_number, info=buffer_info)
+        if verbose:
+            print(f'*** Setting function to {buffer_info}')
+        self.set_buffer(buffer_gen(self=self, **kwargs), function_number=fn_number, info=buffer_info, verbose=verbose)
 
     def get_function(self):
         """
@@ -210,6 +222,7 @@ class FUNCGEN(MMI):
             return 'Unknown'
         else:
             return fn_names[0]
+
     def set_ram_page(self, page):
         """ Sets the RAM page number
 
@@ -221,7 +234,7 @@ class FUNCGEN(MMI):
         self.RAM_PAGE_LSB = page & 0b111
         self.RAM_PAGE_MSB = (page >> 3) & 0b1111
 
-    def set_buffer(self, data, function_number=0, info='Arbitrary data'):
+    def set_buffer(self, data, function_number=0, info='Arbitrary data', verbose=False):
         """ Sets the buffer contents to be used for functions that uses it.
 
         Parameters:
@@ -236,19 +249,30 @@ class FUNCGEN(MMI):
                If 'data' is a bytestring or bytearray, it must be `self.NB` bytes long and will be
                written directly in the waveform buffer without any conversion.
 
+               if `data` is None, no action is taken.
+
             function_number: Value  (0-255) to store along with the data to identify the buffer
                 contents. It has no impact on the generated waveforms.
 
-            info (str): *deprecated*
+            info (str): *deprecated, not used* String that was originally stored in the FPGA to
+                convey more information on the waveform that was in the buffer.
+
+            verbose (int): Verbosity level
 
         """
-        # print(data)
+        if data is None:
+            return
+
         if isinstance(data, (bytes, bytearray)):
             pass  # use buffer as is.
-        elif isinstance(data, np.ndarray):
-            data = ((data.astype(int) << self.lshift)).astype(self.dtype).tobytes()  # convert to dtype *after* shift otherwise we lose type and endianness
         else:
-            data = (np.fromiter(data, int) << self.lshift).astype(self.dtype).tobytes()
+            # make sure the data fits in the number of bits per sample for this platform
+            if any(data < -2**(self.fpga.ADC_BITS_PER_SAMPLE-1)) or any (data > 2**(self.fpga.ADC_BITS_PER_SAMPLE-1)-1):
+                raise ValueError('Some data points are out or range')
+            if isinstance(data, np.ndarray):
+                data = ((data.astype(int) << self.lshift)).astype(self.dtype).tobytes()  # convert to dtype *after* shift otherwise we lose type and endianness
+            else:
+                data = (np.fromiter(data, int) << self.lshift).astype(self.dtype).tobytes()
 
         # data = data.tobytes()
         # print(len(data), data[:100].hex(':'))
@@ -266,7 +290,8 @@ class FUNCGEN(MMI):
             page_data = data[page_slice]
             self.set_ram_page(page)
             self.write_ram(0, page_data)
-            print(f'page={page}, slice={page_slice}')
+            if verbose:
+                print(f'page={page}, slice={page_slice}')
             self.buffer_cache[page_slice] = page_data
 
         # Store info on the buffer contents

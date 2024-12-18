@@ -1374,7 +1374,7 @@ class chFPGA(FPGAFirmware):
 
         """
         if not self.is_open():
-            return 
+            return
 
         if self.PLATFORM_ID == self._PLATFORM_ID_ZCU111:
             self.logger.warning(f'{self!r} ZCU111 platform has no UDP metrics')
@@ -2649,7 +2649,7 @@ class chFPGA(FPGAFirmware):
             adcdaq_mode=None,
             data_source=None,
             function=None,
-            freq_test_bins=None,
+            # freq_test_bins=None,  # will be passed into function_kwargs
             fft_bypass=None,
             fft_shift=None,
             scaler_bypass=None,
@@ -2686,59 +2686,10 @@ class chFPGA(FPGAFirmware):
             self.set_data_source(data_source, channels=channels, **function_kwargs)  # does a channelizer reset
 
         if function is not None:
-            logger = logging.getLogger(self.__class__.__name__)
-            logger.warning(
+            self.logger.warning(
                 "Using 'function' parameter for setting FUNCGEN function is obsolete. Please use 'data_source' instead."
             )
-            # Handle special case where we set the output of the channelizer
-            # with complex numbers that will give unique correlation products
-            # (visibilities). There are 108 such numbers in a (4+4) bits
-            # complex number. `freq_test_bins` is a list of up to 108  bin
-            # numbers that will be assigned these special complex numbers. Other bins are zero. If
-            # `freq_test_bins` is empty, all bins are set to (1+1j),
-            #
-            # (This should be moved in FUNCGEN).
-            #
-            # Configure funcgen so the visibility data has a unique real
-            # number for 108 freq bins. The other freq bins are zeros
-            if function == 'freq_test':
-                # Get the number of bins to set with the special complex numbers
-                # We have a limited pool of 108 special complex numbers, so we saturate the number.
-                N = min(len(freq_test_bins), 108)
-                if N == 0:
-                    # Send same number (1+0j) for all frequencies
-                    v = (9 * np.ones(2048, dtype=np.uint8)) << 4  # First set 1+1j (9 means 1 with offset encoding)
-                    v[1::2] = (8 * np.ones(1024, dtype=np.uint8)) << 4  # Clear imag part (8 means 0 is offset encoding)
-                else:
-                    # Send pattern that will generate unique products
-                    # First we define the unique complex number, offset-encoded, and shifted to the high nibble.
-                    freq_pattern_real = np.array([ 1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  2,  2,
-                                                   2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  3,  3,  3,  3,  3,
-                                                   3,  3,  3,  3,  3,  3,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,
-                                                   4,  4,  5,  5,  5,  5,  5,  5,  5,  5,  5,  6,  6,  6,  6,  6,  6,
-                                                   6,  6,  7,  7,  7,  7,  7,  7,  7,  8,  8,  8,  8,  8,  8,  9,  9,
-                                                   9,  9,  9,  9, 10, 10, 10, 10, 11, 11, 11, 11, 11, 12, 12, 12, 12,
-                                                  13, 13, 13, 14, 14, 15], dtype=np.uint8) << 4
-                    freq_pattern_imag = np.array([ 1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,  2,  3,
-                                                   4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,  3,  4,  5,  6,  7,
-                                                   8,  9, 10, 11, 12, 13, 14, 15,  4,  5,  6,  8,  9, 10, 11, 12, 13,
-                                                  14, 15,  6,  7,  8,  9, 11, 12, 13, 14, 15,  6,  8,  9, 10, 11, 12,
-                                                  14, 15,  7,  8, 10, 12, 13, 14, 15,  8, 10, 12, 13, 14, 15,  9, 10,
-                                                  11, 12, 14, 15, 12, 13, 14, 15, 11, 12, 13, 14, 15, 12, 13, 14, 15,
-                                                  13, 14, 15, 14, 15, 15], dtype=np.uint8) << 4
-                    v = np.zeros(2048, dtype=np.uint8)
-                    v_real = np.zeros(1024, dtype=np.uint8)
-                    v_imag = np.zeros(1024, dtype=np.uint8)
-                    v_real[freq_test_bins] = freq_pattern_real[:N]
-                    v_imag[freq_test_bins] = freq_pattern_imag[:N]
-                    v[::2] = v_real
-                    v[1::2] = v_imag
-                # Set the vectors. If FFT and scaler are bypassed, then the
-                # visibility data has a unique products for the 108 freq
-                # bins in freq_test_bins. The rest are zeros.
-                self.set_funcgen_function('arb', channels=channels, data=v)
-            else:
-                self.set_funcgen_function(function=function, channels=channels, **function_kwargs)
+            self.set_funcgen_function(function=function, channels=channels, **function_kwargs)
 
         # Set FFT bypass and shift schedule
         if fft_bypass is not None:
@@ -2815,29 +2766,16 @@ class chFPGA(FPGAFirmware):
         changed. Use `set_funcgen_function()` if the function generator is
         already active and you want to change only the waveform
         """
-        data_sources = self.chan[0].FUNCGEN.DATA_SOURCE_NAMES.keys()
-        function_names = self.chan[0].FUNCGEN.FUNCTION_NAMES.keys()
 
         source = source.lower()
 
         if channels is None:
             channels = self.default_channels
 
-        if source in data_sources:
-            self.set_ant_reset(1)  # Reset is needed to resynchronize the system with the new data
-            for chan in self.get_channelizers(channels):
-                chan.FUNCGEN.set_data_source(source)
-            self.set_ant_reset(0)  # Reset is needed to resynchronize the system with the new data
-        elif source in function_names:
-            self.set_ant_reset(1)  # Reset is needed to resynchronize the system with the new data
-            for chan in self.get_channelizers(channels):
-                chan.FUNCGEN.set_data_source('funcgen')
-                chan.FUNCGEN.set_function(source, **kwargs)
-            self.set_ant_reset(0)  # Reset is needed to resyncronize the system with the new data
-        else:
-            raise ValueError("Invalid data source or function name '%s'. Valid data sources are %s:" % (
-                    source,
-                    ', '.join(data_sources + function_names)))
+        self.set_ant_reset(1)  # Reset is needed to resynchronize the system with the new data
+        for chan in self.get_channelizers(channels):
+            chan.FUNCGEN.set_data_source(source, **kwargs)
+        self.set_ant_reset(0)  # Release reset
 
     def get_data_source(self):
         """
