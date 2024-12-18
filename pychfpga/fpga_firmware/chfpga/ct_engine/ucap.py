@@ -190,7 +190,7 @@ class RawFrameReceiver(object):
                 try:
                     s = self.socket.recv_into(self.buf[0])
                     flushed += 1
-                    if verbose:
+                    if verbose >=2:
                         print(f'flushing packet len={s} cookie=0x{self.buf_cookie[0]:02x} ts={self.buf_ts[0] & self.ts_mask}')
 
                 except socket.timeout:
@@ -212,7 +212,7 @@ class RawFrameReceiver(object):
                         self.last_ts = ts
                         continue
                     if self.last_ts == ts:
-                        if verbose:
+                        if verbose >=2:
                             print(f'skipping packet len={s} cookie=0x{self.buf_cookie[0]:02x} ts={ts}')
                         continue
                     self.last_ts = ts
@@ -241,7 +241,7 @@ class RawFrameReceiver(object):
                     continue
                 ts = self.buf_ts[self.n] & self.ts_mask
                 self.n += 1
-                if verbose:
+                if verbose >=2:
                     print(f'ts={ts}, last_ts={self.last_ts}, sid={self.buf_stream_id[self.n]:04x}')
                 if self.last_ts is None:
                     self.last_ts = ts
@@ -266,7 +266,7 @@ class RawFrameReceiver(object):
             format='8',
             ncap = None,
             split = False,
-            verbose=0):
+            verbose=1):
         """ Capture raw data frames sent by UCAP.
 
         Parameters:
@@ -289,6 +289,7 @@ class RawFrameReceiver(object):
                 '8': return the data as array of bytes (int8)
                 '16': return the data as array of 16-bit signed integers. Use when capturing the output of the FUNCGEN.
                 '16+16': return the data as an array of (16+16) bit complex numbers. Use for data at the output of the SCALER (unless the FFT is bypassed)
+            verbose (int): verbosity level. 0: no messages, 1: basic messages, 2: detailed messages
 
         Returns:
          (timestamp, data, count) tuple where:
@@ -311,7 +312,8 @@ class RawFrameReceiver(object):
             print(f'Flushed {flushed} packets while emptying UDP buffers')
             self.last_ts = None
             flushed = self.wait_for_new_timestamp(self.cookie, data_timeout, verbose=verbose)
-            print(f'Skipped {flushed} packets while waiting for a fresh timestamp')
+            if verbose:
+                print(f'Skipped {flushed} packets while waiting for a fresh timestamp')
         self.socket.settimeout(data_timeout)
 
         if not self.n:
@@ -323,7 +325,8 @@ class RawFrameReceiver(object):
         mode = (self.buf_subframe[0] >> 2) & 0x3
         frames_per_channel = 2 * 2**(mode)
         nchan = min(len(sid_map), 16 // frames_per_channel)
-        print(f"mode={mode}, {nchan} channel(s), {frames_per_channel} frames per channel, {ncap} captures")
+        if verbose:
+            print(f"mode={mode}, {nchan} channel(s), {frames_per_channel} frames per channel, {ncap} captures")
 
         # Allocate destination buffer
 
@@ -355,10 +358,11 @@ class RawFrameReceiver(object):
             self.buf[0] = self.buf[self.n-1]
             self.n = 1
 
-        for i in range(nchan):
-            print(f'Chan {i}: {data_count[i].sum()-ncap*16*4 or "no"} missing packets')
+        if verbose:
+            for i in range(nchan):
+                print(f'Chan {i}: {data_count[i].sum()-ncap*16*4 or "no"} missing packets')
 
-        if ncap > 1:
+        if ncap > 1 and verbose:
             print(f'Timestamp differences: {set(np.diff(ts))}')
 
         if format == "16":
