@@ -1504,7 +1504,7 @@ class FPGAArray(object):
                     serial, slot, crate_number = split_fields(el, 3)
                     if slot is not None and slot < 1:
                         raise ValueError('Slot number cannot be zero')  # because zero means 'no slot'
-                    logger.debug(f'Adding Motherboard {serial}, slot={slot}, crate={crate_number}')
+                    logger.debug(f'Adding Motherboard {current_class.part_number} {serial!r}, slot={slot!r}, crate={crate_number!r}')
                     ib = Motherboard.get_unique_instance(
                         new_class=current_class,
                         serial=serial,

@@ -3021,7 +3021,11 @@ class chFPGA(FPGAFirmware):
                 self._data_socket = opened_sockets[port_number]
             else:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                sock.bind((self.interface_ip_addr, port_number))
+                self.logger.debug(f'Binding socket {port_number} to IP {self.interface_ip_addr}')
+                try:
+                        sock.bind((self.interface_ip_addr, port_number))
+                except OSError:
+                    raise OSError(f'Socket at port {port_number} is already in use on interface {self.interface_ip_addr}. On Linux, use "netstat -ulpe" to find which user/process has the port already open')
                 # store the socket in the main module so it will live persistently until the Python session is closed.
                 (actual_ip_addr, actual_port_number) = sock.getsockname()
                 opened_sockets[actual_port_number] = sock
@@ -4342,11 +4346,6 @@ class chFPGA(FPGAFirmware):
             channels (list of int): channels to which the gain is applied. If 'channels' is None, it
                 is applied to the default (active) channels (see set_default_channels()).
 
-            use_fixed_gain (bool): put the scaler in fixed gain mode where the gain bank RAM is
-                completely bypassed and a single complex gain is applied to every bin. Is functionally
-                equivalent to set the gain of every bin to the same value. Mostly useful during the
-                debugging phase.
-
             bank (int): The memory bank to which the gains should be applied (0 or 1) Once written,
                 the bank is made active. If ``bank`` is None, the currently inactive bank is used.
 
@@ -4358,7 +4357,7 @@ class chFPGA(FPGAFirmware):
             gain_timestamp: Unix timestamp when the gains were calculated.  If not provided,
                 defaults to current time.
 
-            use_fixed_gain (bool): if True, enables the use of fixed gain mode of the scaler module. In this
+            use_fixed_gain (bool): (deprecated) if True, enables the use of fixed gain mode of the scaler module. In this
                 case, 'gain' can only be a scalar. Is False by default.
 
 
@@ -4453,22 +4452,12 @@ class chFPGA(FPGAFirmware):
                         self, ch))
                     continue
 
-                # Set the postscaler value
-                if Glog is not None:
-                    self.chan[ch].SCALER.SHIFT_LEFT = int(Glog)
-
                 if use_fixed_gain:
-                    if not np.isscalar(Glin):
-                        raise TypeError('%r: Only scalar gains are allowed when using set_fixed_gain=True.' % self)
-                    self.chan[ch].SCALER.USE_GAIN_TABLE = 0
-                    self.chan[ch].SCALER.set_fixed_gain(Glin)
-                else:  # use vector-based gain table
-                    self.chan[ch].SCALER.USE_GAIN_TABLE = 1
-                    self.chan[ch].SCALER.set_gain_table(Glin, bank=bank, gain_timestamp=timestamp_value)
+                    raise DeprecatedError(f'Fix gain feature is deprecated. Set the table to a constant value instead.')
+
+                self.chan[ch].SCALER.set_gain_table(Glin, bank=bank, gain_timestamp=timestamp_value, log_gain=Glog)
                 configured_channels.add(ch)
-        self.logger.debug('%r: Setting scaler gains for channel %s' % (
-            self,
-            ', '.join([str(i) for i in configured_channels])))
+        self.logger.debug(f"{self!r}: Setting scaler gains for channel {', '.join(str(i) for i in configured_channels)}")
 
         if when is not None:
             self.switch_gains(bank=bank, when=when)
