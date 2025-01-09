@@ -26,7 +26,7 @@ NBYTES_PER_PROD = 5
 
 
 class UCORR(MMI):
-    """ Implements interface to one of the correlator"""
+    """ Implements interface the UCORR44_ARRAY correlator array"""
 
     CONTROL = BitField.CONTROL
     STATUS = BitField.STATUS
@@ -58,12 +58,12 @@ class UCORR(MMI):
 
 
     def status(self):
-        """Displays the status of al the correlator blocks"""
+        """Displays the status of the correlator array"""
         print('======= CORR.core[%i] =============' % self.instance_number)
         print(f' Don\'t accumulate: {self.NO_ACCUM}')
         print(f' Autocorrelation only: {self.AUTOCORR_ONLY}')
         print(f' Firmware integration period: {self.INTEGRATION_PERIOD} frames')
-        print(f' Overrun in one of the register cores: {self.OVERRUN}')
+        print(f' Overrun in one of the cores: {self.OVERRUN}')
 
 
     def start_correlator(self, *args, **kwargs):
@@ -205,7 +205,7 @@ class UCorrFrameReceiver(object):
         self.socket.settimeout(timeout)
         # self.socket.setblocking(1)
         print('Flushing UDP buffer')
-        while time.time()-t0 < max_flush_time:  # give up after some time
+        while time.time() - t0 < max_flush_time:  # give up after some time
             try:
                 s = self.socket.recv_into(self.buf[0])
                 flushed_packets += 1
@@ -521,7 +521,7 @@ class UCorrFrameReceiver(object):
         self.sat[integ_number, bin_, :, 1] += self.buf_data_sat[:number_of_packets] & 0x10
 
         t3 = time.time()
-        self.overrun |= any(self.buf_flags & 1);
+        self.overrun |= any(self.buf_flags[:number_of_packets] & 1);
         if verbose:
             # print 'count=', count[0,0]
             dt1 = t2 - t1
