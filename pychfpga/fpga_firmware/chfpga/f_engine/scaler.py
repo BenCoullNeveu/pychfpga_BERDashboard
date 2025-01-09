@@ -28,7 +28,6 @@ class SCALER(MMI):
     FOUR_BITS             = BitField(CONTROL, 0x00, 5, doc="Enables 4-bit operation")
     SHIFT_LEFT            = BitField(CONTROL, 0x00, 0, width=5, doc="Number of bits to shift left the incoming data")
     USE_OFFSET_BINARY     = BitField(CONTROL, 0x01, 6, doc="When '1', offset binary encoding is used.")
-    # USE_GAIN_TABLE        = BitField(CONTROL, 0x01, 5, doc="When '1', the gain tables are used to apply a bin-by-bin complex gain. Otherwise, the fixed complex gain is used for all bins.")
     READ_COEFF_BANK       = BitField(CONTROL, 0x01, 4, doc="Target gain coefficients bank to be used by the scaler")
     WRITE_COEFF_BANK_A      = BitField(CONTROL, 0x01, 0, width=4, doc="Indicates in which data page the gain coefficients are being written to. Page 0-7 are coefficients fri bank0, Page 8-15 are for Bank 1 coefficients.")
     WRITE_COEFF_BANK_B      = BitField(CONTROL, 0x01, 5, doc="Bit 4 of the write page")
@@ -38,20 +37,22 @@ class SCALER(MMI):
     SATURATE_ON_MINUS_7   = BitField(CONTROL, 0x02, 6, doc="When '1', Values will saturate at -7 instead of -8.")
     ZERO_ON_SATURATION    = BitField(CONTROL, 0x02, 5, doc="When '1', Both real and Imaginary parts are zeroed when either of them overflow.")
     SYNCHRONIZE_GAIN_BANK = BitField(CONTROL, 0x02, 4, doc="When '1', The target bank number will be enabled at the target frame number.")
-    FORCE_GAIN_TO_ONE     = BitField(CONTROL, 0x02, 2, doc="Force gain to (1+0j) (complex gain) or 1 (real gain). Gain table is ignored, but post-scaler (SHIFT_LEFT) still applies. ")
+    # FORCE_GAIN_TO_ONE     = BitField(CONTROL, 0x02, 2, doc="Force gain to (1+0j) (complex gain) or 1 (real gain). Gain table is ignored, but post-scaler (SHIFT_LEFT) still applies. ")
     CHAN_FIFO_OVERFLOW_RESET = BitField(CONTROL, 0x02, 3, doc="Resets the Channel FIFO overflow flag")
     ROUNDING_MODE         = BitField(CONTROL, 0x02, 0, width=2, doc="Set rounding mode.  0: Truncate, 1: Round, 2: Convergent Rounding")
     STATS_FRAME_COUNT     = BitField(CONTROL, 0x05, 0, width=24, doc="Number of frames to inclue in stats results.")
 
     GAIN_BANK_SWITCH_FRAME_NUMBER = BitField(CONTROL, 0x09, 0, width=32, doc="Frame number at which the target gain bak is to be activated.")
+    USE_FLOAT_GAINS       = BitField(CONTROL, 0x0A, 7, doc="When '1', floating point gains are used. Works only if USE_COMPLEX_GAINS=0")
     DATA_TYPE             = BitField(CONTROL, 0x0A, 0, width=2, doc=" Selects the output data in conjunction with Bypass.\n"
                                 "   BYPASS=0, DATA_TYPE=0: Send normal scaled data in 4 or 8 bit mode\n"
                                 "   BYPASS=0, DATA_TYPE=1: Send (1+0j) if there is a saturation on either Re or Im\n"
                                 "   BYPASS=0, DATA_TYPE=2: Send (1+0j) if Re has a positive saturation and (0+1j) if it has a negative saturation\n"
                                 "   BYPASS=0, DATA_TYPE=3: Send (1+0j) if Im has a positive saturation and (0+1j) if it has a negative saturation\n"
-                                "   BYPASS=1, DATA_TYPE=0: Send the most significant bits of the FFT input to the scaler\n"
-                                "   BYPASS=1, DATA_TYPE=1: Send the most significant bits of the 34-bit left-shifted gain product, saturated to the word limits\n"
-                                "   BYPASS=1, DATA_TYPE=2-3: Unused (all zeros)\n"
+                                "   BYPASS=1, DATA_TYPE=0: Send the most significant bits of the raw FFT values\n"
+                                "   BYPASS=1, DATA_TYPE=1: Send the most significant bits of the saturated post-gain FFT values\n"
+                                "   BYPASS=1, DATA_TYPE=2: Send Even bins with twice the resolution\n"
+                                "   BYPASS=1, DATA_TYPE=3: Send Odd bins with twice the resolution\n"
                                 )
     STATS_READY            = BitField(STATUS, 0x00, 7, doc="Indicates that new stats results are ready")
     CURRENT_GAIN_BANK      = BitField(STATUS, 0x00, 6, doc="Currently active gain bank.")
@@ -101,33 +102,13 @@ class SCALER(MMI):
         self.STATS_CAPTURE = 1
         self.STATS_FRAME_COUNT = int(800e6 / 2048 * 30)
 
-    # def set_fixed_gain(self, complex_gain):
-    #     """
-    #     Sets the scaler's fixed gain complex value.
-    #     """
-
-    #     if complex_gain.real<-32768 or complex_gain.real > 32767 or complex_gain.imag<-32768 or
-    #                complex_gain.imag>32767:
-    #         raise ValueError("Invalid fixed gain")
-
-    #     self.FIXED_GAIN_REAL = np.int16(complex_gain.real)
-    #     self.FIXED_GAIN_IMAG = np.int16(complex_gain.imag)
-
-    #     # if use_gain_table is not None:
-    #     #     self.USE_GAIN_TABLE = use_gain_table
-
-    # def get_fixed_gain(self):
-    #     """
-    #     Returns the scaler's fixed gain complex value.
-    #     """
-    #     return np.int16(self.FIXED_GAIN_REAL) + 1j*np.int16(self.FIXED_GAIN_IMAG)
 
     def set_page(self, page):
         self.WRITE_COEFF_BANK_A = page & 0b1111
         self.WRITE_COEFF_BANK_B = (page >> 4) & 1
         self.WRITE_COEFF_BANK_C = (page >> 5) & 1
 
-    def set_gain_table(self, gain_list, bank=0, gain_timestamp=None):
+    def set_gain_table(self, gain_list, bank=0, gain_timestamp=None, log_gain=None):
         """
         Sets the scaler's digital gain table for the specified bank.
 
@@ -149,6 +130,9 @@ class SCALER(MMI):
 
             gain_timestamp: unix timestamp when the gains were calculated. If not provided, defaults
                 to current time.
+
+            log_gain (int): binary left shift to apply after the linear gain has been applied. Change is immediate and i
+                is not synchronized to bank switching. If `None`, floating point gains will be used.
         """
 
         if gain_list is None:
@@ -156,6 +140,11 @@ class SCALER(MMI):
 
         total_bins = self.fpga.NUMBER_OF_FREQUENCY_BINS
         use_complex_gains = self.USE_COMPLEX_GAINS
+
+        # Set the postscaler value
+        if log_gain is not None:
+            self.SHIFT_LEFT = int(log_gain)
+
 
         if use_complex_gains:
             if np.isscalar(gain_list):
@@ -183,11 +172,25 @@ class SCALER(MMI):
                 gains = np.array(gain_list)
 
             # print(f'gains= {gains}')
-            if any(gains < -32768) or any(gains > 32767) or any(gains != gains.astype('<i2')):
-                raise ValueError('All gains must be integers between -32768 and 32767')
-
+                            # Set the postscaler value
             if len(gains) != total_bins:
                 raise ValueError(f'Either a scalar gain or a {total_bins} element gain vector must be provided')
+
+            if log_gain is None: # use floating point gains
+                self.USE_FLOAT_GAINS = 1
+                glog = (np.floor(np.log2(gains))-10).clip(0, 31)  #
+                gains /= 2**glog
+                # print(f'{glog=}\n {gains=}')
+                if any(gains < 0) or any(gains >= 2**11):
+                    raise ValueError('Floating gain exceeds allowable range of 2^31*(2^11-1) = 4.3959E12')
+                gains = (glog.astype(np.uint16) << 11) | gains.astype(np.uint16)
+                print(f"Gains = {[f'{g:04x}' for g in gains[:10]]}")
+
+            else: # use linear + log gains
+                self.USE_FLOAT_GAINS = 0
+                if any(gains < 0) or any(gains > 65535) or any(gains != gains.astype('<i2')):
+                    raise ValueError('All gains must be integers between 0 and 65535')
+
 
             self.cached_gain_table[bank] = gains
             self.cached_gain_timestamp[bank] = time.time() if gain_timestamp is None else gain_timestamp
@@ -198,7 +201,6 @@ class SCALER(MMI):
         n_pages = len(gain_string) // 512
         for page in range(n_pages):  # there are 8 pages of coefficients per bank
             self.set_page(page + bank*n_pages)
-            # self.WRITE_COEFF_BANK = 8 * bank + page
             self.write_ram(0, gain_string[512 * page: 512 * (page + 1)])
 
         self.READ_COEFF_BANK = bank
