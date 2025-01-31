@@ -538,7 +538,7 @@ class CRS(Motherboard):
             self.logger.debug(
                 f'{self!r}: FPGA is already configured. Skipping configuration.')
 
-        self.fpga = fw_cls(self, **fw_params)
+        self.fpga = fw_cls(self, mode=firmware_mode, **fw_params)
 
     # Mezzanine management
 

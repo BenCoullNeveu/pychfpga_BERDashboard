@@ -1662,7 +1662,7 @@ class FPGAArray(object):
                   is based on the crate number: Crate N and N+1 form a pair, whereas N
                   is a even number.
 
-                - 'corr4', 'corr8', 'corr16': The corner-turn engine is configured to feed the
+                - 'corr4', 'corr8', 'corr16', 'corr32': The corner-turn engine is configured to feed the
                   internal firmware correlator (only if the firmware was compiled with it).
 
             frames_per_packet (int): Number of frames to combine in a single
@@ -1750,12 +1750,12 @@ class FPGAArray(object):
             # Sync board(s)
             self.sync()
 
-        elif mode in ['shuffle8']:
+        elif mode in ('shuffle8',):
             # For use with the CRS
             for mb in self.ib:
                 mb.set_corr_reset(0)
 
-        elif mode in ['shuffle256', 'shuffle512', 'shuffle16', 'shuffle128', 'chord16']:
+        elif mode in ('shuffle256', 'shuffle512', 'shuffle16', 'shuffle128', 'chord16'):
             if not all(self.ib.CROSSBAR2) or not all(self.ib.CROSSBAR3):
                 raise RuntimeError(f' Mode {mode} requires all boards to have their CROSSBAR2 and CROSSBAR 3 implemented')
             self.ib.BP_SHUFFLE.set_tx_power(13)
@@ -1776,7 +1776,7 @@ class FPGAArray(object):
             self.ib.CROSSBAR3.reset_stats()
             # Sync was performed by init_corner_turn()
 
-        elif mode in ('corr16', 'corr8', 'corr4'):
+        elif mode in ('corr16', 'corr8', 'corr32', 'corr4'):
             if not all(self.ib.CORR):
                 raise RuntimeError(f'Mode {mode} requires all boards to have a firmware correlator engine')
             bin_map = self.get_corner_turn_bin_map(
@@ -1794,7 +1794,7 @@ class FPGAArray(object):
             # Sync board(s)
             self.sync()
         else:
-            raise ValueError(f'Unknown operational mode {mode}')
+            raise ValueError(f"Unknown operational mode '{mode}'")
 
     def get_corner_turn_bin_map(self, mode, bad_links=None, bin_priority=None, remap_level=0, verbose=0):
         """

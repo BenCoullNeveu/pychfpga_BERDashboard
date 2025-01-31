@@ -44,6 +44,7 @@ class SCALER(MMI):
 
     GAIN_BANK_SWITCH_FRAME_NUMBER = BitField(CONTROL, 0x09, 0, width=32, doc="Frame number at which the target gain bak is to be activated.")
     USE_FLOAT_GAINS       = BitField(CONTROL, 0x0A, 7, doc="When '1', floating point gains are used. Works only if USE_COMPLEX_GAINS=0")
+    MON_RESET_STATS       = BitField(CONTROL, 0x0A, 6, doc="When '1', MON stats are reset")
     DATA_TYPE             = BitField(CONTROL, 0x0A, 0, width=2, doc=" Selects the output data in conjunction with Bypass.\n"
                                 "   BYPASS=0, DATA_TYPE=0: Send normal scaled data in 4 or 8 bit mode\n"
                                 "   BYPASS=0, DATA_TYPE=1: Send (1+0j) if there is a saturation on either Re or Im\n"
@@ -65,6 +66,9 @@ class SCALER(MMI):
     STATS_ADC_OVERFLOWS    = BitField(STATUS, 0x04, 0, width=16, doc="Stats result: number of ADC overflows")
     FRAME_CTR              = BitField(STATUS, 0x05, 0, width=8, doc="Free running frame counter (last 8 bits)")
     DELAY_CTR              = BitField(STATUS, 0x07, 0, width=16, doc="Debug: Delay counter")
+    MON_PACKET_LENGTH              = BitField(STATUS, 0x09, 0, width=16, doc="Debug")
+    MON_PACKET_CTR              = BitField(STATUS, 10, 0, width=8, doc="Debug")
+    MON_WORD_CTR              = BitField(STATUS, 12, 0, width=16, doc="Debug")
 
 
     ROUNDING_MODE_TRUNCATE         = 0b00
