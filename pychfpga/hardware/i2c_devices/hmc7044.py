@@ -57,7 +57,7 @@ class hmc7044(object):
         self.spi_port = spi_port
         self.regs = {}  # image of latest values written
 
-    def init(self, fref=10e6, fosc=50e6, fvco=3200e6, fout={}, filename=None, check=1):
+    def init(self, fref=10e6, fosc=50e6, fvco=3200e6, fout={}, filename=None, check=1, input_sel=None, input_priorities=[2,1,0,3]):
         """Initializes the PLL.
 
         Parameters:
@@ -92,10 +92,11 @@ class hmc7044(object):
 
         # print(f'reg[0x0001]=0x{self.read_reg(0x1):02X}')
         # Set PLL1 clock inputs
-        self.set_input('CLKIN0', enable=False, term=True) # Ethernet recovered clock
-        self.set_input('CLKIN1', enable=False, term=True) # Backplane 10 MHz reference
-        self.set_input('CLKIN2', enable=True, term=True) # SMA 10 MHz reference
-        self.set_input('CLKIN3', enable=False, term=True) # Recovered clock from FPGA
+        enable_list = [input_sel == i or (input_sel is None and i in input_priorities) for i in range(4)]
+        self.set_input('CLKIN0', enable=enable_list[0], term=True) # Ethernet recovered clock
+        self.set_input('CLKIN1', enable=enable_list[1], term=True) # Backplane 10 MHz reference
+        self.set_input('CLKIN2', enable=enable_list[2], term=True) # SMA 10 MHz reference
+        self.set_input('CLKIN3', enable=enable_list[3], term=True) # Recovered clock from FPGA
         self.set_input('OSCIN', enable=True, term=True) # Oscillator
         # print(f'reg[0x0001]=0x{self.read_reg(0x1):02X}')
 
@@ -108,7 +109,7 @@ class hmc7044(object):
         # on the PLL1 BW of the user system. Set the LCM, R1, and
         # N1 divider setpoints. Enable the reference and VCXO
         # input buffer terminations.
-        self.set_pll1(f_in=fref, f_out=fosc)
+        self.set_pll1(f_in=fref, f_out=fosc, input_sel=input_sel, input_priorities=input_priorities)
         # print(f'reg[0x0001]=0x{self.read_reg(0x1):02X}')
 
         # Program the SYSREF timer. Set the divide ratio (a
@@ -429,7 +430,7 @@ class hmc7044(object):
         self.write_regs(regs)
 
 
-    PLL1_INPUTS = {
+    PLL1_INPUT_NAMES = {
         'CLKIN0': 0,
         'CLKIN1': 1,
         'CLKIN2': 2,
@@ -451,11 +452,12 @@ class hmc7044(object):
                 4: OSCIN
 
         """
-        if input_number in self.PLL1_INPUTS:
-            input_number = self.PLL1_INPUTS[input_number]
+        if input_number in self.PLL1_INPUT_NAMES:
+            input_number = self.PLL1_INPUT_NAMES[input_number]
 
         regs = {}
 
+        print(f'Reference input {input_number} enable = {enable}')
         regs[0x000A + input_number] = (hi_z << 4) | (lvpecl << 3) | (ac << 2) | (term << 1) | enable
         regs[0x001C + input_number] = prescaler
 
@@ -468,7 +470,10 @@ class hmc7044(object):
 
             enable (bool): PLL2 is enabled when True
 
-            input_priorities (list): list of 4 input numbers to be autoselected in order of priority.
+            input_priorities (list): list of 4 input numbers to be autoselected in order of priority. Is ignored if `input_sel` is provided.
+
+            input_sel (int): Clock reference input (0-3) to use for PLL1. Overrides autoselection.
+                If None, autoselection is enabled using the `input_priorities` list.
 
             los_validation (int): Loss of Signal validation time:
                 0: None
@@ -495,8 +500,6 @@ class hmc7044(object):
 
         """
 
-        holdover_exit_action = 1
-        holdover_exit_criteria = 0
         PFD_up_en = 1
         PFD_down_en = 1
         PFD_up_force = 0
@@ -525,6 +528,8 @@ class hmc7044(object):
 
         # pll1_cfg2_holdover_exitcrit[1:0] = 0x0
         # pll1_cfg2_holdover_exitactn[3:2] = 0x1
+        holdover_exit_action = 0 # 0: reset dividers, 1,2: Do nothing, 3: DAC assist
+        holdover_exit_criteria = 0 # 0: Exit when LOS gone, 1:exit when phase error = 0, 2: Exit immediately
         regs[0x0016] = (holdover_exit_action << 2) | (holdover_exit_criteria)
 
         # pll1_cfg7_hodac_offsetval[6:0] = 0x0
@@ -585,7 +590,23 @@ class hmc7044(object):
         # pll1_cfg1_holdover_uses_dac[2:2] = 0x1
         # pll1_cfg2_manclksel[4:3] = 0x0
         # pll1_cfg1_byp_debouncer[5:5] = 0x0
-        regs[0x0029]= ((input_sel << 3) if isinstance(input_sel, int) else 1) | (1 << 2) # autorevertive=0, uses_dac=1, debouncer=0
+        # 0x0029 : PLL1 Reference switching control
+        # 5: bypass debouncer
+        # 4:3: Manual switching input number
+        # 2: holdover uses DAC
+        # 1: Autorevertive ref switching
+        # 0: Automode reference switching
+        bypass_debouncer = 0
+        manual_ref_input = input_priorities[0] if input_sel is None else input_sel
+        holdover_uses_dac = 1
+        auto_ref_revert = 0
+        auto_ref_switching = 1 if input_sel is None else 0
+        regs[0x0029]= (
+            (bypass_debouncer << 5) |
+            (manual_ref_input << 3) |
+            (holdover_uses_dac << 2) |
+            (auto_ref_revert << 1) |
+            (auto_ref_switching << 0))
 
         # pll1_hoff_timer_setpoint[7:0] = 0x0
         regs[0x2A] = 0x0  # not parametrized yet
@@ -986,8 +1007,8 @@ class hmc7044(object):
 
             best_input = (reg_82 >>5) & 0x3,
             active_input = (reg_82 >>3) & 0x3,
-            FSM_state = ('reset', 'Acquisition', 'Locked', 'Invalid',
-                              'holdover', 'DAC holdover exit', 'NA', 'NA')[reg_82 >> 4 & 0x7],
+            FSM_state = ('Reset', 'Acquisition', 'Locked', 'Invalid',
+                              'holdover', 'DAC holdover exit', 'NA', 'NA')[(reg_82 >> 4) & 0x7],
             average_DAC_code = reg_83 & 0x7F,
             holdover_comparator_value = (reg_84 >> 7) & 1,
             current_DAC_code = reg_84 & 0x7F,

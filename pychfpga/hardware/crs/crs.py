@@ -296,6 +296,8 @@ class CRS(Motherboard):
 
     async def pll_init_async(
             self,
+            input_sel = 1,
+            input_priorities = (2, 1, 0, 3),
             fref=10e6,  # external 10 MHz reference from backplane or SMA
             fosc=50e6,  # on-board VCXO nominal frequency
             fvco=3000e6, # PLL2 VCO frequency, which is also the ADC sampling frequency
@@ -339,6 +341,8 @@ class CRS(Motherboard):
         fpl = frfdc / 8 # signal processing clock, typ. 375 MHz
 
         self.pll.init(
+            input_sel=input_sel, # 0: Ethernet recovery, 1: backplane REFCLK, 2 = motherboard REFCLK, 3: FPGA
+            input_priorities=input_priorities, # not used if input_sel is specified and is not None
             fref=fref, # external 10 MHz reference from backplane or SMA
             fosc=fosc, # on-board VCXO nominal frequency
             fvco=fvco,
