@@ -70,12 +70,15 @@ class GTY(MMI):
     """ Implements interface to a GTY_CHANNEL block """
 
 
-    USER_RESET     = BitField(CONTROL, 0, 7, doc='')
-    USER_GTTXRESET = BitField(CONTROL, 0, 6, doc='')
+    # USER_RESET     = BitField(CONTROL, 0, 7, doc='')
+    # USER_GTTXRESET = BitField(CONTROL, 0, 6, doc='')
+    SCRAMBLE_EN     = BitField(CONTROL, 0, 7, doc='')
+    RXGEARBOXFORCESLIP = BitField(CONTROL, 0, 6, doc='')
     TXINHIBIT      = BitField(CONTROL, 0, 5, doc='Debug')
     TXPOSTCURSOR   = BitField(CONTROL, 0, 0, width=5, doc='Debug')
 
     TXDIFFCTRL     = BitField(CONTROL, 1, 4, width=4, doc='Debug')
+    UNSCRAMBLER_RESET = BitField(CONTROL, 1, 3, doc='Debug')
     LOOPBACK       = BitField(CONTROL, 1, 0, width=3, doc='Debug') #-- '000' = normal operation
 
     SOURCE_SEL     = BitField(CONTROL, 2, 7, doc='')
@@ -85,11 +88,12 @@ class GTY(MMI):
     TX_DATA_LSB    = BitField(CONTROL, 3, 0, width=8, doc='Debug')
 
     RXDFELPMRESET    = BitField(CONTROL, 4, 7, doc='') #gt_control_bytes(i)(10)(5);
-    USER_GTRXRESET   = BitField(CONTROL, 4, 6, doc='')
+    # USER_GTRXRESET   = BitField(CONTROL, 4, 6, doc='')
     RXLPMEN          = BitField(CONTROL, 4, 5, doc='') #gt_control_bytes(i)(10)(6);
     RXMONITORSEL     = BitField(CONTROL, 4, 3, width=2, doc='') #gt_control_bytes(i)(10)(4 downto 3);
     CAPTURE_ENABLE   = BitField(CONTROL, 4, 2, doc='')
     BLOCK_LOCK_RESET = BitField(CONTROL, 4, 1, doc='')
+    RXDFEAGCHOLD = BitField(CONTROL, 4, 0, doc='')
 
     # SCRAMBLER_RESET    = BitField(CONTROL, 0, 5, doc='')
     # DESCRAMBLER_RESET  = BitField(CONTROL, 0, 4, doc='')
@@ -129,10 +133,12 @@ class GTY(MMI):
     BLOCK_LOCK    = BitField(STATUS, 0, 1, doc='Debug')
     RX_PRESENT    = BitField(STATUS, 0, 0, doc='Indicates if the RX logic is implemented')
 
-    # New order to allow GPU links BER tests
     ERR_CTR       = BitField(STATUS, 4, 0, width=32)
+
     RXHEADER      = BitField(STATUS, 5, 6, width=2, doc='Debug')
+    RXGEARBOXSLIP = BitField(STATUS, 5, 5, doc='Debug')
     RXBUFSTATUS   = BitField(STATUS, 5, 0, width=3)
+
     RXMONITOR     = BitField(STATUS, 6, 0, width=7, doc='Debug')
     RXDATA        = BitField(STATUS, 10, 0, width=32)
 
@@ -194,6 +200,10 @@ class GTY(MMI):
     ES_PRESCALE       = BitField(DRP, 0x03B, 11, width=5, doc='')# 15:11 4:0 0-31 0-31
     ES_VERT_OFFSET    = BitField(DRP, 0x03B, 0, width=9, doc='')# 8:0   8:0 0-511 0-511
     ES_HORZ_OFFSET    = BitField(DRP, 0x03C, 0, width=12, doc='')# 11:0  11:0 0-4095 0-4095
+
+
+    RX_CM_SEL         = BitField(DRP, 0x061, 0, width=2, doc='')# 11:0  11:0 0-4095 0-4095
+    RX_CM_TRIM         = BitField(DRP, 0x061, 2, width=4, doc='')# 11:0  11:0 0-4095 0-4095
 
     ES_ERROR_COUNT    = BitField(DRP, 0x14F, 0, width=15, doc='')
     ES_SAMPLE_COUNT   = BitField(DRP, 0x150, 0, width=15, doc='')
@@ -441,6 +451,12 @@ class XXVGLinkCore(MMI):
 
     # XXVGLINK common control and status registers
     CORE_RESET      = BitField(CONTROL, 0, 7, doc='The GTY cores are reset when this signal goes from 1 to 0')
+    TX_RESET              = BitField(CONTROL, 0, 3, doc='')
+    RX_PLL_DATAPATH_RESET = BitField(CONTROL, 0, 2, doc='')
+    RX_DATAPATH_RESET     = BitField(CONTROL, 0, 1, doc='')
+    RX_RESET              = BitField(CONTROL, 0, 0, doc='')
+
+
     TX_DATA_MSB     = BitField(CONTROL, 3, 0, width=24, doc='24 most significant bits of the data word that can be sent manually. This is common to all lanes.')
 
     NUMBER_OF_QUADS = BitField(STATUS, 0, 5, width=3, doc='Number of QUADS (QPLLs)')
@@ -448,6 +464,7 @@ class XXVGLinkCore(MMI):
     RESET_PULSE     = BitField(STATUS, 1, 5, doc='debug')
     RESET_DONE      = BitField(STATUS, 1, 4, doc='debug')
     QPLL_RESET_MON  = BitField(STATUS, 1, 3, doc='debug')
+    RX_CDR_STABLE   = BitField(STATUS, 1, 2, doc='debug')
 
     def __init__(self, fpga_instance, base_address, address_increment,verbose=1):
         # self.fpga = fpga
@@ -543,29 +560,43 @@ class XXVGLinkArray(XXVGLinkCore):
     # XXVGLINK_ARRAY.VHD control and status registers
     # ########################################
 
-    # backplane link-specific registers
-    # TX_TEST_ENABLE  = BitField(CONTROL, 4+0, 1, doc='')
-    RESET_STATS     = BitField(CONTROL, 4 + 0, 2, doc='')
-    LANE_SEL        = BitField(CONTROL, 4 + 0, 3, width=5, doc='')
+    # CONTROL bytes 0-3 are provided by XXVGLinkCore
+    RESET_STATS     = BitField(CONTROL, 4, 2, doc='')
+    LANE_SEL        = BitField(CONTROL, 4, 3, width=5, doc='')
+    RX_CAPTURE_EN   = BitField(CONTROL, 4, 1, doc='Enable capture of raw RX DATA/HEADER')
+    RX_RECV_RESET        = BitField(CONTROL, 4, 0, doc='Resets all packet receivers')
 
-    BYPASS_PCB_SHUFFLE  = BitField(CONTROL, 4 + 1, 0, doc='')
-    BYPASS_QSFP_SHUFFLE = BitField(CONTROL, 4 + 1, 1, doc='')
+    BYPASS_PCB_SHUFFLE  = BitField(CONTROL, 5, 0, doc='')
+    BYPASS_QSFP_SHUFFLE = BitField(CONTROL, 5, 1, doc='')
+
+    LANE_MON_SRC      = BitField(CONTROL, 6, 4, width=2, doc='Selects source of data being monitored for selected lane (TXCLK domain: 0=TX, 1=RX, RXCLK domain: no effect, always RX FIFO IN)')
+    LANE_MON_TYPE      = BitField(CONTROL, 6, 0, width=4, doc='Selects type of data being monitored for selected lane (0: word counter, 1: packet length, 2: current packet length, 3: min packet length, 4: max packet length, 5: error counter, 6: FIFO overflow counter)')
+
+
+    TX_FORCE_EN   = BitField(CONTROL, 7, 2, doc='Enable forcing of DATA/HEADER')
+    TX_FORCE_HEADER   = BitField(CONTROL, 7, 0, width=2, doc='HEADER to be forced')
+    TX_FORCE_DATA   = BitField(CONTROL, 15, 0, width=64, doc='DATA to be forced')
 
     # FIFO_RESET      = BitField(CONTROL, 4+1, 0, doc='Resets the RX FIFO')
 
-    RX_FIFO_OVERFLOW = BitField(STATUS, 2 + 0, 0, doc='Sticky fifo overflow bit for the selected lane. Is cleared when RESET_STATS=1.')
-    RESET_MON        = BitField(STATUS, 2 + 0, 1, doc='State of the reset line')
-    RX_FRAME_DETECT  = BitField(STATUS, 2 + 0, 2, doc='Sticky bit indicating that a data frame was detected. Is cleared when RESET_STATS=1.')
-    TX_FIFO_OVERFLOW = BitField(STATUS, 2 + 0, 3, doc='Sticky fifo overflow bit for the selected lane. Is cleared when RESET_STATS=1.')
+    # STATUS bytes 0-1 are provided by XXVGLinkCore
+    RX_FIFO_OVERFLOW = BitField(STATUS, 2, 0, doc='Sticky fifo overflow bit for the selected lane. Is cleared when RESET_STATS=1.')
+    RESET_MON        = BitField(STATUS, 2, 1, doc='State of the reset line')
+    RX_FRAME_DETECT  = BitField(STATUS, 2, 2, doc='Sticky bit indicating that a data frame was detected. Is cleared when RESET_STATS=1.')
+    TX_FIFO_OVERFLOW = BitField(STATUS, 2, 3, doc='Sticky fifo overflow bit for the selected lane. Is cleared when RESET_STATS=1.')
+    RX_CAPTURE_HEADER = BitField(STATUS, 2, 6, width=2, doc='Captured RX header bits when RX_CAPTURE_EN=1')
     # TEST_CTR         = BitField(STATUS, 2+0, 4, width=3, doc='State of the test pattern counter')
 
-    RX_ERROR_CTR        = BitField(STATUS, 2 + 2, 0, width=16, doc='Current value of the error counter for the selected lane. Saturates at 0xFFFF. Is cleared when RESET_STATS=1.')
-    RX_MAX_FRAME_LENGTH = BitField(STATUS, 2 + 4, 0, width=13, doc='Current value of the maximum frame length detector. Is cleared when RESET_STATS=1.')
-    RX_MIN_FRAME_LENGTH = BitField(STATUS, 2 + 6, 0, width=13, doc='Current value of the minimum frame length detector. Is cleared when RESET_STATS=1.')
-    # RX_CTR              = BitField(STATUS, 2+5, 0, width=8, doc='Free runing counter on the local RX clock. Is cleared when RESET_STATS=1.')
-    TX_WORD_CTR        = BitField(STATUS, 10, 0, width=16, doc='Cleared when RESET_STATS=1.')
-    TX_PACKET_LENGTH   = BitField(STATUS, 12, 0, width=16, doc='Cleared when RESET_STATS=1.')
-    TX_PACKET_CTR   = BitField(STATUS, 13, 0, width=8, doc='Cleared when RESET_STATS=1.')
+    RXCLK_MON_WORD        = BitField(STATUS,4, 0, width=16, doc='Monitor for the signals in the RXCLK domain. Lane, source and type (i.e meaning) of the word is set by LANE_SEL, LANE_MON_SRC and LANE_MON_TYPE. Is cleared when RESET_STATS=1.')
+    TXCLK_MON_WORD        = BitField(STATUS,6, 0, width=16, doc='Monitor for the signals in the TXCLK domain. Lane, source and type (i.e meaning) of the word is set by LANE_SEL, LANE_MON_SRC and LANE_MON_TYPE. Is cleared when RESET_STATS=1.')
+    # RX_MAX_FRAME_LENGTH = BitField(STATUS, 2 + 4, 0, width=13, doc='Current value of the maximum frame length detector. Is cleared when RESET_STATS=1.')
+    # RX_MIN_FRAME_LENGTH = BitField(STATUS, 2 + 6, 0, width=13, doc='Current value of the minimum frame length detector. Is cleared when RESET_STATS=1.')
+    # # RX_CTR              = BitField(STATUS, 2+5, 0, width=8, doc='Free runing counter on the local RX clock. Is cleared when RESET_STATS=1.')
+    # TX_WORD_CTR        = BitField(STATUS, 10, 0, width=16, doc='Cleared when RESET_STATS=1.')
+    # TX_PACKET_LENGTH   = BitField(STATUS, 12, 0, width=16, doc='Cleared when RESET_STATS=1.')
+    # TX_PACKET_CTR   = BitField(STATUS, 13, 0, width=8, doc='Cleared when RESET_STATS=1.')
+
+    RX_CAPTURE_DATA = BitField(STATUS, 14, 0, width=64, doc='Captured RX data word when RX_CAPTURE_EN=1')
 
     RX_LANE_MONITOR_TABLE = {
         'RX_FIFO_OVERFLOW': 'RX_FIFO_OVERFLOW',
