@@ -1230,6 +1230,7 @@ class FPGAArray(object):
                     await ib.open_fpga_async(**kwargs)
                     break
                 except IOError as e:
+                    raise
                     self.logger.warning(f'{self!r}: Error while initializing core firmware on trial {trial}/{max_trials}. '
                                         f'Error is: \n{e!r}')
                     if trial == max_trials:

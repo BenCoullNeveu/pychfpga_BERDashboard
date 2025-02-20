@@ -521,7 +521,7 @@ class CRS(Motherboard):
         fw_cls, buf, fw_params = FPGAFirmware.get_firmware(self.part_number, firmware_mode, bitfile_override=bitfile_override)
         crc32 = buf.crc32
         bitstream = buf.raw_bitstream
-
+        print(f'Programming PLL before configuring the FPGA. {fw_params=}')
         await self.pll_init_async(fvco=fw_params['sampling_frequency'])  # add fw params here if we want to have mode/application-specific frequencies sent to the FPGA
 
         self.logger.debug(f'{self!r}: Getting is_programmed')

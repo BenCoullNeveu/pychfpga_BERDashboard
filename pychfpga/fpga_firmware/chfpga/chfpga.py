@@ -239,7 +239,7 @@ class chFPGA(FPGAFirmware):
         _PLATFORM_ID_MGK7MB_REV0: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev0', None),
         _PLATFORM_ID_MGK7MB_REV2: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev2', None),
         _PLATFORM_ID_ZCU111:  ('Zynq Ultrascale+ RfSoC (ZU28) Xilinx ZCU111 Evaluation Board', None),
-        _PLATFORM_ID_CRS:  ('Zynq Ultrascale+ RfSoC (ZU48) t0 technology CRS Board ', None),
+        _PLATFORM_ID_CRS:  ('Zynq Ultrascale+ RfSoC (XCZU47) t0 technology CRS Board ', None),
     }
 
     # UDP communication constants (used if implemented in firmware)
