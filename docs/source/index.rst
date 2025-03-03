@@ -18,6 +18,13 @@
 .. toctree::
    :hidden:
    :maxdepth: 4
+   :caption: Operation Guides
+
+   howto/pocket_correlator
+
+.. toctree::
+   :hidden:
+   :maxdepth: 4
    :caption: Old Home
 
    Old installation <installation>
@@ -25,7 +32,7 @@
    howto/takeData
    howto
    quick_start
-   howto/pocket_correlator
+
 
 .. toctree::
    :maxdepth: 3
