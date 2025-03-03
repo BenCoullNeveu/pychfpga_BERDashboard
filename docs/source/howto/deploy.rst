@@ -36,21 +36,21 @@ Development process
 Versioning guide
 ----------------
 
-#. The general format of the tag is :code:`x.y.z-[platform]-[config]`. The `x`, `y` and `z` are
+#. The general format of the tag is :code:`x.y.z-[platform]+[config]`. The `x`, `y` and `z` are
    version numbers for major releases, minor releases and patches correspondingly. The :code:`[platform]`
    should be a three-symbol word indicating the targed platform. For example, :code:`crs` for CRS boards
    or :code:`ice` for the ICE board. The :code:`[config]` is the target configuration for which the code was tested. For
    example, :code:`co` is for configurations that support on-board correlation and :code:`ct` is for configurations that
    support corner-turn.
 
-#. The version number must always increase. For example, if the latest tag is :code:`1.2.3-ice-co` and you are
-   deploying a :code:`crs-ct`, your tag must be either :code:`1.2.4-crs-ct` if it is a small patch or
-   :code:`1.3.0-crs-ct` if it is a significant change.
+#. The version number must always increase. For example, if the latest tag is :code:`1.2.3-ice+co` and you are
+   deploying a :code:`crs+ct`, your tag must be either :code:`1.2.4-crs+ct` if it is a small patch or
+   :code:`1.3.0-crs+ct` if it is a significant change.
 
-#. If you are tagging a branch that is not :code:`deploy`: copy the latest tag on :code:`deploy`, change
+#. If you are tagging a branch that is not :code:`deploy` copy the latest tag on :code:`deploy`, change
    the platform and the mode, and update the version number. Also, add the :code:`rc1` to the tag after the last number
-   to indicate that this tag is release candidate. For example, if the latest :code:`deploy`: tag was
-   :code:`1.2.3-ice-co`, you would change it to something like :code:`1.2.4rc1-crs-ct`.
+   to indicate that this tag is release candidate. For example, if the latest :code:`deploy` tag was
+   :code:`1.2.3-ice+co`, you would change it to something like :code:`1.2.4rc1-crs+ct`.
 
    When merging your changes into :code:`deploy` follow the regular procedure (steps 1-2) and increase the version number.
 

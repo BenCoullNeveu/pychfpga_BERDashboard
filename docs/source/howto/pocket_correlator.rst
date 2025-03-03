@@ -57,14 +57,15 @@ on Ubuntu 22.04.
 
 Getting access to :bash:`pychfpga`
 ++++++++++++++++++++++++++++++++++
-First, create a BitBucket account if you don't have one. Then, contact jfcliche@jfcliche.com to request
-access to the :bash:`pychfpga` repository and other winterland dependencies and include the email for which your
+First, create a BitBucket account if you don't have one. Then, contact Jean-Francois Cliche at jfcliche@jfcliche.com to
+request access to the repository and other winterland dependencies and include the email for which your
 BitBucket account is registered. After getting access, it is necessary to add your ssh key to your BitBucket account.
 
 Create a new ssh key by typing in a terminal:
 
 .. code-block:: bash
 
+    cd
     mkdir .ssh
     ssh-keygen -t ed25519 -b 4096 .ssh/bitbucket_key
 
@@ -75,7 +76,7 @@ Leave the passphrase field empty (press Enter twice). Type:
     cat .ssh/bitbucket_key_test.pub
 
 and copy the output. Now you need to add the copied key to BitBucket. To do that, on BitBucket go `Gear icon -> Personal
-BitBuket settings -> Security -> SSH keys -> Add key`. You can label the key whatever you prefer. Paste the key copied
+BitBuket settings -> Security -> SSH keys -> Add key`. You can put any label in the respective field. Paste the key copied
 from the terminal in the "Key" field.
 
 Finally, add a created key to the ssh client. Run in terminal window:
@@ -107,57 +108,65 @@ It is recommended to create a separate directory for the :bash:`pychfpga` enviro
 
 .. code-block:: bash
 
-    mkdir iceboard
-    cd iceboard
+    mkdir icecorr
+    cd icecorr
 
 Inside the directory, create a Python 3.8 virtual environment by running
 
 .. code-block:: bash
 
     sudo apt install python3.8-venv
-    python3.8 -m venv venv_pychfpga
+    python3.8 -m venv .venv_pychfpga
 
 Now, anytime you are runing the ICE board, you should activate the created environment by running
 
 .. code-block:: bash
 
-    source venv_pychfpga/bin/activate
+    source .venv_pychfpga/bin/activate
 
-from the directory where the environment is located. In our case it is `~/iceboard`.
+from the directory where the environment is located. In our case it is `~/icecorr`.
 
 
 Installing :bash:`pychfpga`
 +++++++++++++++++++++++++++
-
-To find the latest stale version of the software, see the tags in the :bash:`pychfpga` repository or contact
-jfcliche@jfcliche.com. At the moment of writing this tutorial, the latest (temporary) confirmed version is defined by
-the commit :bash:`13e33984d8e3acc4eb36b5bbfa960ac1b4aabe9f`. To download it run in terminal:
+First, download the software by running the following in terminal:
 
 .. code-block:: bash
 
-    git clone git@bitbucket.org:winterlandcosmology/pychfpga.git -b vb/stable_corr
+    git clone git@bitbucket.org:winterlandcosmology/pychfpga.git -b deploy
 
-Go to the cloned repo
+If you had issues with this step, you probably don't have access to the repository. Check if you properly set up your
+BitBucket key an if you have permissions. If the command succeded, go to the cloned repo:
 
 .. code-block:: bash
 
     cd pychfpga
 
-Make sure the large files were cloned too
+Make sure the large files were cloned too:
 
 .. code-block:: bash
 
     sudo apt install git-lfs
     git-lfs fetch
 
-..
-    Finally, checkout to the mentioned commit
 
-    .. code-block:: bash
+Now you need to find the latest version tested for a single board correlator. To do it, see the tags in the
+:bash:`pychfpga` repository. The correct tag format for a single ICE board correlator would be
+:code:`x.y.z-ice+co`, where :code:`x`, :code:`y` and :code:`z` are version numbers. To list all relevant tags run:
 
-        git checkout 13e33984d8e3acc4eb36b5bbfa960ac1b4aabe9f
+.. code-block:: bash
 
-    While doing checkout, the git should download additional files for about 54 MB.
+    git tag --list '*.*.*-ice+co'
+
+Then choose the latest available version. At the moment of writing, this version is :code:`1.3.1-ice+co`. Now you need
+to switch to the selected version of the code by running the following command. You need to replace the
+:code:`[selected_tag]` with the version you selected in previous step.
+
+.. code-block:: bash
+
+    git checkout [selected_tag]
+
+While doing checkout, git may download additional files.
 
 Now, it's time to install the software. While in :bash:`pychfpga` directory, run
 
@@ -165,7 +174,12 @@ Now, it's time to install the software. While in :bash:`pychfpga` directory, run
 
     pip install -e .
 
-You can then run an :bash:`fpga_master` command to see if installation is complete (it will throw an error for now).
+If you had problems during installation - check if you're using Python 3.8 and if you have access to all the winterland
+dependencies needed to install the software. For dependency access requests contact Jean-Francois Cliche
+at jfcliche@jfcliche.com.
+
+After installation, you can run an :bash:`fpga_master` command to see if installation is complete
+(it will throw an error for now).
 
 
 Correlator configuration
