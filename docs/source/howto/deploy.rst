@@ -28,11 +28,13 @@ Development process
 #. Merge your branch into :code:`deploy`.
 
 #. Push all the changes. You need to push changes before putting a tag, so the newest changes will appear in
-   :code:`deploy`. If you put a tage before pushing, the lates commit will not be added to :code:`deploy` history.
+   :code:`deploy`. If you put a tag before pushing, the latest commit will not be added to :code:`deploy` history.
 
 #. Put a tag on the new commit specifying the version and the target platform of the commit. This
    is needed to ensure you always get the working code for any platform, because in general the
    latest version of the :code:`deploy` may not work on all platforms. See the versioning guide below.
+
+#. Push your tag to the remote by running :code:`git push origin deploy --tags`.
 
 **Note**: If you are in rush, you can skip steps 5-8 and put a tag on your branch - see the guide below.
 

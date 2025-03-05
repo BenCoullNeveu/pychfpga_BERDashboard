@@ -18,9 +18,10 @@
 .. toctree::
    :hidden:
    :maxdepth: 4
-   :caption: Operation Guides
+   :caption: Operation and Development
 
    howto/pocket_correlator
+   howto/deploy
 
 .. toctree::
    :hidden:
