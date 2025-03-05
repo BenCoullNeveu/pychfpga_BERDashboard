@@ -133,7 +133,7 @@ First, download the software by running the following in terminal:
     git clone git@bitbucket.org:winterlandcosmology/pychfpga.git -b deploy
 
 If you had issues with this step, you probably don't have access to the repository. Check if you properly set up your
-BitBucket key an if you have permissions. If the command succeded, go to the cloned repo:
+BitBucket key an if you have permissions. If the command succeeded, go to the cloned repo:
 
 .. code-block:: bash
 
@@ -149,13 +149,13 @@ Make sure the large files were cloned too:
 
 Now you need to find the latest version tested for a single board correlator. To do it, see the tags in the
 :bash:`pychfpga` repository. The correct tag format for a single ICE board correlator would be
-:code:`x.y.z-ice+co`, where :code:`x`, :code:`y` and :code:`z` are version numbers. To list all relevant tags run:
+:code:`x.y.z+ice.co`, where :code:`x`, :code:`y` and :code:`z` are version numbers. To list all relevant tags run:
 
 .. code-block:: bash
 
-    git tag --list '*.*.*-ice+co'
+    git tag --list '*.*.*+ice.co'
 
-Then choose the latest available version. At the moment of writing, this version is :code:`1.3.1-ice+co`. Now you need
+Then choose the latest available version. At the moment of writing, this version is :code:`1.3.1+ice.co`. Now you need
 to switch to the selected version of the code by running the following command. You need to replace the
 :code:`[selected_tag]` with the version you selected in previous step.
 
