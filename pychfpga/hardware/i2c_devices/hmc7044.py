@@ -52,7 +52,7 @@ class hmc7044(object):
     def __init__(self, spi_interface, spi_port=0, verbose=0):
         """
         """
-        self._logger = logging.getLogger(__name__)
+        self.log = logging.getLogger(__name__)
         self.spi = spi_interface
         self.spi_port = spi_port
         self.regs = {}  # image of latest values written
@@ -152,7 +152,7 @@ class hmc7044(object):
         # generator request to send out a pulse generator chain on any SYSREF
         # channels programmed for pulse generator mode.
 
-    def write_reg(self, reg, val, mask = 0xFF):
+    def write_reg(self, reg, val, mask = 0xFF, timeout=10):
         """ Writes the register `reg` with 8-bit value `val`
 
         Parameters:
@@ -173,11 +173,11 @@ class hmc7044(object):
         self.regs[reg] = val
         spi_data = bytes([reg >> 8, reg & 0xFF, val]) # r/w=0, W1=0, W0=0
         # print(f'write_reg: sending {len(spi_data)} bytes')
-        self.spi.write_read(self.spi_port, spi_data, read_length=0)
+        self.spi.write_read(self.spi_port, spi_data, read_length=0, timeout=timeout)
         if self.check:
-            read_val = self.read_reg(reg)
+            read_val = self.read_reg(reg, timeout=timeout)
             if read_val != val:
-                print(f'Warning: Readback on register 0x{reg:04x} is 0x{read_val:02x} instead of 0x{val:02x}')
+                self.log.warning(f'Warning: Readback on register 0x{reg:04x} is 0x{read_val:02x} instead of 0x{val:02x}')
 
     def write_regs(self, regs):
         """Write a list of (register, value) tuples to the PLL.
@@ -197,7 +197,7 @@ class hmc7044(object):
             self.write_reg(reg, val)
             # time.sleep(0.1)
 
-    def read_reg(self, reg):
+    def read_reg(self, reg, timeout=None):
         """ Read the8-bit value from register `reg`.
 
         Parameters:
@@ -211,7 +211,7 @@ class hmc7044(object):
 
         reg &= 0x1FFF  # limit register address to 13 bit
         spi_data = bytes([(reg >> 8) | 0x80, reg & 0xFF]) # r/w=0, W1=0, W0=0
-        val = self.spi.write_read(self.spi_port, spi_data, read_length=1)
+        val = self.spi.write_read(self.spi_port, spi_data, read_length=1, timeout=timeout)
         return val[0]
 
 
@@ -457,13 +457,13 @@ class hmc7044(object):
 
         regs = {}
 
-        print(f'Reference input {input_number} enable = {enable}')
+        self.log.debug(f'{self!r}: Reference input {input_number} enable = {enable}')
         regs[0x000A + input_number] = (hi_z << 4) | (lvpecl << 3) | (ac << 2) | (term << 1) | enable
         regs[0x001C + input_number] = prescaler
 
         self.write_regs(regs)
 
-    def set_pll1(self, enable=True, input_priorities=[2,1,0,3], los_validation=3, input_sel=None, f_in=10e6, f_out=50e6, CP_gain=1, PFD_pol=0, restart=False):
+    def set_pll1(self, enable=True, input_priorities=[2,1,0,3], los_validation=3, input_sel=None, f_in=10e6, f_out=50e6, CP_gain=5, PFD_pol=0, restart=False):
         """ Configure PLL1
 
         Parameters:
@@ -528,8 +528,8 @@ class hmc7044(object):
 
         # pll1_cfg2_holdover_exitcrit[1:0] = 0x0
         # pll1_cfg2_holdover_exitactn[3:2] = 0x1
-        holdover_exit_action = 0 # 0: reset dividers, 1,2: Do nothing, 3: DAC assist
-        holdover_exit_criteria = 0 # 0: Exit when LOS gone, 1:exit when phase error = 0, 2: Exit immediately
+        holdover_exit_action = 3 # 0: reset dividers, 1,2: Do nothing, 3: DAC assist
+        holdover_exit_criteria = 1 # 0: Exit when LOS gone, 1:exit when phase error = 0, 2: Exit immediately
         regs[0x0016] = (holdover_exit_action << 2) | (holdover_exit_criteria)
 
         # pll1_cfg7_hodac_offsetval[6:0] = 0x0
@@ -653,7 +653,7 @@ class hmc7044(object):
         if f_out > 3550e6:
             raise ValueError('VCO frequenct too high. Must be <3550 MHz')
         if f_out < 2400e6 or f_out > 3200e6:
-            self._logger.warning('VCO frequency in datasheet range but is outside the guaranteed 2400-3200 MHz range')
+            self.log.warning('VCO frequency in datasheet range but is outside the guaranteed 2400-3200 MHz range')
 
         if vco_sel is None:
             vco_sel = 2 if f_out < 2800e6 else 1  # 0=external, 1= high, 2 = low
@@ -851,7 +851,7 @@ class hmc7044(object):
                 raise RuntimeError(f'f_vco must be specified if f_out is specified.')
             divider = f_vco / f_out
             if f_out > 1000e6:
-                print(f'Forcing output {output_number} mode to LVPECL because fout is high')
+                self.log.debug(f'{self!r}: Forcing output {output_number} mode to LVPECL because fout is high')
                 driver_mode = 1
         if divider != int(divider):
             raise RuntimeError(f'Output {output_number} divider={divider} is not an integer')
