@@ -121,6 +121,13 @@ class CRS(Motherboard):
 
     port = 7  # port number on which to access the platform `hostname`
 
+
+    TX_TO_RX_LANE_MAP = { # (Tx_slot, Tx_lane):(Rx_slot, Rx_lane), slots are 0-based
+     (0,0): (0,0),    (0, 1): (3, 3),   (0, 2): (2, 3),   (0, 3): (1, 3),
+     (1,0): (1,0),    (1, 1): (0, 3),   (1, 2): (2, 2),   (1, 3): (3, 2),
+     (2,0): (2,0),    (2, 1): (3, 1),   (2, 2): (1, 2),   (2, 3): (0, 2),
+     (3,0): (3,0),    (3, 1): (2, 1),   (3, 2): (1, 1),   (3, 3): (0, 1)}
+    RX_TO_TX_LANE_MAP = {rx:tx for tx,rx in TX_TO_RX_LANE_MAP.items()}
     # ---------------
 
     def __init__(self, hostname=None, serial=None, slot=None, subarray=None, **kwargs):
@@ -196,7 +203,9 @@ class CRS(Motherboard):
 
         self.i2c1_tmp421_1v4 = tmp421(self.iic, address=0x4C, port=(i2c1_switch0, 0))
         self.i2c1_tmp421_1v2b = tmp421(self.iic, address=0x4D, port=(i2c1_switch0, 0))
-        self.i2c1_tmp422_0v85 = tmp421(self.iic, address=0x4f, port=(i2c1_switch0, 0))
+        self.i2c1_tmp422_0v85 = tmp421(self.iic, address=0x4f, port=(i2c1_switch0, 0), n_ext=2)
+
+        self.i2c0_tmp421_pll = tmp421(self.iic, address=0x4E, port=(i2c1_switch0, 0)) # PLL temp monitor U45: int: Bot 1cm left of VCXO, ext: Q12 Bot Under Prog PLL
 
         if self.revision > 0:
             self.i2c1_disp = PCA8574(self.iic, address=0x22, port=(i2c1_switch0, 0))
@@ -513,7 +522,7 @@ class CRS(Motherboard):
 
 
         t0 = time.time()
-        self.logger.debug(f'{self!r}: called set_fpga_bitstream')
+        self.logger.debug(f'{self!r}: Called set_fpga_bitstream')
 
         if hasattr(self, 'close'):
             self.close()
@@ -521,7 +530,7 @@ class CRS(Motherboard):
         fw_cls, buf, fw_params = FPGAFirmware.get_firmware(self.part_number, firmware_mode, bitfile_override=bitfile_override)
         crc32 = buf.crc32
         bitstream = buf.raw_bitstream
-        print(f'Programming PLL before configuring the FPGA. {fw_params=}')
+        self.logger.info(f'{self!r}: Programming PLL before configuring the FPGA. {fw_params=}')
         await self.pll_init_async(fvco=fw_params['sampling_frequency'])  # add fw params here if we want to have mode/application-specific frequencies sent to the FPGA
 
         self.logger.debug(f'{self!r}: Getting is_programmed')
