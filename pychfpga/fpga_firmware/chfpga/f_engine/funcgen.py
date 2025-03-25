@@ -108,7 +108,7 @@ class FUNCGEN(MMI):
         'a':              (1, lambda self, a: np.full(self.NS, a)),  # All bytes are Byte A. 16-bit friendly
         'b':              (2, lambda self, b: np.full(self.NS, b)),  # All bytes are Byte B
         'ab':             (3, lambda self, a, b, : np.tile((a , b ), self.NS // 2)),  # Bytes alternate between A and B.
-        'ramp':           (4, lambda self, **kwargs: np.arange(self.NS)),  #
+        'ramp':           (4, lambda self, **kwargs: (np.arange(self.NS) - self.Nvalues / 2) % self.Nvalues - self.Nvalues / 2),  #  0 ... Nvalues/2-1, -Nvalues/2 ... 0
         'real_ramp':      (5, lambda self, **kwargs: np.ravel([(i,0) for i in range(self.NS//2)])),  # Generates the ramp: 0,0,1,0,2,0... If the data is read as (8+8)-bit complex value pairs, we obtain (0,0j), (1+0j)... (255+0j)
         '4bit_ramp':      (6, lambda self, **kwargs: np.arange(self.NS) << (self.Nbits - 4)),  # Generates the ramp in the upper 4 bits of the ADC sample (e.g for 8 bits: 0x00, 0x10, 0x20, ... 0xF0.)
         '4bit_real_ramp': (7, lambda self, **kwargs: np.ravel([(i,0) for i in range(self.NS//2)]) << (self.Nbits - 4)),  # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
@@ -133,6 +133,7 @@ class FUNCGEN(MMI):
         self.BYTES_PER_FRAME = self.NB = self.fpga.ADC_BYTES_PER_FRAME
         self.BYTES_PER_SAMPLE = self.BPS = self.fpga.ADC_BYTES_PER_SAMPLE
         self.Nbits  = self.fpga.ADC_BITS_PER_SAMPLE
+        self.Nvalues = 1 << self.Nbits
         # self.BUFFER_SIZE = self.BYTES_PER_FRAME  # bytes
         self.FRAME_SIZE = self.BYTES_PER_FRAME  # bytes
         self.PAGE_SIZE = 512 # number of bytes accessible in one RAM page
