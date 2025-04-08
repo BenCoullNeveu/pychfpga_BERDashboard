@@ -197,7 +197,7 @@ class SCALER(MMI):
                 # print(f'pre-gains {gains=}\n{glog=}\n{glog_common=}\n{glog + glog_common=}\n{2.0**(glog + glog_common)=}')
                 gains /= 2.0**(glog + glog_common)
                 # print(f'glog_common={glog_common}, {glog=}')
-                print(f'{glog_common=}\n{glog[0]=}\nglin[0]={gains[0]}')
+                # print(f'{glog_common=}\n{glog[0]=}\nglin[0]={gains[0]}')
                 if any(gains < 0) or any(gains >= 2**11):
                     raise ValueError('Floating point gain mantissa exceeds 2**11')
                 if any(glog < 0) or any(glog >31):
