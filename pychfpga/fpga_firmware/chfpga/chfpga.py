@@ -161,6 +161,7 @@ class chFPGA(FPGAFirmware):
     _BSB_CT_PORT = 2
     _BSB_GPU_PORT = 3
     _BSB_CORR_PORT = 4
+    _BSB_UCORN_PORT = 5
     _BSB_UCAP_PORT = 7
 
     _TOP_SUBSYSTEM_INCREMENT = 0x10000  #: Address increments between top-level systems (address bits 18:16)
@@ -349,8 +350,8 @@ class chFPGA(FPGAFirmware):
         self.udp_err_ctr = 0
         self.udp_err_msgs = []
 
-    def get_id(self, lane=None):
-        return self.mb.get_id(lane=lane)
+    def get_id(self, lane=None, default_crate=None, default_slot=None, numeric_only=False):
+        return self.mb.get_id(lane=lane, default_crate=default_crate, default_slot=default_slot, numeric_only=numeric_only)
 
     @property
     def slot(self):
@@ -736,7 +737,12 @@ class chFPGA(FPGAFirmware):
                 self.HAS_FMC = False
                 self.MAX_BSB_COMMAND_LENGTH = 512
                 self.CT_TYPE = "UCT" # Fixed GTY-based corner-turn, 8 inputs (4 bins/input/clk) x 1 output (packetized), across 1, 4, or 8 boards
-                self.CT_LEVEL = 2 # Need to read this from registers
+                if self.mode == 'corr32':
+                    self.CT_LEVEL = 2 # Need to read this from registers
+                else:
+                    self.CT_LEVEL = 1
+
+                self.HAS_UCORN = self.mode == 'shuffle8' # Hacky method until we can read it back.
                 self.CROSSBAR1_TYPE = "URAM"
                 self.GPU_LINK_TYPE = "100GE"
                 self.CAPTURE_TYPE = "UCAP"
@@ -752,6 +758,7 @@ class chFPGA(FPGAFirmware):
                 self.HAS_FMC = True
                 self.MAX_BSB_COMMAND_LENGTH = 2048  # maybe more, depends on the UDP bufer
                 self.CT_TYPE = "BCT" # Programmable BRAM- and GTX-based corner turn (16 inputs (2 bins/input/clk) x 8 outputs across 1,16 and 32 boards)
+                self.HAS_UCORN = False
                 self.CROSSBAR1_TYPE = "BRAM"
                 self.GPU_LINK_TYPE = "10GE"
                 self.CAPTURE_TYPE = "PROBER"
@@ -938,6 +945,16 @@ class chFPGA(FPGAFirmware):
             else:
                 raise RuntimeError(f'Unknown CT-Engine type {self.CT_TYPE}')
 
+            if self.HAS_UCORN:  # ***JFC temp hack to determine if we have UCORN. Not it capability reg yet.
+                self.UCORN = ucorn.UCorn(
+                    fpga_instance=self,
+                    base_address = self._TOP_BASE_ADDR,
+                    address_width = self._TOP_PORT_ADDR_WIDTH,
+                    router_port =  self._BSB_UCORN_PORT
+                    )
+            else:
+                self.UCORN = None
+
 
 
             # ---------------------
@@ -962,7 +979,12 @@ class chFPGA(FPGAFirmware):
                 if self.GPU_LINK_TYPE == '10GE':
                     self.GPU = gpu.GPU(self, self._GPU_LINK_BASE_ADDR, self._GPU_LINK_ADDR_INCREMENT)
                 elif self.GPU_LINK_TYPE == '100GE':
-                    self.GPU = cge.CGE(self, self._GPU_LINK_BASE_ADDR, self._GPU_LINK_ADDR_INCREMENT)
+                    self.GPU = cge.CGE(
+                        fpga_instance=self,
+                        base_address = self._TOP_BASE_ADDR,
+                        address_width = self._TOP_PORT_ADDR_WIDTH,
+                        router_port =  self._BSB_GPU_PORT
+                        )
                 else:
                     raise RuntimeError(f'Unknown data link type {self.GPU_LINK_TYPE}')
             else:
@@ -1199,6 +1221,12 @@ class chFPGA(FPGAFirmware):
             raise RuntimeError('The firmware does not have a corner-turn engine')
 
         self.CT.init()
+
+
+        if self.UCORN:
+            self.logger.debug(f'{self!r}: === Initializing Frame aggregator (UCORN)')
+            self.UCORN.init()
+
         # self.logger.debug(f'{self!r}: === Initializing 1st Crossbar')
         # await asyncio.sleep(0)
 
