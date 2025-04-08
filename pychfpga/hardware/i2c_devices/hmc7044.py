@@ -387,10 +387,10 @@ class hmc7044(object):
             (0x70, 0x0), # PLL1 alarm control register
             (0x71, 0x10), # Alarm mask control: 4: sync req, 3:PLL1/2 lock detect, 2: clk out phase status, 1: sysref sync status, 0: pll2 lock detect
 
-            (0x7B, 0x1), # Alarm readback register (read only)
-            (0x7C, 0x1F), # PLL1 alarm readback (read only)
-            (0x7D, 0x13), # Alarm readback (read only)
-            (0x7E, 0x7F), # Latched alarm readback (read only)
+            # (0x7B, 0x1), # Alarm readback register (read only)
+            # (0x7C, 0x1F), # PLL1 alarm readback (read only)
+            # (0x7D, 0x13), # Alarm readback (read only)
+            # (0x7E, 0x7F), # Latched alarm readback (read only)
 
             # Reserved values recommended by Analog Devices. See Table 74 of datasheet Rev C.
             (0x96, 0x0),
