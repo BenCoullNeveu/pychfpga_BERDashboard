@@ -33,7 +33,7 @@ from ..i2c_devices.eeprom import eeprom
 from ..i2c_devices.qsfp import QSFP as qsfp
 from ..i2c_devices.gpio import GPIO
 from ..i2c_devices.hmc7044 import hmc7044  # Dual PLL
-
+from ..i2c_devices.ssd1306 import SSD1306
 
 class iic_dummy:
     def __init__(self, *args, **kwargs):
@@ -213,6 +213,8 @@ class CRS(Motherboard):
             self.i2c1_disp = None
         self.i2c1_eeprom_data = eeprom(self.iic, address=0x57, bus_name=(i2c1_switch0, 0), address_width=7, max_read_length=255, max_write_length=8, write_page_size=8)
         self.i2c1_eeprom_serial = eeprom(self.iic, address=0x5F, bus_name=(i2c1_switch0, 0), address_width=8, max_read_length=255)  # must read 16 bytes from memory address 0x80
+
+        self.display = SSD1306(self.iic, address=0x3C, port=(i2c1_switch0, 0))
 
         # I2C1 Switch 0 port 1 devices
         #   0x18: DDR4 SODIMM Temp sensor
