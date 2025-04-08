@@ -44,9 +44,9 @@ class TCPipe:
         self.sock.settimeout(timeout)
         self.sock.connect((hostname, self.port))
         self.opened_sockets[(hostname, port)] = self.sock
-        self.tx_buf = bytearray(1024)
+        self.tx_buf = bytearray(2048)
         self.tx_view = memoryview(self.tx_buf)
-        self.rx_buf = bytearray(1024)
+        self.rx_buf = bytearray(2048)
         self.rx_view = memoryview(self.rx_buf)
         self.firmware_crc = None
         self.log.debug(f'{self!r}: Opened TCPipe socket at {self.sock.getsockname()}')
