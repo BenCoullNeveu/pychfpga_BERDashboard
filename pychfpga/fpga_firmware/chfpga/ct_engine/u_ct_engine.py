@@ -79,39 +79,14 @@ class UCTEngine(MMI):
 
     """
 
-
     CONTROL = BitField.CONTROL
     STATUS = BitField.STATUS
-
-    # 100GE Link control and status registers
-    # RESET_TX_DATAPATH               = BitField(CONTROL, 0, 0, doc='When 1, the TX datapath is reset')
-    # RESET_RX_DATAPATH         = BitField(CONTROL, 0, 1, doc='When 1, the RX datapath is reset.')
-    # CMAC_SYS_RESET      = BitField(CONTROL, 0, 2, doc='When 1, The CMAC is reset.')
-    # CORE_TX_RESET      = BitField(CONTROL, 0, 3, doc='When 1, The 100G Cor elogic is reset.')
-    # TEST_PACKET_ENABLE  = BitField(CONTROL, 0, 7, doc='When 1, the test packet generator is enabled')
-    # TEST_PACKET_WORDS  = BitField(CONTROL, 1, 0, width=8, doc='Number of 32-byte words in the UDP packets in addition to the 22 bytes payload header')
-    # TEST_PACKET_PERIOD  = BitField(CONTROL, 3, 0, width=16, doc='Time between packets in  322MHz clocks periods')
-    # CAPTURE_BYTE_NUMBER = BitField(CONTROL, 5, 0, width=16, doc='Index of byte to capture')
-    # STATUS0            = BitField(STATUS, 0, 0, width=8, doc='various status bits')
-    # IN_FRAME_CTR           = BitField(STATUS, 1, 0, width=8, doc='Counts the number of frames coming in (test frames are counted when enabled).')
-    # OUT_FRAME_CTR           = BitField(STATUS, 2, 0, width=8, doc='Counts the number of framesgoing out to the CMAC.')
-    # PACKET_LENGTH           = BitField(STATUS, 4, 0, width=16, doc='length of incoming packets')
-    # CAPTURE_BYTE           = BitField(STATUS, 5, 0, width=8, doc='Captured byte')
-    # DATA_FIFO_OVERFLOW  = BitField(STATUS, 2+2, 0, width=8, doc='Indicates if the data FIFO has overflows on the last 8 GPU links. Bit 0 is for lane 0.')
-    # FRAME_FIFO_OVERFLOW = BitField(STATUS, 2+3, 0, width=8, doc='Indicates if the frame header FIFO has overflows on the last 8 GPU links. Bit 0 is for lane 0.')
 
     BSB_ROUTING_ADDRESS_WIDTH = 2
     BSB_ROUTER_CT1_PORT = 0
     BSB_ROUTER_CT2_PORT = 1
     BSB_ROUTER_CT3_PORT = 2
     BSB_ROUTER_BPLINKS_PORT = 3
-    # BSB_ROUTER_CT1_PORT = 3
-    # BSB_ROUTER_CT2_PORT = 2
-    # BSB_ROUTER_CT3_PORT = 1
-    # BSB_ROUTER_BPLINKS_PORT = 0
-
-
-    BSB_ROUTER_UCORN_PORT = 2
 
     def __init__(self, fpga_instance, base_address,  address_width, router_port, verbose=1):
         self.logger = logging.getLogger(__name__)
@@ -158,16 +133,6 @@ class UCTEngine(MMI):
                 router_port=self.BSB_ROUTER_CT3_PORT)
         else:
             self.CT3 = None
-
-        # if self.fpga.mode == 'shuffle8':  # ***JFC temp hack to determine if we have UCORN. Not it capability reg yet.
-        #     self.UCORN = ucorn.UCorn(
-        #         fpga_instance=self,
-        #         base_address = self.base_address,
-        #         address_width = router_port_address_width,
-        #         router_port =  self.BSB_ROUTER_UCORN_PORT
-        #         )
-        # else:
-        #     self.UCORN = None
 
 
 
