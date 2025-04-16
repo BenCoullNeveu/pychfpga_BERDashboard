@@ -464,7 +464,7 @@ EXAMPLE:
 
             metrics_refresh_time: 1
             adc_rms_refresh_count: 60
-            input_number_map: [12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 4] # Translates FPGA channel number into CHIME input #. Used to label metrics in more user-friendly way
+            input_number_map: [12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3] # Translates FPGA channel number into CHIME input #. Used to label metrics in more user-friendly way
             jump_thresholds: [ 24, 48, 96] # thresholds used to generate signal jump counter metrics
 
 
