@@ -748,6 +748,9 @@ class chFPGA(FPGAFirmware):
                 self.CAPTURE_TYPE = "UCAP"
                 self.CORR_TYPE = "UCORR44"
                 self.ADC_FREQS_TO_CHECK = range(self.NUMBER_OF_ADCS)
+                # Select the FFT latency. We currently don't have access to the firmware FFT_TYPE, so we assume we use the CHORD FFT
+                # self.FFT_LATENCY = 12533 # This is probably for the D3A FFT
+                self.FFT_LATENCY = 10452 # Bitgrowth (CHORD) FFT good value=10452 10450= DC@bin 8, 16451 DC @ bin 4
 
             elif self.PLATFORM_ID in (self._PLATFORM_ID_MGK7MB_REV0, self._PLATFORM_ID_MGK7MB_REV2):
                 assert self.mb.part_number == "MGK7MB", 'This version of the firmware is meant to operate on the MGK7MB (IceBoard) only'
@@ -764,6 +767,8 @@ class chFPGA(FPGAFirmware):
                 self.CAPTURE_TYPE = "PROBER"
                 self.CORR_TYPE = "CORR44"
                 self.ADC_FREQS_TO_CHECK = (0,4,8,12)
+                self.FFT_LATENCY = 3230 # CHIME FFT
+
             else:
                 raise RuntimeError(f'Unknown feature list for PLATFORM_ID = {self.PLATFORM_ID}')
 
