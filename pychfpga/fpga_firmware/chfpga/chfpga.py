@@ -2332,10 +2332,23 @@ class chFPGA(FPGAFirmware):
 
         Parameters:
 
-            datetime_ (datetime): the base target time in the Python as a :class:`datetime` object.
+            datetime_ (datetime): the base target time in the Python as a :class:`datetime` object,
+                which has a microsecond resolution (the nanosecond digits are all zeros). If `None`,
+                the current date and time is fetched from the FPGA as a datetime object, meaning it
+                also mas a microsecond resolution even if a higher resolution is available.
 
-            delay (float): is a time offset in seconds that is added to `datetime_` so set the
-                target time. It defaults to zero.
+            delay (float): is a time offset in seconds that is added to `datetime_` to set the
+                target time. This delay can be specified with an accuracy of up to 10 ns (lower digits are
+                ignored and assumed to be zero). If `datetime` is specified, it defaults to zero
+                (i.e the specified `datetime` is the target time, so it is assumed to be in the
+                future). If `datetime` is not specified, (i.e. it will be the currnt FPGA time),
+                `delay` defaults to 3 seconds.
+
+
+        Be aware of the limited resolution of floating points. With a float in python (a double), it is not possible to
+        represent a delay of more than about 1E6 seconds (11 days) without losing the 10 nanosecond
+        resolution. Hence the use of a low accuracy reference time and a high accuracy delay relative to that time.
+
 
         Returns:
 
@@ -2361,7 +2374,7 @@ class chFPGA(FPGAFirmware):
             if delay is None:
                 delay = 0
 
-        nano_delay = int(delay * 1e9) % 1000  # Get submicrosecond delay in nanosecond units
+        nano_delay = round(delay * 1e9) % 1000  # Get submicrosecond delay in nanosecond units
         delay = int(delay * 1e6) / 1e6  # Round delay to the microsecond
         # add delay in integer microseconds (datetime does not support more
         # than the microsecond accuracy)
