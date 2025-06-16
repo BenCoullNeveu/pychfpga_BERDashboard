@@ -4339,7 +4339,7 @@ class chFPGA(FPGAFirmware):
         for ch in range(len(self.chan)):
             if ch in channels:
                 self.logger.debug(f"Setting rounding mode of scaler in channel {ch} to {rm_name}.")
-                self.chan[ch].SCALER.ROUNDING_MODE = not rm_code
+                self.chan[ch].SCALER.ROUNDING_MODE = rm_code #not rm_code
 
     def set_gains(
             self,
