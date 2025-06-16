@@ -2661,6 +2661,7 @@ class chFPGA(FPGAFirmware):
             postscaler=None,
             scaler_eight_bit=None,
             scaler_rounding_mode=None,
+            symmetric_saturation=None,
             prober_user_flags=None,
             offset_binary_encoding=None,
             local_sync=True,
@@ -2768,6 +2769,9 @@ class chFPGA(FPGAFirmware):
                 channels=channels,
             )
 
+        if symmetric_saturation is not None:
+            self.set_symmetric_saturation(symmetric_saturation=symmetric_saturation, channels=channels)
+            
         if gain is not None:
             self.set_gains(gain=gain, postscaler=postscaler, channels=channels)
 
@@ -4341,6 +4345,16 @@ class chFPGA(FPGAFirmware):
                 self.logger.debug(f"Setting rounding mode of scaler in channel {ch} to {rm_name}.")
                 self.chan[ch].SCALER.ROUNDING_MODE = rm_code #not rm_code
 
+    def set_symmetric_saturation(self, symmetric_saturation, channels=None):
+        
+        if channels is None:
+            channels = self.default_channels
+
+        for ch in range(len(self.chan)):
+            if ch in channels:
+                self.logger.debug(f"{'Enabling' if symmetric_saturation else 'Disabling'} symmetric saturation on channel {ch}")
+                self.chan[ch].SCALER.SATURATE_ON_MINUS_7 = symmetric_saturation
+    
     def set_gains(
             self,
             gain=None,
