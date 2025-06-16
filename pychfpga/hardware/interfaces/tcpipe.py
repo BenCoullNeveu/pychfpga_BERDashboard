@@ -49,7 +49,7 @@ class TCPipe:
         self.rx_buf = bytearray(2048)
         self.rx_view = memoryview(self.rx_buf)
         self.firmware_crc = None
-        self.log.debug(f'{self!r}: Opened TCPipe socket at {self.sock.getsockname()}')
+        self.log.debug(f'{self!r}: Opened TCPipe socket from local address{self.sock.getsockname()} to remote address {self.hostname}:{self.port}')
         self.bsb_sent_ctr = 0
 
     def __repr__(self):
