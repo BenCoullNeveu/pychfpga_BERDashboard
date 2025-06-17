@@ -2662,6 +2662,7 @@ class chFPGA(FPGAFirmware):
             scaler_eight_bit=None,
             scaler_rounding_mode=None,
             symmetric_saturation=None,
+            zero_on_sat=None,
             prober_user_flags=None,
             offset_binary_encoding=None,
             local_sync=True,
@@ -2771,7 +2772,10 @@ class chFPGA(FPGAFirmware):
 
         if symmetric_saturation is not None:
             self.set_symmetric_saturation(symmetric_saturation=symmetric_saturation, channels=channels)
-            
+
+        if zero_on_sat is not None:
+            self.set_zero_on_sat(zero_on_sat=zero_on_sat, channels=channels)
+        
         if gain is not None:
             self.set_gains(gain=gain, postscaler=postscaler, channels=channels)
 
@@ -4310,7 +4314,7 @@ class chFPGA(FPGAFirmware):
     def set_scaler_rounding_mode(
             self,
             scaler_rounding_mode: Literal[1, 2, 3],
-            channels: List[int],
+            channels: List[int] = None,
     ):
         """
             Sets the rounding mode of the scaler. The mode will be set individually for each channelizer.
@@ -4355,6 +4359,16 @@ class chFPGA(FPGAFirmware):
                 self.logger.debug(f"{'Enabling' if symmetric_saturation else 'Disabling'} symmetric saturation on channel {ch}")
                 self.chan[ch].SCALER.SATURATE_ON_MINUS_7 = symmetric_saturation
     
+    def set_zero_on_sat(self, zero_on_sat, channels=None):
+        
+        if channels is None:
+            channels = self.default_channels
+
+        for ch in range(len(self.chan)):
+            if ch in channels:
+                self.logger.debug(f"{'Enabling' if zero_on_sat else 'Disabling'} zeroing of saturated real+complex pairs on channel {ch}")
+                self.chan[ch].SCALER.ZERO_ON_SATURATION = zero_on_sat
+
     def set_gains(
             self,
             gain=None,
