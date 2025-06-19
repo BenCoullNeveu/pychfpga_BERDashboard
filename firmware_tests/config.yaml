@@ -8,4 +8,30 @@ test_config:
     logleveltest: "DEBUG"   # Log level during tests
     conn_scope: "class"     # Select "function" to re-establish connection for each test or
                             # "class" if you want to reuse connection.
-    comp_plots: True        # Generate comparison plots during tests
+    always_plot: True       # Always generate comparison plots during tests
+    plot_on_failure: True    # Only generate comparison plots if test fails
+    delete_plots_before_run: True
+    all_zeroes: {}
+    all_ones:
+        postscaler_min: 12
+        postscaler_max: 28
+    alternating_gain:
+        min_period: 2
+        max_period: 20
+        step: 2
+    constant_gain:
+        gains: [-32768, -1, 2, 3, 32767]
+        postscaler_min: 0
+        postscaler_max: 31
+        min: -8
+        max: 8
+    rounding:
+        test_values: [-8, -1, 1, 2, 7]
+    symmetric_saturation:
+        postscaler_min: 22
+        postscaler_max: 26
+    zero_on_sat: {}
+    overflow_stats:
+        postscaler_min: 21
+        postscaler_max: 26
+        frame_cnt: [1000, 1, 50000]
