@@ -26,7 +26,7 @@ def delete_plots(request):
     if TEST_CONFIG['delete_plots_before_run']:
         logger.info("Deleting previous plots")
         pattern = os.path.join(PLOT_DIR, '*.png')
-        for file in glob.glob(pattern):
+        for file in glob.rglob(pattern):
             os.remove(file)
 
 @pytest.fixture(scope=TEST_CONFIG['conn_scope'])
