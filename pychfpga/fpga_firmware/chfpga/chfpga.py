@@ -6301,7 +6301,7 @@ class chFPGA(FPGAFirmware):
             metrics = Metrics()
         return metrics
 
-    async def get_channelizer_metrics_async(self, reset=True):
+    '''async def get_channelizer_metrics_async(self, reset=True):
         metrics = Metrics(
             type='GAUGE',
             slot=(self.slot or 0) - 1,
@@ -6322,8 +6322,37 @@ class chFPGA(FPGAFirmware):
                     chan.FFT.reset_fft_overflow_count()
         except IOError as e:
             self.logger.error('%r: Error getting FPGA channelizer metrics. Error is %r' % (self, e))
-        return metrics
+        return metrics'''
 
+    async def get_channel_metrics_async(self, ch, frame_cnt=1000, polling_interval=0.01):
+        '''
+        Returns the channelizer metrics for a specific channel in the format (scaler_overflow_count, adc_overflow_count)
+
+        Internally, this resets the STATS_CAPTURE flag, sets it, then waits for the STATS_READY flag to be asserted and collects the data.
+
+        Parameters:
+            - ch: the channel to collect the data from
+            - frame_cnt: number of data frames to integrate these statistics over
+            - polling_interval: how like to sleep in between checking if the stats_ready has been set
+
+        '''
+
+        self.chan[ch].SCALER.STATS_FRAME_COUNT = frame_cnt
+        self.chan[ch].SCALER.STATS_CAPTURE = 0
+        await asyncio.sleep(polling_interval * 10)
+        self.chan[ch].SCALER.STATS_CAPTURE = 1
+        while True:
+            if self.chan[ch].SCALER.STATS_READY:
+                return (self.chan[ch].SCALER.STATS_SCALER_OVERFLOWS, self.chan[ch].SCALER.STATS_ADC_OVERFLOWS)
+            await asyncio.sleep(polling_interval)
+                
+    async def get_scaler_metrics_async(self, frame_cnt=1000, polling_interval=0.00001, channels=None):
+        if channels is None:
+            channels = self.default_channels
+
+        results = await asyncio.gather(*[self.get_channel_metrics_async(ch, frame_cnt=frame_cnt, polling_interval=polling_interval) for ch in channels])
+        return results
+    
     async def get_crossbar_metrics_async(self, reset=True):
         metrics = Metrics()
         if not self.is_open():
