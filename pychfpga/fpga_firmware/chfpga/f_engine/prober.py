@@ -422,7 +422,6 @@ class RawFrameReceiver(object):
             if bix is not None:
                 self.data[bix] = self.buf_data[i]
                 self.data_count[bix] += 1
-
-        ts = self.buf_ts[0]
+        ts = self.buf_ts[0] & self.ts_mask
         return ts, self.data, self.data_count
 

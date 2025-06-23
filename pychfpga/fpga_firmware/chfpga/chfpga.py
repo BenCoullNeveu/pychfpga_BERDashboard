@@ -3173,7 +3173,7 @@ class chFPGA(FPGAFirmware):
 
             burst_period_in_seconds (float): Same as `period` or as a number of frames
 
-            burst_period_in_frames (int): Number of frames between captured bursts.
+            burst_period_in_frames (int): Number of frames between captured bursts - 1 second corresponds to approximately 39 000 frames.
 
             number_of_bursts (int): Number of bursts to send, after which the FPGA stops sending
                 data. If `number_of_bursts` =0, the transmission continues indefinitely, until
