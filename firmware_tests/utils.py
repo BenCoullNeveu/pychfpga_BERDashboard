@@ -3,6 +3,7 @@ import numpy as np
 from test_setup import PLOT_DIR
 import pathlib
 
+colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
 '''def plot_comp_data(fname: str, ref_data: np.ndarray, data: np.ndarray, x: np.ndarray = None, title: str = None, crop_data_ind: int = -1):
     data = np.atleast_2d(data)
@@ -51,18 +52,19 @@ def plot(datasets, labels=[], y_range=None, data_range=None, split_complex=False
     elif np.isscalar(data_range):
         data_range = (0, data_range)
    
-    fig, axs = plt.subplots(len(datasets), figsize=(8, 6))
+    fig, ax = plt.subplots()#(len(datasets), figsize=(8, 6)
+    if y_range is not None:
+        ax.set_ylim(y_range)
     for i in range(len(datasets)):
-        if y_range is not None:
-            axs[i].set_ylim(y_range)
         if split_complex:
-            axs[i].plot(datasets[i][data_range[0]+1:data_range[1]:2], color="blue")
-            axs[i].plot(datasets[i][data_range[0]:data_range[1]:2], color="orange")
+            ax.plot(datasets[i][data_range[0]+1:data_range[1]:2], color=colors[2*i], label=labels[i] + "(Re)")
+            ax.plot(datasets[i][data_range[0]:data_range[1]:2], color=colors[2*i+1], label=labels[i] + "(Im)")
         else:
-            axs[i].plot(datasets[i][data_range[0]:data_range[1]])
-        axs[i].set_title(labels[i])
+            ax.plot(datasets[i][data_range[0]:data_range[1]], color=colors[i], label=labels[i])
+        #axs.set_title(labels[i])
+    ax.legend()
     fig.suptitle(title)
-    fig.tight_layout()
+    #fig.tight_layout()
     dir = PLOT_DIR if folder is None else PLOT_DIR / folder
     dir.mkdir(exist_ok=True)
     plt.savefig(dir/title)
