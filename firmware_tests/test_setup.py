@@ -26,7 +26,7 @@ def delete_plots(request):
     if TEST_CONFIG['delete_plots_before_run']:
         logger.info("Deleting previous plots")
         pattern = os.path.join(PLOT_DIR, '*.png')
-        for file in glob.rglob(pattern):
+        for file in Path('.').rglob(pattern):
             os.remove(file)
 
 @pytest.fixture(scope=TEST_CONFIG['conn_scope'])
@@ -38,7 +38,7 @@ def board_conn(request, delete_plots):
     ca = FPGAArray(**CONN_CONFIG)
     request.cls.board = ca.ib[0]
 
-@pytest.fixture(scope=TEST_CONFIG['conn_scope'])
+@pytest.fixture(scope='function')
 def setup_funcgen(request, board_conn):
     logger = logging.getLogger(request.cls.__name__)
     request.cls.FG_NS = request.cls.board.ADC_SAMPLES_PER_FRAME
@@ -51,7 +51,7 @@ def setup_funcgen(request, board_conn):
         request.cls.FG_LSHIFT = 16 - request.cls.board.ADC_BITS_PER_SAMPLE
     logger.debug(f"Setting funcgen output dtype to {request.cls.FG_DTYPE}")
 
-@pytest.fixture(scope=TEST_CONFIG['conn_scope'])
+@pytest.fixture(scope='function')
 def setup_scaler(request, board_conn):
     logger = logging.getLogger(request.cls.__name__)
     request.cls.FG_NS = request.cls.board.chan[0].FUNCGEN.NS
