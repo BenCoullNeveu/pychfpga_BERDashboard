@@ -47,6 +47,7 @@
         "psutil",  # was ==5.4.7, now testing 5.7.3
         "netifaces",   # was not specified, now using 0.10.9
         "zeroconf==0.34.3",  # new, was tested with 0.34.3
+        "sts-pylib",
 
         ]
 

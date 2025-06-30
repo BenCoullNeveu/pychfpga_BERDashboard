@@ -30,3 +30,9 @@ def plot_comp_data(fname: str, ref_data: np.ndarray, data: np.ndarray, x: np.nda
     fig.suptitle(title)
     fig.tight_layout()
     plt.savefig(PLOT_DIR/fname)
+
+def some_plot(x, y, fname, x_label, y_label):
+    plt.plot(x,y, marker='o', linestyle='None')
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.savefig(PLOT_DIR/fname)
