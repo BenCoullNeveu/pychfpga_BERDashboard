@@ -1117,6 +1117,7 @@ class FPGAArray(object):
                         adc_mode=adc_mode,
                         adc_bandwidth=adc_bandwidth,
                         sampling_frequency=sampling_frequency,
+                        group_frames = frames_per_packet,  # is also passed to set_operational_mode
                         **kwargs
                     ) for ib in self.ib])
 
@@ -1796,7 +1797,7 @@ class FPGAArray(object):
             self.corner_turn_stream_ids = None
             self.corner_turn_frequency_bins = None
             for ib in self.ib:
-                ib.init_crossbars(mode, frames_per_packet=1, bin_map=bin_map[ib.get_id()])
+                ib.init_crossbars(mode=mode, frames_per_packet=1, bin_map=bin_map[ib.get_id()])
             self.ib.set_offset_binary_encoding(True)  # The firmware correlator engine expects offset encoding
             if integration_period:
                 self.ib.start_correlator(integration_period=integration_period, autocorr_only=autocorr_only)

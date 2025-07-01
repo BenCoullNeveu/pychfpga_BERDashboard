@@ -816,7 +816,7 @@ class IceBoard(Motherboard, TuberIceBoardBase):
         else:
             self.logger.debug(
                 f'{self!r}: FPGA is already configured. Skipping configuration.')
-        self.fpga = fw_cls(self, **fw_params)
+        self.fpga = fw_cls(self, mode=firmware_mode, **fw_params)
 
 
     FPGA_FIRMWARE_CRC32_ADDR = 4 * 3
