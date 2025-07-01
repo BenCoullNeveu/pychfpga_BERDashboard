@@ -138,6 +138,13 @@ class chFPGA(FPGAFirmware):
         ("CRS",    "chFPGA", ("chan8", "shuffle8")): dict(firmware_url='chfpga_crs_ct.bit', sampling_frequency=3200e6, processing_frequency = 3200e6/8, adc_clock_divider=32),
     }
 
+    # Lookup table to provice information of the FFT implemented in the firmware. Is indexed using the FFT_TYPE value provided by the firmware.
+    FFT_INFO = {
+        0: dict(name='NONE', latency=0),
+        1: dict(name='CHIME', latency=3230, samples_per_frame=2048, bits_per_sample=8, bits_per_bin=18+18),
+        2: dict(name='D3A', latency=12533, samples_per_frame=16384, bits_per_sample=14, bits_per_bin=18+18),
+        3: dict(name='CHORD', latency=10452, samples_per_frame=16384, bits_per_sample=14, bits_per_bin=32+32),
+    }
 
     ################################################################################################
     # Byte-Serial-Bus (BSB) Memory map
@@ -753,6 +760,10 @@ class chFPGA(FPGAFirmware):
             self._NUMBER_OF_FMC_SLOTS = self.mb.NUMBER_OF_FMC_SLOTS
 
             self.NUMBER_OF_ADCS = self.GPIO.NUMBER_OF_ADCS
+            self.FFT_TYPE = self.GPIO.FFT_TYPE
+            self.FFT_LATENCY = (self.FFT_INFO[self.FFT_TYPE])['latency']
+            self.CT_TYPE = ('NONE', 'BCT','UCT')[self.GPIO.CT_TYPE]
+            self.CT_LEVEL = self.GPIO.CT_LEVEL
 
             # Set platform/implementation-specific features & constants based on a local table
             if self.PLATFORM_ID in (self._PLATFORM_ID_ZCU111, self._PLATFORM_ID_CRS):
@@ -763,11 +774,11 @@ class chFPGA(FPGAFirmware):
                 self.HAS_ADCDAQ = False
                 self.HAS_FMC = False
                 self.MAX_BSB_COMMAND_LENGTH = 512
-                self.CT_TYPE = "UCT" # Fixed GTY-based corner-turn, 8 inputs (4 bins/input/clk) x 1 output (packetized), across 1, 4, or 8 boards
-                if self.mode == 'corr32':
-                    self.CT_LEVEL = 2 # Need to read this from registers
-                else:
-                    self.CT_LEVEL = 1
+                # self.CT_TYPE = "UCT" # Fixed GTY-based corner-turn, 8 inputs (4 bins/input/clk) x 1 output (packetized), across 1, 4, or 8 boards
+                # if self.mode == 'corr32':
+                #     self.CT_LEVEL = 2 # Need to read this from registers
+                # else:
+                #     self.CT_LEVEL = 1
 
                 self.HAS_UCORN = self.mode == 'shuffle8' # Hacky method until we can read it back.
                 self.CROSSBAR1_TYPE = "URAM"
@@ -777,7 +788,7 @@ class chFPGA(FPGAFirmware):
                 self.ADC_FREQS_TO_CHECK = range(self.NUMBER_OF_ADCS)
                 # Select the FFT latency. We currently don't have access to the firmware FFT_TYPE, so we assume we use the CHORD FFT
                 # self.FFT_LATENCY = 12533 # This is probably for the D3A FFT
-                self.FFT_LATENCY = 10452 # Bitgrowth (CHORD) FFT good value=10452 10450= DC@bin 8, 16451 DC @ bin 4
+                # self.FFT_LATENCY = 10452 # Bitgrowth (CHORD) FFT good value=10452 10450= DC@bin 8, 16451 DC @ bin 4
 
             elif self.PLATFORM_ID in (self._PLATFORM_ID_MGK7MB_REV0, self._PLATFORM_ID_MGK7MB_REV2):
                 assert self.mb.part_number == "MGK7MB", 'This version of the firmware is meant to operate on the MGK7MB (IceBoard) only'
@@ -787,7 +798,7 @@ class chFPGA(FPGAFirmware):
                 self.HAS_ADCDAQ = True
                 self.HAS_FMC = True
                 self.MAX_BSB_COMMAND_LENGTH = 2048  # maybe more, depends on the UDP bufer
-                self.CT_TYPE = "BCT" # Programmable BRAM- and GTX-based corner turn (16 inputs (2 bins/input/clk) x 8 outputs across 1,16 and 32 boards)
+                # self.CT_TYPE = "BCT" # Programmable BRAM- and GTX-based corner turn (16 inputs (2 bins/input/clk) x 8 outputs across 1,16 and 32 boards)
                 self.HAS_UCORN = False
                 self.CROSSBAR1_TYPE = "BRAM"
                 self.GPU_LINK_TYPE = "10GE"
@@ -795,11 +806,11 @@ class chFPGA(FPGAFirmware):
                 # self.CORR_TYPE = "CORR44"
                 self.CORR_TYPE = "UCORR44"
                 self.ADC_FREQS_TO_CHECK = (0,4,8,12)
-                self.FFT_LATENCY = 3230 # CHIME FFT
-                if self.mode == 'corr16':
-                    self.CT_LEVEL = 1 # Need to read this from registers
-                else:
-                    self.CT_LEVEL = 3
+                # self.FFT_LATENCY = 3230 # CHIME FFT
+                # if self.mode == 'corr16':
+                #     self.CT_LEVEL = 1 # Need to read this from registers
+                # else:
+                #     self.CT_LEVEL = 3
 
             else:
                 raise RuntimeError(f'Unknown feature list for PLATFORM_ID = {self.PLATFORM_ID}')
