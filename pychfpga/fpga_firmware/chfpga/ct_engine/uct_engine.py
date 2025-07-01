@@ -5,14 +5,12 @@ cge.py module
 import logging
 import numpy as np
 
-from ..mmi import MMI, BitField
+from ..mmi import MMI, MMIRouter, BitField, CONTROL, STATUS
 
 from . import xxvglink
 
 
 class CT1Regs(MMI):
-    CONTROL = BitField.CONTROL
-    STATUS = BitField.STATUS
 
     CT_LEVEL = BitField(STATUS, 0, 0, width=2, doc='Corner-turning level')
     CT1_RST_STATUS = BitField(STATUS, 0, 2, doc='Reset line state')
@@ -23,8 +21,6 @@ class CT1Regs(MMI):
     OUT_FRAME_CTR = BitField(STATUS, 2, 0, width=8, doc='Counts frames coming out of the CT engine')
 
 class CT2Regs(MMI):
-    CONTROL = BitField.CONTROL
-    STATUS = BitField.STATUS
 
     ALIGN_MON_RESET = BitField(CONTROL, 0, 0, doc='Resets the ALIGN monitoring statistics')
     ALIGN_MON_SOURCE = BitField(CONTROL, 1, 4, width=4, doc='Select the information shown on the ALIGN_WORD')
@@ -83,25 +79,24 @@ class CT2Regs(MMI):
 class CT3Regs(MMI):
     pass
 
-class UCTEngine(MMI):
+class UCTEngine(MMIRouter):
     """
 
     """
 
-    CONTROL = BitField.CONTROL
-    STATUS = BitField.STATUS
+    ROUTER_PORT_NUMBER_WIDTH = 2
+    ROUTER_PORT_MAP = {
+        'CT1': 0,
+        'CT2': 1,
+        'CT3': 2,
+        'BPLINKS': 3
+        }
 
-    BSB_ROUTING_ADDRESS_WIDTH = 2
-    BSB_ROUTER_CT1_PORT = 0
-    BSB_ROUTER_CT2_PORT = 1
-    BSB_ROUTER_CT3_PORT = 2
-    BSB_ROUTER_BPLINKS_PORT = 3
-
-    def __init__(self, fpga_instance, base_address,  address_width, router_port, verbose=1):
+    def __init__(self,*, router, router_port, verbose=1):
         self.logger = logging.getLogger(__name__)
         self.verbose = verbose
 
-        super().__init__(fpga_instance, base_address=base_address, address_width=address_width, router_port=router_port)
+        super().__init__(router=router, router_port=router_port)
 
         submodule_address_width = address_width - self.BSB_ROUTING_ADDRESS_WIDTH
         self.CT_LEVEL = self.fpga.CT_LEVEL
@@ -109,24 +104,14 @@ class UCTEngine(MMI):
         assert self.CT_LEVEL >=1, "CT_LEVEL cannot be < 1"
 
         # Instantiate Level-1 CT registers
-        self.CT1 = CT1Regs(
-            fpga_instance,
-            base_address=self.base_address,
-            address_width=submodule_address_width,
-            router_port=self.BSB_ROUTER_CT1_PORT)
+        self.CT1 = CT1Regs(router=self, router_port='CT1')
 
         if self.CT_LEVEL >=2:
             lane_groups = (('pcb', 1, 3),) # (name, # of bypass lanes, # of links)
-            self.CT2 = CT2Regs(
-                fpga_instance,
-                base_address=self.base_address,
-                address_width=submodule_address_width,
-                router_port=self.BSB_ROUTER_CT2_PORT)
+            self.CT2 = CT2Regs(router=self, router_port='CT2')
             self.BPLINKS = xxvglink.XXVGLinkArray(
-                fpga_instance=fpga_instance,
-                base_address = self.base_address,
-                address_width = submodule_address_width,
-                router_port =  self.BSB_ROUTER_BPLINKS_PORT,
+                router = self,
+                router_port='BPLINKS',
                 lane_groups=lane_groups,
                 verbose=1)
         else:

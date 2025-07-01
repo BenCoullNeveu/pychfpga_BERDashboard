@@ -7,16 +7,15 @@ History:
     2012-10-17 JFC: Sets ramp as default function
 """
 
-from ..mmi import MMI, BitField
+from ..mmi import MMI, BitField, CONTROL, STATUS
 import numpy as np
 
 
 class FUNCGEN(MMI):
     """ Implements interface to the function generator within a procecessor
     pipeline"""
-    # Create local variables for page numbers tomake the table more readable
-    CONTROL = BitField.CONTROL
-    STATUS = BitField.STATUS
+
+    ADDRESS_WIDTH = 9
 
     # Memory-mapped register definition
     RESET            = BitField(CONTROL, 0x00, 7, doc='Resets this module')
@@ -128,8 +127,8 @@ class FUNCGEN(MMI):
 
     buffer_cache = None
 
-    def __init__(self, fpga_instance, base_address, instance_number):
-        super().__init__(fpga_instance, base_address, instance_number)
+    def __init__(self,  *, router, router_port, instance_number):
+        super().__init__(router=router, router_port=router_port, instance_number=instance_number)
         self.SAMPLES_PER_FRAME = self.NS = self.fpga.ADC_SAMPLES_PER_FRAME
         self.BYTES_PER_FRAME = self.NB = self.fpga.ADC_BYTES_PER_FRAME
         self.BYTES_PER_SAMPLE = self.BPS = self.fpga.ADC_BYTES_PER_SAMPLE

@@ -10,7 +10,7 @@ import asyncio
 import socket
 import time
 
-from ..mmi import MMI, BitField
+from ..mmi import MMI, BitField, CONTROL, STATUS
 import numpy as np
 import __main__
 
@@ -18,9 +18,8 @@ import __main__
 
 class UCAP(MMI):
     """ Object that allows access to an UltraRAM-based frame capture module"""
+    ADDRESS_WIDTH = 16
 
-    CONTROL = BitField.CONTROL
-    STATUS = BitField.STATUS
     MODE             = BitField(CONTROL, 0, 6, width=2, doc='Capture mode: 0: 8 channel, 1: 4 channel, 2: 2 channel, 3: 1 channel')
     CH0              = BitField(CONTROL, 0, 0, width=3, doc='Channel #0 in 1, 2, or 4-channel mode')
     CH1              = BitField(CONTROL, 0, 3, width=3, doc='Channel #1 in 2 or 4-channel mode')
@@ -41,11 +40,11 @@ class UCAP(MMI):
     PERIOD_CTR       = BitField(STATUS, 1, 0, width=8, doc='debug')
     SOURCE_SEL_IN    = BitField(STATUS, 2, 0, width=8, doc='debug')
 
-    def __init__(self, fpga_instance, base_address, address_increment, verbose=0):
+    def __init__(self, *, router, router_port, verbose=0):
         self.fpga = fpga_instance
         self.verbose = verbose
         self.logger = logging.getLogger(__name__)
-        super().__init__(fpga_instance, base_address)
+        super().__init__(router=router, router_port=router_port)
         self.sock = None
 
     def init(self):

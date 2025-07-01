@@ -13,14 +13,13 @@ import time
 import numpy as np
 
 # Local packages
-from ..mmi import MMI, BitField
+from ..mmi import MMI, BitField, CONTROL, STATUS
 
 
 class SCALER(MMI):
     """ Implements interface to the SCALER module within a procecessor pipeline"""
-    # Create local variables for page numbers tomake the table more readable
-    CONTROL = BitField.CONTROL
-    STATUS = BitField.STATUS
+
+    ADDRESS_WIDTH = 9
 
     # Define Control registers
     RESET                 = BitField(CONTROL, 0x00, 7, doc="Reset the SCALER.")
@@ -84,10 +83,8 @@ class SCALER(MMI):
 
     # Define Status registers
 
-    def __init__(self, fpga_instance, base_address, instance_number):
-
-        super().__init__(fpga_instance, base_address, instance_number)
-
+    def __init__(self, *, router, router_port, instance_number):
+        super().__init__(router=router, router_port=router_port, instance_number=instance_number)
         self.cached_gain_table = {}
         self.cached_gain_timestamp = {}
 
