@@ -5,6 +5,7 @@
 *.pkl
 *.pyo
 *.bak
+*.mif
 *.orig
 /Archives
 /build
