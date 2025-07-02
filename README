@@ -91,10 +91,10 @@ System requirements
 -------------------
 
 - The following programs should be installed
-	- git LFS (git >1.8.2 includes LFS by default)
-	- Python >=3.7 (Python 2.7 no longer supported). The code was tested on Python 3.7.9.
+	- git LFS (git >1.8.2 includes LFS by default.)
+	- Python 3.8 There are issues with Python 3.10, and QC tests have issues with 3.9
 	- pip >=18.1  (2018-10-05) or later (to support the PEP 508 dependency specs)
-	- pythonX.X-dev (required for netiface to be compiled by pip)
+	- python3.8-dev (required for netiface to be compiled by pip)
 
 	sudo apt install  pythonX.X-dev  # on Ubuntu
 

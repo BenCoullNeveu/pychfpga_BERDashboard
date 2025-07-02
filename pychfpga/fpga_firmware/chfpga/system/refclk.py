@@ -11,7 +11,7 @@
     2012-09-23 JFC: Removed MMCM status registers. Converted bitfield list to independent variables. Commented out set_refclk200_phase.
 """
 
-from ..mmi import MMI, BitField
+from ..mmi import MMI, BitField, CONTROL, STATUS, DRP
 
 import logging
 import time
@@ -19,13 +19,11 @@ import numpy as np
 
 class REFCLK(MMI):
 
+    ADDRESS_WIDTH = 12
+
     sync_delay = 9  # default value.
 
-    CONTROL = BitField.CONTROL
-    STATUS = BitField.STATUS
-    DRP = BitField.DRP
-
-    # CONTROL bytes
+     # CONTROL bytes
     ADC_SYNC               = BitField(CONTROL, 0, 7, doc='Force a SYNC to the ADC, synchronized on the FMC Reference clock, but bypasses the SYNC state machine that resets the IOSERDES and BUFR')
     LOCAL_SYNC             = BitField(CONTROL, 0, 5, doc='Force the generation of a local SYNC sequence on the local board only. Has the same effect as a SYNC signed received on the 10 MHz clock.  The SYNC is synchronized to the 10 MHz output (transitions on its falling edge)')
     REMOTE_SYNC            = BitField(CONTROL, 0, 4, doc='Generate a SYNC signal encoded on the 10 MHz clock output. Will SYNC the local FMC board only if the 10 MHz output is connected to the 10 MHz input of the local FMC board')
@@ -52,10 +50,9 @@ class REFCLK(MMI):
     SYNC_IN                = BitField(STATUS, 0x02, 0, doc='reflects the level on the sync_in port')
     # SYNC_DELAY_READBACK  = BitField(STATUS, 0x02, 0, width=5,doc='Reads back the delay set onthe SYNC IODELAY')
 
-    def __init__(self, fpga, base_address):
-        self.fpga = fpga
+    def __init__(self, *, router, router_port):
         self.logger = logging.getLogger(__name__)
-        super().__init__(fpga, base_address)
+        super().__init__(router=router, router_port=router_port)
 
     def init(self):
         # Sets the REFCLK delay to zero by default.
@@ -69,7 +66,7 @@ class REFCLK(MMI):
 
         # self.ENABLE_SYNC_DETECTION = 1
         # self.ENABLE_SYNC_GENERATION = 1
-        if self.fpga.is_fmc_present(0):
+        if self.fpga.HAS_FMC and self.fpga.is_fmc_present(0):
             self.logger.debug('%r:   REFCLK is using the 10 MHz reference clock from the ADC board' % self.fpga)
             self.REFCLK_SEL = 0  # Use REFCLK coming from the FMC
         else:

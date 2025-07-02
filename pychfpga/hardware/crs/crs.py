@@ -3,15 +3,15 @@
 # Standard Python packages
 import logging
 import datetime
-from calendar import timegm
 import time
-import struct
 import base64
-from collections import OrderedDict
 import socket
 import asyncio
 
+# Pypi packages
+
 import nest_asyncio
+
 # External private packages
 
 from wtl.metrics import Metrics
@@ -33,7 +33,7 @@ from ..i2c_devices.eeprom import eeprom
 from ..i2c_devices.qsfp import QSFP as qsfp
 from ..i2c_devices.gpio import GPIO
 from ..i2c_devices.hmc7044 import hmc7044  # Dual PLL
-
+from ..i2c_devices.ssd1306 import SSD1306
 
 class iic_dummy:
     def __init__(self, *args, **kwargs):
@@ -110,16 +110,24 @@ class CRS(Motherboard):
     # Define model number for hardware map management and discovery
     part_number = 'CRS'
     _ipmi_part_numbers = ['CRS']
-    SERIAL_NUMBER_LENGTH = 3  # number of digits in the serial number. Used to convert integers to a valid serial number.
+    SERIAL_NUMBER_LENGTH = 4  # number of digits in the serial number. Used to convert integers to a valid serial number.
 
     NUMBER_OF_CHANNELIZERS = 4
     # List serial numbers of Rev 0 boards. This is a temporary hack that is used to properly select the SPI port of the PLL.
     # One day we'll be able to query the board directly.
     REV0_SERIALS = ('429', '0429', # returned by SN003 with old TCPipe firmware that didn't read the EEPROM and used the FPGA DNA
                     '003',)
+    NO_I2C = ('000') # could not read eeprom, so assuming I2C is bad
 
     port = 7  # port number on which to access the platform `hostname`
 
+
+    TX_TO_RX_LANE_MAP = { # (Tx_slot, Tx_lane):(Rx_slot, Rx_lane), slots are 0-based
+     (0,0): (0,0),    (0, 1): (3, 3),   (0, 2): (2, 3),   (0, 3): (1, 3),
+     (1,0): (1,0),    (1, 1): (0, 3),   (1, 2): (2, 2),   (1, 3): (3, 2),
+     (2,0): (2,0),    (2, 1): (3, 1),   (2, 2): (1, 2),   (2, 3): (0, 2),
+     (3,0): (3,0),    (3, 1): (2, 1),   (3, 2): (1, 1),   (3, 3): (0, 1)}
+    RX_TO_TX_LANE_MAP = {rx:tx for tx,rx in TX_TO_RX_LANE_MAP.items()}
     # ---------------
 
     def __init__(self, hostname=None, serial=None, slot=None, subarray=None, **kwargs):
@@ -148,8 +156,8 @@ class CRS(Motherboard):
 
         self.logger.debug(f'{self!r}: open() is called')
 
-        if not self.serial:
-            raise RuntimeError('Cannot determine revision number: there is no serial number')
+        # if not self.serial:
+        #     raise RuntimeError('Cannot determine revision number: there is no serial number')
         self.revision = 0 if self.serial in self.REV0_SERIALS else 1
         self.pll_spi_port = 1 if self.revision >0 else 0  # PS SPI peripheral port on which the PLL is connected. This changed from Rev0 to Rev 1
         self.logger.debug(f'{self!r}: Board revision is {self.revision}. PLL will be on SPI port {self.pll_spi_port}')
@@ -166,8 +174,10 @@ class CRS(Motherboard):
         # create SPI interface
         self.spi = TCPipe_SPI(self.tcpipe)
 
-        # I2C0, Backplane
+        # Programmable PLL (via SPI bus)
+        self.pll = hmc7044(self.spi, spi_port=self.pll_spi_port) # programmable PLL, to be initialized when FPGA is programmed.
 
+        # I2C0, Backplane
 
         # I2C1: Motherboard internal bus
         # I2C1 switch0 :EEPROM, clocks
@@ -193,7 +203,9 @@ class CRS(Motherboard):
 
         self.i2c1_tmp421_1v4 = tmp421(self.iic, address=0x4C, port=(i2c1_switch0, 0))
         self.i2c1_tmp421_1v2b = tmp421(self.iic, address=0x4D, port=(i2c1_switch0, 0))
-        self.i2c1_tmp422_0v85 = tmp421(self.iic, address=0x4f, port=(i2c1_switch0, 0))
+        self.i2c1_tmp422_0v85 = tmp421(self.iic, address=0x4f, port=(i2c1_switch0, 0), n_ext=2)
+
+        self.i2c0_tmp421_pll = tmp421(self.iic, address=0x4E, port=(i2c1_switch0, 0)) # PLL temp monitor U45: int: Bot 1cm left of VCXO, ext: Q12 Bot Under Prog PLL
 
         if self.revision > 0:
             self.i2c1_disp = PCA8574(self.iic, address=0x22, port=(i2c1_switch0, 0))
@@ -201,6 +213,8 @@ class CRS(Motherboard):
             self.i2c1_disp = None
         self.i2c1_eeprom_data = eeprom(self.iic, address=0x57, bus_name=(i2c1_switch0, 0), address_width=7, max_read_length=255, max_write_length=8, write_page_size=8)
         self.i2c1_eeprom_serial = eeprom(self.iic, address=0x5F, bus_name=(i2c1_switch0, 0), address_width=8, max_read_length=255)  # must read 16 bytes from memory address 0x80
+
+        self.display = disp = SSD1306(self.iic, address=0x3C, port=(i2c1_switch0, 0))
 
         # I2C1 Switch 0 port 1 devices
         #   0x18: DDR4 SODIMM Temp sensor
@@ -213,6 +227,11 @@ class CRS(Motherboard):
 
         # I2C1 Switch 0 port 3 devices:
         #   External I2C header
+
+        if self.serial in self.NO_I2C:
+            self.logger.warning(f'{self!r}: Board is assumed to have no I2C. Skipping I2C device initialization')
+            return
+
 
         # I2C1 Switch 1: SFP/QSFP
         self.i2c1_switch1 = i2c1_switch1 = pca9546a(self.iic, address=0x71, port=1)
@@ -252,7 +271,6 @@ class CRS(Motherboard):
             '1v2b': dict(device=self.i2c1_ina231_1v2b, rshunt=0.01, imax=16),
         }
 
-        self.pll = hmc7044(self.spi, spi_port=self.pll_spi_port) # programmable PLL, to be initialized when FPGA is programmed.
 
         return
         self.logger.info(f'Initializing Voltage/current monitor chips')
@@ -287,13 +305,18 @@ class CRS(Motherboard):
         self._is_open = False
 
 
+    # Name of each PLL reference input
+    PLL_INPUT_NAMES = ( 'ETH_REG_125MHz', 'BP_CLK_10MHZ', 'SMA_CLK_10MHZ', 'PL_RECCLK')
+
     async def pll_init_async(
             self,
+            input_sel = None,  # 1 = backplane, 2=motherboard SMA, None: use input_priorities
+            input_priorities = (2, 1, 0, 3), # ignored if input_sel is not None
             fref=10e6,  # external 10 MHz reference from backplane or SMA
             fosc=50e6,  # on-board VCXO nominal frequency
             fvco=3000e6, # PLL2 VCO frequency, which is also the ADC sampling frequency
             fsys=10e6, # system clock. Divider = 3000/250 = 12 (200 MHz is not possible because divider is odd)
-            fsysref=2.5e6 # Divider = 1200
+            fsysref=2.5e6 # Is a submultiple of both 3000/16 and 3200/16 (Dividers = 1200 or 1280, both even)
         ):
         """ Initialize the Programmable PLL.
 
@@ -301,18 +324,57 @@ class CRS(Motherboard):
         should be done just before we configure the firmware so the proper reset sequences can be performed when it starts. Furthermore, this
         allows us to set PLL frequencies based on the requested application-specific firmware.
 
-        Clock inputs:
+        Parameters:
 
-            - CLKIN0/RFSYNC: ETH_REG_125MHz: 125 MHz clock recivered by the Ethernet PHY
-            - CLKIN1/FIN: BP_CLK_10MHZ: 10 MHz reference from the backplane
-            - CLKIN2/OSCOUT0: SMA_CLK_10MHZ: 10 MHz reference from the motherboard's SMA connector
-            - CLKIN3: PL_RECCLK: Clock generated by the FPGA's programmable logic.
+            input_sel (int): Selects which clock reference to use. If `None`, the input is
+                automatically selected based on `input_priorities`. On the CRS, the clock inputs
+                are:
+
+                - 0: CLKIN0/RFSYNC: ETH_REG_125MHz: 125 MHz clock recivered by the Ethernet PHY
+                - 1: CLKIN1/FIN: BP_CLK_10MHZ: 10 MHz reference from the backplane
+                - 2: CLKIN2/OSCOUT0: SMA_CLK_10MHZ: 10 MHz reference from the motherboard's SMA connector
+                - 3: CLKIN3: PL_RECCLK: Clock generated by the FPGA's programmable logic.
+
+                When `input_sel` is specified, the PLL is forced to use this input
+                (`input_priorities` is ignored) and all other inputs are disabled.
+
+
+            input_priorities (list of int): List of inputs to automatically select, in order of
+                highest to lowest priority. Is ignored if `input_sel` is not `None`.
+
+            fref (float): Input reference frequency in Hz.
+
+            fosc (float):  On-board oscillator frequency in Hz. The CRS has a 50 MHz on-board
+                oscillator which is disciplined to the reference input if present, otherwise it is free
+                running but is still sufficiently stable and accurate to operate the board.
+
+            fvco (float): Frequency of the 2nd stage PLL VCO in Hz. Corresponds also to the ADC
+                sampling frequency (the output divider is bypassed). The processing clock is fvco/8.
+
+            fsys (float): system clock frequency in Hz. Is typically 10 MHz and is typically aligned
+                to the external 10 MHz reference once the PLL SYNC sequence is performed. This clock
+                is used to run the IRIG-B synchronization sequence and drives the internal FPGA
+                MMCMs to generate other system frequencies (200 MHz etc.). `fsys` must be an even
+                submultiple of fvco (10 MHz is an even submultiples of both fvco=3000 or 3200 MHz).
+
+            fsysref is used to synchronize/align the FPGA's RF ADC . It must be a submultiple of
+                fvco/16, must be < 10 MHz, and must be an even submultiple of fvco (because PLL
+                channel divider values must be even, although the first constraint guarantees this).
+                `fsysref`=2.5 MHz is selected because it is a submultiple of both 3000/16 and
+                3200/16 MHz, the two frequencies at which the CRS have been used.
+
+        Returns:
+
+            int: Number of the reference input currently being used
+
         """
-        self.logger.info(f'Initializing programmable PLL at fvco=frf={fvco/1e6} MHz')
+        self.logger.info(f'{self!r}: Initializing programmable PLL at fvco=frf={fvco/1e6} MHz')
         frfdc = fvco # divider: 1
         fpl = frfdc / 8 # signal processing clock, typ. 375 MHz
 
         self.pll.init(
+            input_sel=input_sel, # 0: Ethernet recovery, 1: backplane REFCLK, 2 = motherboard REFCLK, 3: FPGA
+            input_priorities=input_priorities, # not used if input_sel is specified and is not None
             fref=fref, # external 10 MHz reference from backplane or SMA
             fosc=fosc, # on-board VCXO nominal frequency
             fvco=fvco,
@@ -336,7 +398,15 @@ class CRS(Motherboard):
 
         # Note: SMP connector P22/P23 (3rd/4th from M2 slot) are OUT0_P/N (25/50 MHz from fixed PLL)
 
-        self.logger.info(f'Done programming PLL')
+        self.logger.info(f'{self!r}: Done programming PLL')
+
+        await asyncio.sleep(0.05) # wait for PLL1 to lock
+
+        active_input = self.pll.get_active_clkin()
+        active_input_name = 'None' if active_input is None else self.PLL_INPUT_NAMES[active_input]
+        self.logger.info(f'{self!r} PLL1 current active input is {active_input} ({active_input_name})')
+
+        return active_input
 
     async def open_fpga_async(self, **kwargs):
         """ Open communication link with the FPGA. This creates the MMI interface, gather configuration information from the firmware, and instantiate the objects that will handle the firmware."""
@@ -362,6 +432,55 @@ class CRS(Motherboard):
 
         # self.fpga = self.firmware(self)
         await self.fpga.open_async()
+
+
+
+        self.fpga.GPIO.PLL_SYNC=0
+        await asyncio.sleep(0.5)  # test: wait for the PLL1 to stabilize before we sync. SYNC Won't work if OSCOUT is not stable vs REFCLK.
+        if self.input_reference is None:
+            self.logger.info(f"{self!r}: No external reference clock was detected on the motherboard SMA or from the backplane.")
+        elif self.input_reference == 1:
+            self.logger.info(f'{self!r}: Synchronizing external PLL to the backplane reference clock')
+            self.fpga.GPIO.CLK10_SEL = 1 # use backplane reference
+            self.fpga.GPIO.PLL_SYNC = 1
+        elif self.input_reference == 2:
+            self.logger.info(f'{self!r}: Synchronizing external PLL to the motherboard SMA clock input ')
+            self.fpga.GPIO.CLK10_SEL=0 # use MB SMA
+            self.fpga.GPIO.PLL_SYNC = 1
+        else:
+            raise RuntimeError(f'Invalid PLL input reference number {self.input_reference}')
+        self.fpga.GPIO.PLL_SYNC=0
+
+
+        self.logger.info(f'{self!r}: Initializing CRS display')
+        if disp := self.display:
+            await asyncio.sleep(0.2) # make sure the display has time to finish resetting since the FPGA was programmed and started sending a clock
+            for trial in range(30):
+                try:
+                    disp.select()
+                    disp.init()
+                    disp.clear()
+                    disp.hline(0,127,0)
+                    disp.hline(0,127,31)
+                    disp.vline(0,0,31)
+                    disp.vline(127,0,31)
+                    disp.vline(13,0,31)
+                    disp.print(f'{self.serial}', x=1, y=28, fg=1, bg=0, font_size=12, rotate=True)
+                    disp.print(f'{self.hostname}', x=20, y=2, font_size=12)
+                    t=self.fpga.SYSMON.temperature()
+                    disp.print(f'Core={t:0.1f}°C', x=20, y=14, font_size=12)
+                    disp.fill(120,0,127,31)
+                    disp.print(f'chFPGA', x=120, y=30, fg=0, bg=1, font_size=7, rotate=True)
+                    disp.update()
+                    break
+                except OSError as e:
+                    self.logger.warn(f'{self!r}: Error Initializing CRS display on trial {trial}. Error is: {e!r}')
+                    await asyncio.sleep(0.01)
+            else:
+                self.logger.warn(f'{self!r}: Failed Initializing CRS display')
+                self.display = None
+
+
 
         # await self.open_hw()
         # await self.hw.init()
@@ -425,7 +544,7 @@ class CRS(Motherboard):
         """
         Discover the serial number of this IceBoard from its IPMI data, and update the hardware map accordingly if `update=True`
         """
-        self.logger.debug(f'{self!r}: discovering the serial number of board at {self.tuber_uri}')
+        self.logger.debug(f'{self!r}: discovering the serial number of board at {self.hostname}')
         return "003"
 
     async def discover_slot_async(self, update=True):
@@ -483,7 +602,7 @@ class CRS(Motherboard):
 
 
         t0 = time.time()
-        self.logger.debug(f'{self!r}: called set_fpga_bitstream')
+        self.logger.debug(f'{self!r}: Called set_fpga_bitstream')
 
         if hasattr(self, 'close'):
             self.close()
@@ -492,10 +611,18 @@ class CRS(Motherboard):
         crc32 = buf.crc32
         bitstream = buf.raw_bitstream
 
-        await self.pll_init_async(fvco=fw_params['sampling_frequency'])  # add fw params here if we want to have mode/application-specific frequencies sent to the FPGA
 
-        self.logger.debug(f'{self!r}: Getting is_programmed')
+        self.logger.info(f'{self!r}: Programming PLL before configuring the FPGA. {fw_params=}')
+        self.input_reference = await self.pll_init_async(fvco=fw_params['sampling_frequency'])  # add fw params here if we want to have mode/application-specific frequencies sent to the FPGA
+
+        # self.logger.warn(f'{self!r}: Using backplane clock to synchronize PLL outputs to REFCLK. This mignt not be right')
+        # self.GPIO.CLK10_SEL=1 # Select clock source to re-sync the PLL: 0: MB SMA, 1: BP
+        # self.GPIO.PLL_SYNC=0
+        # self.GPIO.PLL_SYNC=1
+        # self.GPIO.PLL_SYNC=0
+
         is_fpga_programmed = await self.is_fpga_programmed_async()
+        self.logger.debug(f'{self!r}: Is the FPGA already programmed: {is_fpga_programmed}')
         is_crc_valid = False
         if self.fpga and is_fpga_programmed:
             self.logger.debug(f'{self!r}: Getting FPGA crc')
@@ -512,7 +639,7 @@ class CRS(Motherboard):
             self.logger.debug(
                 f'{self!r}: FPGA is already configured. Skipping configuration.')
 
-        self.fpga = fw_cls(self, **fw_params)
+        self.fpga = fw_cls(self, mode=firmware_mode, **fw_params)
 
     # Mezzanine management
 

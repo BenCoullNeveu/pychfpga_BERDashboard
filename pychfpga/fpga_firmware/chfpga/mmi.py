@@ -19,7 +19,10 @@
 
 import numpy as np
 import time
+import logging
 
+# In python, we encode the page as extra address bits 20:19. Those are stripped out downstream and
+# converted into the appropriate opcode by BSB_MMI.
 _CONTROL_BASE_ADDR = 0x000000
 _STATUS_BASE_ADDR = 0x080000
 _RAM_BASE_ADDR = 0x100000  # also used for DRP access
@@ -52,12 +55,6 @@ class BitField(object):
     STATUS = STATUS  # STATUS bytes (read only)
     RAM = RAM  # RAM or FIFO
     DRP = DRP  # Dynamic Reconfiguration Port
-
-    data_types = {  # bit_width: numpy_data_type
-        1: np.dtype('>u1'),
-        2: np.dtype('>u2'),
-        4: np.dtype('>u4'),
-        8: np.dtype('>u8')}
 
     def __init__(self, page, addr, bit, width=1, default=None, doc='No documentation available'):
 
@@ -119,11 +116,6 @@ class BitField(object):
             raise RuntimeError(f'Unknown page {self.page}')  # Should never happen, was tested in __init__
 
     def read(self, obj):
-        # if self.number_of_bytes not in self.data_types:
-        #     raise ValueError(
-        #         'Unsupported byte width %i. The bitfield must '
-        #         'span exactly 1, 2, 4 or 8 bytes' % self.number_of_bytes)
-        # data_type = self.data_types[self.number_of_bytes]
 
         if self.page == self.DRP:
             value = obj.read_drp(self._addr)  # read 16-bit value
@@ -143,34 +135,109 @@ class BitField(object):
         # Extract the desired bits
         return (int(value) >> self.bit) & ((1 << self.width)-1)
 
+class MMIRouter(object):
+    """ Class representing the function of a BSB router.
+
+    This class represents a BSB router.
+
+    In case of a top router (i.e a a router that does not have a parent), do not specify `router`
+      and `router_port`, but instead have the top router subclass ADDRESS_WIDTH with the BSB full
+      address space and specify `fpga_instance` at router instantiation.
+
+    """
+
+    ADDRESS_WIDTH = None  # Number of address bits used by this module. None means the address width will be determined by the parent router address width and port number width.
+    ROUTER_PORT_NUMBER_WIDTH = None # Number MSB bits of this router's address space used to select the port. Must be defined in all subclasses.
+    ROUTER_PORT_MAP = {} # Optional map to associate port names with port indices.
+
+    def __init__(self, *, router=None, router_port=None, fpga_instance=None):
+
+        self.logger = logging.getLogger(__name__)
+        if not self.ROUTER_PORT_NUMBER_WIDTH:
+            raise RuntimeError('ROUTER_PORT_NUMBER_WIDTH must be defined in MMIRouter subclasses')
+        if router is None: # if this is the top router
+            self.fpga = fpga_instance
+            self.base_address = 0
+            self.address_width = self.ADDRESS_WIDTH
+        else:
+            self.fpga = router.fpga
+            self.base_address, self.address_width = router.get_port_addr(router_port)
+
+    def get_port_addr(self, router_port):
+            """ Return the base address and maximum address width of the specified port.
+            """
+            if isinstance(router_port, str):
+                router_port = self.ROUTER_PORT_MAP[router_port]
+            if router_port >= 1 << self.ROUTER_PORT_NUMBER_WIDTH:
+                raise RuntimeError('Invalid port number {port_number} for router {self}. Port number width is {self.ROUTER_PORT_NUMBER_WIDTH}')
+            max_address_width = self.address_width - self.ROUTER_PORT_NUMBER_WIDTH
+            base_address = self.base_address + (router_port << max_address_width)
+            return base_address, max_address_width
+
 class MMI(object):
     """ Provides access to the memory-mapped resources of a module.
 
-    It is intended to be inherited by classes that define FPGA modules that implement a Byte-Serial Bus (BSB) end point.
+    It is intended to be inherited by classes of FPGA modules possess a Byte-Serial Bus (BSB) registers/memory/DRP access.
+
+    Parameters:
+
+        fpga_instance (FPGA): Instance of the FPGA object through which the BSB will be accessed
+
+        base_address (int): Base address of the module. Default to 0. It can be modified by the following:
+
+            - If a parent module is specified, its base address is added to base_address.
+            - If router_port is specified, the base address is increased by ``router_port<<ADDRESS_WIDTH``.
+
+        instance_number (int): arbitrary number indicating which module this is in an array.
+
+        router (MMI): Specified a parent module containing a router from which the base_address should be derived from.
+
+        router_port (int): Indicates the port number of the router to which the module is connected.
+            Defaults to 0, which can also mean there is no router. Is simply used to offset the base address in combination with the
+            router_port_lsb.
+
+        router_port_lsb (int): Position of the LSB of the port number in the address word. Defaults to the modules ADDRESS_WIDTH, i.e. (possibly wrongly) assumes that the routing address sits right on top of the module address space.
+
+    NOTE:
+
+        - Subclass shall redefine the ADDRESS_WIDTH attribute to match the address space used by the
+          FPGA module. This is necessary to compute the proper address increments for each port of
+          the router if ``router_port_lsb`` is not specified, and allows address range verifications.
+
+        - The defaut valaue of `router_port_lsb` makes the dubious assumption that the module
+          addressing bits start on bit ADDRESS_WIDTH. It is convenient as we have one more less
+          argument to pass to MMI. If the module does not use all the bits immediately below the
+          port addessing bits, specify `router_port_lsb`.  The reason this is a dubious default is
+          that in theory, the modules know nothing about the upstream router.
+
     """
     _locked = False  # when 1, prevents new attributes from being created
+
+    ADDRESS_WIDTH = None  # Number of address bits used by this module. If None, the address space provided by the upstream router port will be used.
 
     CONTROL = CONTROL
     STATUS = STATUS
     DRP = DRP
 
-    #BitDef=BitDef_base # make class accessible to subclass (somehow the class is not inherited directly)
-    # BITS = {} # Should be overriden by the subclass
+    def __init__(self, *, router=None, router_port=None, instance_number=None):
 
-    def __init__(self, fpga_instance, base_address, instance_number=None):
+        self.logger = logging.getLogger(__name__)
+
         self._unlock()
-        self.fpga = fpga_instance
-        self.base_address = base_address
+
         self.instance_number = instance_number
-        # self.module_number = module_number
-        # for field_name, bitfield in self.BITS.items():
-        #     setattr(self.__class__, field_name, bitfield)
-        #     print ' OBSOLETE:  Defining property "%s"' % (field_name)
+        self.fpga = router.fpga
+        self.base_address, max_address_width = router.get_port_addr(router_port)
+        if self.ADDRESS_WIDTH and self.ADDRESS_WIDTH > max_address_width:
+            raise RuntimeError('Insufficient post-routing address width for module {self!r}. The module needs {self.ADDRESS_WIDTH} bits but the router port offers {max_address_width} bits of addressing space')
+        self.address_width = self.ADDRESS_WIDTH or max_address_width
+        self.address_max = (1 << self.address_width) - 1
 
     def __repr__(self):
         """ Return a string that represents this object and its parent object.
         """
-        return "%r.%s%s" % (self.fpga, self.__class__.__name__, '(%i)' % self.instance_number if self.instance_number is not None else '')
+        inst = self.instance_number if self.instance_number is not None else ''
+        return f"{self.fpga!r}.{self.__class__.__name__}[{inst}]"
 
 
     def __setattr__(self, name, value):
@@ -217,7 +284,7 @@ class MMI(object):
         internal devices (PLL, SYSMON, MGT etc). 'addr' is the 16-bit DRP
         register address.
         """
-        if not 0 <= 2* addr <= 0x1FF:
+        if not 0 <= 2 * addr <= self.address_max:
             raise RuntimeError('%r: Invalid DRP address %i' % (self, addr))
         return self.read(_RAM_BASE_ADDR + 2 * addr, type=np.dtype('<u2'), length=1)[0]
 
@@ -225,7 +292,7 @@ class MMI(object):
         """
         Reads an array of `length` bytes from address `addr` in the RAM space
         """
-        if not 0 <= addr <= 0x1FF:
+        if not 0 <= addr <= self.address_max:
             raise RuntimeError('%r: Invalid RAM address %i' % (self, addr))
         return self.read(_RAM_BASE_ADDR + addr, type=type, length=length, **kwargs)
 
@@ -292,7 +359,7 @@ class MMI(object):
         Writes within the RAM/FIFO address space of the module. Simply calls the write() function with the appropriate address offset.
         """
 
-        if not 0 <= addr <= 0x1FF:
+        if not 0 <= addr <= self.address_max:
             raise RuntimeError('%r: Invalid RAM address %i' % (self, addr))
         return self.write(_RAM_BASE_ADDR + addr, data, *args, **kwargs)
 
@@ -329,7 +396,7 @@ class MMI(object):
             - The DRP and RAM pages use the same address space. Either one or the other is connected to the module.
             - The DRP values are stored as little endians
         """
-        if not 0 <= 2 * addr <= 0x1FF:
+        if not 0 <= 2 * addr <= self.address_max:
             raise RuntimeError('%r: Invalid DRP address %i' % (self, addr))
         if not 0 <= data <= 65535:
             raise AttributeError('%r: Invalid unsigned 16-bit DRP register value %i' % (self, data))

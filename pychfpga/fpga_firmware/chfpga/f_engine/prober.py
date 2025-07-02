@@ -14,15 +14,14 @@ import logging
 import numpy as np
 import socket
 
-from ..mmi import MMI, BitField
+from ..mmi import MMI, BitField, CONTROL, STATUS
 
 
 class PROBER(MMI):
     """ Implements the interface to the data PROBER within a channel processor
     """
-    # Create local variables for page numbers tomake the table more readable
-    CONTROL = BitField.CONTROL
-    STATUS = BitField.STATUS
+
+    ADDRESS_WIDTH = 9
 
     # Memory-mapped control registers
     RESET = BitField(CONTROL, 0, 7, doc="Resets the module (including the FIFO)")
@@ -56,10 +55,9 @@ class PROBER(MMI):
 
     DATA_BUFFER_CAPACITY = 3 # Number of full frames that can fit in the FIFOs.
 
-    def __init__(self, fpga_instance, base_address, instance_number):
-        # self.ant = ant_instance
+    def __init__(self,  *, router, router_port, instance_number):
         self.logger = logging.getLogger(__name__)
-        super().__init__(fpga_instance, base_address, instance_number)
+        super().__init__(router=router, router_port=router_port, instance_number=instance_number)
         self._lock()  # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
     # Specialized functions
 
@@ -72,7 +70,8 @@ class PROBER(MMI):
         self.pulse_bit('FIFO_RESET')
 
     DATA_SOURCE_TABLE = {
-        'adc': 0,
+        'adc': 0,  # for old code. technically capature is done after funcgen
+        'funcgen': 0,
         'scaler': 1}
 
     def set_data_source(self, source):
@@ -80,7 +79,8 @@ class PROBER(MMI):
             if source in self.DATA_SOURCE_TABLE:
                 source = self.DATA_SOURCE_TABLE[source]
             else:
-                ValueError("Unknown data capture source '%s'. Valid sources are %s." % (source, ','.join(self.DATA_SOURCE_TABLE.keys())))
+                valid_sources = ', '.join(f"'{key}'" for key in self.DATA_SOURCE_TABLE)
+                raise ValueError(f"Unknown data capture '{source}'. Valid sources are {valid_sources}.")
         self.SOURCE_SEL = source
 
 
@@ -209,7 +209,7 @@ class PROBER(MMI):
     def status(self):
         """ Displays the status of the data capture module"""
         print('-------------- CHAN[%i] data capture --------------' % self.instance_number)
-        print(' Capture frame(s) every %s frames' % (self.BURST_LENGTH, self.get_burst_period()), end=' ')
+        print(' Capture frame(%s) every %s frames' % (self.BURST_LENGTH, self.get_burst_period()), end=' ')
         # if self.BURST_NUMBER:
         #     print 'for %i bursts' % self.BURST_NUMBER
         # else:
@@ -373,9 +373,9 @@ class RawFrameReceiver(object):
             flush=True,
             data_timeout=0.01,
             flush_timeout=0.001):
-        """ 
+        """
         Reads 2048 frames for each 16 adc channel
-        
+
         Parameters:
 
             stream_ids (list of int): List of adc channels to capture
