@@ -70,7 +70,8 @@ class PROBER(MMI):
         self.pulse_bit('FIFO_RESET')
 
     DATA_SOURCE_TABLE = {
-        'adc': 0,
+        'adc': 0,  # for old code. technically capature is done after funcgen
+        'funcgen': 0,
         'scaler': 1}
 
     def set_data_source(self, source):
@@ -78,7 +79,8 @@ class PROBER(MMI):
             if source in self.DATA_SOURCE_TABLE:
                 source = self.DATA_SOURCE_TABLE[source]
             else:
-                ValueError("Unknown data capture source '%s'. Valid sources are %s." % (source, ','.join(self.DATA_SOURCE_TABLE.keys())))
+                valid_sources = ', '.join(f"'{key}'" for key in self.DATA_SOURCE_TABLE)
+                raise ValueError(f"Unknown data capture '{source}'. Valid sources are {valid_sources}.")
         self.SOURCE_SEL = source
 
 
