@@ -10,15 +10,14 @@ import asyncio
 import socket
 
 from wtl.metrics import Metrics
-from ..mmi import MMI, BitField
+from ..mmi import MMI, BitField, CONTROL, STATUS
 import numpy as np
 
 
 class UCorn(MMI):
     """ Class to operate the UltraRAM-based corner-turn module"""
 
-    CONTROL = BitField.CONTROL
-    STATUS = BitField.STATUS
+    ADDRESS_WIDTH = 16
 
     RAM_SEL             = BitField(CONTROL, 0, 5, doc='When 0, RAM writes are made to the UltraRAM data memory. When 1, RAM writes are made to the playlist memory.')
     RAM_BANK            = BitField(CONTROL, 0, 4, doc='Determines in which bank of the data buffer is written by RAM writes')
@@ -42,7 +41,7 @@ class UCorn(MMI):
     IN_FRAME_CTR        = BitField(STATUS, 1, 0, width=8, doc='Counts the number of frames coming in.')
     OUT_FRAME_CTR       = BitField(STATUS, 2, 0, width=8, doc='Counts the number of frames coming out.')
 
-    def __init__(self, fpga_instance, base_address, address_increment=0, verbose=0):
+    def __init__(self, *, router, router_port, verbose=0):
         """ Creates a UCorn corner-turn engine instance.
 
         ``__init__`` initializes the instnce but does not yet start communicating with. This allows
@@ -62,7 +61,7 @@ class UCorn(MMI):
             verbose (int): When non-zero, debugging messages will be printed.
 
         """
-        super().__init__(fpga_instance, base_address)
+        super().__init__(router=router, router_port=router_port)
         # self.fpga = fpga_instance
         self.verbose = verbose
         self.logger = logging.getLogger(__name__)
@@ -74,8 +73,10 @@ class UCorn(MMI):
         self.source_ip_addr = "10.70.0.1"
         self.source_ip_port = 41000
         self.targets = {
-            0: dict(bin=0, target_mac_addr="FF:FF:FF:FF:FF:FF", target_ip_addr="10.88.0.1", target_ip_port=41001, source_id=0, stream_id=0x1234)
+            0: dict(dest_mac_addr="FF:FF:FF:FF:FF:FF", dest_ip_addr="10.88.0.1", dest_ip_port=41001),
+            1: dict(dest_mac_addr="01:23:45:67:89:AB", dest_ip_addr="10.88.0.2", dest_ip_port=41002),
         }
+        self.sacrificial_bins = list(range(128))  # bins locations used to store packet headers
 
     def init(self):
         """ Initializes the UCorn module
@@ -95,12 +96,24 @@ class UCorn(MMI):
         # program data for one bin
         self.set_bin_data(bin=1, frame=0, data=np.arange(8*16, dtype=np.uint8))
 
+        first_bin = 300*8192//1600 # 1536
+        last_bin= 1500*8192//1600  # Last bin is excluded
+        number_of_bins = last_bin - first_bin
+        number_of_packets = 128
+        bins_per_packet = number_of_bins // number_of_packets
+
+        self.playlist = [
+            (dict(dest_mac_addr=f"01:23:34:67:89:{i+1:02X}",
+                  dest_ip_addr=f"10.88.0.{i+1}",
+                  dest_ip_port=41001),
+             np.arange(bins_per_packet) + first_bin + bins_per_packet*i)
+            for i in range(number_of_packets)]
         # Set the playlist to send data from that bin
-        self.set_playlist(bins={0:[1]})
+        self.set_playlist(playlist=self.playlist)
 
         self.TX_RESET = 0 # take the module out of reset. Packet transmisison starts.
 
-    def set_bin_data(self, frame=0, bin=0, data=b''):
+    def set_bin_data(self, frame=0, bin=0, data=b'', bank=(0,1)):
         """ Set the bin data for one or more consecutive frames.
 
         Parameters:
@@ -113,17 +126,24 @@ class UCorn(MMI):
                 values). If more than 8 bytes are specified, each block of 8 bytes is written in
                 consecutive frames starting at `frame`.
 
+            bank (int, tuple or list): Bank into which the data will be written
+
         """
+        if isinstance(bank, int):
+            bank = (bank,)
         for i in range(0, len(data), 8):
-            self.write_data_buffer(bank=0, frame=frame, bin=bin, data=data[i:i+8])
+            for b in bank:
+                self.write_data_buffer(bank=b, frame=frame, bin=bin, data=data[i:i+8])
             frame += 1
 
-    def set_ethernet_header(self, target, length):
+    def set_ethernet_header(self, target, dest_bin, length, stream_id=None, source_id=None, dest_mac_addr=None, dest_ip_addr=None, dest_ip_port=None):
         """ Created and stores an Ethernet/IP/UDP/payload header in the bin corresponding to specified target.
 
         Parameters:
 
-            target (any): target ID, which is a key that is used to index a target (destination address) in the ``self.targets`` dict.
+            target (any): key used to lookup ``self.targets`` for the destination address of a packet.
+
+            dest_bin (int): Index of bin whose memory space will be used to store the packet header
 
             length (int): number of bytes in the payload. Used to fill the IP & UDP header length fields
 
@@ -173,20 +193,22 @@ class UCorn(MMI):
 
         """
         def h(s):
-            print(s)
+            # print(s)
             return bytes.fromhex(s.translate({ord(c):None for c in "_ :"}))
         src_mac_addr = h(self.source_mac_addr)
         src_ip_addr = socket.inet_aton(self.source_ip_addr)
         src_port = self.source_ip_port.to_bytes(2, 'big')
 
-        tgt = self.targets[target]
-        dest_mac_addr = h(tgt['target_mac_addr'])
-        dest_ip_addr = socket.inet_aton(tgt['target_ip_addr'])
-        dest_port = tgt['target_ip_port'].to_bytes(2, 'big')
-        dest_bin = tgt['bin']
-
-        source_id = tgt['source_id']
-        stream_id = tgt['stream_id']
+        if isinstance(target, dict):
+            tgt = target
+        elif target is not None:
+            tgt = self.targets[target]
+        else:
+            tgt = {}
+        dest_mac_addr = h(dest_mac_addr or tgt['dest_mac_addr'])
+        dest_ip_addr = socket.inet_aton(dest_ip_addr or tgt['dest_ip_addr'])
+        dest_port = (dest_ip_port or tgt['dest_ip_port']).to_bytes(2, 'big')
+        # dest_bin = tgt['bin']
 
         udp_len = 8 + 22 + length
         ip_len = 20 + udp_len
@@ -208,27 +230,26 @@ class UCorn(MMI):
         # udp_header = f"{src_port:04X} {dest_port:04X} {udp_len:04X} 0000"; #-- Src port, dest port, UDP len,  UDP checksum (0=disable)
 
         # user header
-        user_bytes = h("CF14") + stream_id.to_bytes(2, 'little') + stream_id.to_bytes(2, 'little') + h('0000 0000000000000000 000000000000')
+        user_bytes = h("CF14") + source_id.to_bytes(2, 'little') + stream_id.to_bytes(2, 'little') + h('0000 0000000000000000 000000000000')
 
         # total header
         header = eth_bytes + ip_bytes + udp_bytes + user_bytes
-        print(f"Eth Header is {eth_bytes.hex()} ({len(eth_bytes)} bytes)")
-        print(f"IP Header is {ip_bytes.hex()} ({len(ip_bytes)} bytes)")
-        print(f"UDP Header is {udp_bytes.hex()} ({len(udp_bytes)} bytes)")
-        print(f"User Header is {user_bytes.hex()} ({len(user_bytes)} bytes)")
+        self.logger.debug(f"{self!r}: Target {target} (bin {dest_bin}) Eth Header is {eth_bytes.hex()} ({len(eth_bytes)} bytes)")
+        self.logger.debug(f"{self!r}: Target {target} (bin {dest_bin}) IP Header is {ip_bytes.hex()} ({len(ip_bytes)} bytes)")
+        self.logger.debug(f"{self!r}: Target {target} (bin {dest_bin}) UDP Header is {udp_bytes.hex()} ({len(udp_bytes)} bytes)")
+        self.logger.debug(f"{self!r}: Target {target} (bin {dest_bin}) User Header is {user_bytes.hex()} ({len(user_bytes)} bytes)")
 
         # print(f"Header is {header.hex()} ({len(header)} bytes)")
         self.set_bin_data(bin=dest_bin, data=header)
 
 
-    def set_playlist(self, bins={0:[1]}):
+    def set_playlist(self, playlist=((0,[1]),), verbose=0):
         """ Configure the playlist buffer to send the selected bins
 
         Parameters:
 
-            bins (dict): ``{target_id: bin_list}`` dict describing the bin numbers to send to each
-                target. 8-frame (8*8 = 64 bytes) of the first bin is send, and 16 frames (128 bytes)
-                is sent for the others.
+            bins (list): List of ``(target_id, bin_list)`` tuples describing the bin numbers to send to each
+                target, where:
 
                 - ``target_id`` (int): key describing the destination IP address. Used to index the ``self.targets`` dict.
 
@@ -238,34 +259,50 @@ class UCorn(MMI):
 
         - bit 15: End of transmission: Is '1' when this on the last word of the playlist
         - bit 14: End of packet. Is '1' when this is the last bin of a packet. Must be set when ``end_of_transmission`` is set.
-        - bit 13: Number of frames: '0'= 2 frames (64 bytes), '1'= 4 frames (128 bytes). Set
-              to '0' for transmitting an ethernet header, and sent to '1' to send actual data.
+        - bit 13: Number of frames: '0'= 2 framegroup (2*4=8 frames = 64 bytes), '1'= 4 framegroups (4*4=16 frames = 128 bytes).
+              Set to '0' for transmitting an ethernet header, and sent to '1' to send actual data.
         - bit 12-0: Bin number. Bin to send, from 0 to 8191.
 
-        The first bin of each packet described in the playlist shall point to a bin that contains a
-        Ethernet/IP/UDP/payload header, which containing the destination address etc. Any number of
-        different headers stored (with different destination IP addresses) can be stored in bins
-        that would typically not be used in the experiment (e.g the lowest bins outside the feed
-        response, the high bins subject to aliasing, known bins contaminated with RFI etc.).
-
-        Header bins have their ``number_of_frames`` set to '0' so only the first 64 bytes of the
-        buffer are sent. This is because we need only 42 bytes for the Ethernet/IP/UDP headers, and
-        the remaining 22 bytes are sufficient for the payload headers (cookie, stream ID, flags,
+        The first bin of each packet described in the playlist shall point to a bin that has been
+        repurposed to contains a Ethernet/IP/UDP/payload header, which containing the destination
+        address etc. That bin  has bit 13 set in the playlist, so only 8-frame worth if data is
+        sent, that is, 8 bytes/frame * 8 = 64 bytes, are transmitted. The Ethernet/IP/UDP headers need only 42 bytes,
+        leaving 22 bytes are sufficient for our own packet headers (cookie, stream ID, flags,
         timestamp).
 
+        The following bins in the playlist have bit 13 set to zero, so all 16 frames, or 128 bytes,
+        of data is sent.
+
+        Any number of different headers stored (with different destination IP addresses) can be
+        stored in bins that would typically not be used in the experiment (e.g the lowest bins
+        outside the feed response, the high bins subject to aliasing, known bins contaminated with
+        RFI etc.).
+
         """
+
+        bins_total = sum(len(b) for t,b in playlist)
+        self.logger.info(f'{self!r}: Total data rate: {1*(bins_total*16*8+64)*8*3200e6/16384/16/1e9} Gbps')
+        if verbose:
+            for (t,b) in playlist:
+                l = len(b)*8*16+8*8
+                self.logger.info(f"Target {t.get('dest_ip_addr', t) if isinstance(t,dict) else t}: Eth: {l} bytes, UDP: {l-42} bytes, {len(b)*4+2} words")
         addr = 0
-        for i, (target, b) in enumerate(bins.items()):
+        for i, (target, b) in enumerate(playlist):
             # COmpute the number of bytes to send excluding the ethernet/IP/UDP/payload header. Used to compute the headers.
             #  length =  bytes_per_bin * frames_per_bin * number_of_bins
             length = 8 * 16 * len(b)
-            self.set_ethernet_header(target=target, length=length)  # Program the ethernet header
-            b = np.array([target] + b, dtype='>u2')
+            dest_bin = self.sacrificial_bins[i]
+            crate,slot = self.fpga.get_id(default_crate=0, default_slot=0)
+            source_id = crate <<8 | slot << 4
+            self.set_ethernet_header(target=target, dest_bin=dest_bin, length=length, stream_id=i, source_id= source_id)  # Program the ethernet header
+            b = np.concatenate(([dest_bin], b)).astype('>u2')
+            if any(b >= 8192):
+                raise('Invalid bin number in bin list')
             b[-1] |= 1<<14 # end of packet on last bin
             b[1:] |= 1<<13 # Send 4 frames except for 1st bin
-            if i == len(bins)-1:
+            if i == len(playlist) - 1:
                 b[-1] |= (1<<15) # end of transmission on last bin of last packet
-            print(f'Writing Playlist RAM[{addr}]={b.tobytes().hex()}')
+            self.logger.debug(f"Writing Playlist RAM[{addr}]={b.tobytes().hex(':')}")
             self.write_playlist_buffer(addr, b.tobytes())
             addr += 2 * len(b)
 
@@ -334,6 +371,6 @@ class UCorn(MMI):
         """
         Set the number of frame per packets.
         """
-        self.logger.warn('{self!r}: set_frames_per_packet is not implemented on UCorn. Packet size is set through the playlist. Command is ignored. ')
+        self.logger.warn(f'{self!r}: set_frames_per_packet() is not implemented on {__name__}. Packet size is set through the playlist. Command is ignored. ')
 
 

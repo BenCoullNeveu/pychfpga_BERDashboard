@@ -1,11 +1,9 @@
-#!/usr/bin/python
-
 """
-xglink.py module
-    Implements the interface to the generic multigigabit/s packet transmitter/receiver array.
+xxvglink.py module
+    Implements the interface to the generic 25 Gbps packet transmitter/receiver array.
 
 History:
-    2013-10-29 : JFC : Created
+    2025-01-27: JFC : Created
 """
 import logging
 import time
@@ -17,11 +15,10 @@ import asyncio
 from ..mmi import MMI, MMIRouter, BitField, CONTROL, STATUS, DRP
 from wtl.metrics import Metrics
 
-
 class QPLL(MMI):
     """ Implements interface to one of the COMMON """
 
-    ADDRESS_WIDTH = 9
+    ADDRESS_WIDTH = 10
 
     QPLL_LOCK                = BitField(STATUS, 0, 0, doc='Indicates if the QPLL is locked')
     QPLL_PD                  = BitField(CONTROL, 0,0, doc="power down qpll.  needs 500ns after reset.")
@@ -49,10 +46,10 @@ class QPLL(MMI):
     COMMON_CFG0              = BitField(DRP, 0x0043, 0, width=16, doc="COMMON_CFG[15:0 ] 0-65535")
     COMMON_CFG1              = BitField(DRP, 0x0044, 0, width=16, doc="COMMON_CFG[31:16] 0-65535")
 
-    def __init__(self, *, router, router_port, instance_number):
+    def __init__(self, fpga_instance, base_address,  address_width, router_port, instance_number):
         # self.fpga = fpga
         self.logger = logging.getLogger(__name__)
-        super().__init__(router=router, router_port=router_port, instance_number=instance_number)
+        super().__init__(fpga_instance, base_address=base_address,  address_width=address_width, router_port=router_port, instance_number=instance_number)
 
     def init(self):
         """ Initializes the antenna modules"""
@@ -63,16 +60,20 @@ class QPLL(MMI):
         return self.read_all_fields()
 
 
-class GTX(MMI):
-    """ Implements interface to a GTX_CHANNEL block """
-    ADDRESS_WIDTH = 9
+class GTY(MMI):
+    """ Implements interface to a GTY_CHANNEL block """
 
-    USER_RESET     = BitField(CONTROL, 0, 7, doc='')
-    USER_GTTXRESET = BitField(CONTROL, 0, 6, doc='')
+    ADDRESS_WIDTH = 10
+
+    # USER_RESET     = BitField(CONTROL, 0, 7, doc='')
+    # USER_GTTXRESET = BitField(CONTROL, 0, 6, doc='')
+    SCRAMBLE_EN     = BitField(CONTROL, 0, 7, doc='')
+    RXGEARBOXFORCESLIP = BitField(CONTROL, 0, 6, doc='')
     TXINHIBIT      = BitField(CONTROL, 0, 5, doc='Debug')
     TXPOSTCURSOR   = BitField(CONTROL, 0, 0, width=5, doc='Debug')
 
     TXDIFFCTRL     = BitField(CONTROL, 1, 4, width=4, doc='Debug')
+    UNSCRAMBLER_RESET = BitField(CONTROL, 1, 3, doc='Debug')
     LOOPBACK       = BitField(CONTROL, 1, 0, width=3, doc='Debug') #-- '000' = normal operation
 
     SOURCE_SEL     = BitField(CONTROL, 2, 7, doc='')
@@ -82,11 +83,12 @@ class GTX(MMI):
     TX_DATA_LSB    = BitField(CONTROL, 3, 0, width=8, doc='Debug')
 
     RXDFELPMRESET    = BitField(CONTROL, 4, 7, doc='') #gt_control_bytes(i)(10)(5);
-    USER_GTRXRESET   = BitField(CONTROL, 4, 6, doc='')
+    # USER_GTRXRESET   = BitField(CONTROL, 4, 6, doc='')
     RXLPMEN          = BitField(CONTROL, 4, 5, doc='') #gt_control_bytes(i)(10)(6);
     RXMONITORSEL     = BitField(CONTROL, 4, 3, width=2, doc='') #gt_control_bytes(i)(10)(4 downto 3);
     CAPTURE_ENABLE   = BitField(CONTROL, 4, 2, doc='')
     BLOCK_LOCK_RESET = BitField(CONTROL, 4, 1, doc='')
+    RXDFEAGCHOLD = BitField(CONTROL, 4, 0, doc='')
 
     # SCRAMBLER_RESET    = BitField(CONTROL, 0, 5, doc='')
     # DESCRAMBLER_RESET  = BitField(CONTROL, 0, 4, doc='')
@@ -119,17 +121,19 @@ class GTX(MMI):
     # RXDFEOVRD     = BitField(CONTROL, 13, 0, width=9, doc='') # Bit 0: AGC, 1: LF, 2-5: TAP2-5, 6: UT, 7: VP, 8: OS
 
     TX_RESETDONE  = BitField(STATUS, 0, 7, doc='Debug')
-    RX_RESETDONE  = BitField(STATUS, 0, 6, doc='Debug')  # From the GTX
+    RX_RESETDONE  = BitField(STATUS, 0, 6, doc='Debug')  # From the GTY
     TXBUFSTATUS   = BitField(STATUS, 0, 4, width=2)
     TXRESETDONE   = BitField(STATUS, 0, 3, doc='Debug')
     RXRESETDONE   = BitField(STATUS, 0, 2, doc='Debug')  # From the RX_FSM
     BLOCK_LOCK    = BitField(STATUS, 0, 1, doc='Debug')
     RX_PRESENT    = BitField(STATUS, 0, 0, doc='Indicates if the RX logic is implemented')
 
-    # New order to allow GPU links BER tests
     ERR_CTR       = BitField(STATUS, 4, 0, width=32)
+
     RXHEADER      = BitField(STATUS, 5, 6, width=2, doc='Debug')
+    RXGEARBOXSLIP = BitField(STATUS, 5, 5, doc='Debug')
     RXBUFSTATUS   = BitField(STATUS, 5, 0, width=3)
+
     RXMONITOR     = BitField(STATUS, 6, 0, width=7, doc='Debug')
     RXDATA        = BitField(STATUS, 10, 0, width=32)
 
@@ -192,13 +196,17 @@ class GTX(MMI):
     ES_VERT_OFFSET    = BitField(DRP, 0x03B, 0, width=9, doc='')# 8:0   8:0 0-511 0-511
     ES_HORZ_OFFSET    = BitField(DRP, 0x03C, 0, width=12, doc='')# 11:0  11:0 0-4095 0-4095
 
+
+    RX_CM_SEL         = BitField(DRP, 0x061, 0, width=2, doc='')# 11:0  11:0 0-4095 0-4095
+    RX_CM_TRIM         = BitField(DRP, 0x061, 2, width=4, doc='')# 11:0  11:0 0-4095 0-4095
+
     ES_ERROR_COUNT    = BitField(DRP, 0x14F, 0, width=15, doc='')
     ES_SAMPLE_COUNT   = BitField(DRP, 0x150, 0, width=15, doc='')
     ES_CONTROL_STATUS = BitField(DRP, 0x151, 0, width=4, doc='')
 
 # Add DRP registers here...
 
-    def __init__(self, *, router, router_port, instance_number):
+    def __init__(self, *, parent_module, router_port, instance_number):
         # self.fpga = fpga
         self.logger = logging.getLogger(__name__)
         super().__init__(router=router, router_port=router_port, instance_number=instance_number)
@@ -206,15 +214,15 @@ class GTX(MMI):
         self._lock()
 
     def init(self):
-        """ Initializes the GTX CHANNEL block"""
-        # self.logger.info('Initializing GTX_CHANNEL  #%i' % self.instance_number)
+        """ Initializes the GTY CHANNEL block"""
+        # self.logger.info('Initializing GTY_CHANNEL  #%i' % self.instance_number)
         self.configure()
         if self.RX_PRESENT:  # Call only if there is a RX link, otherwise it will kill the GPU links
             self.reset_rx_equalizer()
 
     def status(self):
-        """ Displays the status of the GTX_CHANNEL"""
-        self.logger.info('--- GPU GTX CHANNEL %i ' % self.instance_number)
+        """ Displays the status of the GTY_CHANNEL"""
+        self.logger.info('--- GPU GTY CHANNEL %i ' % self.instance_number)
 
     def get_rxdata(self):
         self.CAPTURE_ENABLE = 1
@@ -250,6 +258,42 @@ class GTX(MMI):
         The values are resturned as a 8-digit hex value string.
         """
         return set(['%08x' % self.get_rxdata() for x in range(number_of_words)])
+
+
+
+    def get_ber(self, tx_init_power=11, tx_power=15, period=0.3, verbose=1):
+        # (link_type, (sc, ss, sl), (dc, ds, dl)), (self, self) = link
+        DATA_RATE = 25e9
+        self.RXPRBSSEL = 4
+        self.TXPRBSSEL = 4
+        self.TXDIFFCTRL = tx_init_power  # Setting initial power level
+
+        self.RXDFELPMRESET = 1  # Retting the Reciever DFE
+        time.sleep(0.5)
+        self.RXDFELPMRESET = 0
+
+        self.TXDIFFCTRL = tx_power
+
+        # if print_:
+        #    print 'Measuring BER for link %s' % (link[0],),
+        #    print self.TXDIFFCTRL
+        self.RXPRBSCNTRESET = 1  # Resetting errors
+        time.sleep(0.5)
+        self.RXPRBSCNTRESET = 0
+
+        time.sleep(period)
+
+        cnt = self.ERR_CTR
+        err = (float(cnt) * 16) / (period * DATA_RATE)
+        err_max = (float(cnt) * 16 + 1) / (period * DATA_RATE)
+
+        # self.TXPRBSSEL = 0  #Setting PRBS to 0 (data path)
+        # self.TXPRBSSEL = 0  #Setting PRBS to 0 (data path)
+        if verbose:
+            print(f'{self!r} BER = {err:1.1e} ({cnt} errors, BER<{err_max:1.1e})')
+        # self.print_flush()
+        return err
+
 
     def get_eye_diagram(
             self,
@@ -361,9 +405,9 @@ class GTX(MMI):
                 else:
                     ih = ih+dir
 
-        EyeDiag = collections.namedtuple('EyeDiag', ['gtx', 'horiz_offsets', 'vert_offsets', 'ber_map'])
+        EyeDiag = collections.namedtuple('EyeDiag', ['gty', 'horiz_offsets', 'vert_offsets', 'ber_map'])
 
-        return EyeDiag(gtx=self,
+        return EyeDiag(gty=self,
                        horiz_offsets=horiz_offset,
                        vert_offsets=vert_offset,
                        ber_map=ber)
@@ -379,25 +423,26 @@ class GTX(MMI):
         plt.imshow(np.log10(eye_diag.ber_map+1e-12), origin='lower', extent=extent, aspect=0.1, vmin=-12, vmax=1)
         plt.xlabel('Horizontal sampling offset')
         plt.ylabel('Vertical sampling offset')
-        iceboard = eye_diag.gtx.fpga
+        iceboard = eye_diag.gty.fpga
         plt.title('Eye diagram for IceBoard SN%s (Icecrate %s SN%s Slot %i) Lane %i' % (
             iceboard.serial,
             iceboard.crate.__class__.__name__,
             iceboard.crate.serial,
             iceboard.slot,
-            eye_diag.gtx.instance_number + 1))
+            eye_diag.gty.instance_number + 1))
 
-class XGLRouter(MMIRouter):
-    ROUTER_PORT_NUMBER_WIDTH = 5
+class XXVGLRouter(MMIRouter):
+    ROUTER_PORT_NUMBER_WIDTH = 4
     ROUTER_PORT_MAP = {
         'COMMON': 0
         # port numbers for QPLL and GTY are computed
         }
 
-class XGLinkCore(MMI):
-    """ Instantiates a container for all the xglink core module
 
-    The XGLink core implements an array of QPLLs and GTXes with a primitive
+class XXVGLinkCore(MMI):
+    """ Instantiates a container for all the xXVglink core module
+
+    The XXVGLink core implements an array of QPLLs and GTYes with a primitive
     data/control word interface, 64/66 bit encoding, scrambling and
     synchronization. The core is used to implement both arrays of 10G Ethernet
     transmitters as well as custom backplane 10G links.
@@ -406,58 +451,66 @@ class XGLinkCore(MMI):
     by registers added by the protocol-specific logic.
     """
 
-    # XGLINK common control and status registers
-    CORE_RESET      = BitField(CONTROL, 0, 7, doc='The GTX cores are reset when this signal goes from 1 to 0')
-    TX_DATA_MSB     = BitField(CONTROL, 3, 0, width=16, doc='24 most significant bits of the data word that can be sent manually. This is common to all lanes.')
+    # XXVGLINK common control and status registers. These registers are technically on port 0 with
+    # an address width of 10 bits, but we place them on the base address for convenience.
+    CORE_RESET            = BitField(CONTROL, 0, 7, doc='The GTY cores are reset when this signal goes from 1 to 0')
+    TX_RESET              = BitField(CONTROL, 0, 3, doc='')
+    RX_PLL_DATAPATH_RESET = BitField(CONTROL, 0, 2, doc='')
+    RX_DATAPATH_RESET     = BitField(CONTROL, 0, 1, doc='')
+    RX_RESET              = BitField(CONTROL, 0, 0, doc='')
+
+    TX_DATA_MSB     = BitField(CONTROL, 3, 0, width=24, doc='24 most significant bits of the data word that can be sent manually. This is common to all lanes.')
 
     NUMBER_OF_QUADS = BitField(STATUS, 0, 5, width=3, doc='Number of QUADS (QPLLs)')
     NUMBER_OF_LINKS = BitField(STATUS, 0, 0, width=5, doc='Number of links')
     RESET_PULSE     = BitField(STATUS, 1, 5, doc='debug')
     RESET_DONE      = BitField(STATUS, 1, 4, doc='debug')
     QPLL_RESET_MON  = BitField(STATUS, 1, 3, doc='debug')
+    RX_CDR_STABLE   = BitField(STATUS, 1, 2, doc='debug')
 
     def __init__(self, *, router, router_port, verbose=1):
-        # self.fpga = fpga
         self.logger = logging.getLogger(__name__)
         self.verbose = verbose
+        xxvl_router = XXVLRouter(router=router, router_port=router_port)
 
-        xgl_router = XGLRouter(router=router, router_port=router_port)
+        super().__init__(router=xxvl_router, router_port='COMMON')
 
-        super().__init__(router=xgl_router, router_port='COMMON')
-
-        i = 1
+        router_port = 1
 
         # Instantiate QUAD objects
+        self.logger.info(f'{self!r}: Instantiating {self.NUMBER_OF_QUADS} QPLLs')
+        print(f'{self!r}: Instantiating {self.NUMBER_OF_QUADS} QPLLs and {self.NUMBER_OF_LINKS} GTYs, XXVGLINK base addr={self.base_address:06x}, width={self.address_width} {router_port_address_width} {address_width}')
         self.qpll = []
         for j in range(self.NUMBER_OF_QUADS):
-            self.qpll.append(QPLL(router=xgl_router, router_port=i, instance_number=j))
-            i += 1
+            self.qpll.append(QPLL(router=xxvl_router, router_port=router_port, instance_number=j))
+            router_port += 1
 
-        self.gtx = []
+        self.logger.info(f'{self!r}: Instantiating {self.NUMBER_OF_LINKS} GTYs')
+        self.gty = []
         for j in range(self.NUMBER_OF_LINKS):
-            self.gtx.append(GTX(router=xgl_router, router_port=i, instance_number=j))
-            i += 1
+            self.gty.append(GTY(router=xxvl_router, router_port=router_port, instance_number=j))
+            router_port += 1
 
     def init(self):
         """ Initializes the links"""
 
-        self.logger.debug('%r: Initializing GTX links (%i QUADs & %i GTXes)' % (self, len(self.qpll), len(self.gtx)))
+        self.logger.debug(f'{self!r}: Initializing GTY links ({len(self.qpll)} QUADs & {len(self.gty)} GTYs)')
         for (i, qpll) in enumerate(self.qpll):
             qpll.init()
 
-        for (i, gtx) in enumerate(self.gtx):
-            gtx.init()
+        for (i, gty) in enumerate(self.gty):
+            gty.init()
 
     def reset_rx_equalizers(self):
-        for g in self.gtx:
+        for g in self.gty:
             g.reset_rx_equalizer()
 
     def set_tx_power(self, power):
-        for g in self.gtx:
+        for g in self.gty:
             g.TXDIFFCTRL = power
 
     def status(self):
-        """ Displays the status of the QPLLs and GTXes"""
+        """ Displays the status of the QPLLs and GTYes"""
 
         print('Common Bitfields')
         for (name, value) in self.read_all_fields():
@@ -468,23 +521,23 @@ class XGLinkCore(MMI):
             for (name, value) in qpll.read_all_fields():
                 print('    %s = %i, 0x%X, %s' % (name, value, value, bin(value)))
 
-        for (i, gtx) in enumerate(self.gtx):
-            print('GTX[%i] Bitfields' % i)
-            for (name, value) in gtx.read_all_fields():
+        for (i, gty) in enumerate(self.gty):
+            print('GTY[%i] Bitfields' % i)
+            for (name, value) in gty.read_all_fields():
                 print('    %s = %i, 0x%X, %s' % (name, value, value, bin(value)))
 
 
-class XGLinkArray(XGLinkCore):
-    """ Instantiates an object that represents the VHDL xglink_array, i.e. an ensemble of GTXes with
+class XXVGLinkArray(XXVGLinkCore):
+    """ Instantiates an object that represents the VHDL xXVglink_array, i.e. an ensemble of GTYes with
     a knowledge of lane groups.
 
-    The XGLinkArray implements a XGLinkCore (ensemble of QPLLs and GTXes and date
+    The XXVGLinkArray implements a XXVGLinkCore (ensemble of QPLLs and GTYes and date
     encoding/synchonization) and adds without minimal packet framing (SOF, EOF) and checksum
-    (CRC32). It provides an additional set of registers to the XGLinkCore, and implement internal
-    links as well as GTX bypasses. XGLink is also aware of logical lane groups (e.g. 'pcb', 'qsfp'
+    (CRC32). It provides an additional set of registers to the XXVGLinkCore, and implement internal
+    links as well as GTY bypasses. XXVGLink is also aware of logical lane groups (e.g. 'pcb', 'qsfp'
     links).
 
-    XGLinkArray is used to implement the corner turn data links by tranmitting data though the
+    XXVGLinkArray is used to implement the corner turn data links by tranmitting data though the
     backplane PCB tracks and backplane QSFP connectors.
 
 
@@ -495,46 +548,61 @@ class XGLinkArray(XGLinkCore):
             UDP MMI.
 
         base_address (int): UDP MMI Address where the first register of the
-            XGLinkArray is located
+            XXVGLinkArray is located
 
         address_increment (int): Address spacing between various subsystems
-            (common register block, QPLLs, GTXes)
+            (common register block, QPLLs, GTYes)
 
         lane_groups (list of tuples): Defines the lane groups that are
-            supported by the XGLinkArray subsystem. Is in the format::
+            supported by the XXVGLinkArray subsystem. Is in the format::
 
-            [ (link_type, number_if_direct_lanes, number_of_gtx_links), ...]
+            [ (link_type, number_if_direct_lanes, number_of_gty_links), ...]
 
         verbose (int): Indicates the verbose level.
 
     """
 
     # ########################################
-    # XGLINK_ARRAY.VHD control and status registers
+    # XXVGLINK_ARRAY.VHD control and status registers
     # ########################################
 
-    # backplane link-specific registers
-    # TX_TEST_ENABLE  = BitField(CONTROL, 4+0, 1, doc='')
-    RESET_STATS     = BitField(CONTROL, 4 + 0, 2, doc='')
-    LANE_SEL        = BitField(CONTROL, 4 + 0, 3, width=5, doc='')
+    # CONTROL bytes 0-3 are provided by XXVGLinkCore
+    RESET_STATS     = BitField(CONTROL, 4, 2, doc='')
+    LANE_SEL        = BitField(CONTROL, 4, 3, width=5, doc='')
+    RX_CAPTURE_EN   = BitField(CONTROL, 4, 1, doc='Enable capture of raw RX DATA/HEADER')
+    RX_RECV_RESET        = BitField(CONTROL, 4, 0, doc='Resets all packet receivers')
 
-    BYPASS_PCB_SHUFFLE  = BitField(CONTROL, 4 + 1, 0, doc='')
-    BYPASS_QSFP_SHUFFLE = BitField(CONTROL, 4 + 1, 1, doc='')
+    BYPASS_PCB_SHUFFLE  = BitField(CONTROL, 5, 0, doc='')
+    BYPASS_QSFP_SHUFFLE = BitField(CONTROL, 5, 1, doc='')
+
+    LANE_MON_SRC      = BitField(CONTROL, 6, 4, width=2, doc='Selects source of data being monitored for selected lane (TXCLK domain: 0=TX, 1=RX, RXCLK domain: no effect, always RX FIFO IN)')
+    LANE_MON_TYPE      = BitField(CONTROL, 6, 0, width=4, doc='Selects type of data being monitored for selected lane (0: word counter, 1: packet length, 2: current packet length, 3: min packet length, 4: max packet length, 5: error counter, 6: FIFO overflow counter)')
+
+
+    TX_FORCE_EN   = BitField(CONTROL, 7, 2, doc='Enable forcing of DATA/HEADER')
+    TX_FORCE_HEADER   = BitField(CONTROL, 7, 0, width=2, doc='HEADER to be forced')
+    TX_FORCE_DATA   = BitField(CONTROL, 15, 0, width=64, doc='DATA to be forced')
 
     # FIFO_RESET      = BitField(CONTROL, 4+1, 0, doc='Resets the RX FIFO')
 
-    RX_FIFO_OVERFLOW = BitField(STATUS, 2 + 0, 0, doc='Sticky fifo overflow bit for the selected lane. Is cleared when RESET_STATS=1.')
-    RESET_MON        = BitField(STATUS, 2 + 0, 1, doc='State of the reset line')
-    RX_FRAME_DETECT  = BitField(STATUS, 2 + 0, 2, doc='Sticky bit indicating that a data frame was detected. Is cleared when RESET_STATS=1.')
-    TX_FIFO_OVERFLOW = BitField(STATUS, 2 + 0, 3, doc='Sticky fifo overflow bit for the selected lane. Is cleared when RESET_STATS=1.')
+    # STATUS bytes 0-1 are provided by XXVGLinkCore
+    RX_FIFO_OVERFLOW = BitField(STATUS, 2, 0, doc='Sticky fifo overflow bit for the selected lane. Is cleared when RESET_STATS=1.')
+    RESET_MON        = BitField(STATUS, 2, 1, doc='State of the reset line')
+    RX_FRAME_DETECT  = BitField(STATUS, 2, 2, doc='Sticky bit indicating that a data frame was detected. Is cleared when RESET_STATS=1.')
+    TX_FIFO_OVERFLOW = BitField(STATUS, 2, 3, doc='Sticky fifo overflow bit for the selected lane. Is cleared when RESET_STATS=1.')
+    RX_CAPTURE_HEADER = BitField(STATUS, 2, 6, width=2, doc='Captured RX header bits when RX_CAPTURE_EN=1')
     # TEST_CTR         = BitField(STATUS, 2+0, 4, width=3, doc='State of the test pattern counter')
 
-    RX_ERROR_CTR        = BitField(STATUS, 2 + 2, 0, width=16, doc='Current value of the error counter for the selected lane. Saturates at 0xFFFF. Is cleared when RESET_STATS=1.')
-    RX_MAX_FRAME_LENGTH = BitField(STATUS, 2 + 4, 0, width=13, doc='Current value of the maximum frame length detector. Is cleared when RESET_STATS=1.')
-    RX_MIN_FRAME_LENGTH = BitField(STATUS, 2 + 6, 0, width=13, doc='Current value of the minimum frame length detector. Is cleared when RESET_STATS=1.')
-    # RX_CTR              = BitField(STATUS, 2+5, 0, width=8, doc='Free runing counter on the local RX clock. Is cleared when RESET_STATS=1.')
-    RX_FRAME_CTR        = BitField(STATUS, 2 + 7, 0, width=8, doc='Number of frames received since reset. Is cleared when RESET_STATS=1.')
-    # DELAY_CAPTURE       = BitField(STATUS, 2+10, 0, width=16, doc="")
+    RXCLK_MON_WORD        = BitField(STATUS,4, 0, width=16, doc='Monitor for the signals in the RXCLK domain. Lane, source and type (i.e meaning) of the word is set by LANE_SEL, LANE_MON_SRC and LANE_MON_TYPE. Is cleared when RESET_STATS=1.')
+    TXCLK_MON_WORD        = BitField(STATUS,6, 0, width=16, doc='Monitor for the signals in the TXCLK domain. Lane, source and type (i.e meaning) of the word is set by LANE_SEL, LANE_MON_SRC and LANE_MON_TYPE. Is cleared when RESET_STATS=1.')
+    # RX_MAX_FRAME_LENGTH = BitField(STATUS, 2 + 4, 0, width=13, doc='Current value of the maximum frame length detector. Is cleared when RESET_STATS=1.')
+    # RX_MIN_FRAME_LENGTH = BitField(STATUS, 2 + 6, 0, width=13, doc='Current value of the minimum frame length detector. Is cleared when RESET_STATS=1.')
+    # # RX_CTR              = BitField(STATUS, 2+5, 0, width=8, doc='Free runing counter on the local RX clock. Is cleared when RESET_STATS=1.')
+    # TX_WORD_CTR        = BitField(STATUS, 10, 0, width=16, doc='Cleared when RESET_STATS=1.')
+    # TX_PACKET_LENGTH   = BitField(STATUS, 12, 0, width=16, doc='Cleared when RESET_STATS=1.')
+    # TX_PACKET_CTR   = BitField(STATUS, 13, 0, width=8, doc='Cleared when RESET_STATS=1.')
+
+    RX_CAPTURE_DATA = BitField(STATUS, 14, 0, width=64, doc='Captured RX data word when RX_CAPTURE_EN=1')
 
     RX_LANE_MONITOR_TABLE = {
         'RX_FIFO_OVERFLOW': 'RX_FIFO_OVERFLOW',
@@ -546,44 +614,50 @@ class XGLinkArray(XGLinkCore):
         # 'RX_CTR': 'RX_CTR',
         'RX_FRAME_CTR': 'RX_FRAME_CTR'}
 
-    def __init__(self, *, router, router_port, lane_groups, verbose=1):
+    def __init__(self, fpga_instance, base_address, address_width, router_port,  lane_groups, verbose=1):
+        # self.fpga = fpga
 
-        super().__init__(router=router, router_port=router_port, verbose=verbose)
+        super().__init__(fpga_instance, base_address=base_address, address_width=address_width, router_port=router_port, verbose=verbose)
+
+        # self.LANE_GROUPS = {}
+        # group name : (first lane, number_of_bypass_lanes, number_of_links)
+        # self.LANE_GROUPS[0] = self.LANE_GROUPS['pcb'] = (0, self.NUMBER_OF_PCB_DIRECT_LANES, self.NUMBER_OF_PCB_LINKS)
+        # self.LANE_GROUPS[1] = self.LANE_GROUPS['qsfp'] = (self.NUMBER_OF_PCB_LANES, self.NUMBER_OF_QSFP_DIRECT_LANES, self.NUMBER_OF_QSFP_LINKS)
 
         # lane_list = []
         phys_lane = 0
-        gtx_ix = 0
+        gty_ix = 0
 
-        self.gtx_map = {None: []}  # list of GTX instance for each group. The None group lists them all.
+        self.gty_map = {None: []}  # list of GTY instance for each group. The None group lists them all.
         self.phys_lane_map = {None: []}  # list of the physical lane limbers for each group
 
         for group, n_direct_lanes, n_links in lane_groups:
-            self.gtx_map[group] = []
+            self.gty_map[group] = []
             self.phys_lane_map[group] = []
             # lane_list[group] = []
             for lane in range(n_direct_lanes):
-                # lane_list.append((group, lane, phys_lane, None, None))  # internal link, no GTX
+                # lane_list.append((group, lane, phys_lane, None, None))  # internal link, no GTY
                 for g in [group, None]:
-                    self.gtx_map[g].append(None)
+                    self.gty_map[g].append(None)
                     self.phys_lane_map[g].append(phys_lane)
                 phys_lane += 1
             for lane in range(n_direct_lanes, n_direct_lanes + n_links):
-                # lane_list.append((group, lane, phys_lane, gtx_ix, self.gtx[gtx_ix]))
+                # lane_list.append((group, lane, phys_lane, gty_ix, self.gty[gty_ix]))
                 for g in [group, None]:
-                    self.gtx_map[g].append(self.gtx[gtx_ix])
+                    self.gty_map[g].append(self.gty[gty_ix])
                     self.phys_lane_map[g].append(phys_lane)
                 phys_lane += 1
-                gtx_ix += 1
+                gty_ix += 1
         # self.lane_list = lane_list
 
-        # Create a lane map that maps gtx instances to group name and logical
+        # Create a lane map that maps gty instances to group name and logical
         # lane number, or to physical lane number if the group name is None
         # self.lane_map = {None: {}}
-        # for group, lane, phys_lane, gtx_ix, gtx in self.lane_list:
-        #     self.lane_map.setdefault(group, {})[lane] = (phys_lane, gtx_ix, gtx)
+        # for group, lane, phys_lane, gty_ix, gty in self.lane_list:
+        #     self.lane_map.setdefault(group, {})[lane] = (phys_lane, gty_ix, gty)
 
-    def is_gtx(self, obj):
-        """ Test whether an object is a GTX instance.
+    def is_gty(self, obj):
+        """ Test whether an object is a GTY instance.
 
         Parameters:
 
@@ -593,7 +667,7 @@ class XGLinkArray(XGLinkCore):
 
             A bool.
         """
-        return isinstance(obj, GTX)
+        return isinstance(obj, GTY)
 
     def get_physical_lane_numbers(self, lane_group=None):
         """ Returns a list of physical lane numbers that correspond to the specified group.
@@ -603,7 +677,7 @@ class XGLinkArray(XGLinkCore):
 
         Parameters:
 
-            group (str): target lane group. If None, physicallane number for all groups are
+            group (str): target lane group. If None, physical lane number for all groups are
                 returned.
 
         Returns:
@@ -626,73 +700,73 @@ class XGLinkArray(XGLinkCore):
 
             List of integers.
         """
-        if lane_group not in self.gtx_map:
+        if lane_group not in self.gty_map:
             raise ValueError('Invalid lane group name %s' % lane_group)
         if lane_group is None:
             raise ValueError('Logical lane numbers cannot be obtained for lane group "None": '
                              'the lane numbers are not unique')
-        return list(range(len(self.gtx_map[lane_group])))
+        return list(range(len(self.gty_map[lane_group])))
 
-    def get_gtx(self, lane=None, lane_group=None):
-        """ Returns a single or a list of GTX instances that correspond to the specified group and lanes.
+    def get_gty(self, lane=None, lane_group=None):
+        """ Returns a single or a list of GTY instances that correspond to the specified group and lanes.
 
         Parameters:
 
-            lane (int or list of int): Single lane or list of lanes for which to get the GTX
+            lane (int or list of int): Single lane or list of lanes for which to get the GTY
                 instance. if `lane` is None, all lanes are returned within the group are returned.
                 If group is None, lanes from both groups are queries and physical lane number is
                 expected instead of the logical lane number.
 
-            lane_group (str): Name of the lane group in which the GTX belongs
-                ('pcb' or 'qsfp'). If None, all GTXes are returned.
+            lane_group (str): Name of the lane group in which the GTY belongs
+                ('pcb' or 'qsfp'). If None, all GTYes are returned.
 
         Returns:
 
-            List of GTX instances. Returns None for internal data links.
+            List of GTY instances. Returns None for internal data links.
         """
-        if lane_group not in self.gtx_map:
+        if lane_group not in self.gty_map:
             raise ValueError('Invalid lane group name %s' % lane_group)
-        gtx_map = self.gtx_map[lane_group]
+        gty_map = self.gty_map[lane_group]
         if lane is None:
-            return gtx_map
+            return gty_map
         elif isinstance(lane, int):
-            return gtx_map[lane]
+            return gty_map[lane]
         else:
-            return [gtx_map[l] for l in lane]
+            return [gty_map[l] for l in lane]
 
     def set_tx_power(self,  power, lane_group=None):
-        """ Sets the power level of the GTXes in the specified lane group.
+        """ Sets the power level of the GTYes in the specified lane group.
 
         Parameters:
 
-            power (int, tuple or list of tuple): If an 'int', power level applied to all GTX in the
+            power (int, tuple or list of tuple): If an 'int', power level applied to all GTY in the
                 group. Power of an individual lanes can be set by providing a single (lane, power)
                 tuple. A list of (lane, power) tuples can be specified to set multiple lanes. If
                 `lane_group` is `None`, physical lane numbers are used instead of logical lane
                 numbers.
 
-            lane_group (str): lane group name of the target GTXes. If `None`, all groups are
+            lane_group (str): lane group name of the target GTYes. If `None`, all groups are
                 selected and physical lane numbers should be used.
 
         """
 
-        if lane_group not in self.gtx_map:
+        if lane_group not in self.gty_map:
             raise ValueError('Invalid lane group name %s' % lane_group)
-        gtx_map = self.gtx_map[lane_group]
+        gty_map = self.gty_map[lane_group]
 
         if isinstance(power, int):
-            power = [(i, power) for i, gtx in enumerate(gtx_map) if gtx]  # exclude internal links (no GTX)
+            power = [(i, power) for i, gty in enumerate(gty_map) if gty]  # exclude internal links (no GTY)
         elif (isinstance(power, (tuple, list))
                 and isinstance(power[0], int)
                 and isinstance(power[1], int)
                 and len(power) == 2):
             power = [power]
         for lane, pwr in power:
-            gtx = gtx_map[lane]
-            if not gtx:
-                self.logger.warning('There is no GTX at the specified lane %i of group %s (it is a direct internal link)' % (lane, lane_group))
+            gty = gty_map[lane]
+            if not gty:
+                self.logger.warning('There is no GTY at the specified lane %i of group %s (it is a direct internal link)' % (lane, lane_group))
             else:
-                gtx.TXDIFFCTRL = pwr
+                gty.TXDIFFCTRL = pwr
 
     async def get_rx_lane_monitor(self, names, lane_group=None):
         """ Retreive monitoring info for the specified monitoring points in the target lane group.
@@ -747,7 +821,7 @@ class XGLinkArray(XGLinkCore):
             id=self.fpga.get_string_id(),
             type='GAUGE')
 
-        for link_type, link_group in [('pcb_gtx', 'pcb'), ('qsfp_gtx', 'qsfp')]:
+        for link_type, link_group in [('pcb_gty', 'pcb'), ('qsfp_gty', 'qsfp')]:
             await asyncio.sleep(0)  # let the ioloop process data
 
             err, min_len, max_len, frame_det, rx_fifo, tx_fifo = await self.get_rx_lane_monitor(
@@ -764,12 +838,12 @@ class XGLinkArray(XGLinkCore):
                 metrics.add('fpga_bp_link_error_overflow', value=(err[lane] == 255), link_type=link_type, lane=lane)
                 metrics.add('fpga_bp_link_length_mismatch', value=(min_len[lane] != max_len[lane]),
                             link_type=link_type, lane=lane)
-        for gtx_number, gtx in enumerate(self.gtx):
+        for gty_number, gty in enumerate(self.gty):
             await asyncio.sleep(0)  # let the ioloop process data
-            #gtx_number = lane + link_group*self.NUMBER_OF_PCB_LANES
-            metrics.add('fpga_bp_link_tx_power', value=gtx.TXDIFFCTRL, gtx=gtx_number)
-            metrics.add('fpga_bp_link_rx_power', value=gtx.DMONITOROUT & 0x7F, gtx=gtx_number)
-            metrics.add('fpga_bp_link_block_lock', value=gtx.BLOCK_LOCK, gtx=gtx_number)
+            #gty_number = lane + link_group*self.NUMBER_OF_PCB_LANES
+            metrics.add('fpga_bp_link_tx_power', value=gty.TXDIFFCTRL, gty=gty_number)
+            metrics.add('fpga_bp_link_rx_power', value=gty.DMONITOROUT & 0x7F, gty=gty_number)
+            metrics.add('fpga_bp_link_block_lock', value=gty.BLOCK_LOCK, gty=gty_number)
 
         if reset:
             self.reset_stats()
@@ -807,22 +881,22 @@ class XGLinkArray(XGLinkCore):
         if reset:
             self.reset_stats()
 
-        gtx_ids = [(self.fpga.slot, lane) for lane in range(self.NUMBER_OF_PCB_LANES)]
+        gty_ids = [(self.fpga.slot, lane) for lane in range(self.NUMBER_OF_PCB_LANES)]
         active_slots = set(self.fpga.crate.slot.keys())
-        matching_gtx_ids = [self.fpga.crate.get_matching_tx(gtx_id) for gtx_id in gtx_ids]
+        matching_gty_ids = [self.fpga.crate.get_matching_tx(gty_id) for gty_id in gty_ids]
 
-        print('%20s: %s' % ('XGLINK_Array Lane #', ' '.join('  L%2i ' % v for v in range(self.NUMBER_OF_LANES))))
+        print('%20s: %s' % ('XXVGLINK_Array Lane #', ' '.join('  L%2i ' % v for v in range(self.NUMBER_OF_LANES))))
         print('%20s: %s' % ('--------------------', ' '+' '.join('------' for v in range(self.NUMBER_OF_LANES))))
-        print('%20s: %s' % ('GTX ID', ''.join('%7s' % ('(%i,%i)' % id_) for id_ in gtx_ids)))
-        print('%20s: %s' % ('Matching GTX ID',
-                            ''.join('%7s' % ('(%i,%i)' % matching_id) for matching_id in matching_gtx_ids)))
-        print('%20s: %s' % ('Matching GTX present',
+        print('%20s: %s' % ('GTY ID', ''.join('%7s' % ('(%i,%i)' % id_) for id_ in gty_ids)))
+        print('%20s: %s' % ('Matching GTY ID',
+                            ''.join('%7s' % ('(%i,%i)' % matching_id) for matching_id in matching_gty_ids)))
+        print('%20s: %s' % ('Matching GTY present',
                             ' '.join(('%6s' % ('-N/A-', 'ok ')[matching_id[0] in active_slots])
-                                     for matching_id in matching_gtx_ids)))
+                                     for matching_id in matching_gty_ids)))
         for name in self.RX_LANE_MONITOR_TABLE:
             print('%20s: %s' % (name, ' '.join('%6i' % v for v in await self.get_rx_lane_monitor(name))))
-        print('%20s: %6s %s' % ('DMONITOR', 'N/A', ' '.join('%6i' % (g.DMONITOROUT & 0x7f) for g in self.gtx)))
-        print('%20s: %6s %s' % ('BLOCK_LOCK', 'N/A', ' '.join('%6i' % g.BLOCK_LOCK for g in self.gtx)))
+        print('%20s: %6s %s' % ('DMONITOR', 'N/A', ' '.join('%6i' % (g.DMONITOROUT & 0x7f) for g in self.gty)))
+        print('%20s: %6s %s' % ('BLOCK_LOCK', 'N/A', ' '.join('%6i' % g.BLOCK_LOCK for g in self.gty)))
 
         if self.RESET_MON:
             print('WARNING: BP_SHUFFLE reset is active (areset=1)!')

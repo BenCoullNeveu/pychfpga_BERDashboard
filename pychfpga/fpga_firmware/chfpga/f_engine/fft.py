@@ -9,16 +9,15 @@
     2012-09-20 JFC: Changed FFT_SHIFT init value: left at default. FW was updated with updated value.
         Added OVERFLOW_RESET, SOFT_RESET bitfields to match FW
 """
-#import time
+import time
 import numpy as np
-from ..mmi import MMI, BitField
+from ..mmi import MMI, BitField, CONTROL, STATUS
 
 
 class FFT(MMI):
     """ Implements interface to the FR_DIST within a procecessor pipeline"""
-    # Create local variables for page numbers tomake the table more readable
-    CONTROL = BitField.CONTROL
-    STATUS = BitField.STATUS
+
+    ADDRESS_WIDTH = 9
 
     # Control registers
     SOFT_RESET     = BitField(CONTROL, 0x00, 7, doc="Resets the module (also performs a DLY_RESET).")
@@ -34,23 +33,20 @@ class FFT(MMI):
     MEASURED_PIPELINE_DELAY = BitField(STATUS, 0x01, 0, width=16, doc="Latency (in numbe rof clocks) of the CASPER PFB/FFT")
     OVERFLOW_COUNT          = BitField(STATUS, 0x02, 0, width=8, doc="Number of FFT overflows since reset (rolls back)")
 
-    def __init__(self, fpga_instance, base_address, instance_number):
-        super().__init__(fpga_instance, base_address, instance_number)
+    def __init__(self, *, router, router_port, instance_number):
+        super().__init__(router=router, router_port=router_port, instance_number=instance_number)
 
     def reset(self):
         self.pulse_bit('RESET')
 
     def init(self):
         """ Initialize the FFT module"""
-        # self.BYPASS = 0
-        # self.SYNC_PERIOD *= 2
-        # self.FFT_SHIFT= 2**3 - 1
-        # self.FFT_SHIFT = 0b11111111111111
-        # self.PIPELINE_DELAY = 3230
-        self.PIPELINE_DELAY = 12533 # self.MEASURED_PIPELINE_DELAY # try
-        # meas_pipeline_delay = self.MEASURED_PIPELINE_DELAY
-        # self.PIPELINE_DELAY = meas_pipeline_delay
-        # print('set delay, meas delay', self.PIPELINE_DELAY, self.MEASURED_PIPELINE_DELAY)
+
+        # Set the FFT Pipeline delay.
+        self.PIPELINE_DELAY = self.fpga.FFT_LATENCY
+
+        # For the CRS, the pipeline delay is not yet measured at this point, and is not measured even if we pulse SOFT_RESET.
+        # So we can't check if it is right until the pipeline is running. This is why we disable the check below
         # if self.PIPELINE_DELAY != self.MEASURED_PIPELINE_DELAY:
         #    raise Exception('FFT pipeline delay is not set to the measured value!')
 

@@ -14,15 +14,14 @@ import logging
 import numpy as np
 import socket
 
-from ..mmi import MMI, BitField
+from ..mmi import MMI, BitField, CONTROL, STATUS
 
 
 class PROBER(MMI):
     """ Implements the interface to the data PROBER within a channel processor
     """
-    # Create local variables for page numbers tomake the table more readable
-    CONTROL = BitField.CONTROL
-    STATUS = BitField.STATUS
+
+    ADDRESS_WIDTH = 9
 
     # Memory-mapped control registers
     RESET = BitField(CONTROL, 0, 7, doc="Resets the module (including the FIFO)")
@@ -56,10 +55,9 @@ class PROBER(MMI):
 
     DATA_BUFFER_CAPACITY = 3 # Number of full frames that can fit in the FIFOs.
 
-    def __init__(self, fpga_instance, base_address, instance_number):
-        # self.ant = ant_instance
+    def __init__(self,  *, router, router_port, instance_number):
         self.logger = logging.getLogger(__name__)
-        super().__init__(fpga_instance, base_address, instance_number)
+        super().__init__(router=router, router_port=router_port, instance_number=instance_number)
         self._lock()  # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
     # Specialized functions
 
@@ -373,9 +371,9 @@ class RawFrameReceiver(object):
             flush=True,
             data_timeout=0.01,
             flush_timeout=0.001):
-        """ 
+        """
         Reads 2048 frames for each 16 adc channel
-        
+
         Parameters:
 
             stream_ids (list of int): List of adc channels to capture

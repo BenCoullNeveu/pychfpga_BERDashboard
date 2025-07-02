@@ -34,6 +34,7 @@ from wtl.metrics import Metrics
 
 # Local packages
 
+
 from pychfpga.common import async_to_sync, run_async
 from pychfpga.hardware.interfaces import TCPipe_BSB_MMI, FPGAMmi
 
@@ -41,6 +42,8 @@ from pychfpga.fpga_firmware import FPGAFirmware
 
 from .chFPGA_receiver import chFPGA_receiver
 from .f_engine.scaler import SCALER
+# Memory-mapped interface
+from .mmi import MMI, MMIRouter
 
 # FPGA subsystems handlers
 from .system import spi
@@ -55,10 +58,10 @@ from .f_engine import chan
 from .f_engine import prober  # needed to access RawFrameReceiver
 
 # FPGA Corner-turn Engine
-from .ct_engine import chan_crossbar
+
+from .ct_engine import uct_engine
+from .ct_engine import bct_engine
 from .ct_engine import ucorn
-from .ct_engine import shuffle_crossbar
-from .ct_engine import shuffle
 from .ct_engine import gpu
 from .ct_engine import cge
 from .ct_engine import ucap
@@ -129,11 +132,19 @@ class chFPGA(FPGAFirmware):
         ("MGK7MB", "siFPGA", ("corr16",)): dict(firmware_url='SIFPGA_MGK7MB.bit', sampling_frequency=800e6, processing_frequency = 200e6, adc_clock_divider=4),
         ("MGK7MB", "chordFPGA", ("chord16",)): dict(firmware_url='chordFPGA_MGK7MB_Rev2.bit', sampling_frequency=1200e6, processing_frequency = 300e6),
         ("ZCU111", "siFPGA", ("corr4", "corr8")): dict(firmware_url='sifpga_zcu111_wrapper.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
-        ("ZCU111", "chFPGA", ("chan8", "shuffle8",)): dict(firmware_url='chfpga_zcu111_ct.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
-        ("CRS",    "siFPGA", ("corr4","corr8")): dict(firmware_url='chfpga_crs_corr.bit', sampling_frequency=3200e6, processing_frequency = 3200e6/8, adc_clock_divider=32),
+        ("ZCU111", "chFPGA", ("chan8",)): dict(firmware_url='chfpga_zcu111.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
+        ("CRS",    "siFPGA", ("corr4","corr8")): dict(firmware_url='chfpga_crs_corr8.bit', sampling_frequency=3200e6, processing_frequency = 3200e6/8, adc_clock_divider=32),
+        ("CRS",    "siFPGA", ("corr32")): dict(firmware_url='chfpga_crs_corr32.bit', sampling_frequency=3200e6, processing_frequency = 3200e6/8, adc_clock_divider=32),
         ("CRS",    "chFPGA", ("chan8", "shuffle8")): dict(firmware_url='chfpga_crs_ct.bit', sampling_frequency=3200e6, processing_frequency = 3200e6/8, adc_clock_divider=32),
     }
 
+    # Lookup table to provice information of the FFT implemented in the firmware. Is indexed using the FFT_TYPE value provided by the firmware.
+    FFT_INFO = {
+        0: dict(name='NONE', latency=0),
+        1: dict(name='CHIME', latency=3230, samples_per_frame=2048, bits_per_sample=8, bits_per_bin=18+18),
+        2: dict(name='D3A', latency=12533, samples_per_frame=16384, bits_per_sample=14, bits_per_bin=18+18),
+        3: dict(name='CHORD', latency=10452, samples_per_frame=16384, bits_per_sample=14, bits_per_bin=32+32),
+    }
 
     ################################################################################################
     # Byte-Serial-Bus (BSB) Memory map
@@ -141,50 +152,93 @@ class chFPGA(FPGAFirmware):
     # Note: the address space for the core FPGA register is separate. See table below.
 
     # Memory page address offsets
-    _CONTROL_BASE_ADDR = TCPipe_BSB_MMI._CONTROL_BASE_ADDR
-    _STATUS_BASE_ADDR  = TCPipe_BSB_MMI._STATUS_BASE_ADDR
-    _RAM_BASE_ADDR     = TCPipe_BSB_MMI._RAM_BASE_ADDR
+    # _CONTROL_BASE_ADDR = TCPipe_BSB_MMI._CONTROL_BASE_ADDR
+    # _STATUS_BASE_ADDR  = mmi.MMI._STATUS_BASE_ADDR
+    # _RAM_BASE_ADDR     = TCPipe_BSB_MMI._RAM_BASE_ADDR
 
-    #Note: SPI-accessed registers are separate and use a different address space defined in `IceBoardExt`
-    _TOP_BASE_ADDR      = 0x00000  #: Base address of the whome memory map, which is always zero.
-    _TOP_SUBSYSTEM_INCREMENT = 0x10000  #: Address increments between top-level systems (address bits 18:16)
+    # BSB_ADDR_WIDTH = 19  # Number of address bits in BSB transactions
+    # BSB_TOP_ADDR      = 0x00000  #: Base address of the whole memory map, which is always zero.
+    # BSB_TOP_ROUTER_ADDR_WIDTH = 3  # Top router supports up to 8 ports
+    # BSB_TOP_ROUTER_ADDR_LSB = BSB_ADDR_WIDTH - BSB_TOP_ROUTER_ADDR_WIDTH
+    # # _TOP_PORT_ADDR_WIDTH = BSB_ADDR_WIDTH - BSB_TOP_ROUTER_ADDR_WIDTH # Each top port has 16 bits of address space left
 
-    # Top systems
-    _SYSTEM_BASE_ADDR = 0x00000
-    _SYSTEM_BASE_ADDR      = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 0  #: 0x00000: System peripherals base address.
-    _CHAN_BASE_ADDR        = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 1  #: 0x10000: F-Engine (channelizer) base address. The ADCDAQ subsystem is located in the CHAN address space.
-    _CROSSBAR1_BASE_ADDR   = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 2  #: 0x20000: CT-Engine 1st CROSSBAR (channelizer crossbar) base address
-    _GPU_LINK_BASE_ADDR    = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 3  #: 0x30000: GPU Link base address
-    _CROSSBAR3_BASE_ADDR   = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 4  #: 0x40000: CT-Engine 3rd crossbar (shard with correlator)
-    _CORR_BASE_ADDR        = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 4  #: 0x40000: X-Engine (correlator) (shared with 3rd crossbar)
-    _BP_SHUFFLE_BASE_ADDR  = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 5  #: 0x50000: CT-Engine Backplane PCB and Backplane QSFP 10Gbps packet transmitter/receivers
-    _CROSSBAR2_BASE_ADDR   = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 6  #: 0x60000: CT-Engine 2nd CROSSBAR base address
-    _UCAP_BASE_ADDR        = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 7  #: 0x60000: UCAP base address
+    # BSB_SYSTEM_PORT = 0
+    # BSB_CHAN_PORT = 1
+    # BSB_CT_PORT = 2
+    # BSB_GPU_PORT = 3
+    # BSB_CORR_PORT = 4
+    # BSB_UCORN_PORT = 5
+    # BSB_UCAP_PORT = 7
 
-    _SYSTEM_ADDR_INCREMENT         = 0x01000  #: Address increment between each system peripheral (addressed by bits 15:12 -> 16 possible submodules)
-    _CHAN_ADDR_INCREMENT           = 0x01000  #: Address increment between each channelizer (addressed by bits 15:12 -> 16 possible submodules)
-    _CROSSBAR_ADDR_INCREMENT       = 0x00800  #: Address increment between subsystems in 1st, 2nd and 3rd crossbars (addressed by bits 15:11 -> 32 possible submodules)
-    _GPU_LINK_ADDR_INCREMENT       = 0x00800  #: Address increment between each subsystem of the GPU links (addressed by bits 15:11 -> 32 possible submodules)
-    _CORR_ADDR_INCREMENT           = 0x01000  #: Address increment between each correlator
-    _BP_SHUFFLE_ADDR_INCREMENT     = 0x00800  #: Address increment between each shuffle submodule (addressed by bits 15:11 -> 32 possible submodules)
+    # _TOP_SUBSYSTEM_INCREMENT = 0x10000  #: Address increments between top-level systems (address bits 18:16)
 
-    _CHAN_SUBMODULE_ADDR_INCREMENT = 0x00200  #: Address increment between each submodule within a channelizer (ADCDAQ, FUNCGEN, FFT, SCALER etc.)
+    # # Top systems
+    # _SYSTEM_ROUTING_ADDR_WIDTH = 4  # router supports up to 16 ports for system modules
+    # _SYSTEM_PORT_ADDR_WIDTH = _TOP_PORT_ADDR_WIDTH - _SYSTEM_ROUTING_ADDR_WIDTH
 
 
-    # SYSTEM Peripherals Submodules addresses
-    # _SYSTEM_GPIO_BASE_ADDR = _SYSTEM_BASE_ADDR + 0x00000
-    _SYSTEM_GPIO_BASE_ADDR     = _TOP_BASE_ADDR + _SYSTEM_ADDR_INCREMENT * 0  #: 0x00000: Address of the SYSTEM.GPIO submodule
-    _SYSTEM_SYSMON_BASE_ADDR   = _TOP_BASE_ADDR + _SYSTEM_ADDR_INCREMENT * 1  #: 0x01000: Address of the SYSTEM.SYSMON submodule
-    _SYSTEM_FREQ_CTR_BASE_ADDR = _TOP_BASE_ADDR + _SYSTEM_ADDR_INCREMENT * 2  #: 0x02000: Address of the SYSTEM.FREQ_CTR submodule
-    _SYSTEM_SPI_BASE_ADDR      = _TOP_BASE_ADDR + _SYSTEM_ADDR_INCREMENT * 3  #: 0x03000: Address of the SYSTEM.SPI submodule
-    _SYSTEM_REFCLK_BASE_ADDR   = _TOP_BASE_ADDR + _SYSTEM_ADDR_INCREMENT * 4  #: 0x04000: Address of the SYSTEM.REFCLK submodule
-    # _SYSTEM_I2C_BASE_ADDR = _SYSTEM_BASE_ADDR + 0x05000
-    _SYSTEM_I2C_BASE_ADDR      = _TOP_BASE_ADDR + _SYSTEM_ADDR_INCREMENT * 5 #: 0x05000: Address of the SYSTEM.I2C submodule
+    class TopRouter(MMIRouter):
+        ADDRESS_WIDTH = 19
+        ROUTER_PORT_NUMBER_WIDTH = 3
+        ROUTER_PORT_MAP = {
+            'SYSTEM': 0,
+            'CHAN': 1,
+            'CT': 2,
+            'GPU': 3,
+            'CORR': 4,
+            'UCORN': 5,
+            'UCAP': 7
+        }
 
-    # Base address is always at zero so we can gather info from the FPGA
-    # before we know the number of channelizers etc.
+    class SystemRouter(MMIRouter):
+        ROUTER_PORT_NUMBER_WIDTH = 4
+        ROUTER_PORT_MAP = {
+            'GPIO': 0,  #:  SYSTEM.GPIO submodule
+            'SYSMON': 1,  #:  SYSTEM.SYSMON submodule
+            'FREQ_CTR': 2,  #:  SYSTEM.FREQ_CTR submodule
+            'SPI': 3,  #:  SYSTEM.SPI submodule
+            'REFCLK': 4,  #:  SYSTEM.REFCLK submodule
+            'I2C': 5 #:  SYSTEM.I2C submodule
+        }
 
-    # _GPIO_COOKIE_REG = 0x00 # Register address of the firmware cookie
+    # _SYSTEM_BASE_ADDR = 0x00000
+    # _SYSTEM_BASE_ADDR      = BSB_TOP_ADDR + _TOP_SUBSYSTEM_INCREMENT * 0  #: 0x00000: System peripherals base address.
+    # _CHAN_BASE_ADDR        = BSB_TOP_ADDR + _TOP_SUBSYSTEM_INCREMENT * 1  #: 0x10000: F-Engine (channelizer) base address. The ADCDAQ subsystem is located in the CHAN address space.
+    # _CROSSBAR1_BASE_ADDR   = BSB_TOP_ADDR + _TOP_SUBSYSTEM_INCREMENT * 2  #: 0x20000: CT-Engine 1st CROSSBAR (channelizer crossbar) base address
+    # _GPU_LINK_BASE_ADDR    = BSB_TOP_ADDR + _TOP_SUBSYSTEM_INCREMENT * 3  #: 0x30000: GPU Link base address
+    # _CROSSBAR3_BASE_ADDR   = BSB_TOP_ADDR + _TOP_SUBSYSTEM_INCREMENT * 4  #: 0x40000: CT-Engine 3rd crossbar (shard with correlator)
+    # _CORR_BASE_ADDR        = BSB_TOP_ADDR + _TOP_SUBSYSTEM_INCREMENT * 4  #: 0x40000: X-Engine (correlator) (shared with 3rd crossbar)
+    # _BP_SHUFFLE_BASE_ADDR  = BSB_TOP_ADDR + _TOP_SUBSYSTEM_INCREMENT * 5  #: 0x50000: CT-Engine Backplane PCB and Backplane QSFP 10Gbps packet transmitter/receivers
+    # _CROSSBAR2_BASE_ADDR   = BSB_TOP_ADDR + _TOP_SUBSYSTEM_INCREMENT * 6  #: 0x60000: CT-Engine 2nd CROSSBAR base address
+    # _UCAP_BASE_ADDR        = BSB_TOP_ADDR + _TOP_SUBSYSTEM_INCREMENT * 7  #: 0x60000: UCAP base address
+
+    # _SYSTEM_ADDR_INCREMENT         = 0x01000  #: Address increment between each system peripheral (addressed by bits 15:12 -> 16 possible submodules)
+    # _CHAN_ADDR_INCREMENT           = 0x01000  #: Address increment between each channelizer (addressed by bits 15:12 -> 16 possible submodules)
+    # _CROSSBAR_ADDR_INCREMENT       = 0x00800  #: Address increment between subsystems in 1st, 2nd and 3rd crossbars (addressed by bits 15:11 -> 32 possible submodules)
+    # _GPU_LINK_ADDR_INCREMENT       = 0x00800  #: Address increment between each subsystem of the GPU links (addressed by bits 15:11 -> 32 possible submodules)
+    # _CORR_ADDR_INCREMENT           = 0x01000  #: Address increment between each correlator
+    # _BP_SHUFFLE_ADDR_INCREMENT     = 0x00800  #: Address increment between each shuffle submodule (addressed by bits 15:11 -> 32 possible submodules)
+
+    # _CHAN_SUBMODULE_ADDR_INCREMENT = 0x00200  #: Address increment between each submodule within a channelizer (ADCDAQ, FUNCGEN, FFT, SCALER etc.)
+
+
+    # # SYSTEM Peripherals Submodules addresses
+    # # _SYSTEM_GPIO_BASE_ADDR = _SYSTEM_BASE_ADDR + 0x00000
+
+    # _SYSTEM_GPIO_PORT = 0
+
+    # _SYSTEM_GPIO_BASE_ADDR     = BSB_TOP_ADDR + _SYSTEM_ADDR_INCREMENT * 0  #: 0x00000: Address of the SYSTEM.GPIO submodule
+    # _SYSTEM_SYSMON_BASE_ADDR   = BSB_TOP_ADDR + _SYSTEM_ADDR_INCREMENT * 1  #: 0x01000: Address of the SYSTEM.SYSMON submodule
+    # _SYSTEM_FREQ_CTR_BASE_ADDR = BSB_TOP_ADDR + _SYSTEM_ADDR_INCREMENT * 2  #: 0x02000: Address of the SYSTEM.FREQ_CTR submodule
+    # _SYSTEM_SPI_BASE_ADDR      = BSB_TOP_ADDR + _SYSTEM_ADDR_INCREMENT * 3  #: 0x03000: Address of the SYSTEM.SPI submodule
+    # _SYSTEM_REFCLK_BASE_ADDR   = BSB_TOP_ADDR + _SYSTEM_ADDR_INCREMENT * 4  #: 0x04000: Address of the SYSTEM.REFCLK submodule
+    # # _SYSTEM_I2C_BASE_ADDR = _SYSTEM_BASE_ADDR + 0x05000
+    # _SYSTEM_I2C_BASE_ADDR      = BSB_TOP_ADDR + _SYSTEM_ADDR_INCREMENT * 5 #: 0x05000: Address of the SYSTEM.I2C submodule
+
+    # # Base address is always at zero so we can gather info from the FPGA
+    # # before we know the number of channelizers etc.
+
+    # _GPIO_COOKIE_ADDR = 0x00 # Register address of the firmware cookie
 
     ################################################################################################
     # Core FPGA firmware registers
@@ -238,7 +292,7 @@ class chFPGA(FPGAFirmware):
         _PLATFORM_ID_MGK7MB_REV0: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev0', None),
         _PLATFORM_ID_MGK7MB_REV2: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev2', None),
         _PLATFORM_ID_ZCU111:  ('Zynq Ultrascale+ RfSoC (ZU28) Xilinx ZCU111 Evaluation Board', None),
-        _PLATFORM_ID_CRS:  ('Zynq Ultrascale+ RfSoC (ZU48) t0 technology CRS Board ', None),
+        _PLATFORM_ID_CRS:  ('Zynq Ultrascale+ RfSoC (XCZU47) t0 technology CRS Board ', None),
     }
 
     # UDP communication constants (used if implemented in firmware)
@@ -253,10 +307,10 @@ class chFPGA(FPGAFirmware):
     _CHFPGA_COOKIE = 0x42  # Expected cookie value for chFPGA, both on the SPI and UDP MMI
 
     # GPIO Register addresses
-    _GPIO_COOKIE_REG = _STATUS_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR  # Register address of the firmware cookie
-    _FPGA_TIMESTAMP_ADDR = _STATUS_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 7
-    _FPGA_SERIAL_NUMBER_ADDR = _STATUS_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 12
-    _FPGA_IP_SETUP_BASE_ADDR = _CONTROL_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 13
+    _GPIO_COOKIE_ADDR = 0  # MMI address of the firmware cookie
+    # _FPGA_TIMESTAMP_ADDR = _STATUS_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 7
+    # _FPGA_SERIAL_NUMBER_ADDR = _STATUS_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 12
+    # _FPGA_IP_SETUP_BASE_ADDR = _CONTROL_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 13
     # Unused addresses:
     #   (13-18): target MAC,
     #   (19-22): target IP,
@@ -269,7 +323,7 @@ class chFPGA(FPGAFirmware):
 
 
 
-    def __init__(self, motherboard, **fw_params):
+    def __init__(self, motherboard, mode, **fw_params):
         """
         Creates an empty chFPGA firmware handler object, but do not interact with the board yet.
 
@@ -295,7 +349,7 @@ class chFPGA(FPGAFirmware):
 
         self.mb = motherboard  # instance of the motherboard object. Needs to be define before we use repr()
         self.mezzanine = self.mb.mezzanine # shortcut to the Motherbord mezzanine object
-
+        self.mode = mode # operational mode that was requested to load the firmware
         self.logger = logging.getLogger(__name__)
         self.logger.debug(f"{self!r}: Creating chFPGA FPGAFirmware object")
 
@@ -327,8 +381,8 @@ class chFPGA(FPGAFirmware):
         self.udp_err_ctr = 0
         self.udp_err_msgs = []
 
-    def get_id(self, lane=None):
-        return self.mb.get_id(lane=lane)
+    def get_id(self, lane=None, default_crate=None, default_slot=None, numeric_only=False):
+        return self.mb.get_id(lane=lane, default_crate=default_crate, default_slot=default_slot, numeric_only=numeric_only)
 
     @property
     def slot(self):
@@ -641,6 +695,8 @@ class chFPGA(FPGAFirmware):
         await self.open_mmi_async()
         self.mmi.flush()
 
+        self.top_router = self.TopRouter(fpga_instance=self)
+        self.system_router = self.SystemRouter(router=self.top_router, router_port='SYSTEM')
 
         try:  # catch initialization errors so we can free the socket for future instantiation
             # Try to communicate with the FPGA by reading he firmware BSB Registers cookie
@@ -648,7 +704,7 @@ class chFPGA(FPGAFirmware):
                 # Instantiate and initialize the GPIO subsystem
                 self.logger.debug('%r: === Instantiating and initializing GPIO' % self)
                 await asyncio.sleep(0)
-                self.GPIO = gpio.GPIO(self, self._SYSTEM_GPIO_BASE_ADDR)
+                self.GPIO = gpio.GPIO(router=self.system_router, router_port='GPIO')
                 # self.GPIO.init() # don't call init() yet as this sends some commands. The module can still read the cookie without it.
 
                 # Read the firmware version cookie from the GPIO subsystem (this
@@ -676,24 +732,19 @@ class chFPGA(FPGAFirmware):
 
             self.logger.debug(f'{self!r}:    ---> Hello! This is chFPGA! <---')
 
-
-            # for _ in range(100):
-            #     print (await self.get_fpga_firmware_cookie(resync=True))
-            # return
-
             self.GPIO.init()
 
-            # Create handware handling objects
-            #
-            #  NOTE: Does not initialize them yet because some modules are
-            #  interdependent - we need to wait until all of them are
-            #  instantiated.
-            #
-            #  NOTE: The instantiation does not initiate communicattion with
-            #  the hardware yet. this is done in the INIT phase.
-
             # ---------------------------------------------------------------------
-            # -- Create basic FPGA resource handlers objects
+            # -- Gather platform and FPGA firmware configuration information
+            # ---------------------------------------------------------------------
+            #  We use the information provided from GPIO registers to determine what
+            # firmware modules are present and what their geometry is.
+            #
+            # We try to have the FPGA auto-report its configuration in details and avoid using look-up tables.
+            # The exception to this are the platform-specific parameters which are pretty static.
+            #
+            # We don't want to instantiate
+            # modules that are not present in firmware, as their initialization will fail.
             # ---------------------------------------------------------------------
 
             self.GPIO.set_channelizer_reset(True)  # stop the channelizer from sending data while we initialize
@@ -709,20 +760,35 @@ class chFPGA(FPGAFirmware):
             self._NUMBER_OF_FMC_SLOTS = self.mb.NUMBER_OF_FMC_SLOTS
 
             self.NUMBER_OF_ADCS = self.GPIO.NUMBER_OF_ADCS
+            self.FFT_TYPE = self.GPIO.FFT_TYPE
+            self.FFT_LATENCY = (self.FFT_INFO[self.FFT_TYPE])['latency']
+            self.CT_TYPE = ('NONE', 'BCT','UCT')[self.GPIO.CT_TYPE]
+            self.CT_LEVEL = self.GPIO.CT_LEVEL
 
             # Set platform/implementation-specific features & constants based on a local table
             if self.PLATFORM_ID in (self._PLATFORM_ID_ZCU111, self._PLATFORM_ID_CRS):
                 assert self.mb.part_number == "ZCU111" or self.mb.part_number == "CRS", 'This version of the firmware is meant to operate on the ZCU111 only'
-                self.HAS_REFCLK = False
+                self.HAS_REFCLK = True
                 self.HAS_SPI = False
                 self.HAS_I2C = False
                 self.HAS_ADCDAQ = False
+                self.HAS_FMC = False
                 self.MAX_BSB_COMMAND_LENGTH = 512
+                # self.CT_TYPE = "UCT" # Fixed GTY-based corner-turn, 8 inputs (4 bins/input/clk) x 1 output (packetized), across 1, 4, or 8 boards
+                # if self.mode == 'corr32':
+                #     self.CT_LEVEL = 2 # Need to read this from registers
+                # else:
+                #     self.CT_LEVEL = 1
+
+                self.HAS_UCORN = self.mode == 'shuffle8' # Hacky method until we can read it back.
                 self.CROSSBAR1_TYPE = "URAM"
                 self.GPU_LINK_TYPE = "100GE"
                 self.CAPTURE_TYPE = "UCAP"
                 self.CORR_TYPE = "UCORR44"
                 self.ADC_FREQS_TO_CHECK = range(self.NUMBER_OF_ADCS)
+                # Select the FFT latency. We currently don't have access to the firmware FFT_TYPE, so we assume we use the CHORD FFT
+                # self.FFT_LATENCY = 12533 # This is probably for the D3A FFT
+                # self.FFT_LATENCY = 10452 # Bitgrowth (CHORD) FFT good value=10452 10450= DC@bin 8, 16451 DC @ bin 4
 
             elif self.PLATFORM_ID in (self._PLATFORM_ID_MGK7MB_REV0, self._PLATFORM_ID_MGK7MB_REV2):
                 assert self.mb.part_number == "MGK7MB", 'This version of the firmware is meant to operate on the MGK7MB (IceBoard) only'
@@ -730,12 +796,22 @@ class chFPGA(FPGAFirmware):
                 self.HAS_SPI = True
                 self.HAS_I2C = True
                 self.HAS_ADCDAQ = True
+                self.HAS_FMC = True
                 self.MAX_BSB_COMMAND_LENGTH = 2048  # maybe more, depends on the UDP bufer
+                # self.CT_TYPE = "BCT" # Programmable BRAM- and GTX-based corner turn (16 inputs (2 bins/input/clk) x 8 outputs across 1,16 and 32 boards)
+                self.HAS_UCORN = False
                 self.CROSSBAR1_TYPE = "BRAM"
                 self.GPU_LINK_TYPE = "10GE"
                 self.CAPTURE_TYPE = "PROBER"
-                self.CORR_TYPE = "CORR44"
+                # self.CORR_TYPE = "CORR44"
+                self.CORR_TYPE = "UCORR44"
                 self.ADC_FREQS_TO_CHECK = (0,4,8,12)
+                # self.FFT_LATENCY = 3230 # CHIME FFT
+                # if self.mode == 'corr16':
+                #     self.CT_LEVEL = 1 # Need to read this from registers
+                # else:
+                #     self.CT_LEVEL = 3
+
             else:
                 raise RuntimeError(f'Unknown feature list for PLATFORM_ID = {self.PLATFORM_ID}')
 
@@ -767,11 +843,13 @@ class chFPGA(FPGAFirmware):
             self.LIST_OF_ANTENNAS_WITH_FFT = list(range(self.NUMBER_OF_ANTENNAS_WITH_FFT))
 
             # Get corner-turn engine configuration info
+            # CT-Engine type (CT_TYPE) is defined by lookup table based on the platform
             self.NUMBER_OF_CROSSBAR_INPUTS = self.GPIO.NUMBER_OF_CROSSBAR_INPUTS
             self.NUMBER_OF_CROSSBAR1_OUTPUTS = self.GPIO.NUMBER_OF_CROSSBAR1_OUTPUTS
             self.NUMBER_OF_BP_SHUFFLE_LANES = self.GPIO.NUMBER_OF_BP_SHUFFLE_LANES
 
-            # Get GPU link configuration info
+            # Get Real-time data offload link configuration info
+            # GPU_LINK_TYPE is defined by lookup table based on the platform
             self.NUMBER_OF_GPU_LINKS = self.GPIO.NUMBER_OF_GPU_LINKS
 
             # Get (optional) embedded firmware correlator configuration info and their properties
@@ -784,128 +862,150 @@ class chFPGA(FPGAFirmware):
 
             self.default_channels = list(range(self.NUMBER_OF_CHANNELIZERS))
 
-            self.logger.debug('%r: Hardware platform: %s' % (self, self._PLATFORM_ID_LIST[self.PLATFORM_ID][0]))
-            self.logger.debug('%r: Firmware timestamp: %s' % (self, self.get_version()))
-            self.logger.debug('%r: Number of channelizers: %i' % (self, self.NUMBER_OF_CHANNELIZERS))
-            self.logger.debug('%r: Number of channelizers with FFT: %i (antennas %s)' % (
-                self,
-                len(self.LIST_OF_ANTENNAS_WITH_FFT),
-                str(self.LIST_OF_ANTENNAS_WITH_FFT)))
-            self.logger.debug('%r: Crossbar configuration: %i inputs x %i outputs' % (
-                self,
-                self.NUMBER_OF_CROSSBAR_INPUTS,
-                self.NUMBER_OF_CROSSBAR1_OUTPUTS))
-            self.logger.debug('%r: Number of correlators: %i (correlators %s)' % (
-                self,
-                len(self.LIST_OF_IMPLEMENTED_CORRELATORS),
-                str(self.LIST_OF_IMPLEMENTED_CORRELATORS)))
-            self.logger.debug('%r: Number of channelizers supported by the correlators: %i ' % (
-                self,
-                self.NUMBER_OF_INPUTS_TO_CORRELATE))
+            self.logger.debug(f'{self!r}:     Firmware timestamp: {self.get_version()}')
+            self.logger.debug(f'{self!r}:     Hardware platform: {self._PLATFORM_ID_LIST[self.PLATFORM_ID][0]}')
+            self.logger.debug(f'{self!r}:         Number of FMC slots: {self._NUMBER_OF_FMC_SLOTS}')
+            self.logger.debug(f'{self!r}:     ADC configuration')
+            self.logger.debug(f'{self!r}:         Number of ADCs: {self.NUMBER_OF_ADCS}')
+            self.logger.debug(f'{self!r}:         Number of bits per sample: {self.ADC_BITS_PER_SAMPLE}')
+
+
+            self.logger.debug(f'{self!r}:     F-Engine configuration')
+            self.logger.debug(f'{self!r}:         Number of channelizers: {self.NUMBER_OF_CHANNELIZERS}')
+            self.logger.debug(f'{self!r}:         Number of channelizers with FFT: {len(self.LIST_OF_ANTENNAS_WITH_FFT)} (input channel {str(self.LIST_OF_ANTENNAS_WITH_FFT)})')
+            self.logger.debug(f'{self!r}:     CT-Engine configuration')
+            self.logger.debug(f'{self!r}:         Crossbar configuration: {self.NUMBER_OF_CROSSBAR_INPUTS} inputs x {self.NUMBER_OF_CROSSBAR1_OUTPUTS} outputs')
+            self.logger.debug(f'{self!r}:     X-Engine configuration')
+            self.logger.debug(f'{self!r}:         Number of correlators: {len(self.LIST_OF_IMPLEMENTED_CORRELATORS)} (correlators {self.LIST_OF_IMPLEMENTED_CORRELATORS}')
+            self.logger.debug(f'{self!r}:         Number of channelizers supported by the correlators: {self.NUMBER_OF_INPUTS_TO_CORRELATE}')
 
             await asyncio.sleep(0)
 
-            self.logger.debug('%r: === Instantiating FPGA ressources' % self)
 
-            self.logger.debug('%r: === Instantiating SYSMON' % self)
-            self.SYSMON = sysmon.SYSMON(self, self._SYSTEM_SYSMON_BASE_ADDR)
+            # ---------------------------------------------------------------------
+            # -- Create basic FPGA resource handlers objects
+            # ---------------------------------------------------------------------
+            #
+            #  NOTE: Does not initialize module objects yet because some modules are
+            #  interdependent - we need to wait until all of them are
+            #  instantiated before we initialize them.
+            #
+            #  NOTE: The instantiation does not initiate communicattion with
+            #  the hardware yet. This is done in the INIT phase.
+
+
+            self.logger.debug(f'{self!r}: === Instantiating SYSTEM objects')
+
+            self.logger.debug(f'{self!r}: ===     Instantiating SYSMON')
+            self.SYSMON = sysmon.SYSMON(router=self.system_router, router_port='SYSMON')
 
             if self.HAS_SPI:
-                self.logger.debug('%r: === Instantiating SPI' % self)
-                self.SPI = spi.SPI(self, self._SYSTEM_SPI_BASE_ADDR)
+                self.logger.debug(f'{self!r}: ===     Instantiating SPI')
+                self.SPI = spi.SPI(router=self.system_router, router_port='SPI')
             else:
                 self.SPI = None
 
             if self.HAS_I2C:
-                self.logger.debug('%r: === Instantiating I2C' % self)
-                self.I2C = i2c.I2C(self, self._SYSTEM_I2C_BASE_ADDR)
+                self.logger.debug(f'{self!r}: ===     Instantiating I2C')
+                self.I2C = i2c.I2C(router=self.system_router, router_port='I2C')
             else:
                 self.I2C = None
 
 
-            self.logger.debug('%r: === Instantiating FreqCtr' % self)
-            self.FreqCtr = freqctr.FreqCtr(self, self._SYSTEM_FREQ_CTR_BASE_ADDR)
+            self.logger.debug(f'{self!r}: ===     Instantiating FreqCtr')
+            self.FreqCtr = freqctr.FreqCtr(router=self.system_router, router_port='FREQ_CTR')
 
             if self.HAS_REFCLK:
-                self.logger.debug('%r: === Instantiating REFCLK' % self)
-                self.REFCLK = refclk.REFCLK(self, self._SYSTEM_REFCLK_BASE_ADDR)
+                self.logger.debug(f'{self!r}: ===     Instantiating REFCLK')
+                self.REFCLK = refclk.REFCLK(router=self.system_router, router_port='REFCLK')
             else:
                 self.REFCLK = None
 
-            self.logger.debug('%r: === Instantiating CHAN' % self)
+            # ---------------------
+            # Instantiate F-Engine
+            # ---------------------
+
+            self.logger.debug(f'{self!r}: === Instantiating F-Engine')
             # Instantiate a channelizer for for each input
-            self.chan = chan.ChanArray(
-                self,
-                self._CHAN_BASE_ADDR,
-                self._CHAN_ADDR_INCREMENT,
-                self._CHAN_SUBMODULE_ADDR_INCREMENT)
+            self.chan = chan.ChanArray(router = self.top_router, router_port = 'CHAN')
             self.CHAN_FMC_NUMBER = [i // 8 for i in range(self.NUMBER_OF_CHANNELIZERS)]
 
             await asyncio.sleep(0)
 
-            self.logger.debug(f'{self!r}: === Instantiating 1st CROSSBAR, Type {self.CROSSBAR1_TYPE}')
-            if self.CROSSBAR1_TYPE == "BRAM":
-                self.CROSSBAR = chan_crossbar.ChanCrossbar(
-                    self,
-                    self._CROSSBAR1_BASE_ADDR,
-                    self._CROSSBAR_ADDR_INCREMENT)  # CROSSBAR block
-            elif self.CROSSBAR1_TYPE == "URAM":
-                self.CROSSBAR = ucorn.UCorn(
-                    self,
-                    self._CROSSBAR1_BASE_ADDR,
-                    self._CROSSBAR_ADDR_INCREMENT)
-            else:
-                raise RuntimeError('Unknown CROSSBAR1 type')
 
-            if self.NUMBER_OF_BP_SHUFFLE_LANES:
-                self.logger.debug('%r: === Instantiating Backplane shuffle subsystem' % self)
-                self.BP_SHUFFLE = shuffle.Shuffle(
-                    self,
-                    self._BP_SHUFFLE_BASE_ADDR,
-                    self._BP_SHUFFLE_ADDR_INCREMENT)
-            else:
-                self.BP_SHUFFLE = None
+            # ----------------------
+            # Instantiate CT-Engine
+            # ----------------------
 
-            if self.NUMBER_OF_BP_SHUFFLE_LANES and self.NUMBER_OF_GPU_LINKS:
-                self.logger.debug('%r: === Instantiating 2nd CROSSBAR' % self)
-                self.CROSSBAR2 = shuffle_crossbar.ShuffleCrossbar(
-                    self,
-                    self._CROSSBAR2_BASE_ADDR,
-                    self._CROSSBAR_ADDR_INCREMENT,
-                    crossbar_level=2,
-                    number_of_bin_sel=2)  # CROSSBAR block
+            self.logger.debug(f'{self!r}: === Instantiating CT-Engine, type {self.CT_TYPE} level {self.CT_LEVEL}')
 
-                self.logger.debug('%r: === Instantiating 3rd CROSSBAR' % self)
-                self.CROSSBAR3 = shuffle_crossbar.ShuffleCrossbar(
-                    self,
-                    self._CROSSBAR3_BASE_ADDR,
-                    self._CROSSBAR_ADDR_INCREMENT,
-                    crossbar_level=3,
-                    number_of_bin_sel=8)  # CROSSBAR block
+
+            #  BCT corner-turn (CHIME-like)
+            if self.CT_TYPE == "BCT":
+
+                self.CT = bct_engine.BCTEngine(
+                    router=self.top_router,
+                    router_port = 'CT'
+                    )
+            # UCT corner-turn
+            elif self.CT_TYPE == "UCT":
+                self.CT = uct_engine.UCTEngine(
+                    router=self.top_router,
+                    router_port = 'CT'
+                    )
             else:
-                self.CROSSBAR2 = None
-                self.CROSSBAR3 = None
+                raise RuntimeError(f'Unknown CT-Engine type {self.CT_TYPE}')
+
+            if self.HAS_UCORN:  # ***JFC temp hack to determine if we have UCORN. Not it capability reg yet.
+                self.UCORN = ucorn.UCorn(
+                    router=self.top_router,
+                    router_port = 'UCORN'
+                    )
+            else:
+                self.UCORN = None
+
+
+
+            # ---------------------
+            # Instantiate X-Engine
+            # ---------------------
 
             if self.NUMBER_OF_CORRELATORS:
+                self.logger.debug(f'{self!r}: === Instantiating X-Engine, type={self.CORR_TYPE}')
                 if self.CORR_TYPE == "CORR44":
-                    self.logger.debug('%r: === Instantiating CORR' % self)
-                    self.CORR = CORR.CORR(self, self._CORR_BASE_ADDR, self._CORR_ADDR_INCREMENT) # Correlator (XMUL, ACC) for each correlator
+                    self.CORR = CORR.CORR(
+                        router=self.top_router,
+                        router_port = 'CORR')
                 elif self.CORR_TYPE == "UCORR44":
-                    self.logger.debug('%r: === Instantiating UCORR44' % self)
-                    self.CORR = UCORR.UCORR(self, self._CORR_BASE_ADDR, self._CORR_ADDR_INCREMENT) # Correlator (XMUL, ACC) for each correlator
+                    self.CORR = UCORR.UCORR(
+                        router=self.top_router,
+                        router_port = 'CORR')
             else:
                 self.CORR = None
 
+            # ---------------------
+            # Instantiate real-time data offload engine object (10G or 100G links)
+            # ---------------------
+
             if self.NUMBER_OF_GPU_LINKS:
-                self.logger.debug(f'{self!r}: === Instantiating GPU LINK(S), Type={self.GPU_LINK_TYPE}')
-                if self.GPU_LINK_TYPE=='10GE':
+                self.logger.debug(f'{self!r}: === Instantiating real-time data offload links, type={self.GPU_LINK_TYPE}')
+                if self.GPU_LINK_TYPE == '10GE':
                     self.GPU = gpu.GPU(self, self._GPU_LINK_BASE_ADDR, self._GPU_LINK_ADDR_INCREMENT)
-                elif self.GPU_LINK_TYPE=='100GE':
-                    self.GPU = cge.CGE(self, self._GPU_LINK_BASE_ADDR, self._GPU_LINK_ADDR_INCREMENT)
+                elif self.GPU_LINK_TYPE == '100GE':
+                    self.GPU = cge.CGE(
+                        fpga_instance=self,
+                        base_address = self.BSB_TOP_ADDR,
+                        address_width = self._TOP_PORT_ADDR_WIDTH,
+                        router_port =  self._BSB_GPU_PORT
+                        )
                 else:
-                    raise RuntimeError(f'Unknown GPU link type {self.GPU_LINK_TYPE}')
+                    raise RuntimeError(f'Unknown data link type {self.GPU_LINK_TYPE}')
             else:
                 self.GPU = None
+
+            # -------------------------------
+            # Instantiate global data capture
+            # -------------------------------
 
             if self.CAPTURE_TYPE == 'UCAP':
                 self.logger.debug(f'{self!r}: === Instantiating UCAP')
@@ -913,10 +1013,9 @@ class chFPGA(FPGAFirmware):
             elif self.CAPTURE_TYPE !='PROBER':
                 raise RuntimeError(f'Unknown Data capture type {self.CAPTURE_TYPE}')
 
-            self.logger.debug('%r: This motherboard has %i FMC slots' % (self, self._NUMBER_OF_FMC_SLOTS))
 
             # ---------------------------------------------------------------------
-            # -- Create ADC board hardware ressource handlers objects
+            # Instantiate ADC board hardware ressource handlers objects
             # ---------------------------------------------------------------------
 
             await asyncio.sleep(0)
@@ -1030,11 +1129,11 @@ class chFPGA(FPGAFirmware):
         self.FRAME_PERIOD = float(self.FRAME_LENGTH) / self._sampling_frequency
         self.FRAME_RATE = 1 / self.FRAME_PERIOD
 
-        self.logger.debug('%r: --- Initializing FPGA subsystems' % self)
+        self.logger.debug(f'{self!r}: --- Initializing FPGA subsystems')
 
         self.logger.debug(f'{self!r}: sampling_frequency={self._sampling_frequency}')
 
-        self.logger.debug('%r: --- Initializing GPIO' % self)
+        self.logger.debug(f'{self!r}: --- Initializing GPIO')
 
         # Initialize GPIO.
         #
@@ -1042,31 +1141,35 @@ class chFPGA(FPGAFirmware):
         # is flooding the buffers which prevent subsequent reads to come
         # through
         # GPIO module is already initialized
+        self.logger.debug(f'{self!r}: --- Setting buck phases')
+        await asyncio.sleep(1.3)  # JFC debug.
         self.GPIO.BUCK_PHASE = 0xfedcba9876543210  # debug
+        self.logger.debug(f'{self!r}: --- Done setting buck phases. We survived this!')
         if verbose >= 2:
+            self.logger.debug(f'{self!r}: --- Checking GPIO status')
             self.GPIO.status()
 
 
         # Module depend on the FMC_present flag after this point
         if self.REFCLK:
-            self.logger.debug('%r: --- Initializing REFCLK' % self)
+            self.logger.debug(f'{self!r}: --- Initializing REFCLK')
             await asyncio.sleep(0)
             self.REFCLK.init()
             # self.REFCLK.status()
 
         # Only do for ML605, not KC705 board
-        self.logger.debug('%r: --- Initializing SYSMON' % self)
+        self.logger.debug(f'{self!r}: --- Initializing SYSMON')
         await asyncio.sleep(0)
         self.SYSMON.init()
         # self.SYSMON.status()
 
         if self.SPI:
-            self.logger.debug('%r: --- Initializing SPI' % self)
+            self.logger.debug(f'{self!r}: --- Initializing SPI')
             await asyncio.sleep(0)
             self.SPI.init()
             # self.SPI.status()
 
-        self.logger.debug('%r: --- Initializing FMC slots' % self)
+        self.logger.debug(f'{self!r}: --- Initializing FMC slots')
 
         # Reduce the power load before we turn on the mezzanines
         await asyncio.sleep(0)
@@ -1081,19 +1184,19 @@ class chFPGA(FPGAFirmware):
         for mezz_number in self.mb.FMC_MEZZ_NUMBERS: # process every mezzanine, present or not
             if mezz_number in self.mezzanine: # if mezzanine pressent
                 mezz = self.mezzanine[mezz_number]
-                self.logger.debug('%r:   Powering down FMC%i' % (self, mezz_number - 1))
+                self.logger.debug(f'{self!r}:   Powering down FMC{mezz_number - 1}')
                 await mezz.set_mezzanine_power_async(False)   # this method uses power-sequencing
                 await mezz.set_mezzanine_reset_async(True)   # Puts the ADCs in reset
 
                 await asyncio.sleep(0.2)  # *** make async
-                self.logger.debug('%r:   Powering up FMC%i' % (self, mezz_number - 1))
+                self.logger.debug(f'{self!r}:   Powering up FMC{mezz_number}')
                 await mezz.set_mezzanine_power_async(True)
                 # mezz.set_power(True)
                 await asyncio.sleep(0.2)  # Give it some time for the power to stabilize
                 # We need to initialize the ADC board before we initialize the channelizer
                 # (and its data acquisition) because the delay blocks need a
                 # clock
-                self.logger.debug('%r:   Initializing FMC%i' % (self, mezz_number - 1))
+                self.logger.debug(f'{self!r}:   Initializing FMC{mezz_number}')
                 # Initializes the mezzanine
                 # will disable the reset line
                 await mezz.init(
@@ -1104,8 +1207,7 @@ class chFPGA(FPGAFirmware):
                     adc_bandwidth=adc_bandwidth)
                 # mezz.status()
             else:
-                self.logger.debug('%r:    Skipping FMC%i initialization since no board is present in that slot' % (
-                    self, mezz_number - 1))
+                self.logger.debug(f'{self!r}:    Skipping FMC{mezz_number - 1} initialization since no board is present in that slot')
         # self.set_sync_delays((0,0))  # debug
         self.sync()  # pulse the sync lines of the mezzanines to activate the ADC configurations
         #self.set_sync_delays((4,4))  # debug
@@ -1117,78 +1219,67 @@ class chFPGA(FPGAFirmware):
 
         self.set_ant_reset(1)
 
-        self.logger.debug('%r:   Sending sync()' % (self))
+        self.logger.debug(f'{self!r}:   Sending sync()')
         await asyncio.sleep(0)
         self.sync()  # might be needed  to make sure that the clock is running to set delays
         self.check_adc_frequencies('after 1st channelizer reset SYNC')
 
-        # self.logger.info('%r: --- Initializing FPGA subsystems' % self)
-        self.logger.debug('%r: === Initializing Channelizers' % self)
+        # self.logger.info(f'{self!r}: --- Initializing FPGA subsystems' % self)
+        self.logger.debug(f'{self!r}: === Initializing Channelizers')
         self.chan.init(delay_table=adc_delay_table, fmc_present=self.ANT_FMC_IS_PRESENT)
         # self.chan.status()
 
         self.check_adc_frequencies('after channelizer init')
 
 
-        self.logger.debug('%r: === Initializing Corner-Turn engine' % self)
-        self.logger.debug('%r: === Initializing 1st Crossbar' % self)
-        await asyncio.sleep(0)
-        if self.NUMBER_OF_CROSSBAR1_OUTPUTS > 0:
-            self.logger.debug(f'{self!r}:  - 1st CROSSBAR, type {self.CROSSBAR1_TYPE}')
-            self.CROSSBAR.init()
-            # self.CROSSBAR.status()
+        self.logger.debug(f'{self!r}: === Initializing Corner-Turn engine, Type {self.CT_TYPE} Level {self.CT_LEVEL}')
+
+        if not self.CT:
+            raise RuntimeError('    The firmware does not have a corner-turn engine')
         else:
-            self.logger.warning("%r: There is no 1st CROSSBAR module in this firmware build "
-                                 "(so there can't be data streamed to the correlators or GPU links!)" % self)
+            self.CT.init()
 
 
-        if self.BP_SHUFFLE:
-            await asyncio.sleep(0)
-            self.logger.debug('%r: === Initializing Backplane Shuffle' % self)
-            self.BP_SHUFFLE.init()
+        if self.UCORN:
+            self.logger.debug(f'{self!r}: === Initializing Frame aggregator (UCORN)')
+            self.UCORN.init()
 
-        self.logger.debug('%r: === Initializing 2nd Crossbar' % self)
-        if self.CROSSBAR2:
-            await asyncio.sleep(0)
-            self.CROSSBAR2.init()
-        else:
-            self.logger.warning("%r: There is no 2nd CROSSBAR module in this firmware build" % self)
 
-        self.logger.debug('%r: === Initializing 3rd Crossbar' % self)
-        if self.CROSSBAR3:
-            await asyncio.sleep(0)
-            self.CROSSBAR3.init()
-        else:
-            self.logger.warning("%r: There is no 3rd CROSSBAR module in this firmware build" % self)
 
-        self.check_adc_frequencies('after CROSSBAR init')
+        self.check_adc_frequencies('after corner-turn init')
+
+        # -------------------
+        # Initialize X-Engine
+        # -------------------
 
         if self.CORR:
-            self.logger.debug('%r: === Initializing FPGA-based correlator (X-Engine)' % self)
+            self.logger.debug(f'{self!r}: === Initializing FPGA-based correlator (X-Engine)')
             await asyncio.sleep(0)
-            self.logger.debug('%r:  - CORR' % self)
+            self.logger.debug(f'{self!r}:  - CORR')
             self.CORR.init()
         else:
-            self.logger.debug('%r: There are no FPGA correlators in this firmware build' % self)
+            self.logger.debug(f'{self!r}: There are no FPGA correlators in this firmware build')
 
-        self.set_data_width(data_width)  # Sets the data width of both the SCALER and CROSSBAR
-        self.logger.debug('%r: Data width set to (Re+Im) = (%i+%i) bits' % (
-            self,
-            self.get_data_width(),
-            self.get_data_width()))
 
-        self.CROSSBAR.set_frames_per_packet(group_frames)
-        self.logger.debug('%r: The 1st crossbar will pack %i frames per packet' % (self, group_frames))
+        self.set_data_width(data_width)  # Sets the data width of both the Channelizer(SCALER) output and Corner-turn engine
+        self.logger.debug(f'{self!r}: Data width set to (Re+Im) = ({self.get_data_width()}+{self.get_data_width()}) bits')
+
+        if self.CT:
+            self.CT.set_frames_per_packet(group_frames)
+            self.logger.debug(f'{self!r}: The 1st crossbar will pack {group_frames} frames per packet')
+        else:
+            self.logger.debug(f'{self!r}: There is no Corner-turn engine in this firmware build')
 
         await asyncio.sleep(0)
 
+        # Initialize real-time data offload engine (10G or 100G links)
         if self.GPU:
-            self.logger.debug('%r: === Initializing GPU links' % self)
+            self.logger.debug(f'{self!r}: === Initializing data offload links')
             self.GPU.init()
             self.GPU.set_enable(enable_gpu_link)
-            self.logger.debug('%r: GPU link is currently %s' % (self, ['Disabled', 'Enabled'][bool(enable_gpu_link)]))
+            self.logger.debug(f"{self!r}: Data offload links are currently {('Disabled', 'Enabled')[bool(enable_gpu_link)]}")
 
-        self.logger.debug("%r: Done with initializations." % self)
+        self.logger.debug(f"{self!r}: Done with initializations.")
 
         await asyncio.sleep(0)
         self.set_ant_reset(0)  # Disable channelizer reset
@@ -1197,6 +1288,9 @@ class chFPGA(FPGAFirmware):
 
 
         self._last_init_time = time.time()
+
+        # Create a data socket. The socket will be cached for future use. This also sets the destination address/port for data streams in the FPGA.
+        self.get_data_socket()
 
         # Create a data receiver
         if create_receiver:
@@ -1345,7 +1439,7 @@ class chFPGA(FPGAFirmware):
         if not self.mb._is_core_open():
             await self.open_core()
         try:
-            self.mmi.read(self._GPIO_COOKIE_REG, type=int, length=1, timeout=timeout)
+            self.mmi.read(self.mmi._STATUS_BASE_ADDR + _GPIO_COOKIE_ADDR, type=int, length=1, timeout=timeout)
             return True
         except IOError:
             return False
@@ -1793,7 +1887,7 @@ class chFPGA(FPGAFirmware):
         by the first command sent to the FPGA to reset the communication link.
         """
         await asyncio.sleep(0)
-        return self.mmi.read(self._GPIO_COOKIE_REG, type=int, length=1, resync=resync) & 0x7F
+        return self.mmi.read(self.mmi._STATUS_BASE_ADDR + self._GPIO_COOKIE_ADDR, type=int, length=1, resync=resync) & 0x7F
 
     def get_fpga_firmware_version(self):
         """
@@ -1980,25 +2074,43 @@ class chFPGA(FPGAFirmware):
         'bp_sma': 6
         }
 
-    async def set_irigb_source_async(self, source):
+    async def set_irigb_source_async(self, source, inv_pol=False):
         """
         Set the source of the IRIG-B signal. Also configures the user SMA as
-        an 'input' if that SMA is used as a source.
+        an input if that SMA is used as a source.
 
         Parameters:
 
-            source (str): Name of the source to use.
+            source (str): Name of the source to use. If `source` is prefixed by ``~`` or ``!``, `inv_pol` is forced to True.
+
+            inv_pol (bool): If True, the polarity of the selected IRIG-B source is inverted
 
         """
+        if source.startswith('~') or source.startswith('!'):
+            inv_pol = True
+            source = source[1:]
+
         if source not in self._IRIGB_SOURCE_TABLE:
-            raise ValueError(
-                'Invalid IRIG-B source name. Valid names are %s'
-                % ', '.join(self._IRIGB_SOURCE_TABLE.keys()))
+            source_list = ', '.join(self._IRIGB_SOURCE_TABLE.keys())
+            raise ValueError(f'Invalid IRIG-B source name. Valid names are {source_list}')
+
+        self.logger.debug(f'{self!r}: Setting IRIG-B source to "{source}", invert={inv_pol}')
+
         src = self._IRIGB_SOURCE_TABLE[source]
+
+        # set inversion bit
+        w2 = await self.fpga_core_reg_read_async(self._IRIGB_TARGET2_ADDR)
+        await self.fpga_core_reg_write_async(self._IRIGB_TARGET2_ADDR, (w2 & ~(1<<29)) | (int(inv_pol) << 29))
+
         w2 = await self.fpga_core_reg_read_async(self._IRIGB_SAMPLE2_ADDR)
         await self.fpga_core_reg_write_async(self._IRIGB_SAMPLE2_ADDR, (w2 & 0x3FFFFFFF) | ((src & 0b011) << 30))
         w2 = await self.fpga_core_reg_read_async(self._IRIGB_TARGET0_ADDR)
         await self.fpga_core_reg_write_async(self._IRIGB_TARGET0_ADDR, (w2 & 0x7FFFFFFF) | ((src >> 2) << 31))
+
+        # trigger capture of a new time
+        w2 = await self.fpga_core_reg_read_async(self._IRIGB_SAMPLE2_ADDR)
+        await self.fpga_core_reg_write_async(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 29))
+        await self.fpga_core_reg_write_async(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 29))
 
         # If an user SMA is used, configure it as an input
         if source in self.GPIO.USER_OUTPUTS:
@@ -2063,6 +2175,8 @@ class chFPGA(FPGAFirmware):
 
         """
 
+        ts = self._IrigTimestamp()
+
         # Optionally trigger time capture, and check that the IRIG-B time is
         # captured AND to be valid. IF we trig, try to get a valid time until
         # a timeout has elapsed, otherwise fail immediately if the time was
@@ -2099,73 +2213,63 @@ class chFPGA(FPGAFirmware):
             # # At this point we have a stable IRIG-B timestamp ready to be read,
             # but we still don't know if the time within it is valid.
 
-            # check the time valid (recent) flag
+            ts.system_time_before = time.time()
+            # Read the IRIG-B capture registers. We assume nobody is calling
+            # concurrent instances at the same same time, so we do this
+            # asynchronously because each read is slow.
+            w0 = await self.fpga_core_reg_read_async(self._IRIGB_SAMPLE0_ADDR)
             w1 = await self.fpga_core_reg_read_async(self._IRIGB_SAMPLE1_ADDR)  # this will also be used later
-            recent = (w1 >> 29) & 1
-            # If we get a updated time, we're good: exit the loop
-            if recent:
+            w2 = await self.fpga_core_reg_read_async(self._IRIGB_SAMPLE2_ADDR)
+
+            # Extract time from IRIG-B capture registers Get year and day of year.
+            # Override for debugging or misbehaviored IRIG-B source (like our
+            # CoolRunner generator board)
+            if self.zero_target_irigb_year_and_day:
+                ts.y = 0
+                ts.d = 1
+            else:
+                ts.y = (w0 >> 0) & ((1 << 8) - 1)  # year from 0 to 99. Assumes a base year of 2000.
+                ts.d = (w1 >> 20) & ((1 << 9) - 1)
+            ts.h = (w1 >> 14) & ((1 << 6) - 1)
+            ts.m = (w1 >> 7) & ((1 << 7) - 1)
+            ts.s = (w1 >> 0) & ((1 << 7) - 1)
+            ts.ss = (w2 >> 0) & ((1 << 28) - 1)
+            ts.pps = (w0 >> 26) & ((1 << 6) - 1)
+            # "straight binary seconds" since 00:00 on the current day (0-86399,
+            # not BCD). Not necessarily supported by the GPS.
+            ts.sbs = (w0 >> 8) & ((1 << 18) - 1)
+            ts.source = (w1 >> 30) & ((1 << 2) - 1)
+            ts.recent = (w1 >> 29) & 1
+            ts.system_time = time.time()
+            ts.refclk_counter = await self.fpga_core_reg_read_async(self._IRIGB_REFCLK_SAMPLE)
+            hms_valid = not (ts.h > 23 or ts.m > 59 or ts.s > 60)
+            day_valid = not (ts.d < 1 or ts.d > 366)
+            # If we get a updated and valid time, we're good: exit the loop
+            if ts.recent and hms_valid and day_valid:
                 break
-            # If we don't have a valid timestamp, and have been waiting for
-            # too long or are not allowed to trig to re-check the time, then
-            # raise an error unless instructed not to.
-            #
-            # Wait a little bit more than one second in case the IRIG-B signal
-            # just became valid (e.g. we just set the source)
+
+            # Consider we failed if we wither 1) don't expect the time to be updated (i.e no trig)
+            # or 2) a timeout has elapsed. Teh timeout  is set a little bit more than one second
+            # in case the IRIG-B signal just became valid (e.g. we just set the source or polarity)
             if not trig or time.time() - t0 > 2.5:
                 if noerror:
                     return None
                 else:
                     raise RuntimeError(
-                        '%.32r: Could not get a recently updated IRIG-B time. '
-                        'Check your cabling and the IRIG-B source selection.' % self)
+                        f'{self!r}: Could not get a recently updated and valid IRIG-B time. '
+                        f'Check your cabling and the IRIG-B source selection.')
+            else:
+                self.logger.debug(f'{self!r}: Waiting for valid IRIG-B time. (recent={ts.recent}, HMS valid={hms_valid}, day valid={day_valid})')
+                await asyncio.sleep(0.1)  # wait a bit before rechecking time
 
-        ts = self._IrigTimestamp()
-        ts.system_time_before = time.time()
 
-        ts.refclk_counter = await self.fpga_core_reg_read_async(self._IRIGB_REFCLK_SAMPLE)
-
-        # Read the (other) IRIG-B capture registers. We assume nobody is callung
-        # concurrent instances at the same same time, so we do this
-        # asynchronously because each read is slow.
-        w0 = await self.fpga_core_reg_read_async(self._IRIGB_SAMPLE0_ADDR)
-        # w1 was read when checkiing for a valid IRIG-B capture
-        w2 = await self.fpga_core_reg_read_async(self._IRIGB_SAMPLE2_ADDR)
 
         # check if the time is valid
-        # t0 = self.fpga_core_reg_read_async(self._IRIGB_TARGET0_ADDR)
-        # t1 = self.fpga_core_reg_read_async(self._IRIGB_TARGET1_ADDR)
-        # t2 = self.fpga_core_reg_read_async(self._IRIGB_TARGET2_ADDR)
-        # e0 = self.fpga_core_reg_read_async(self._IRIGB_EVENT_CTR_ADDR)
-
-        ts.system_time = time.time()
-
-        # Extract time from IRIG-B capture registers Get year and day of year.
-        # Override for debugging or misbehaviored IRIG-B source (like our
-        # CoolRunner generator board)
-        if self.zero_target_irigb_year_and_day:
-            ts.y = 0
-            ts.d = 1
-        else:
-            ts.y = (w0 >> 0) & ((1 << 8) - 1)  # year from 0 to 99. Assumes a base year of 2000.
-            ts.d = (w1 >> 20) & ((1 << 9) - 1)
-        ts.h = (w1 >> 14) & ((1 << 6) - 1)
-        ts.m = (w1 >> 7) & ((1 << 7) - 1)
-        ts.s = (w1 >> 0) & ((1 << 7) - 1)
-        ts.ss = (w2 >> 0) & ((1 << 28) - 1)
-        ts.pps = (w0 >> 26) & ((1 << 6) - 1)
-        # "straight binary seconds" since 00:00 on the current day (0-86399,
-        # not BCD). Not necessarily supported by the GPS.
-        ts.sbs = (w0 >> 8) & ((1 << 18) - 1)
-        ts.source = (w1 >> 30) & ((1 << 2) - 1)
-        ts.recent = recent
-        # ts.before_target = (t1 >> 31) & 1
-        # ts.done = (t1 >> 30) & 1
-
         if not noerror:
-            if ts.h > 23 or ts.m > 59 or ts.s > 60:
+            if not hms_valid:
                 raise RuntimeError('Invalid IRIG-B time value %ih %im %is.' % (ts.h, ts.m, ts.s))
 
-            if ts.d < 1 or ts.d > 366:
+            if not day_valid:
                 raise RuntimeError('Invalid IRIG-B day value %i. Day-of-year must be between 1 and 366' % ts.d)
 
         # Compute a datetime object, one second in the future. We use
@@ -2212,10 +2316,23 @@ class chFPGA(FPGAFirmware):
 
         Parameters:
 
-            datetime_ (datetime): the base target time in the Python as a :class:`datetime` object.
+            datetime_ (datetime): the base target time in the Python as a :class:`datetime` object,
+                which has a microsecond resolution (the nanosecond digits are all zeros). If `None`,
+                the current date and time is fetched from the FPGA as a datetime object, meaning it
+                also mas a microsecond resolution even if a higher resolution is available.
 
-            delay (float): is a time offset in seconds that is added to `datetime_` so set the
-                target time. It defaults to zero.
+            delay (float): is a time offset in seconds that is added to `datetime_` to set the
+                target time. This delay can be specified with an accuracy of up to 10 ns (lower digits are
+                ignored and assumed to be zero). If `datetime` is specified, it defaults to zero
+                (i.e the specified `datetime` is the target time, so it is assumed to be in the
+                future). If `datetime` is not specified, (i.e. it will be the currnt FPGA time),
+                `delay` defaults to 3 seconds.
+
+
+        Be aware of the limited resolution of floating points. With a float in python (a double), it is not possible to
+        represent a delay of more than about 1E6 seconds (11 days) without losing the 10 nanosecond
+        resolution. Hence the use of a low accuracy reference time and a high accuracy delay relative to that time.
+
 
         Returns:
 
@@ -2241,7 +2358,7 @@ class chFPGA(FPGAFirmware):
             if delay is None:
                 delay = 0
 
-        nano_delay = int(delay * 1e9) % 1000  # Get submicrosecond delay in nanosecond units
+        nano_delay = round(delay * 1e9) % 1000  # Get submicrosecond delay in nanosecond units
         delay = int(delay * 1e6) / 1e6  # Round delay to the microsecond
         # add delay in integer microseconds (datetime does not support more
         # than the microsecond accuracy)
@@ -2267,13 +2384,13 @@ class chFPGA(FPGAFirmware):
 
         # disable time comparison to prevent false triggers during setup
         t2 = await self.fpga_core_reg_read_async(self._IRIGB_TARGET2_ADDR)
-        t2 |= (1 << 31) | (1 << 30)  # Enable compare enable bit, but force output to be 1 (i.e. we ar ebefore trig time) to prevent false trigger. We change noting else to prevent a false trigegr.
+        t2 |= (1 << 31) | (1 << 30)  # Enable compare enable bit, but force output to be 1 (i.e. we are before trig time) to prevent false trigger. We change noting else to prevent a false trigegr.
         await self.fpga_core_reg_write_async(self._IRIGB_TARGET2_ADDR, t2)
 
         t0 = await self.fpga_core_reg_read_async(self._IRIGB_TARGET0_ADDR) & 0xFFFFFF00
         t0 |= (y << 0)
         t1 = (d << 20) | (h << 14) | (m << 7) | (s << 0)
-        t2 = (1 << 31) | (1 << 30) | (ss << 0) #  comparator is enabled, but still forcing output to 1
+        t2 = (t2 & ~((1<<28)-1)) | (ss << 0) #  Set subsecond target. comparator is enabled, but still forcing output to 1
 
         await self.fpga_core_reg_write_async(self._IRIGB_TARGET0_ADDR, t0)
         await self.fpga_core_reg_write_async(self._IRIGB_TARGET1_ADDR, t1)
@@ -2602,14 +2719,15 @@ class chFPGA(FPGAFirmware):
         if verbose:
             self.logger.debug("%r: Syncing board" % self)
 
-        if self.PLATFORM_ID in (self._PLATFORM_ID_ZCU111, self._PLATFORM_ID_CRS):
-            self.logger.warning(f"{self!r}: Sync is not yet implemented on the {self.mb.part_number}")
-        else:
+        if self.HAS_ADCDAQ:
             self.set_adc_mask(0)  # null the ADC data before it gets to the channelizers to reduce power consumption
-            if local:
-                self.REFCLK.local_sync()
-            else:
-                self.REFCLK.remote_sync()
+
+        if local:
+            self.REFCLK.local_sync()
+        else:
+            self.REFCLK.remote_sync()
+
+        if self.HAS_ADCDAQ:
             self.set_adc_mask(0xff)  # restore full ADC data
 
     def pulse_ant_reset(self):
@@ -2641,6 +2759,10 @@ class chFPGA(FPGAFirmware):
         """
         return self.default_channels
 
+    def init_crossbars(self, **kwargs):
+        if self.CT:
+            self.CT.init_crossbars(**kwargs)
+
     def set_channelizer(
             self,
             adc_mode=None,
@@ -2649,7 +2771,7 @@ class chFPGA(FPGAFirmware):
             adcdaq_mode=None,
             data_source=None,
             function=None,
-            freq_test_bins=None,
+            # freq_test_bins=None,  # will be passed into function_kwargs
             fft_bypass=None,
             fft_shift=None,
             scaler_bypass=None,
@@ -2686,59 +2808,10 @@ class chFPGA(FPGAFirmware):
             self.set_data_source(data_source, channels=channels, **function_kwargs)  # does a channelizer reset
 
         if function is not None:
-            logger = logging.getLogger(self.__class__.__name__)
-            logger.warning(
+            self.logger.warning(
                 "Using 'function' parameter for setting FUNCGEN function is obsolete. Please use 'data_source' instead."
             )
-            # Handle special case where we set the output of the channelizer
-            # with complex numbers that will give unique correlation products
-            # (visibilities). There are 108 such numbers in a (4+4) bits
-            # complex number. `freq_test_bins` is a list of up to 108  bin
-            # numbers that will be assigned these special complex numbers. Other bins are zero. If
-            # `freq_test_bins` is empty, all bins are set to (1+1j),
-            #
-            # (This should be moved in FUNCGEN).
-            #
-            # Configure funcgen so the visibility data has a unique real
-            # number for 108 freq bins. The other freq bins are zeros
-            if function == 'freq_test':
-                # Get the number of bins to set with the special complex numbers
-                # We have a limited pool of 108 special complex numbers, so we saturate the number.
-                N = min(len(freq_test_bins), 108)
-                if N == 0:
-                    # Send same number (1+0j) for all frequencies
-                    v = (9 * np.ones(2048, dtype=np.uint8)) << 4  # First set 1+1j (9 means 1 with offset encoding)
-                    v[1::2] = (8 * np.ones(1024, dtype=np.uint8)) << 4  # Clear imag part (8 means 0 is offset encoding)
-                else:
-                    # Send pattern that will generate unique products
-                    # First we define the unique complex number, offset-encoded, and shifted to the high nibble.
-                    freq_pattern_real = np.array([ 1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  2,  2,
-                                                   2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  3,  3,  3,  3,  3,
-                                                   3,  3,  3,  3,  3,  3,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,
-                                                   4,  4,  5,  5,  5,  5,  5,  5,  5,  5,  5,  6,  6,  6,  6,  6,  6,
-                                                   6,  6,  7,  7,  7,  7,  7,  7,  7,  8,  8,  8,  8,  8,  8,  9,  9,
-                                                   9,  9,  9,  9, 10, 10, 10, 10, 11, 11, 11, 11, 11, 12, 12, 12, 12,
-                                                  13, 13, 13, 14, 14, 15], dtype=np.uint8) << 4
-                    freq_pattern_imag = np.array([ 1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,  2,  3,
-                                                   4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,  3,  4,  5,  6,  7,
-                                                   8,  9, 10, 11, 12, 13, 14, 15,  4,  5,  6,  8,  9, 10, 11, 12, 13,
-                                                  14, 15,  6,  7,  8,  9, 11, 12, 13, 14, 15,  6,  8,  9, 10, 11, 12,
-                                                  14, 15,  7,  8, 10, 12, 13, 14, 15,  8, 10, 12, 13, 14, 15,  9, 10,
-                                                  11, 12, 14, 15, 12, 13, 14, 15, 11, 12, 13, 14, 15, 12, 13, 14, 15,
-                                                  13, 14, 15, 14, 15, 15], dtype=np.uint8) << 4
-                    v = np.zeros(2048, dtype=np.uint8)
-                    v_real = np.zeros(1024, dtype=np.uint8)
-                    v_imag = np.zeros(1024, dtype=np.uint8)
-                    v_real[freq_test_bins] = freq_pattern_real[:N]
-                    v_imag[freq_test_bins] = freq_pattern_imag[:N]
-                    v[::2] = v_real
-                    v[1::2] = v_imag
-                # Set the vectors. If FFT and scaler are bypassed, then the
-                # visibility data has a unique products for the 108 freq
-                # bins in freq_test_bins. The rest are zeros.
-                self.set_funcgen_function('arb', channels=channels, data=v)
-            else:
-                self.set_funcgen_function(function=function, channels=channels, **function_kwargs)
+            self.set_funcgen_function(function=function, channels=channels, **function_kwargs)
 
         # Set FFT bypass and shift schedule
         if fft_bypass is not None:
@@ -2815,29 +2888,16 @@ class chFPGA(FPGAFirmware):
         changed. Use `set_funcgen_function()` if the function generator is
         already active and you want to change only the waveform
         """
-        data_sources = self.chan[0].FUNCGEN.DATA_SOURCE_NAMES.keys()
-        function_names = self.chan[0].FUNCGEN.FUNCTION_NAMES.keys()
 
         source = source.lower()
 
         if channels is None:
             channels = self.default_channels
 
-        if source in data_sources:
-            self.set_ant_reset(1)  # Reset is needed to resynchronize the system with the new data
-            for chan in self.get_channelizers(channels):
-                chan.FUNCGEN.set_data_source(source)
-            self.set_ant_reset(0)  # Reset is needed to resynchronize the system with the new data
-        elif source in function_names:
-            self.set_ant_reset(1)  # Reset is needed to resynchronize the system with the new data
-            for chan in self.get_channelizers(channels):
-                chan.FUNCGEN.set_data_source('funcgen')
-                chan.FUNCGEN.set_function(source, **kwargs)
-            self.set_ant_reset(0)  # Reset is needed to resyncronize the system with the new data
-        else:
-            raise ValueError("Invalid data source or function name '%s'. Valid data sources are %s:" % (
-                    source,
-                    ', '.join(data_sources + function_names)))
+        self.set_ant_reset(1)  # Reset is needed to resynchronize the system with the new data
+        for chan in self.get_channelizers(channels):
+            chan.FUNCGEN.set_data_source(source, **kwargs)
+        self.set_ant_reset(0)  # Release reset
 
     def get_data_source(self):
         """
@@ -2998,7 +3058,7 @@ class chFPGA(FPGAFirmware):
 
     set_ADCDAQ_mode = set_adcdaq_mode
 
-    def set_ant_reset(self, state):
+    def set_chan_reset(self, state):
         """ Sets the state of the reset line of ALL channelizer.
 
         Parameters:
@@ -3007,12 +3067,12 @@ class chFPGA(FPGAFirmware):
 
         Note:
             A channelizer reset is automatically done during a SYNC.
-
         """
 
         self.GPIO.ANT_RESET = state
 
-    def get_ant_reset(self):
+
+    def get_chan_reset(self):
         """ Get the status of the channelizer reset line.
 
         Return:
@@ -3020,7 +3080,11 @@ class chFPGA(FPGAFirmware):
         """
         return self.GPIO.ANT_RESET
 
+    set_ant_reset = set_chan_reset # for backwards compatibility
+    get_ant_reset = get_chan_reset # for backwards compatibility
+
     def set_corr_reset(self, state):
+        """ Sets the state of the reset line of botht he Corner-Turn engine and the Correlator."""
         self.GPIO.CORR_RESET = state
 
     def set_trig(self, state):
@@ -3035,6 +3099,7 @@ class chFPGA(FPGAFirmware):
             chan.PROBER.RESET = 1
 
     def get_data_receiver(self, verbose=1, threaded=False):
+        self.logger.debug(f'{self!r}: Creating data receiver')
         if self.recv:
             return self.recv
         if threaded:
@@ -3051,12 +3116,13 @@ class chFPGA(FPGAFirmware):
         elif self.CAPTURE_TYPE == "UCAP":
             sock = self.get_data_socket()
             self.recv = self.UCAP.get_data_receiver(sock)
+            self.logger.debug(f'{self!r}: UCAP data receiver created on socket {sock}, ({self._data_socket.getsockname()})')
         else:
             raise RuntimeError("Unknown capture engine type")
 
         return self.recv
 
-    def get_data_socket(self, port_number=0):
+    def get_data_socket(self, port_number=None):
         """
         Return a UDP socket that receives the raw/correlator data.
 
@@ -3064,7 +3130,10 @@ class chFPGA(FPGAFirmware):
 
         Parameters:
 
-            port_number (int): If non-zero, get a socket bound to the specified port. If not specified, the existing data port number will be used. If there is no existing port number,  a random port will be chosen.
+            port_number (int): Port number to use:
+                - If `None`, attempts to open a socket at the destination port currently programmed in the FPGA. If that port is zero, act as if `port_number`=0.
+                - If zero, open a socket at a random  (OS-provided) port, and set the corresponding destination port in the FPGA.
+                - If non-zero, get a socket bound to the specified port. An exception will be raised if that port is already used by another program.
 
 
         Returns:
@@ -3073,22 +3142,31 @@ class chFPGA(FPGAFirmware):
         """
         # Make sure there is a list of opened sockets
 
+        if port_number is None:
+            port_number = run_async(self.get_local_data_port_number_async())
 
-        if not self._data_socket:
-            port_number = port_number or run_async(self.get_local_data_port_number_async())
-            opened_sockets = __main__.__dict__.setdefault('__opened_sockets__', {})
+        opened_sockets = __main__.__dict__.setdefault('__opened_sockets__', {})
 
-            # If we want to use a specific local port that was previously reserved, use its socket.
-            if port_number and port_number in opened_sockets:
-                self._data_socket = opened_sockets[port_number]
-            else:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                sock.bind((self.interface_ip_addr, port_number))
-                # store the socket in the main module so it will live persistently until the Python session is closed.
-                (actual_ip_addr, actual_port_number) = sock.getsockname()
-                opened_sockets[actual_port_number] = sock
-                self._data_socket = sock
-                run_async(self.set_local_data_port_number_async(actual_port_number))
+        # If we have a non-zero port, try to return an existing socket for that port number.
+        if port_number and (port_number in opened_sockets):
+            sock = opened_sockets[port_number]
+            self.logger.debug(f'{self!r}: Reusing already allocated socket {sock} for port {port_number}')
+        else: # open a new port. If port_number is zero, it will be a OS-assigned port.
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            port_number = port_number or 0
+            self.logger.debug(f'{self!r}: Binding data socket at port {port_number} to interface IP {self.interface_ip_addr}')
+            try:
+                    sock.bind((self.interface_ip_addr, port_number))
+            except OSError:
+                raise OSError(f'Socket at port {port_number} is already in use on interface {self.interface_ip_addr}. On Linux, use "netstat -ulpe" to find which user/process has the port already open')
+            # store the socket in the main module so it will live persistently until the Python session is closed.
+
+        (actual_ip_addr, actual_port_number) = sock.getsockname()
+        opened_sockets[actual_port_number] = sock
+        if self._data_socket and sock is not self._data_socket:
+            self.logger.warning(f'{self!r}: Abandonning previously allocated socket {self._data_socket} for new socket {sock}')
+        self._data_socket = sock
+        run_async(self.set_local_data_port_number_async(actual_port_number))
 
         return self._data_socket
 
@@ -4079,8 +4157,9 @@ class chFPGA(FPGAFirmware):
         # Set the channelizer data width
         self.chan.set_data_width(width)
 
-        # Set the crossbar data width
-        self.CROSSBAR.set_data_width(width)
+        # Set the corner-turn engine data width
+        if self.CT:
+            self.CT.set_data_width(width)
 
     def get_data_width(self):
         """
@@ -4091,12 +4170,14 @@ class chFPGA(FPGAFirmware):
         """
         # get the channelizer and crossbar data width
         chan_data_width = self.chan.get_data_width()
-        xbar_data_width = self.CROSSBAR.get_data_width()
 
-        if xbar_data_width and xbar_data_width != chan_data_width:
-            raise RuntimeError("The channelizers and crossbar are not set "
-                               "to the same data width (chan=%i bits, xbar=%i bits). "
-                               "The data stream won't make much sense" % (chan_data_width, xbar_data_width))
+        if self.CT:
+            xbar_data_width = self.CT.get_data_width()
+
+            if xbar_data_width and xbar_data_width != chan_data_width:
+                raise RuntimeError("The channelizers and crossbar are not set "
+                                   "to the same data width (chan=%i bits, xbar=%i bits). "
+                                   "The data stream won't make much sense" % (chan_data_width, xbar_data_width))
         return chan_data_width
 
     def configure_crossbar(self, *args, **kwargs):
@@ -4404,11 +4485,6 @@ class chFPGA(FPGAFirmware):
             channels (list of int): channels to which the gain is applied. If 'channels' is None, it
                 is applied to the default (active) channels (see set_default_channels()).
 
-            use_fixed_gain (bool): put the scaler in fixed gain mode where the gain bank RAM is
-                completely bypassed and a single complex gain is applied to every bin. Is functionally
-                equivalent to set the gain of every bin to the same value. Mostly useful during the
-                debugging phase.
-
             bank (int): The memory bank to which the gains should be applied (0 or 1) Once written,
                 the bank is made active. If ``bank`` is None, the currently inactive bank is used.
 
@@ -4420,7 +4496,7 @@ class chFPGA(FPGAFirmware):
             gain_timestamp: Unix timestamp when the gains were calculated.  If not provided,
                 defaults to current time.
 
-            use_fixed_gain (bool): if True, enables the use of fixed gain mode of the scaler module. In this
+            use_fixed_gain (bool): (deprecated) if True, enables the use of fixed gain mode of the scaler module. In this
                 case, 'gain' can only be a scalar. Is False by default.
 
 
@@ -4515,22 +4591,12 @@ class chFPGA(FPGAFirmware):
                         self, ch))
                     continue
 
-                # Set the postscaler value
-                if Glog is not None:
-                    self.chan[ch].SCALER.SHIFT_LEFT = int(Glog)
-
                 if use_fixed_gain:
-                    if not np.isscalar(Glin):
-                        raise TypeError('%r: Only scalar gains are allowed when using set_fixed_gain=True.' % self)
-                    self.chan[ch].SCALER.USE_GAIN_TABLE = 0
-                    self.chan[ch].SCALER.set_fixed_gain(Glin)
-                else:  # use vector-based gain table
-                    self.chan[ch].SCALER.USE_GAIN_TABLE = 1
-                    self.chan[ch].SCALER.set_gain_table(Glin, bank=bank, gain_timestamp=timestamp_value)
+                    raise DeprecatedError(f'Fix gain feature is deprecated. Set the table to a constant value instead.')
+
+                self.chan[ch].SCALER.set_gain_table(Glin, bank=bank, gain_timestamp=timestamp_value, log_gain=Glog)
                 configured_channels.add(ch)
-        self.logger.debug('%r: Setting scaler gains for channel %s' % (
-            self,
-            ', '.join([str(i) for i in configured_channels])))
+        self.logger.debug(f"{self!r}: Setting scaler gains for channel {', '.join(str(i) for i in configured_channels)}")
 
         if when is not None:
             self.switch_gains(bank=bank, when=when)
@@ -4907,1345 +4973,6 @@ class chFPGA(FPGAFirmware):
         return res
 
 
-    def init_crossbars(
-            self,
-            mode=None,
-            frames_per_packet=2,
-            bin_map=None,
-
-            cb1_lanes=16,
-            cb1_bins=64,
-            dsmap=list(range(16)),
-            cb1_bypass=False,
-            cb1_combine_data_flags=0,
-
-            bp_shuffle_bypass=1,
-
-            cb2_lanes=None,
-            cb2_bins=1,
-            cb2_bypass=False,
-
-            crate_shuffle_bypass=1,
-
-            remap=True,
-            chan8_channel_map=list(range(8)),
-            send_flags=True):
-        """ Initializes the Corner Turn engine in the specified operation mode.
-
-        This method configured the 1st, 2nd and 3rd crossbars (which each can include a remap, frame
-        aligner and an array of bin selectors), as well as the PCB and QSFP data shuffle links.
-
-
-        Parameters:
-
-            mode (str): String describing a predefined corner-turn engine operation mode. If None,
-                the crossbars and shuffle enginecan be set manually with the other provided
-                parameters. The valid modes are:
-
-                    - 'chan8': Corner-turn engine is mostly bypassed and raw
-                      8-bit data from 8 channelizers is sent directly to the 8
-                      CT-Engine outputs.
-
-                    - 'chan4': Corner-turn engine is mostly bypassed and raw
-                      8-bit data from 16 channelizers is sent directly to the
-                      8 CT-Engine outputs.
-
-                    - 'shuffle16 and 'chord16': A corner-turn operation is applied only
-                      within the 16 channelizer outputs of this board.
-
-                    - 'shuffle256': The corner-turn operation is applies
-                      between 16 channelizers within a board and between the
-                      16 boards within a crate using the backplane PCB links.
-
-                    - 'shuffle512': The corner-turn operation is applies
-                      between 16 channelizers within a board, between the 16
-                      boards within a crate using the backplane PCB links, and
-                      between 2 crates using the backplane QSFP links.
-
-                    - 'corr4', 'corr8', 'corr16': The corner-turn engine is configured to feed
-                      the internal firmware correlator (only if the firmware
-                      was compiled with it).
-
-
-            frames_per_packet (int): Number of frames to be packaged in a packet. Defaults to 2. Is
-                limited by the amount of memory used by the FPGA to store data and flags.
-
-            bin_map (dict): Describes the bin indices to be assigned to the
-                outputs of each crossbar.
-
-            cb1_lanes (int): Number of input lanes considered in the
-                CROSSBAR1. Defaults to 16. Used only if `mode` = `None`.
-
-            cb1_bins (int): Number of frequency bins to be included in the first
-                crossbar. Defaults to 64. Used only if `mode` = `None`.
-
-
-            dsmap (list) : Destination slot for each of the bin selectors of
-               the first crossbar. Defaults to range(16). Used only in modes
-               that use the backplane PCB links (``shuffle256``,
-               ``shuffle512``).
-
-
-            cb1_bypass (bool): If True, the first crossbar will be bypassed.
-                Used only if `mode` = `None`.
-
-            cb1_combine_data_flags (bool): if True, the data flags at the output of CROSSBAR1 will
-                be packed in 32-bit words. Defaults to False, where each data word is associated
-                with a data flag word filled with only 16 flag bits, which is needed to allow the
-                next crossbar to further split the flags and data as part of the 2nd stage corner
-                turn operation.
-
-            cb2_lanes (list of tuple): list of (lower_lane, upper_lane), one for each of the 2
-                CROSSBAR2 bin selector, that describe the range of input lanes that shall be read
-                out by the bin selectors. Only partial number of lanes is used if the data is to be
-                further recombined by the 3rd stage corner turn operation. If None, both bin
-                selectros will combine data from all 16 input lanes.
-
-
-            cb2_bins (int): Number of bins to be included in the bin selectors
-                of the second crossbar.
-
-
-
-            cb2_bypass (bool): If True the 2nd stage cirner-turn operation (CROSSBAR2) will be
-                bypassed. Defaults to `False`
-
-
-            bp_shuffle_bypass (bool): If `False`, the 16 data lanes form the CROSSBAR1 will be sent
-                to other boards through the backplane PCB links, and the CROSSBAR2 will receiver 16
-                lanes of data from the other boards (note than lane 0 is in fact always internal).
-                If `True`, the 16 data lanes from the CROSSBAR1 will be forwrded directly to the the
-                input of CROSSBAR2.
-
-
-            crate_shuffle_bypass (bool): If False, half of the 8 outputs lanes of CROSSBAR2 will be
-                sent to other boards in the other crate through the backplane QSFP links, and half
-                will be sent to the CROSSBAR3. CROSSBAR3 will receive half its data from the other
-                crate the corresponding board.If True, the 8 output lanes of CROSSBAR2 go directly
-                to the 8 input lanes of CROSSBAR3.
-
-
-
-            remap (bool). Defaults to True
-
-            chan8_channel_map (list) : channel remapping to be used in `chan8` mode. Defaults to the
-                identity map (range(8))
-
-            send_flags (bool): If False, the Scaler and Frame flags will not be sent.
-
-        Returns:
-
-            list of the stream ids at each output lane of the corner turn engine
-
-        Note:
-            bin_map is a dict in the format
-
-                {'cb1':cb1_bin_indices, 'cb2':cb2_bin_indices, 'cb3':cb3_bin_indices}
-
-            where
-
-            -   cb1_bin_indices (list of list): List of bin indices that will be
-                selected for each bin selector (output lane) of the first
-                crossbar.
-
-                There are 16 bin selectors in the first crossbar.
-                `cb1_bin_indices` should therefore consist of 16 lists, even
-                in modes where only the first 8 bin selectors are used. The
-                list is in the order of the destination slot. The list will be
-                reordered to account for the backplane connectivity in the
-                modes where those links are used..
-
-                If `None`, the default bin selection is used: bins are
-                interleaved between each bin selector. `shuffle16` and `corr16` select 128
-                bins per bin selector (only the first 8 bin selector will be
-                used);and `shuffle256`/`shuffle512` select 64 bins.
-
-                The Bin selectors require 4 clocks to process a selected bin.
-                A bin pair (even,odd) is processed on each clock. This means
-                that if a bin from a bin pair is selected, no bin can be
-                selected from the following 3 bin pairs.
-
-            -  cb2_bin_indices (list of list): List of bin indices that will be
-                selected for each bin selector of the second
-                crossbar.
-
-                There are 2 bin selectors in the second crossbar.
-
-                If `None`, the default assignments are used. In `shuffle256`,
-                all 64 incoming  bins are selected (from half the input lanes,
-                to be reassembled by the following crossbar). In `shuffle512`,
-                the bins are interleaved between the 2 bin_selectors, with the
-                even bins sent to the even crate number. `cb2_bin_indices` is
-                not used in other modes.
-
-                The first list is always for the even crate and the second
-                list is for the odd crate. In `shuffle512`, The list is reordered automatically
-                to account for crate connectivity (i.e the lists for an odd
-                crate are swapped).
-
-            -   cb3_bin_indices (list of list): List of bin indices that will be
-                selected for each bin selector of the third (and final)
-                crossbar.
-
-                There are 8 bin selectors in the third crossbar.
-
-                If `None`, the default assignments are used.  In `shuffle512`,
-                the bins are interleaved between the 8 bin_selectors.
-                `cb3_bin_indices` is not used in other modes.
-
-        Returns:
-
-            list of stream IDs that will be present at each output (i.e GPU link) of the corner turn
-            engine
-
-        """
-
-        cb1 = self.CROSSBAR
-        cb2 = self.CROSSBAR2
-        cb3 = self.CROSSBAR3
-
-        number_of_cb1_bin_sel = 16
-        number_of_cb2_bin_sel = 2
-        number_of_cb3_bin_sel = 8
-
-        if bin_map is None:
-            bin_map = {}
-        cb1_bin_indices = bin_map.get('cb1', None)
-        cb2_bin_indices = bin_map.get('cb2', None)
-        cb3_bin_indices = bin_map.get('cb3', None)
-
-        cb2_ignore_lane = 0
-        cb3_ignore_lane = 0
-
-        if not (cb1_bin_indices is None or len(cb1_bin_indices) == number_of_cb1_bin_sel):
-            raise ValueError('1st crossbar bin map should have %i lists of bins. Ir currently has %i' % (
-                number_of_cb1_bin_sel, len(cb1_bin_indices)))
-        if not (cb2_bin_indices is None or len(cb2_bin_indices) == number_of_cb2_bin_sel):
-            raise ValueError('2nd crossbar bin map should have %i lists of bins. Ir currently has %i' % (
-                number_of_cb2_bin_sel, len(cb2_bin_indices)))
-        if not (cb3_bin_indices is None or len(cb3_bin_indices) == number_of_cb3_bin_sel):
-            raise ValueError('3rd crossbar bin map should have %i lists of bins. Ir currently has %i' % (
-                number_of_cb3_bin_sel, len(cb3_bin_indices)))
-
-        def get_dest_slot_for_src_lane(src_lane):
-            tx = (self.slot, src_lane)  # unique transmitter id (slot, lane)
-            dest_slot = self.crate.get_matching_rx(tx)[0]
-            return dest_slot
-
-        # def get_src_slot_for_dest_lane(dest_lane):
-        #     rx = (self.slot, dest_lane)
-        #     src_slot = self.crate.get_matching_tx(rx)[0]
-        #     return src_slot
-
-        if frames_per_packet < 1 or frames_per_packet > 4:
-            raise ValueError('Number of frames per packet must be between 1 and 4')
-        if cb1_lanes in (4, 8, 12, 16):
-            cb1_lanes = [(0, cb1_lanes // 4 - 1)] * number_of_cb1_bin_sel
-        else:
-            raise ValueError('Crossbar 1 number of input lanes must be 4,8,12 or 16')
-
-        if cb2_lanes is None:
-            cb2_lanes = ((0, 15), (0, 15))  # Both bin selectors
-
-        # if cb2_lanes % 2:
-        #     raise ValueError('Crossbar 2 number of input lanes must be a multiple of 2')
-
-        cb2_timeout_period = None
-        cb2_sof_window_stop = None
-
-        if mode == 'chan8':
-
-            if self.CROSSBAR1_TYPE=="URAM":
-                self.set_corr_reset(0)
-                self.set_ant_reset(0)
-                return (0,)
-
-            # Get raw data from the channelizer (all 32-bit sent as is). Only 8 lanes are available to the GPU.
-            #############################
-            # 1st Crossbar
-            #############################
-            # In bypass mode. Bin sel 0-15 get every word out of channelizers 0-15
-            cb1_bypass = True
-            cb1_four_bit = False
-            cb1_combine_data_flags = 0
-            cb1_bin_select_map = [[]] * number_of_cb1_bin_sel
-
-            #################################
-            # Backplane PCB (intra-crate) shuffle
-            #################################
-            bp_shuffle_bypass = True
-
-            #############################
-            # 2nd Crossbar
-            #############################
-            # Bypassed. Lanes are reordered to select which of the 8 channelizers we want to forward.
-            cb2_lane_map = np.hstack((chan8_channel_map, chan8_channel_map))  # Here we could select which 8 inputs we want to stream to the GPU
-            cb2_bypass = True
-            cb2_bin_select_map = [[]] * number_of_cb2_bin_sel
-
-            #################################
-            # Backplane QSFP (crate) shuffle
-            #################################
-            crate_shuffle_bypass = True
-
-            #############################
-            # 3rd Crossbar
-            #############################
-            # Bypassed. No channel reordering.
-            cb3_lane_map = list(range(8))
-            cb3_bypass = True
-            crate_number = self.crate.crate_number or 0 if self.crate else 0
-            cb3_bin_select_map = [[]] * number_of_cb3_bin_sel
-
-            cb3_output_bins = 0  # debug
-            cb3_output_words_per_bin = 0  # debug
-            cb3_output_data_flags_words_per_bin = 0  # debug
-            cb3_output_frame_flags_words_per_frame = 0  # debug
-
-            stream_type = 0
-            cb2_ignore_lane = 0
-            cb3_ignore_lane = 0
-
-
-        elif mode == 'chan4':
-            """
-            In 'chan4' mode, we combine the high nibble of each pair of channelizers, allowing us to
-            stream data from ALL channelizers. depending on the configuration of the channelizer, the data can be:
-
-              - 4-bit ADC bit data from all channelizers
-              - (4+4) bit FFT value from all channelizers
-
-            """
-            #############################
-            # 1st Crossbar
-            #############################
-            # In bypass mode. Bin sel 0 selects 4+4 bit data for all bins of
-            # channelizer 0 and 1, etc.  Bin selectors cover all 16
-            # channelizers. Bin selectors 8-15 has the same info as bin sel
-            # 0-7.
-            cb1_bypass = True
-            cb1_four_bit = True  # combines high nibbles of pair of input lanes
-            cb1_combine_data_flags = 0
-            cb1_bin_select_map = []
-
-            #################################
-            # Backplane PCB (intra-crate) shuffle
-            #################################
-            bp_shuffle_bypass = True
-
-            #############################
-            # 2nd Crossbar
-            #############################
-            # Bypassed. No channel reordering. Data from input lanes 8-15 is redundant and is not forwarded.
-            cb2_lane_map = list(range(16))  # All information
-            cb2_bypass = True
-            cb2_bin_select_map = []
-
-            #################################
-            # Backplane QSFP (crate) shuffle
-            #################################
-            crate_shuffle_bypass = True
-
-            #############################
-            # 3rd Crossbar
-            #############################
-            # Bypassed. No channel reordering.
-            cb3_lane_map = list(range(8))
-            cb3_bin_select_map = []
-            cb3_bypass = True
-            crate_number = self.crate.crate_number if self.crate else 0
-            stream_type = 0
-
-        elif mode in ('shuffle16', 'chord16'):
-            """
-            In shuffle16 mode, each of the GPU links output data for 128 bins,
-            each bins containing the data from 16 channels. The data for each
-            channel is a byte, representing the FFT output as a (4+4) bit
-            compler number.
-
-            In this mode, each of the 16 bin selector select data from lane
-            groups 0-3 (i.e. lanes 0-15). They each select 128 bins, i.e. 1/64
-            of the 1024 bins incoming from the channelizer. The first 8 bin
-            selectors contain all the data; the last 8 will not be passed by
-            the following crossbar.
-
-            There are 4 words per bins (16 channels). The data flags of two
-            consecutive bins are combined to build a single data flag word.
-
-            The packet format is as follows (assume one frame per packet):
-                - Header: 4 words (16 bytes) for the header
-                - Data block: 128 bins x 16 channels = 2056 bytes
-                - Data flags block: We combine the data flags, so scaler flags
-                  from two consecutive bins are combined into a single 32 bit
-                  word ( one bit per channel for each of the 2 bins). This
-                  represents 128*16/32=64 words = 256 bytes
-                - Frame flags: 16 bit FFT overflow + 16 bit ADC overflow flags
-                  per frame. This is 1 word = 4 bytes.
-                - Packet flags: 32 bit word (4 bytes)
-                - Total: 2328 bytes
-
-            """
-
-            #############################
-            # 1st Crossbar
-            #############################
-            # Selects data from all channelizers, and spread the bins betweeen
-            # the first 8 bin selectors so the data can go through the
-            # following bypassed crossbars.
-            cb1_bypass = False
-            cb1_four_bit = True
-            # BS0 grabs data from FIFO 0-1 (lanes 0-7), BS1 from FIFO 2-3
-            # (lanes 8-15), repeat... We capture 2 words per bin in 2 clocks,
-            # bins are separated by 2 clocks, so we have time to empty the
-            # FIFO
-            # set the first and last inlut lane group
-            cb1_lanes = [(0, 3)] * number_of_cb1_bin_sel
-            # Set the bins selected by each bin selector
-            if cb1_bin_indices:
-                cb1_bin_select_map = cb1_bin_indices
-                cb1_bins = len(cb1_bin_indices[0])
-            else:  # Use default
-                cb1_bins = 128
-                cb1_bin_spacing = 1024 // cb1_bins  # = 8 bins, or 4 clocks
-                cb1_bin_select_map = [
-                    np.arange(cb1_bins) * cb1_bin_spacing + (i % cb1_bin_spacing)
-                    for i in range(number_of_cb1_bin_sel)]
-            cb1_combine_data_flags = 1
-            cb1_output_words_per_bin = 4
-            cb1_output_bins = cb1_bins
-            cb1_input_lanes_per_output_lane = 16
-            cb1_output_data_flags_words_per_bin = (cb1_output_words_per_bin * 4.0) / (32 if cb1_combine_data_flags else 16)  # This is 0.5 if we combine_flags
-            cb1_output_frame_flags_words_per_frame = 1
-
-
-            #################################
-            # Backplane PCB (intra-crate) shuffle
-            #################################
-            bp_shuffle_bypass = True
-
-            #############################
-            # 2nd Crossbar
-            #############################
-            # Bypassed. No channel reordering.
-
-            cb2_lane_map = list(range(16))
-            cb2_bypass = True
-            cb2_input_words_per_bin = cb1_output_words_per_bin
-            cb2_input_data_flags_words_per_bin = cb1_output_data_flags_words_per_bin
-            cb2_input_frame_flags_words_per_frame = cb1_output_frame_flags_words_per_frame
-            cb2_input_bins = cb1_bins
-            # cb2_lanes : Not applicable because of bypass
-            # cb2_bins : Not applicable because of bypass
-            # cb2_bin_spacing : Not applicable because of bypass
-            # cb2_bin_select_map : Not applicable because of bypass
-            cb2_output_words_per_bin = cb2_input_words_per_bin
-            cb2_output_bins = cb2_bins
-            cb2_input_lanes_per_output_lane = cb1_input_lanes_per_output_lane
-            cb2_output_data_flags_words_per_bin = cb2_input_data_flags_words_per_bin
-            cb2_output_frame_flags_words_per_frame = cb2_input_frame_flags_words_per_frame
-
-            crate_number = self.crate.crate_number or 0 if self.crate else 0
-            stream_type = 1
-
-            #################################
-            # Backplane QSFP (crate) shuffle
-            #################################
-            crate_shuffle_bypass = True
-
-
-            #############################
-            # 3rd Crossbar
-            #############################
-            # Bypassed. No channel reordering.
-
-            cb3_lane_map = list(range(8))
-            cb3_bypass = True
-            cb3_output_words_per_bin = cb2_input_words_per_bin
-            cb3_output_bins = cb2_input_bins
-            cb3_output_data_flags_words_per_bin = cb2_output_data_flags_words_per_bin
-            cb3_output_frame_flags_words_per_frame = cb2_output_frame_flags_words_per_frame
-
-        elif mode == 'shuffle128':
-            """ Configures the corner-turn engine for a 8-board shuffle.
-
-            Boards are assumed to be in slots 1-8 of the crates (slots 0-7).
-
-            In this mode, crossbar1 merges 16 channelizer outputs into 8
-            output lanes, with 128 bins per lane, like 'shuffle16'. However,
-            we do not bypass the backplane PCB shuffle. The lanes that end up
-            in one of the 8 populated slots are used. The backplane data rate is close to the limit (7.5 Gbps). We cannot send the flags due to bandwidth limitations.
-
-            Crossbar2 remaps the 8 received lanes only. Crossbar 2 bin selectors doubles the data rate, so we can't use them and they are bypassed.
-
-            Crossbar3 operates as in shuffle512: data from 8 input lanes is sent to the 8 output GPU lanes. We have 16 bins per lane.
-            """
-            if not self.slot:
-                raise RuntimeError('The slot number is unknown. Cannot route the appropriate bins to the target boards in the same crate')
-
-            #############################
-            # 1st Crossbar
-            #############################
-            # Selects data from all channelizers, and spread the bins betweeen
-            # the first 8 bin selectors so the data can go through the
-            # following bypassed crossbars.
-            cb1_bypass = False
-            cb1_four_bit = True
-            # Bin selectors grab data from all lanes
-            cb1_lanes = [(0, 3)] * number_of_cb1_bin_sel
-
-            # Set the bins selected by each bin selector
-            if cb1_bin_indices:
-                cb1_bin_select_map = cb1_bin_indices
-                cb1_bins = len(cb1_bin_indices[0])
-            else:  # Use default
-                cb1_bins = 128
-                cb1_bin_spacing = 1024 // cb1_bins  # = 8 bins, or 4 clocks
-
-                # *** JFC debug
-                cb1_bin_spacing = 8  # Normally  8 bins, which is the minimum
-                cb1_bins = 1024 // cb1_bin_spacing
-
-
-                cb1_bin_select_map = [
-                    np.arange(cb1_bins) * cb1_bin_spacing + (i % cb1_bin_spacing)
-                    for i in range(number_of_cb1_bin_sel)]
-
-            # Reorder cb1_bin_select_map with the knowledge of the backplane
-            # PCB links connectivity so slot 0 gets cb1_bin_select_map[0],
-            # slot 1 gets cb1_bin_select_map[1] etc.
-            cb1_bin_select_map = [
-                cb1_bin_select_map[dsmap[get_dest_slot_for_src_lane(i) - 1]]
-                for i in range(16)]
-
-            cb1_combine_data_flags = 0 # we cannot combine the flags of two bins because we further bin-select them in crossbar 3
-            send_flags = False  # There is not enough bandwidth on the backplane to send uncombined flags
-            cb1_output_words_per_bin = 4
-            cb1_output_bins = cb1_bins
-            cb1_input_lanes_per_output_lane = 16
-            cb1_output_data_flags_words_per_bin = send_flags * (cb1_output_words_per_bin * 4.0) / (32 if cb1_combine_data_flags else 16)  # This is 0.5 if we combine_flags
-            cb1_output_frame_flags_words_per_frame = 1 * send_flags
-
-
-            #################################
-            # Backplane PCB (intra-crate) shuffle
-            #################################
-            bp_shuffle_bypass = False
-
-            #############################
-            # 2nd Crossbar
-            #############################
-            # Bypassed. No channel reordering.
-
-            # CB2 packet aligner
-            cb2_timeout_period = 0
-            cb2_sof_window_stop = 55
-            # CB2 REMAP
-            # get a list that indicates which input lanes to get data from so we get it in increasing order of origin slot number
-            # eg, if we are in slot 2 (zero-based)
-            # (tx_slot => rx_lane) = (0=>1), (1->3), 2->0, 3->2, we have a map of [1, 3, 0, 2]
-            # If slot 3 is not sending data,  we should discard  data from lanes lane_map[3] = 2
-            cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
-            print(f'slot {self.slot-1}/15: CB2 lane map: {cb2_lane_map}') #[ 0  8  6 14  5  4 15  7  3  2 11  1 13 12  9 10]
-            cb2_ignore_lane = sum((1<<lane) for lane in cb2_lane_map[8:16])
-            cb2_lane_map[8:16] = [0,0,0,0,0,0,0,0]  # hack to make sure all the bin sel input lanes have valid data
-            print(f'slot {self.slot-1}/15: CB2 lane map: {cb2_lane_map}') #[ 0  8  6 14  5  4 15  7  3  2 11  1 13 12  9 10]
-            cb2_bypass = True
-
-            cb2_input_words_per_bin = cb1_output_words_per_bin
-            cb2_input_data_flags_words_per_bin = cb1_output_data_flags_words_per_bin
-            cb2_input_frame_flags_words_per_frame = cb1_output_frame_flags_words_per_frame
-            cb2_input_bins = cb1_output_bins
-            # cb2_lanes : Not applicable because of bypass
-            # cb2_bins : Not applicable because of bypass
-            # cb2_bin_spacing : Not applicable because of bypass
-            # cb2_bin_select_map : Not applicable because of bypass
-            cb2_output_words_per_bin = cb2_input_words_per_bin
-            cb2_output_bins = cb2_input_bins
-            cb2_input_lanes_per_output_lane = cb1_input_lanes_per_output_lane
-            cb2_output_data_flags_words_per_bin = cb2_input_data_flags_words_per_bin
-            cb2_output_frame_flags_words_per_frame = cb2_input_frame_flags_words_per_frame
-
-            crate_number = self.crate.crate_number or 0 if self.crate else 0
-            stream_type = 1
-
-            #################################
-            # Backplane QSFP (crate) shuffle
-            #################################
-            crate_shuffle_bypass = True
-
-
-            #############################
-            # 3rd Crossbar
-            #############################
-            # Crossbar 2 just passed the 8 lanes from the 8 boards, reordered by slot number origin
-            # Crossbar 3 can finish the job, i.e. channels are spread over its
-            # 8 input links.
-
-            # Remap input lanes so data is selected in proper channel order
-            cb3_lane_map = [0, 1, 2, 3, 4, 5, 6, 7]
-            cb3_ignore_lane = 0
-            cb3_bypass = False
-            cb3_input_words_per_bin = cb2_output_words_per_bin
-            cb3_input_data_flags_words_per_bin = cb2_output_data_flags_words_per_bin
-            cb3_input_frame_flags_words_per_frame = cb2_output_frame_flags_words_per_frame
-            cb3_input_bins = cb2_output_bins
-            cb3_lanes = [(0, 7)] * number_of_cb3_bin_sel
-            cb3_input_lanes_per_output_lane = cb3_lanes[0][1] - cb3_lanes[0][0] + 1  # 8 input lanes per bin sel output
-            cb3_combine_data_flags = False  # hardwired to False in crossbar 3
-
-            # Select the bins to be assigned to each bin selector output.
-            if cb3_bin_indices is not None:
-                cb3_bins = len(cb3_bin_indices[0])
-                cb3_bin_select_map = cb3_bin_indices
-            else:
-                # Default: we select 1/8th of the incoming bins from all the input lanes
-                # We merge data from 8 full bandwidth input lanes, so we select 1/8th of the bins on each output lane
-                cb3_bins = cb3_input_bins // 8
-                cb3_bin_spacing = 8  # use maximum possible number so we minimize FIFO usage
-                cb3_bin_select_map = [
-                    np.arange(cb3_bins) * cb3_bin_spacing + i
-                    for i in range(number_of_cb3_bin_sel)]
-
-            cb3_output_words_per_bin = cb3_input_words_per_bin * 8
-            cb3_output_bins = cb3_bins
-            cb3_output_data_flags_words_per_bin = (
-                cb3_input_data_flags_words_per_bin * cb3_input_lanes_per_output_lane
-                // (2 if cb3_combine_data_flags else 1))
-            cb3_output_frame_flags_words_per_frame = (
-                cb3_input_frame_flags_words_per_frame * cb3_input_lanes_per_output_lane)
-
-        elif mode == 'shuffle256':
-            if not self.slot:
-                raise RuntimeError('The slot number is unknown. Cannot route the appropriate bins to the target boards in the same crate')
-
-            #############################
-            # 1st Crossbar
-            #############################
-            # Selects data from all channelizers, and spread the bins betweeen
-            # all 16 bin selectors to spread the data across 16 boards in a crate.
-            cb1_bypass = False
-            cb1_four_bit = True
-            cb1_combine_data_flags = 0
-            cb1_lanes = [(0, 3)] * number_of_cb1_bin_sel
-            # Select the bins to be assigned to each bin selector output.
-            # Here, we assume that the  list is in the order of the
-            # destination slot.
-            if cb1_bin_indices is not None:
-                cb1_bin_select_map = cb1_bin_indices
-                cb1_bins = len(cb1_bin_indices[0])
-            else:
-                cb1_bins = 64
-                cb1_bin_spacing = 1024 // cb1_bins
-                cb1_bin_select_map = [
-                    np.arange(cb1_bins) * cb1_bin_spacing + i
-                    for i in range(number_of_cb1_bin_sel)]
-            # Reorder cb1_bin_select_map with the knowledge of the backplane
-            # PCB links connectivity so slot 0 gets cb1_bin_select_map[0],
-            # slot 1 gets cb1_bin_select_map[1] etc.
-            cb1_bin_select_map = [
-                cb1_bin_select_map[dsmap[get_dest_slot_for_src_lane(i) - 1]]
-                for i in range(16)]
-            cb1_output_words_per_bin = 16 // 4
-            cb1_output_bins = cb1_bins
-
-            #################################
-            # Backplane PCB (intra-crate) shuffle
-            #################################
-            bp_shuffle_bypass = False
-
-            #############################
-            # 2nd Crossbar
-            #############################
-            #
-            # CB2 has 2 BIN_SEL
-            # Each BS captures data from 16 input lanes and has 4 outputs.
-            # Each output covers gathers data from 4 input lanes (sublanes 0-3).
-            #   Output 0: Sublanes 0-3 = Input Lanes 0-3
-            #   Output 1: Sublanes 0-3 = Input Lanes 4-7
-            #   Output 2: Sublanes 0-3 = Input Lanes 8-11
-            #   Output 3: Sublanes 0-3 = Input Lanes 12-15
-            #
-            # In this config, we will bypass the crate_shuffle. We therefore want all outputs to
-            # output the same bins. So BS0 gets data from half of its sublanes, and BS1 gets data
-            # from the other half.
-            #
-            # CB2 Output Lane 0: BS0.0: all 64 bins from sublanes 0-1 (Input lanes 0-1   = CH0-31)
-            # CB2 Output Lane 1: BS0.1: all 64 bins from sublanes 0-1 (Input lanes 4-5   = CH64-95)
-            # CB2 Output Lane 2: BS0.2: all 64 bins from sublanes 0-1 (Input lanes 8-9   = CH128-159)
-            # CB2 Output Lane 3: BS0.3: all 64 bins from sublanes 0-1 (Input lanes 12-13 = CH192-223)
-            # CB2 Output Lane 4: BS1.0: all 64 bins from sublanes 2-3 (Input lanes 2-3   = CH32-63)
-            # CB2 Output Lane 5: BS1.1: all 64 bins from sublanes 2-3 (Input lanes 6-7   = CH96-127)
-            # CB2 Output Lane 6: BS1.2: all 64 bins from sublanes 2-3 (Input lanes 10-11 = CH160-191)
-            # CB2 Output Lane 7: BS1.3: all 64 bins from sublanes 2-3 (Input lanes 14-15 = CH224-255)
-            # Crate shuffle is bypassed.
-            # CB3 inputs are therefore identical to CB2 output
-            # CB3 lane map selects data in the order: [BS0.0, BS1.0, BS0.1, BS1.1 ...]
-            # CB3 remapped BIN_SEL inputs are
-            #    CB3 Input Lane 0: 64 bins CH0-31
-            #    CB3 Input Lane 1: 64 bins CH32-63
-            #    CB3 Input Lane 2: 64 bins CH64-95
-            #    CB3 Input Lane 3: 64 bins CH96-127
-            #    CB3 Input Lane 4: 64 bins CH128-159
-            #    CB3 Input Lane 5: 64 bins CH160-191
-            #    CB3 Input Lane 6: 64 bins CH192-223
-            #    CB3 Input Lane 7: 64 bins CH224-255
-            # CB3 outputs are:
-            #    CB3 Output Lane 0: BS0.0: 8 bins (0,8...)  from sublanes 0-7 (Input lanes 0-7 =CH0-511)
-            #    CB3 Output Lane 1: BS0.1: 8 bins (1,9...)  from sublanes 0-7 (Input lanes 0-7 =CH0-511)
-            #    CB3 Output Lane 2: BS0.2: 8 bins (2,10...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
-            #    CB3 Output Lane 3: BS0.3: 8 bins (3,11...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
-            #    CB3 Output Lane 4: BS1.0: 8 bins (4,12...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
-            #    CB3 Output Lane 5: BS1.1: 8 bins (5,13...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
-            #    CB3 Output Lane 6: BS1.2: 8 bins (6,14...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
-            #    CB3 Output Lane 7: BS1.3: 8 bins (7,15...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
-
-            # CB2 ALIGN (JM changed cb2_sof_window_stop from 70 to 50 which the default value of CROSSBAR.SOF_WINDOW_STOP in shuffle_crossbar module. When 70, get errors when establishing connection with gpu nodes, reporting wrong packet size). JFC: CHanged to 55 during backplane shuffle debugging
-            cb2_timeout_period = 0
-            cb2_sof_window_stop = 55
-            # CB2 REMAP
-            cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
-            cb2_bypass = False
-            # CB2 BIN_SEL
-            cb2_input_words_per_bin = cb1_output_words_per_bin
-            cb2_input_bins = cb1_output_bins
-            cb2_input_data_flags_words_per_bin = 1
-            cb2_input_frame_flags_words_per_frame = 1
-
-            # BS0 selects sublanes 0-1, i.e. its 4 outputs gather data from lanes 0-1, 4-5, 8-9, and 12-13
-            # BS1 selects sublanes 2-3 (lanes 2-3, 6-7, 10-12 and 14-15 )
-            cb2_lanes = ((0, 1), (2, 3))
-            cb2_combine_data_flags = True  # hardwired to True in crossbar 2
-            cb2_input_lanes_per_output_lane = cb2_lanes[0][1] - cb2_lanes[0][0] + 1  # 2 input lanes per output
-
-            # Select the bins to be assigned to each bin selector output.
-            if cb2_bin_indices is not None:
-                cb2_bins = len(cb2_bin_indices[0])
-                cb2_bin_select_map = cb2_bin_indices
-            else:
-                # Default: we select all 64 incoming bins, but from half the input lanes
-                cb2_bins = 64
-                cb2_bin_spacing = 1
-                cb2_bin_select_map = [np.arange(cb2_bins) * cb2_bin_spacing
-                                      for i in range(number_of_cb2_bin_sel)]
-
-            cb2_output_words_per_bin = cb2_input_words_per_bin * cb2_input_lanes_per_output_lane
-
-            cb2_output_data_flags_words_per_bin = (
-                cb2_input_data_flags_words_per_bin * cb2_input_lanes_per_output_lane
-                // (2 if cb2_combine_data_flags else 1))
-
-            cb2_output_frame_flags_words_per_frame = (
-                cb2_input_frame_flags_words_per_frame * cb2_input_lanes_per_output_lane)
-
-            cb2_output_bins = cb2_bins
-            crate_number = (self.crate.crate_number or 0) if self.crate else 0
-            stream_type = 2
-
-            #################################
-            # Backplane QSFP (crate) shuffle
-            #################################
-            crate_shuffle_bypass = True
-
-            #############################
-            # 3rd Crossbar
-            #############################
-            # Crossbar 2 partially combined the channels in a way that
-            # Crossbar 3 can finish the job, i.e. channels are spread over its
-            # 8 input links.
-
-            # Remap input lanes so data is selected in proper channel order In
-            # shuffle256, input lanes 0-3 are from BS2 input anes 0-1, 4-5,
-            # 8-9, and 12-13, and input lanes 4=7 are from lanes 2-3, 6-7,
-            # 10-12 and 14-15.
-            cb3_lane_map = [0, 4, 1, 5, 2, 6, 3, 7]
-            cb3_bypass = False
-            cb3_input_words_per_bin = cb2_output_words_per_bin
-            cb3_input_data_flags_words_per_bin = cb2_output_data_flags_words_per_bin
-            cb3_input_frame_flags_words_per_frame = cb2_output_frame_flags_words_per_frame
-            cb3_input_bins = cb2_output_bins
-            cb3_lanes = [(0, 7)] * number_of_cb3_bin_sel
-            cb3_input_lanes_per_output_lane = cb3_lanes[0][1] - cb3_lanes[0][0] + 1  # 8 input lanes per bin sel output
-            cb3_combine_data_flags = False  # hardwired to False in crossbar 3
-
-            # Select the bins to be assigned to each bin selector output.
-            if cb3_bin_indices is not None:
-                cb3_bins = len(cb3_bin_indices[0])
-                cb3_bin_select_map = cb3_bin_indices
-            else:
-                # Default: we select 1/8th of the incoming bins from all the input lanes
-                # We merge data from 8 full bandwidth input lanes, so we select 1/8th of the bins on each output lane
-                cb3_bins = 8
-                cb3_bin_spacing = 8  # use maximum possible number so we minimize FIFO usage
-                cb3_bin_select_map = [
-                    np.arange(cb3_bins) * cb3_bin_spacing + i
-                    for i in range(number_of_cb3_bin_sel)]
-
-            cb3_output_words_per_bin = cb3_input_words_per_bin * 8
-            cb3_output_bins = cb3_bins
-            cb3_output_data_flags_words_per_bin = (
-                cb3_input_data_flags_words_per_bin * cb3_input_lanes_per_output_lane
-                // (2 if cb3_combine_data_flags else 1))
-            cb3_output_frame_flags_words_per_frame = (
-                cb3_input_frame_flags_words_per_frame * cb3_input_lanes_per_output_lane)
-
-        elif mode == 'shuffle512':
-            """
-            Like shuffle256, but adds a corner-turn operation between pair of crates using the
-            backplane QSFP connections between them.
-            """
-            if not self.slot:
-                raise RuntimeError('The slot number is unknown. Cannot route the appropriate bins '
-                                   'to the target boards in the same crate')
-
-            #############################
-            # 1st Crossbar
-            #############################
-            # Selects data from all channelizers, and spread the bins between
-            # all 16 bin selectors to spread the data across 16 boards in a crate.
-            cb1_bypass = False
-            cb1_four_bit = True
-            cb1_combine_data_flags = 0
-            # get data from channel group 0 - 3. Each channel group combines data from 4 channelizers (in 4 bit mode)
-            cb1_lanes = [(0, 3)] * number_of_cb1_bin_sel
-            # Select the bins to be assigned to each bin selector output.
-            # Here, we assume that the  list is in the order of the
-            # destination slot.
-            if cb1_bin_indices is not None:
-                cb1_bin_select_map = cb1_bin_indices
-                cb1_bins = len(cb1_bin_indices[0])
-            else:
-                cb1_bins = 64
-                cb1_bin_spacing = 1024 // cb1_bins
-                cb1_bin_select_map = [
-                    np.arange(cb1_bins) * cb1_bin_spacing + i
-                    for i in range(number_of_cb1_bin_sel)]
-            # Reorder cb1_bin_select_map with the knowledge of the backplane
-            # PCB links connectivity so slot 0 gets cb1_bin_select_map[0],
-            # slot 1 gets cb1_bin_select_map[1] etc.
-            cb1_bin_select_map = [
-                cb1_bin_select_map[dsmap[get_dest_slot_for_src_lane(i) - 1]]
-                for i in range(16)]
-
-            # Output packet geometry
-            cb1_output_words_per_bin = 16 // 4
-            cb1_output_bins = cb1_bins
-
-            #################################
-            # Backplane PCB (intra-crate) shuffle
-            #################################
-            bp_shuffle_bypass = False
-
-            # In this config, we do not bypass the crate_shuffle. Half the bins are sent out, and we
-            # receive bins that are the same as those of the direct lanes.
-            #
-            # We therefore want BS0 to get half the bins from all input lanes, and BS1 gets the
-            # other half of the bins also from all input lanes.
-            #
-            # CB2 Output lanes are:
-            #    CB2 Output Lane 0: BS0.0: 32 even bins from sublanes 0-3 (Input lanes 0-3   = CH0-63)
-            #    CB2 Output Lane 1: BS0.1: 32 even bins from sublanes 0-3 (Input lanes 4-7   = CH64-127)
-            #    CB2 Output Lane 2: BS0.2: 32 even bins from sublanes 0-3 (Input lanes 8-11  = CH128-191)
-            #    CB2 Output Lane 3: BS0.3: 32 even bins from sublanes 0-3 (Input lanes 12-15 = CH192-255)
-            #    CB2 Output Lane 4: BS1.0: 32 odd  bins from sublanes 0-3 (Input lanes 0-3   = CH0-63)
-            #    CB2 Output Lane 5: BS1.1: 32 odd  bins from sublanes 0-3 (Input lanes 4-7   = CH64-127)
-            #    CB2 Output Lane 6: BS1.2: 32 odd  bins from sublanes 0-3 (Input lanes 8-11  = CH128-191)
-            #    CB2 Output Lane 7: BS1.3: 32 odd  bins from sublanes 0-3 (Input lanes 12-15 = CH192-255)
-            # Crate shuffle is *not* bypassed
-            # CB3 inputs are therefore:
-            #    CB3 Input Lane 0: 32 even bins CH0-63
-            #    CB3 Input Lane 1: 32 even bins CH64-127
-            #    CB3 Input Lane 2: 32 even bins CH128-191
-            #    CB3 Input Lane 3: 32 even bins CH192-255
-            #    CB3 Input Lane 4: 32 even bins CH256-319
-            #    CB3 Input Lane 5: 32 even bins CH320-383
-            #    CB3 Input Lane 6: 32 even bins CH384-447
-            #    CB3 Input Lane 7: 32 even bins CH448-511
-            # CB3 lane map selects data in the input lane order: [0, 1, 2, 3 ... 7]
-            # CB3 BIN sel inputs are therefore identical to CB3 inputs
-            # CB3 outputs are:
-            #    CB3 Output Lane 0: BS0.0: 4 bins (0,8...)  from sublanes 0-7 (Input lanes 0-7 =CH0-511)
-            #    CB3 Output Lane 1: BS0.1: 4 bins (1,9...)  from sublanes 0-7 (Input lanes 0-7 =CH0-511)
-            #    CB3 Output Lane 2: BS0.2: 4 bins (2,10...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
-            #    CB3 Output Lane 3: BS0.3: 4 bins (3,11...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
-            #    CB3 Output Lane 4: BS1.0: 4 bins (4,12...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
-            #    CB3 Output Lane 5: BS1.1: 4 bins (5,13...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
-            #    CB3 Output Lane 6: BS1.2: 4 bins (6,14...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
-            #    CB3 Output Lane 7: BS1.3: 4 bins (7,15...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
-
-            #############################
-            # 2nd Crossbar
-            #############################
-
-            # CB2 ALIGN
-            # cb2_timeout_period = 0
-
-            crate_number = (self.crate.crate_number or 0) if self.crate else 0
-            stream_type = 3  # crossbar 3-level data
-
-            # Input packet geometry
-
-            cb2_input_data_flags_words_per_bin = 1
-            cb2_input_words_per_bin = cb1_output_words_per_bin
-            cb2_input_bins = cb1_output_bins
-            cb2_input_frame_flags_words_per_frame = 1
-
-            # Configuration
-            cb2_sof_window_stop = 55
-            cb2_bypass = False
-            # CB2 REMAP
-            cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
-            # CB@ BIN_SEL
-            cb2_lanes = [(0, 3), (0, 3)]  # Every output of both bin sels get data from all the 4 sublanes they get.
-            cb2_input_lanes_per_output_lane = cb2_lanes[0][1] - cb2_lanes[0][0] + 1  # 4 input lanes per output
-            # Select the bins to be assigned to each bin selector output.
-            if cb2_bin_indices is not None:
-                cb2_bin_select_map = cb2_bin_indices
-                cb2_bins = len(cb2_bin_indices[0])
-            else:
-                # Default: we select half the bins (from all input lanes)
-                cb2_bins = cb1_output_bins // number_of_cb2_bin_sel  # 64/2 = 32
-                cb2_bin_spacing = number_of_cb2_bin_sel  # 2
-                cb2_bin_select_map = [
-                    np.arange(cb2_bins) * cb2_bin_spacing + i
-                    for i in range(number_of_cb2_bin_sel)]
-            # swap bin selection list on odd crates so the bins on the first
-            # list are sent to the other (even) crate
-            if crate_number & 1:
-                cb2_bin_select_map = cb2_bin_select_map[::-1]
-
-            cb2_combine_data_flags = True  # hardwired to True in crossbar 2
-
-            # Output packet geometry
-
-            cb2_output_words_per_bin = cb2_input_words_per_bin * cb2_input_lanes_per_output_lane
-            cb2_output_bins = cb2_bins
-            cb2_output_data_flags_words_per_bin = (
-                cb2_input_data_flags_words_per_bin * cb2_input_lanes_per_output_lane //
-                (2 if cb2_combine_data_flags else 1))
-            cb2_output_frame_flags_words_per_frame = (
-                cb2_input_frame_flags_words_per_frame * cb2_input_lanes_per_output_lane)
-            # print("cb2_output frame flags words=%i, input frame flags words=%i, input_lanes=%i" % (
-            #   cb2_output_frame_flags_words_per_frame,
-            #   cb2_input_frame_flags_words_per_frame,
-            #   cb2_input_lanes_per_output_lane))
-
-            #################################
-            # Backplane QSFP (crate) shuffle
-            #################################
-            crate_shuffle_bypass = False
-            # crate_shuffle_bypass = True #***debug
-
-            #############################
-            # 3rd Crossbar
-            #############################
-            # Crossbar gathers the data from the 2 crates.
-
-            # Input packet geometry
-            cb3_input_words_per_bin = cb2_output_words_per_bin
-            cb3_input_data_flags_words_per_bin = cb2_output_data_flags_words_per_bin
-            cb3_input_frame_flags_words_per_frame = cb2_output_frame_flags_words_per_frame
-            cb3_input_bins = cb2_output_bins
-
-            # Configuration
-
-            # Input lane remapping to keep the channel number consistent
-            # whether we are on an odd or even crate number.
-            #
-            # For the even crate, input lane 0-3 contains the local even bins
-            # for the low channels, and lane 4-7 get the even bins from the
-            # other crate (high channels). For the odd crate, input lane  0-3
-            # are the odd bins from the local high channels, and lanes 3-7 are
-            # the odd bins from the other crate low channels.
-            #
-            # JM: modified this line to have consistent input ordering between
-            # pairs of crates. Before this change this line was just range(8)
-            cb3_lane_map = [4, 5, 6, 7, 0, 1, 2, 3] if (crate_number & 1) \
-                else [0, 1, 2, 3, 4, 5, 6, 7]
-            cb3_bypass = False
-            cb3_lanes = [(0, 7)] * number_of_cb3_bin_sel
-            cb3_input_lanes_per_output_lane = cb3_lanes[0][1] - cb3_lanes[0][0] + 1  # 8 input lanes per bin sel output
-
-            # Select the bins to be assigned to each bin selector output.
-            if cb3_bin_indices is not None:
-                cb3_bins = len(cb3_bin_indices[0])
-                cb3_bin_select_map = cb3_bin_indices
-            else:
-                # Default: we select 1/8th of the incoming bins from all the input lanes
-                cb3_bins = cb2_output_bins // number_of_cb3_bin_sel  # 32/8 = 4
-                cb3_bin_spacing = number_of_cb3_bin_sel  # = 8
-                cb3_bin_select_map = [
-                    np.arange(cb3_bins) * cb3_bin_spacing + i
-                    for i in range(number_of_cb3_bin_sel)]
-            cb3_combine_data_flags = False  # hardwired to False in crossbar 3
-
-            # Output packet geometry
-            cb3_output_words_per_bin = cb3_input_words_per_bin * cb3_input_lanes_per_output_lane
-            cb3_output_bins = cb3_bins
-            cb3_output_data_flags_words_per_bin = (
-                cb3_input_data_flags_words_per_bin * cb3_input_lanes_per_output_lane
-                // (2 if cb3_combine_data_flags else 1))
-            cb3_output_frame_flags_words_per_frame = (
-                cb3_input_frame_flags_words_per_frame * cb3_input_lanes_per_output_lane)
-
-        elif mode in ('corr16', ):
-            """
-            Implement the corner-turn operation for the 16-channel firmware correlator embedded in
-            the same FPGA. in this mode, we simply enable the 1st crossbar. The 2nd and 3rd
-            crossbars are not present in the firmware.
-            """
-            #############################
-            # 1st Crossbar
-            #############################
-            # Reorders the data from the 16 local channelizers
-
-            number_of_cb1_bin_sel = 8
-            cb1_bypass = False
-            cb1_four_bit = True
-            # BS0 grabs data from FIFO 0-1 (lanes 0-7), BS1 from FIFO 2-3
-            # (lanes 8-15), repeat... We capture 2 words per bin in 2 clocks,
-            # bins are separated by 2 clocks, so we have time to empty the
-            # FIFO
-            cb1_lanes = [(0, 3)] * number_of_cb1_bin_sel
-            cb1_combine_data_flags = 1
-            # Select the bins to be assigned to each bin selector output.
-            if cb1_bin_indices:
-                cb1_bin_select_map = cb1_bin_indices
-                cb1_bins = len(cb1_bin_indices[0])
-            else:
-                cb1_bins = 128
-                cb1_bin_spacing = 1024 // cb1_bins  # = 8 = 4 clocks
-                cb1_bin_select_map = [
-                    np.arange(cb1_bins) * cb1_bin_spacing + (i % cb1_bin_spacing)
-                    for i in range(number_of_cb1_bin_sel)]
-            cb1_output_words_per_bin = 4
-            cb1_output_bins = cb1_bins
-
-            #################################
-            # Backplane PCB (intra-crate) shuffle
-            #################################
-            # Not implemented in the firmware correlator
-
-            #################################
-            # Backplane QSFP (crate) shuffle
-            #################################
-            # Not implemented in the firmware correlator
-
-            #############################
-            # 2nd and 3rd Crossbar
-            #############################
-            # Not implemented in the firmware correlator
-            # We define default values to prevent the packet size computation to fail.
-            cb2_bypass = True
-            cb3_bypass = True
-            cb3_output_bins = cb1_bins
-            cb3_output_words_per_bin = 0  # To be updated
-            cb3_output_data_flags_words_per_bin = 0  # To be updated
-            cb3_output_frame_flags_words_per_frame = 0  # To be updated
-            stream_type = 0  # not used, as the shuffled packets are correlated never get out of the FPGA
-            crate_number = 0  # idem
-
-        elif mode == 'corr4':
-            """
-            Implement the corner-turn operation for the 16-channel firmware correlator embedded in
-            the same FPGA. in this mode, we simply enable the 1st crossbar. The 2nd and 3rd
-            crossbars are not present in the firmware.
-            """
-            #############################
-            # 1st Crossbar
-            #############################
-            # Reorders the data from the 16 local channelizers
-
-            number_of_cb1_bin_sel = 8
-            cb1_bypass = False
-            cb1_four_bit = True
-            send_flags = False
-            # BS0 grabs data from FIFO 0-1 (lanes 0-7), BS1 from FIFO 2-3
-            # (lanes 8-15), repeat... We capture 2 words per bin in 2 clocks,
-            # bins are separated by 2 clocks, so we have time to empty the
-            # FIFO
-            cb1_lanes = [(0, 0)] * number_of_cb1_bin_sel
-            cb1_combine_data_flags = 1
-            # Select the bins to be assigned to each bin selector output.
-            if cb1_bin_indices:
-                cb1_bin_select_map = cb1_bin_indices
-                cb1_bins = len(cb1_bin_indices[0])
-            else:
-                cb1_bins = 256
-                cb1_bin_spacing = 1024 // cb1_bins  # = 8 = 4 clocks
-                cb1_bin_select_map = [
-                    np.arange(cb1_bins) * cb1_bin_spacing + (i % cb1_bin_spacing)
-                    for i in range(number_of_cb1_bin_sel)]
-            cb1_output_words_per_bin = 1
-            cb1_output_bins = cb1_bins
-
-            #################################
-            # Backplane PCB (intra-crate) shuffle
-            #################################
-            # Not implemented in the firmware correlator
-
-            #################################
-            # Backplane QSFP (crate) shuffle
-            #################################
-            # Not implemented in the firmware correlator
-
-            #############################
-            # 2nd and 3rd Crossbar
-            #############################
-            # Not implemented in the firmware correlator
-            # We define default values to prevent the packet size computation to fail.
-            cb2_bypass = True
-            cb3_bypass = True
-            cb3_output_bins = cb1_bins
-            cb3_output_words_per_bin = 0  # To be updated
-            cb3_output_data_flags_words_per_bin = 0  # To be updated
-            cb3_output_frame_flags_words_per_frame = 0  # To be updated
-            stream_type = 0  # not used, as the shuffled packets are correlated never get out of the FPGA
-            crate_number = 0  # idem
-
-        elif mode == 'corr8':
-            """
-            Implement the corner-turn operation for the 16-channel firmware correlator embedded in
-            the same FPGA. in this mode, we simply enable the 1st crossbar. The 2nd and 3rd
-            crossbars are not present in the firmware.
-            """
-            if self.CROSSBAR1_TYPE=="URAM": # hack
-                self.set_corr_reset(0)
-                self.set_ant_reset(0)
-                return 0
-
-            raise RuntimeError('Unsupported mode corr8 with current firmware configuration')
-
-        elif mode is None:  # Manual config
-            cb1_four_bit = True
-
-            # cb1_bypass = False
-
-            # Select the bins to be assigned to each bin selector output.
-            if cb1_bin_indices:
-                cb1_bin_select_map = cb1_bin_indices
-            else:
-                cb1_bin_spacing = 1024 // cb1_bins
-                cb1_bin_select_map = [
-                    (np.arange(cb1_bins) * cb1_bin_spacing + i) % 1024
-                    for i in range(number_of_cb1_bin_sel)]
-
-            #################################
-            # Backplane QSFP (crate) shuffle
-            #################################
-            crate_shuffle_bypass = 1
-
-            crate_number = self.crate.crate_number if self.crate else 0
-            stream_type = 4
-
-            cb2_input_bins = cb1_bins
-            if bp_shuffle_bypass and self.slot is not None:
-                cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
-            else:
-                cb2_lane_map = list(range(16))
-
-            cb2_input_frame_flags_words_per_frame = 1
-            cb2_input_data_flags_words_per_bin = 1
-            # Select the bins to be assigned to each bin selector output.
-            if cb2_bin_indices:
-                cb2_bins = len(cb2_bin_indices[0])
-                cb2_bin_select_map = cb2_bin_indices
-            else:
-                # Default: we select all 64 incoming bins, but from half the input lanes
-                cb2_bins = cb2_input_bins
-                cb2_bin_spacing = 1
-                cb2_bin_select_map = [np.arange(cb2_bins) * cb2_bin_spacing
-                                      for i in range(number_of_cb2_bin_sel)]
-
-            #################################
-            # Backplane QSFP (crate) shuffle
-            #################################
-            # Not supported in this mode
-            crate_shuffle_bypass = True
-
-            #############################
-            # 3rd Crossbar
-            #############################
-            # Not supported in this mode
-            cb3_bypass = True
-            cb3_lane_map = list(range(8))
-
-            cb1_output_words_per_bin = cb1_lanes[0][1] - cb1_lanes[0][0] + 1
-            cb1_output_bins = cb1_bins
-
-        else:
-            raise ValueError('Unknown mode')
-
-        # cb2_payload_size = header_size + packet_flags_size + frames_per_packet \
-        #   * (cb2_input_words_per_bin * cb2_bins* cb2_lanes + 1*cb2_bins*cb2_lanes/2 + cb2_lanes) * 4
-
-        self.logger.debug(
-            '%r: Configuring crossbars 1 & 2 with frames_per_packet=%i, cb1_lanes=%s, cb1_bins=%i, '
-            'cb2_lanes=%s, cb2_bins=%i, cb2_bypass=%s, bp_shuffle_bypass=%s' % (
-                self,
-                frames_per_packet,
-                cb1_lanes,
-                cb1_bins,
-                cb2_lanes,
-                cb2_bins,
-                bool(cb2_bypass),
-                bool(bp_shuffle_bypass)))
-
-        # Put everything in reset
-        self.set_ant_reset(1)
-        self.set_corr_reset(1)
-
-        # slot_number = self.slot - 1 if self.slot is not None else 0
-        slot_number = self.slot - 1 if self.slot else 0  # SC 03/17/2019 changed for individual iceboard
-
-        ###########################
-        #  Configure CROSSBAR 1
-        ###########################
-
-        stream_id = [((stream_type << 12) | (crate_number << 8) | (slot_number << 4) | lane)
-                     for lane in range(cb1.NUMBER_OF_CROSSBAR_OUTPUTS)]
-        for (cb1_output_lane, bs) in enumerate(cb1):
-            bs.BYPASS = cb1_bypass
-            bs.STREAM_ID = stream_id[cb1_output_lane] >> 4  # lane is already hardwared in the last 4 bits
-            bs.COMBINE_DATA_FLAGS = cb1_combine_data_flags
-            bs.SEND_FLAGS = send_flags
-            bs.GROUP_FRAMES = frames_per_packet
-            # print(stream_type, crate_number, slot_number)
-            bs.FOUR_BITS = cb1_four_bit
-            bs.FIRST_FIFO_NUMBER = cb1_lanes[cb1_output_lane][0]
-            bs.LAST_FIFO_NUMBER = cb1_lanes[cb1_output_lane][1]
-            # bs.NUMBER_OF_LANES = cb1_lanes
-            bs.select_bins(cb1_bin_select_map[cb1_output_lane])
-
-        ###########################
-        # Configure BP_SHUFFLE
-        ###########################
-        if self.BP_SHUFFLE:
-            # Configure PCB (intra-crate) shuffle
-            self.BP_SHUFFLE.BYPASS_PCB_SHUFFLE = bp_shuffle_bypass
-            # Configure CRATE (inter-crate) shuffle
-            self.BP_SHUFFLE.BYPASS_QSFP_SHUFFLE = crate_shuffle_bypass
-        elif not bp_shuffle_bypass:
-            raise RuntimeError("The FPGA firmware implement BP_SHUFFLE in the '%s' operational mode "
-                               "(shuffle bypass flag is not set in that mode)", mode)
-        ###########################
-        # Configure CROSSBAR 2
-        ###########################
-        if cb2:
-            if cb2_bypass:  # if we bypass, just remap the stream ids from the previous crossbar
-                stream_id = [stream_id[i] for i in cb2_lane_map]
-            else:  # otherwise, the bin selector overrides
-                stream_id = [((stream_type << 12) | (crate_number << 8) | (slot_number << 4) | lane)
-                             for lane in range(cb2.NUMBER_OF_CROSSBAR_OUTPUTS)]
-            cb2.IGNORE_LANE = cb2_ignore_lane
-            cb2.set_lane_map(cb2_lane_map)
-            if cb2_timeout_period is not None:
-                cb2.TIMEOUT_PERIOD = cb2_timeout_period
-            if cb2_sof_window_stop is not None:
-                cb2.SOF_WINDOW_STOP = cb2_sof_window_stop
-            for (cb2_bin_sel, bs) in enumerate(cb2):
-                bs.BYPASS = bool(cb2_bypass)
-                if not cb2_bypass:
-                    bs.STREAM_ID = stream_id[cb2_bin_sel * cb2.NUMBER_OF_OUTPUTS_PER_BIN_SEL] >> 4
-                    bs.SEND_FLAGS = send_flags
-                    bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
-                    bs.NUMBER_OF_BINS_PER_FRAME = cb2_input_bins
-                    bs.NUMBER_OF_WORDS_PER_BIN = cb2_input_words_per_bin
-                    bs.NUMBER_OF_DATA_FLAGS_WORDS_PER_BIN = cb2_input_data_flags_words_per_bin
-                    bs.NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME = cb2_input_frame_flags_words_per_frame
-                    bs.FIRST_LANE = cb2_lanes[cb2_bin_sel][0]
-                    bs.LAST_LANE = cb2_lanes[cb2_bin_sel][1]
-                    bs.select_bins(cb2_bin_select_map[cb2_bin_sel])
-        elif not cb2_bypass:
-            raise RuntimeError("The FPGA firmware must have a CROSSBAR2 in the '%s' operational mode", mode)
-
-        ###########################
-        # Configure CROSSBAR 3
-        ###########################
-        if cb3:
-            cb3.IGNORE_LANE = cb3_ignore_lane
-            cb3.set_lane_map(cb3_lane_map)
-            if cb3_bypass:  # if we bypass, just remap the stream ids from the previous crossbar
-                stream_id = [stream_id[i] for i in cb3_lane_map]
-            else:  # otherwise, the bin selector overrides
-                stream_id = [((stream_type << 12) | (crate_number << 8) | (slot_number << 4) | lane)
-                             for lane in range(cb3.NUMBER_OF_CROSSBAR_OUTPUTS)]
-            for (cb3_bin_sel, bs) in enumerate(cb3):
-                bs.BYPASS = bool(cb3_bypass)
-                if not cb3_bypass:
-                    bs.STREAM_ID = stream_id[cb3_bin_sel * cb3.NUMBER_OF_OUTPUTS_PER_BIN_SEL] >> 4
-                    bs.SEND_FLAGS = send_flags
-                    bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
-                    assert cb3_input_data_flags_words_per_bin == int(cb3_input_data_flags_words_per_bin), f'CB3 number of flag words is not an integer ({cb3_input_data_flags_words_per_bin})'
-                    bs.NUMBER_OF_DATA_FLAGS_WORDS_PER_BIN = int(cb3_input_data_flags_words_per_bin)
-                    bs.NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME = cb3_input_frame_flags_words_per_frame
-                    # print('CB3: FFWPF=%i' % bs.NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME)
-                    bs.FIRST_LANE = cb3_lanes[cb3_bin_sel][0]
-                    bs.LAST_LANE = cb3_lanes[cb3_bin_sel][1]
-                    # print('CB3: FFWPF=%i' % bs.NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME)
-                    bs.NUMBER_OF_BINS_PER_FRAME = cb3_input_bins
-                    bs.NUMBER_OF_WORDS_PER_BIN = cb3_input_words_per_bin
-                    bs.select_bins(cb3_bin_select_map[cb3_bin_sel])
-
-                    # bs.SEND_FLAGS = 0  # JFC debug. Does not affect data.
-            # print("cb3 input frame flags words=%i" %cb3_input_frame_flags_words_per_frame)
-        elif not cb3_bypass:
-            raise RuntimeError("The FPGA firmware must implement CROSSBAR3 in the '%s' operational mode", mode)
-
-        def print_packet_size(
-                crossbar_name,
-                frames_per_packet,
-                bins,
-                data_words_per_bin,
-                data_flags_words_per_bin,
-                frame_flags_words_per_frame):
-            header_words_per_packet = 4
-            packet_flags_words_per_packet = 1
-            if not send_flags:
-                data_flags_words_per_bin = 0
-                frame_flags_words_per_frame = 0
-            payload_size = 4 * (
-                header_words_per_packet +
-                frames_per_packet * (
-                    (data_words_per_bin + data_flags_words_per_bin) * bins +
-                    frame_flags_words_per_frame) +
-                packet_flags_words_per_packet)
-            ethernet_packet_overhead_bytes = 42
-            ethernet_packet_size = (ethernet_packet_overhead_bytes + payload_size + 7) // 8 * 8
-            # eth_data_rate = 156.25e6 * 66 * 32/33
-            # bp_data_rate = 156.25e6* 50 * 32/33
-            packet_rate = 800e6 / 2048 / frames_per_packet
-            ethernet_data_rate = (packet_rate * ethernet_packet_size) * 8
-            self.logger.info(
-                f'{self!r}: {crossbar_name}, Eth packet size {ethernet_packet_size} bytes, Eth data rate {ethernet_data_rate/1e9:0.1f} Gbit/s')
-            self.logger.debug(
-                f'{self!r}: {crossbar_name}:'
-                f'   UDP payload size: {payload_size} bytes\n'
-                f'   Ethernet packet size: {ethernet_packet_size} bytes\n'
-                f'   Ethernet data rate: {ethernet_data_rate/1e9:0.1f} Gbit/s\n'
-                f'   Packet geometry: {frames_per_packet} frames_per_packet\n'
-                f'                    {bins} bins\n'
-                f'                    {data_words_per_bin} data words/bin\n'
-                f',                   {data_flags_words_per_bin} data flags_words/bin\n'
-                f'                    {frame_flags_words_per_frame} frame_flags_words/frame)'
-                )
-            # self.logger.info('%r: %s config: frames_per_packet=%i, cb1_lanes=%s, cb1_bypass=%s, '
-            #                   'cb1_combine=%s, cb1_bins=%i, cb1_words_per_bin=%i' % (
-            #                   self, frames_per_packet, cb1_lanes, bool(cb1_bypass), bool(cb1_combine_data_flags),
-            #                   cb1_bins, cb1_output_words_per_bin ))
-            # self.logger.debug(
-            #   '%r: CROSSBAR1 output packets payload = %i bytes (%i words)' % (
-            #       self, cb1_payload_size, (cb1_payload_size+3)//4))
-
-        print_packet_size('CROSSBAR3',
-                          frames_per_packet=frames_per_packet,
-                          bins=cb3_output_bins,
-                          data_words_per_bin=cb3_output_words_per_bin,
-                          data_flags_words_per_bin=cb3_output_data_flags_words_per_bin,
-                          frame_flags_words_per_frame=cb3_output_frame_flags_words_per_frame)
-
-        self.set_corr_reset(0)
-        self.set_ant_reset(0)
-        return stream_id
 
     def reset_gpu_links(self):
         """ Resets the GPU links.

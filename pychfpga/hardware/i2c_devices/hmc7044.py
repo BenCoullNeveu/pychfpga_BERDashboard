@@ -52,12 +52,12 @@ class hmc7044(object):
     def __init__(self, spi_interface, spi_port=0, verbose=0):
         """
         """
-        self._logger = logging.getLogger(__name__)
+        self.log = logging.getLogger(__name__)
         self.spi = spi_interface
         self.spi_port = spi_port
         self.regs = {}  # image of latest values written
 
-    def init(self, fref=10e6, fosc=50e6, fvco=3200e6, fout={}, filename=None, check=1):
+    def init(self, fref=10e6, fosc=50e6, fvco=3200e6, fout={}, filename=None, check=1, input_sel=None, input_priorities=[2,1,0,3]):
         """Initializes the PLL.
 
         Parameters:
@@ -92,10 +92,11 @@ class hmc7044(object):
 
         # print(f'reg[0x0001]=0x{self.read_reg(0x1):02X}')
         # Set PLL1 clock inputs
-        self.set_input('CLKIN0', enable=False, term=True) # Ethernet recovered clock
-        self.set_input('CLKIN1', enable=False, term=True) # Backplane 10 MHz reference
-        self.set_input('CLKIN2', enable=True, term=True) # SMA 10 MHz reference
-        self.set_input('CLKIN3', enable=False, term=True) # Recovered clock from FPGA
+        enable_list = [input_sel == i or (input_sel is None and i in input_priorities) for i in range(4)]
+        self.set_input('CLKIN0', enable=enable_list[0], term=True) # Ethernet recovered clock
+        self.set_input('CLKIN1', enable=enable_list[1], term=True) # Backplane 10 MHz reference
+        self.set_input('CLKIN2', enable=enable_list[2], term=True) # SMA 10 MHz reference
+        self.set_input('CLKIN3', enable=enable_list[3], term=True) # Recovered clock from FPGA
         self.set_input('OSCIN', enable=True, term=True) # Oscillator
         # print(f'reg[0x0001]=0x{self.read_reg(0x1):02X}')
 
@@ -108,7 +109,7 @@ class hmc7044(object):
         # on the PLL1 BW of the user system. Set the LCM, R1, and
         # N1 divider setpoints. Enable the reference and VCXO
         # input buffer terminations.
-        self.set_pll1(f_in=fref, f_out=fosc)
+        self.set_pll1(f_in=fref, f_out=fosc, input_sel=input_sel, input_priorities=input_priorities)
         # print(f'reg[0x0001]=0x{self.read_reg(0x1):02X}')
 
         # Program the SYSREF timer. Set the divide ratio (a
@@ -151,7 +152,10 @@ class hmc7044(object):
         # generator request to send out a pulse generator chain on any SYSREF
         # channels programmed for pulse generator mode.
 
-    def write_reg(self, reg, val, mask = 0xFF):
+        # Return which input is used as a reference. Returns None if no input is active.
+        return self.get_active_clkin()
+
+    def write_reg(self, reg, val, mask = 0xFF, timeout=10):
         """ Writes the register `reg` with 8-bit value `val`
 
         Parameters:
@@ -172,11 +176,11 @@ class hmc7044(object):
         self.regs[reg] = val
         spi_data = bytes([reg >> 8, reg & 0xFF, val]) # r/w=0, W1=0, W0=0
         # print(f'write_reg: sending {len(spi_data)} bytes')
-        self.spi.write_read(self.spi_port, spi_data, read_length=0)
+        self.spi.write_read(self.spi_port, spi_data, read_length=0, timeout=timeout)
         if self.check:
-            read_val = self.read_reg(reg)
+            read_val = self.read_reg(reg, timeout=timeout)
             if read_val != val:
-                print(f'Warning: Readback on register 0x{reg:04x} is 0x{read_val:02x} instead of 0x{val:02x}')
+                self.log.warning(f'Warning: Readback on register 0x{reg:04x} is 0x{read_val:02x} instead of 0x{val:02x}')
 
     def write_regs(self, regs):
         """Write a list of (register, value) tuples to the PLL.
@@ -196,7 +200,7 @@ class hmc7044(object):
             self.write_reg(reg, val)
             # time.sleep(0.1)
 
-    def read_reg(self, reg):
+    def read_reg(self, reg, timeout=None):
         """ Read the8-bit value from register `reg`.
 
         Parameters:
@@ -210,7 +214,7 @@ class hmc7044(object):
 
         reg &= 0x1FFF  # limit register address to 13 bit
         spi_data = bytes([(reg >> 8) | 0x80, reg & 0xFF]) # r/w=0, W1=0, W0=0
-        val = self.spi.write_read(self.spi_port, spi_data, read_length=1)
+        val = self.spi.write_read(self.spi_port, spi_data, read_length=1, timeout=timeout)
         return val[0]
 
 
@@ -386,10 +390,10 @@ class hmc7044(object):
             (0x70, 0x0), # PLL1 alarm control register
             (0x71, 0x10), # Alarm mask control: 4: sync req, 3:PLL1/2 lock detect, 2: clk out phase status, 1: sysref sync status, 0: pll2 lock detect
 
-            (0x7B, 0x1), # Alarm readback register (read only)
-            (0x7C, 0x1F), # PLL1 alarm readback (read only)
-            (0x7D, 0x13), # Alarm readback (read only)
-            (0x7E, 0x7F), # Latched alarm readback (read only)
+            # (0x7B, 0x1), # Alarm readback register (read only)
+            # (0x7C, 0x1F), # PLL1 alarm readback (read only)
+            # (0x7D, 0x13), # Alarm readback (read only)
+            # (0x7E, 0x7F), # Latched alarm readback (read only)
 
             # Reserved values recommended by Analog Devices. See Table 74 of datasheet Rev C.
             (0x96, 0x0),
@@ -429,7 +433,7 @@ class hmc7044(object):
         self.write_regs(regs)
 
 
-    PLL1_INPUTS = {
+    PLL1_INPUT_NAMES = {
         'CLKIN0': 0,
         'CLKIN1': 1,
         'CLKIN2': 2,
@@ -451,24 +455,28 @@ class hmc7044(object):
                 4: OSCIN
 
         """
-        if input_number in self.PLL1_INPUTS:
-            input_number = self.PLL1_INPUTS[input_number]
+        if input_number in self.PLL1_INPUT_NAMES:
+            input_number = self.PLL1_INPUT_NAMES[input_number]
 
         regs = {}
 
+        self.log.debug(f'{self!r}: Reference input {input_number} enable = {enable}')
         regs[0x000A + input_number] = (hi_z << 4) | (lvpecl << 3) | (ac << 2) | (term << 1) | enable
         regs[0x001C + input_number] = prescaler
 
         self.write_regs(regs)
 
-    def set_pll1(self, enable=True, input_priorities=[2,1,0,3], los_validation=3, input_sel=None, f_in=10e6, f_out=50e6, CP_gain=1, PFD_pol=0, restart=False):
+    def set_pll1(self, enable=True, input_priorities=[2,1,0,3], los_validation=7, input_sel=None, f_in=10e6, f_out=50e6, CP_gain=5, PFD_pol=0, restart=False):
         """ Configure PLL1
 
         Parameters:
 
             enable (bool): PLL2 is enabled when True
 
-            input_priorities (list): list of 4 input numbers to be autoselected in order of priority.
+            input_priorities (list): list of 4 input numbers to be autoselected in order of priority. Is ignored if `input_sel` is provided.
+
+            input_sel (int): Clock reference input (0-3) to use for PLL1. Overrides autoselection.
+                If None, autoselection is enabled using the `input_priorities` list.
 
             los_validation (int): Loss of Signal validation time:
                 0: None
@@ -480,11 +488,11 @@ class hmc7044(object):
                 6: 64 cycles
                 7: 128 cycles
 
-            f_in (float): PLL2's input reference frequency, in Hz.
+            f_in (float): PLL1's input reference frequency, in Hz.
 
             f_out (float): VCO output frequency. Must be between 2150-3550 MHz, but only 2400-3200 MHz is guaranteed.
 
-            CP_gain (int): PLL2 charge pump current as an innteger between 0 and 15, which sets current in multiples of 160 uA.
+            CP_gain (int): PLL1 charge pump current as an innteger between 0 and 15, which sets current in multiples of 160 uA.
 
             PFD_pol (int) : PFD polarity: 0=positive, 1 = negative
 
@@ -495,8 +503,6 @@ class hmc7044(object):
 
         """
 
-        holdover_exit_action = 1
-        holdover_exit_criteria = 0
         PFD_up_en = 1
         PFD_down_en = 1
         PFD_up_force = 0
@@ -525,6 +531,8 @@ class hmc7044(object):
 
         # pll1_cfg2_holdover_exitcrit[1:0] = 0x0
         # pll1_cfg2_holdover_exitactn[3:2] = 0x1
+        holdover_exit_action = 3 # 0: reset dividers, 1,2: Do nothing, 3: DAC assist
+        holdover_exit_criteria = 1 # 0: Exit when LOS gone, 1:exit when phase error = 0, 2: Exit immediately
         regs[0x0016] = (holdover_exit_action << 2) | (holdover_exit_criteria)
 
         # pll1_cfg7_hodac_offsetval[6:0] = 0x0
@@ -585,7 +593,23 @@ class hmc7044(object):
         # pll1_cfg1_holdover_uses_dac[2:2] = 0x1
         # pll1_cfg2_manclksel[4:3] = 0x0
         # pll1_cfg1_byp_debouncer[5:5] = 0x0
-        regs[0x0029]= ((input_sel << 3) if isinstance(input_sel, int) else 1) | (1 << 2) # autorevertive=0, uses_dac=1, debouncer=0
+        # 0x0029 : PLL1 Reference switching control
+        # 5: bypass debouncer
+        # 4:3: Manual switching input number
+        # 2: holdover uses DAC
+        # 1: Autorevertive ref switching
+        # 0: Automode reference switching
+        bypass_debouncer = 0
+        manual_ref_input = input_priorities[0] if input_sel is None else input_sel
+        holdover_uses_dac = 1
+        auto_ref_revert = 0
+        auto_ref_switching = 1 if input_sel is None else 0
+        regs[0x0029]= (
+            (bypass_debouncer << 5) |
+            (manual_ref_input << 3) |
+            (holdover_uses_dac << 2) |
+            (auto_ref_revert << 1) |
+            (auto_ref_switching << 0))
 
         # pll1_hoff_timer_setpoint[7:0] = 0x0
         regs[0x2A] = 0x0  # not parametrized yet
@@ -600,7 +624,7 @@ class hmc7044(object):
             # Start autotune
             self.restart()
 
-    def set_pll2(self, enable=True, f_in=50e6, f_out=3000e6, CP_gain=1, PFD_pol=0, restart=False, vco_sel=None):
+    def set_pll2(self, enable=True, f_in=50e6, f_out=3000e6, CP_gain=8, PFD_pol=0, restart=False, vco_sel=None):
         """ Configures PLL2
 
         Parameters:
@@ -632,7 +656,7 @@ class hmc7044(object):
         if f_out > 3550e6:
             raise ValueError('VCO frequenct too high. Must be <3550 MHz')
         if f_out < 2400e6 or f_out > 3200e6:
-            self._logger.warning('VCO frequency in datasheet range but is outside the guaranteed 2400-3200 MHz range')
+            self.log.warning('VCO frequency in datasheet range but is outside the guaranteed 2400-3200 MHz range')
 
         if vco_sel is None:
             vco_sel = 2 if f_out < 2800e6 else 1  # 0=external, 1= high, 2 = low
@@ -830,7 +854,7 @@ class hmc7044(object):
                 raise RuntimeError(f'f_vco must be specified if f_out is specified.')
             divider = f_vco / f_out
             if f_out > 1000e6:
-                print(f'Forcing output {output_number} mode to LVPECL because fout is high')
+                self.log.debug(f'{self!r}: Forcing output {output_number} mode to LVPECL because fout is high')
                 driver_mode = 1
         if divider != int(divider):
             raise RuntimeError(f'Output {output_number} divider={divider} is not an integer')
@@ -970,6 +994,35 @@ class hmc7044(object):
 
         return (reg_7a << 16) | (reg_79 << 8) | reg_78
 
+    def get_clkin_status(self):
+        """ Returns the state (i.e. loss of signal (LOS)) if the reference clocks
+
+        Returns:
+
+            list of bool describing the state of each reference clock: True = active, False = Loss of signal
+        """
+
+        alarm = self.read_reg(0x7c)
+        return [not (alarm & (1 << i)) for i in range(4)]
+
+    def get_active_clkin(self):
+        """ Return the currently active input reference number. Returns None if no input is active.
+
+        Returns:
+
+            int: currently active input reference number
+        """
+        input_states = self.get_clkin_status()
+        if not any(input_states):
+            return None
+
+        reg_82 = self.read_reg(0x0082)
+        active_input = (reg_82 >>3 ) & 0x3
+
+        if not input_states[active_input]:
+            self.logger.warn(f'The input selected by the PLL is not active')
+        return active_input
+
     def get_pll1_status(self):
         """ Returns a dict describing the status of PLL1
         """
@@ -986,8 +1039,8 @@ class hmc7044(object):
 
             best_input = (reg_82 >>5) & 0x3,
             active_input = (reg_82 >>3) & 0x3,
-            FSM_state = ('reset', 'Acquisition', 'Locked', 'Invalid',
-                              'holdover', 'DAC holdover exit', 'NA', 'NA')[reg_82 >> 4 & 0x7],
+            FSM_state = ('Reset', 'Acquisition', 'Locked', 'Invalid',
+                              'holdover', 'DAC holdover exit', 'NA', 'NA')[(reg_82 >> 4) & 0x7],
             average_DAC_code = reg_83 & 0x7F,
             holdover_comparator_value = (reg_84 >> 7) & 1,
             current_DAC_code = reg_84 & 0x7F,
@@ -1045,34 +1098,63 @@ class hmc7044(object):
         return status
 
 
+
     def status(self):
         """ Print PLL status information
         """
 
-        pid = self.get_product_id()
-        subsystems = dict(
-            pll1_status = self.get_pll1_status(),
-            pll2_status = self.get_pll2_status(),
-            sysref_status = self.get_sysref_status()
-            )
+        # subsystems = dict(
+        #     pll1_status = self.get_pll1_status(),
+        #     pll2_status = self.get_pll2_status(),
+        #     sysref_status = self.get_sysref_status()
+        #     )
         print(f'HMC7044 Status')
-        print(f'  Product ID = 0x{pid:06X}')
+        pid = self.get_product_id()
+        print(f'   Product ID = 0x{pid:06X}')
+        alarm = self.read_reg(0x7c)
+        print(f'PLL1 alarm readback: reg 0x7c = {alarm:08b}')
+        print(f'   Near lock: {bool(alarm & 0x80)}')
+        print(f'   Lock acquisition: {bool(alarm & 0x40)}')
+        print(f'   Lock detect: {bool(alarm & 0x20)}')
+        print(f'   Holdover status: {bool(alarm & 0x10)}')
+        print(f'   CLKIN0 (ETH_REG_125MHz) LOS: {bool(alarm & 0x1)}')
+        print(f'   CLKIN1 (BP_CLK_10MHZ) LOS: {bool(alarm & 0x2)}')
+        print(f'   CLKIN2 (SMA_CLK_10MHZ) LOS: {bool(alarm & 0x4)}')
+        print(f'   CLKIN3 (PL_RECCLK) LOS: {bool(alarm & 0x8)}')
+        prio = self.read_reg(0x14)
+        print(f'PLL1 ref priority: Reg 0x14 =  {prio:08b}')
+        print(f'   1st priority clock: {(prio >>0) & 3}')
+        print(f'   2nd priority clock: {(prio >>2) & 3}')
+        print(f'   3rd priority clock: {(prio >>4) & 3}')
+        print(f'   4th priority clock: {(prio >>6) & 3}')
+        swc = self.read_reg(0x29)
+        print(f'PLL1 ref switching control: Reg 0x29 = {swc:08b}')
+        print(f'   Bypass debouncer: {(swc >> 5) & 1}')
+        print(f'   Manual CLKIN source: {(swc >> 3) & 3}')
+        print(f'   Holdover uses DAC: {(swc >> 2) & 1}')
+        print(f'   Autorevertive manual switching: {(swc >> 1) & 1}')
+        print(f'   Automode reference switching: {(swc >> 0) & 1}')
+        print(f'PLL1 status: Regs 0x82-0x87')
+        for k,v in self.get_pll1_status().items():
+            print(f'    {k:27s}: {v}')
+        print(f'PLL2 status: Regs 0x8C-0x8F')
+        for k,v in self.get_pll2_status().items():
+            print(f'    {k:27s}: {v}')
+        print(f'SYSREF status: Regs 0x91')
+        for k,v in self.get_sysref_status().items():
+            print(f'    {k:27s}: {v}')
         print()
-        for subsystem_name, subsystem_status in subsystems.items():
-            print(f' {subsystem_name}')
-            print()
-            for k,v in subsystem_status.items():
-                print(f'    {k} = {v}')
-            print()
 
     def set_oscout(self, path_enable=1, path_divider=0, driver_mode=2, driver_impedance=0, driver_enable=1):
-        """ Sets the OSCOUT path and outputs.
+        """ Sets the OSCOUT1 path and outputs. OSCOUT0 is disabled as it shares a pin with CLKIN2, which is used as a clock input.
 
         OSCOUT is the output of PLL1's external VCXO, which can be divided and
         routed to the dedicated OSCOUT0 and OSCOUT1 pins.
 
 
         Parameters:
+
+            output (int): OSCOUT output number to configure (0 or 1). OSCOUT0 connects to the same pin as CLKIN2.
 
             path_enable (bool): OSCOUT output path enabled if True
 
@@ -1112,8 +1194,8 @@ class hmc7044(object):
         # pll2_cfg1_obuf0_drvr_en[0:0] = 0x1
         # pll2_cfg5_obuf0_drvr_res[2:1] = 0x0
         # pll2_cfg5_obuf0_drvr_mode[5:4] = 0x2
-        regs[0x3A]= (driver_mode << 4) | (driver_impedance << 1) | driver_enable
-        regs[0x3B]= regs[0x3A]
+        regs[0x3A]= 0 # disable OSCOUT0
+        regs[0x3B]= (driver_mode << 4) | (driver_impedance << 1) | driver_enable # set OSCOUT1
 
         self.write_regs(regs)
 
