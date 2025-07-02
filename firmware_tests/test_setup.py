@@ -24,10 +24,12 @@ def delete_plots(request):
         logger.warning(f"{PLOT_DIR} does not exist")
         return
     if TEST_CONFIG['delete_plots_before_run']:
-        logger.info("Deleting previous plots")
-        pattern = os.path.join(PLOT_DIR, '*.png')
-        for file in Path('.').rglob(pattern):
+        logger.info('Deleting previous plots')
+        for file in PLOT_DIR.rglob('*.png'):
             os.remove(file)
+    for dirpath, dirnames, filenames in os.walk(PLOT_DIR, topdown=False):
+        if not dirnames and not filenames:
+            os.rmdir(dirpath)
 
 @pytest.fixture(scope=TEST_CONFIG['conn_scope'])
 def board_conn(request, delete_plots):
