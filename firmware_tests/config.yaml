@@ -10,19 +10,21 @@ test_config:
                             # "class" if you want to reuse connection.
     always_plot: True       # Always generate comparison plots during tests
     plot_on_failure: True    # Only generate comparison plots if test fails
-    delete_plots_before_run: True
+    delete_plots_before_run: False
+    input_width: 8 #width of ADC/FUNCGEN outputs: 8 for ICE, 14 for CRS
+    capture_width: 4 #width of data from capture engine assuming full bins: 4 for old ICE, 16 for ICE, 32 for CRS
+    implicit shift: 10 #shift that is implicitly applied to ADCDAQ data: 10 for ICE, 4 for CRS, 20 for CHORD
+    readout_shift: 4 #shift required to normalise capture data from scaler
+    scaler_shift: 31 #shift required to extract top 4 bits from scaler: 31 for ICE and CRS, 44 (or 45?) for CHORD
+    identity_postscaler: 21 #postscaler value such that a uniform gain of 1 results in unchanged input data at the output: 21 for ICE, 
     all_zeroes: {}
-    all_ones:
-        postscaler_min: 12
-        postscaler_max: 28
+    all_ones: {}
     alternating_gain:
         min_period: 2
         max_period: 20
         step: 2
     constant_gain:
         gains: [-32768, -1, 2, 3, 32767]
-        postscaler_min: 0
-        postscaler_max: 31
         min: -8
         max: 8
     rounding:
@@ -31,6 +33,7 @@ test_config:
         postscaler_min: 22
         postscaler_max: 26
     zero_on_sat: {}
+    offset_encoding: {}
     overflow_stats:
         postscaler_min: 21
         postscaler_max: 26
