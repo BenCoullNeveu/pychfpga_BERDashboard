@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from test_setup import PLOT_DIR
-import pathlib
+from test_setup import PLOT_DIR, TEST_CONFIG
+from functools import wraps
 
 colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
@@ -32,6 +32,8 @@ colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
     fig.suptitle(title)
     fig.tight_layout()
     plt.savefig(PLOT_DIR/fname)'''
+def get_min_max(width):
+    return -2**(width-1), 2**(width-1)-1
 
 def plot(datasets, labels=[], y_range=None, data_range=None, split_complex=False, title="test", folder=None):
     if labels is None:
@@ -78,11 +80,13 @@ def gen_data(func, samples=2048, **kwargs):
     elif func == 'ramp':
         min = kwargs.get('min', 0)
         max = kwargs.get('max', samples)
-        return np.arange(samples) // int(samples / (max - min)) + min
+        res = np.repeat(np.arange(min, max + 1), samples // (max - min + 1))
+        return np.append(res, np.zeros(samples - res.size))
     elif func == 'periodic_ramp':
+        #TODO: fix to ensure bounds are always exactly respectful
         min = kwargs.get('min', 0)
         max = kwargs.get('max', samples)
-        res = np.tile(np.arange(min, max), samples // (max - min))
+        res = np.tile(np.arange(min, max + 1), samples // (max - min + 1))
         return np.append(res, np.arange(min, min + (samples - res.size)))
     elif func == 'complex_ramp':
         min = kwargs.get('min', 0)
@@ -94,3 +98,34 @@ def gen_data(func, samples=2048, **kwargs):
         return np.stack((reals, cmplx), axis=1).reshape(-1) #interleave the real and complex arrays
     elif func == 'arb':
         return kwargs.get('data', np.zeros(2048))
+    
+
+
+def compare_plot_data(test_unit=None, *, approximate=False):
+    def _decorate(test_unit):
+        @wraps(test_unit)
+        def wrapper(*args, **kwargs):
+            res = test_unit(*args, **kwargs)
+            data = res[0][0]
+            ref_data = res[0][1]
+            title = test_unit.__name__[5:] if len(res) < 2 else res[1]
+            folder = test_unit.__name__[5:] if len(res) >= 2 else None 
+            plot_kwargs = {} if len(res) < 3 else res[2]
+            if len(data.shape) > 1:
+                for i in range(data.shape[0]):
+                    if not np.equal(data[0], data[i]).all():
+                        plot(datasets=[data[0], data[i]], labels=["First channel", f"{i}th channel"], title=f"Different channeliser outputs for {title}")
+                    np.testing.assert_equal(data[0], data[i])
+                actual_data = data[0]
+            else:
+                actual_data = data
+            if TEST_CONFIG['always_plot'] or (TEST_CONFIG['plot_on_failure'] and not np.equal(data, ref_data).all()):
+                plot(datasets=[actual_data, *res[0][1:]], labels=['Returned', 'Reference'], title=title, folder=folder, **plot_kwargs)
+            if approximate:
+                np.testing.assert_allclose(actual_data, ref_data, atol=0.1)
+            else:
+                np.testing.assert_equal(actual_data, ref_data)
+        return wrapper
+    if test_unit:
+        return _decorate(test_unit)
+    return _decorate
