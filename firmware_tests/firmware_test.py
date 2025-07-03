@@ -10,6 +10,8 @@ from functools import wraps
 import sts
 import matplotlib.pyplot as plt
 import math
+from test_setup import PLOT_DIR
+from pychfpga.fpga_firmware.chfpga.f_engine.funcgen import FUNCGEN
 
 
 def compare_plot_data(test_unit):
@@ -130,14 +132,14 @@ class TestFW:
         logger.info(f"Expected {len(count)} packages, received {len([p for p in count if p])}.")
         assert all(count), "Missing packages from ICE board. Check connection and system configuration."
 
-    def _set_capture_funcgen(self, source: str, period: float = 1, **func_kwargs):
+    def _set_capture_funcgen(self, source: str, period: float = 1, frames_per_burst: int = 1, **func_kwargs):
         """
         Set funcgen to specified data output and capture outcoming data within specified period.
         """
         split = True if self.PLATFORM == "CRS" else False
         logger = self.get_logger()
         logger.debug("Starting data capture from ADC")
-        self.board.start_data_capture(period=period, source='adc')
+        self.board.start_data_capture(period=period, source='adc', frames_per_burst = frames_per_burst)
         logger.debug(f"Setting data source to {source.upper()}")
         self.board.set_channelizer(data_source=source, **func_kwargs)
         logger.debug("Initializing data receiver")
@@ -232,6 +234,36 @@ class TestFW:
         ref_data = (np.sin(np.arange(self.FG_NS) * 2 * np.pi / self.FG_NS * sin_freq) * 127).astype(self.FG_DTYPE_SIGNED)
         return data, ref_data
     
+
+
+#How to write to control register to change SHIFT
+    # # def shift_adc_input(self, bits_to_shift: int, address: int = FUNCGEN.SHIFT):
+    # #     self.board.fpga_i2c_write_read(address, bits_to_shift)
+
+    # @pytest.mark.parametrize("bits_to_shift", [1,10]) #to change
+    # def test_funcgen_shift_and_saturation(self,board_conn, setup_funcgen, bits_to_shift):
+    #     """"""
+    #     data_1 = self._set_capture_funcgen('adc', fft_bypass=True, scaler_bypass=True)
+    #     # self.shift_adc_input(bits_to_shift)
+    #     # self.board.fpga_i2c_write_read(FUNCGEN.SHIFT, bits_to_shift)
+    #     #####No I2C for crs???#####
+    #     data_2 = self._set_capture_funcgen('adc', fft_bypass=True, scaler_bypass=True)
+    #     plt.plot(data_1)
+    #     plt.plot(data_2)
+    #     plt.savefig(PLOT_DIR/"bits to shift")
+
+
+    #shift adc value and check if the correct number of saturations is outputted
+    def test_funcgen_saturated_adc(self,board_conn, setup_funcgen):
+        """ Test saturation of adc source"""
+        data_1 = self._set_capture_funcgen('adc').view("i2")[0]
+        
+        #shift adc value and compare expected saturations vs actual saturations
+        plt.plot(data_1)
+        plt.savefig(PLOT_DIR/f"adc source values")
+
+        
+    
     # #65536 possible diff seeds so we can test with 10 random seeds
     # #need to change so it works with all boards
     @pytest.mark.parametrize("seed", seeds)
@@ -259,11 +291,11 @@ class TestFW:
 
 
     def test_funcgen_random(self, board_conn, setup_funcgen):
-        """Monobit test on funcgen noise generator"""
+        """Monobit test on funcgen noise generator. P-val > 0.01 indicates randomness"""
         p_val_l= []
         for seed in self.seeds:
             sum = 0
-            data = self._set_capture_funcgen('noise', fft_bypass=True, scaler_bypass=True, seed = seed).view("u1")[0] #check first channelizer
+            data = self._set_capture_funcgen('noise', 1, 5, fft_bypass=True, scaler_bypass=True, seed = seed).view("u1")[0] #check first channelizer
             data = np.unpackbits(data)
             # avg = np.sum(data) / len(data)
             # avg_l.append(avg)
@@ -274,9 +306,105 @@ class TestFW:
             sn = abs(sum) / math.sqrt(len(data))
             p_val = math.erfc(sn)
             p_val_l.append(p_val)
-        print(self.seeds)
-        print(p_val_l)
         some_plot(self.seeds, p_val_l, "frequency", "seed", "p-val")
 
+    def test_funcgen_random_count(self, board_conn, setup_funcgen):
+        """Histogram of frequency counts"""
+        #increase frame number!
+        for seed in self.seeds:
+            data = self._set_capture_funcgen('noise', 1, 5, fft_bypass=True, scaler_bypass=True, seed = seed).view("i2")[0] #check first channelizer
+            # frequency, count = np.unique(data, return_counts = True)
+            plt.hist(data, 100, label=f"{seed=}")
+            # freq, count = np.unique(data, return_counts = True)
+        plt.savefig(PLOT_DIR/f"histogram of noise values")
+            
+
+
+    # def test_funcgen_random_extremes(self, board_conn, setup_funcgen):
+    #     """Histogram of frequency counts"""
+    #     #increase frame number!
+    #     for seed in self.seeds:
+    #         fig, axs = plt.subplots(2)
+    #         min_values_plot = axs[0]
+    #         max_values_plot = axs[1]
+    #         data = self._set_capture_funcgen('noise', 1, 5, fft_bypass=True, scaler_bypass=True, seed = seed).view("i2")[0] #check first channelizer
+    #         freq, count = np.unique(data, return_counts = True)
+    #         num_extremes = 25 # return the num_extremes values from the noise generator that have the lowest count
+    #         min_indices = np.argpartition(count, num_extremes)[:num_extremes]
+    #         max_indices = np.argpartition(count, -num_extremes)[-num_extremes:]
+    #         min_count = []
+    #         min_values = []
+    #         max_count = []
+    #         max_values = []
+    #         for i in min_indices:
+    #             min_values.append(freq[i])
+    #             min_count.append(count[i])
+    #         for i in max_indices:
+    #             max_values.append(freq[i])
+    #             max_count.append(count[i])
+
+    #         min_values_plot.plot(min_values, min_count, marker='o',linestyle='None', ms=1)
+    #         max_values_plot.plot(max_values, max_count, marker='o',linestyle='None',ms=1)
+    #         min_values_plot.set_title(f"min with {seed=}")
+    #         max_values_plot.set_title(f"min with {seed=}")
+    #     plt.savefig(PLOT_DIR/f"random min count with seed {seed}")
+
+    @pytest.mark.parametrize("extremum", ["min", "max"])
+    def test_funcgen_random_extremes(self, board_conn, setup_funcgen, extremum):
+        """Returns the number of counts of min/max values generated by random noise"""
+        for seed in self.seeds:
+            data = self._set_capture_funcgen('noise', 1, 5, fft_bypass=True, scaler_bypass=True, seed = seed).view("i2")[0] #check first channelizer
+            freq, count = np.unique(data, return_counts = True)
+            num_extremes = 15 # return the num_extremes values from the noise generator that have the lowest count
+            if extremum == "min":
+                indices = np.argpartition(count, num_extremes)[:num_extremes]
+            else:
+                indices = np.argpartition(count, -num_extremes)[-num_extremes:]
+            extreme_count = []
+            extreme_values = []
+            for i in indices:
+                extreme_values.append(freq[i])
+                extreme_count.append(count[i])
+                plt.plot(extreme_values, extreme_count, marker='o',linestyle='None', ms=1, label=f"{seed=}")
+        plt.savefig(PLOT_DIR/f"{extremum} {num_extremes} values generated randomly")
+
+
+    # def test_funcgen_random_max(self, board_conn, setup_funcgen):
+    #     """Histogram of frequency counts"""
+    #     #increase frame number!
+    #     for seed in self.seeds:
+    #         data = self._set_capture_funcgen('noise', 1, 5, fft_bypass=True, scaler_bypass=True, seed = seed).view("i2")[0] #check first channelizer
+    #         freq, count = np.unique(data, return_counts = True)
+    #         num_extremes = 15 # return the num_extremes values from the noise generator that have the lowest count
+    #         max_indices = np.argpartition(count, -num_extremes)[-num_extremes:]
+    #         min_count = []
+    #         min_values = []
+    #         max_count = []
+    #         max_values = []
+    #         for i in max_indices:
+    #             max_values.append(freq[i])
+    #             max_count.append(count[i])
+    #         plt.plot(max_values, max_count, marker='o',linestyle='None', ms=1)
+    #     plt.savefig(PLOT_DIR/f"random count  {seed}")
+
+    # def test_funcgen_random_min(self, board_conn, setup_funcgen):
+    #     """Histogram of frequency counts"""
+    #     #increase frame number!
+    #     for seed in self.seeds:
+    #         data = self._set_capture_funcgen('noise', 1, 5, fft_bypass=True, scaler_bypass=True, seed = seed).view("i2")[0] #check first channelizer
+    #         freq, count = np.unique(data, return_counts = True)
+    #         num_extremes = 15 # return the num_extremes values from the noise generator that have the lowest count
+    #         min_indices = np.argpartition(count, num_extremes)[:num_extremes]
+    #         min_count = []
+    #         min_values = []
+    #         max_count = []
+    #         max_values = []
+    #         for i in min_indices:
+    #             min_values.append(freq[i])
+    #             min_count.append(count[i])
+    #         plt.plot(min_values, min_count, marker='o',linestyle='None')
+    #     plt.savefig(PLOT_DIR/f"random max count with seed {seed}")
+
+
     
-    
+
