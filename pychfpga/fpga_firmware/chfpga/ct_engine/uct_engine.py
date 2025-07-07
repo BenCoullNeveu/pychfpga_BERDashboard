@@ -98,10 +98,11 @@ class UCTEngine(MMIRouter):
 
         super().__init__(router=router, router_port=router_port)
 
-        submodule_address_width = address_width - self.BSB_ROUTING_ADDRESS_WIDTH
         self.CT_LEVEL = self.fpga.CT_LEVEL
 
         assert self.CT_LEVEL >=1, "CT_LEVEL cannot be < 1"
+
+        self.CT1 = self.CT2 = self.CT3 = self.GTLINKS = None
 
         # Instantiate Level-1 CT registers
         self.CT1 = CT1Regs(router=self, router_port='CT1')
@@ -114,19 +115,9 @@ class UCTEngine(MMIRouter):
                 router_port='BPLINKS',
                 lane_groups=lane_groups,
                 verbose=1)
-        else:
-            self.CT2 = None
-            self.GTLINKS = 0
-
 
         if self.CT_LEVEL >=3:
-            self.CT3 = CT3Regs(
-                fpga_instance,
-                base_address=self.base_address,
-                address_width=submodule_address_width,
-                router_port=self.BSB_ROUTER_CT3_PORT)
-        else:
-            self.CT3 = None
+            self.CT3 = CT3Regs(router=self, router_port='CT3')
 
 
 
@@ -180,6 +171,49 @@ class UCTEngine(MMIRouter):
         """
 
         return [self.fpga.get_id(lane) for lane in self.get_lane_numbers()]
+
+    def set_data_width(self, width):
+        if width != 4:
+            raise RuntimeError(f'CT engine only supports a data width of 4+4 bits. {width}+{width} bits is not supported')
+    def get_data_width(self):
+        return 4
+
+    def set_frames_per_packet(self, frames):
+        if frames != 1:
+            self.logger.warn(f'{self!r}: CT engine only supports packaging 16 frame per packet. {frames} frames are not supported')
+
+    def get_frames_per_packet(self):
+        return 1
+
+
+    def init_crossbars(
+            self,
+            mode=None,
+            frames_per_packet=2,
+            bin_map=None,
+
+            cb1_lanes=16,
+            cb1_bins=64,
+            dsmap=list(range(16)),
+            cb1_bypass=False,
+            cb1_combine_data_flags=0,
+
+            bp_shuffle_bypass=1,
+
+            cb2_lanes=None,
+            cb2_bins=1,
+            cb2_bypass=False,
+
+            crate_shuffle_bypass=1,
+
+            remap=True,
+            chan8_channel_map=list(range(8)),
+            send_flags=True):
+
+        if mode == 'corr8':
+            if  self.CT_LEVEL != 1:
+                raise RuntimeError(f'CT_LEVEL must be 1 for {mode} mode')
+        return np.arange(8)
 
     # def status(self):
     #     """ Displays the status of the GPU GTX hardware"""
