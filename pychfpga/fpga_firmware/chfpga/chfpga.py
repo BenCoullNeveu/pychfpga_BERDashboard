@@ -973,13 +973,9 @@ class chFPGA(FPGAFirmware):
             if self.NUMBER_OF_CORRELATORS:
                 self.logger.debug(f'{self!r}: === Instantiating X-Engine, type={self.CORR_TYPE}')
                 if self.CORR_TYPE == "CORR44":
-                    self.CORR = CORR.CORR(
-                        router=self.top_router,
-                        router_port = 'CORR')
+                    self.CORR = CORR.CORR(router=self.top_router, router_port = 'CORR')
                 elif self.CORR_TYPE == "UCORR44":
-                    self.CORR = UCORR.UCORR(
-                        router=self.top_router,
-                        router_port = 'CORR')
+                    self.CORR = UCORR.UCORR(router=self.top_router, router_port = 'CORR')
             else:
                 self.CORR = None
 
@@ -990,14 +986,9 @@ class chFPGA(FPGAFirmware):
             if self.NUMBER_OF_GPU_LINKS:
                 self.logger.debug(f'{self!r}: === Instantiating real-time data offload links, type={self.GPU_LINK_TYPE}')
                 if self.GPU_LINK_TYPE == '10GE':
-                    self.GPU = gpu.GPU(self, self._GPU_LINK_BASE_ADDR, self._GPU_LINK_ADDR_INCREMENT)
+                    self.GPU = gpu.GPU(router=self.top_router, router_port = 'GPU')
                 elif self.GPU_LINK_TYPE == '100GE':
-                    self.GPU = cge.CGE(
-                        fpga_instance=self,
-                        base_address = self.BSB_TOP_ADDR,
-                        address_width = self._TOP_PORT_ADDR_WIDTH,
-                        router_port =  self._BSB_GPU_PORT
-                        )
+                    self.GPU = cge.CGE(router=self.top_router, router_port = 'GPU')
                 else:
                     raise RuntimeError(f'Unknown data link type {self.GPU_LINK_TYPE}')
             else:
@@ -1009,7 +1000,7 @@ class chFPGA(FPGAFirmware):
 
             if self.CAPTURE_TYPE == 'UCAP':
                 self.logger.debug(f'{self!r}: === Instantiating UCAP')
-                self.UCAP = ucap.UCAP(self, self._UCAP_BASE_ADDR, 0)
+                self.UCAP = ucap.UCAP(router=self.top_router, router_port = 'UCAP')
             elif self.CAPTURE_TYPE !='PROBER':
                 raise RuntimeError(f'Unknown Data capture type {self.CAPTURE_TYPE}')
 
