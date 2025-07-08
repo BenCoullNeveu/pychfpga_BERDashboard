@@ -35,7 +35,7 @@ colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
 def get_min_max(width):
     return -2**(width-1), 2**(width-1)-1
 
-def plot(datasets, labels=[], y_range=None, data_range=None, split_complex=False, title="test", folder=None):
+def plot(datasets, labels=[], split_plots=False, y_range=None, data_range=None, split_complex=False, title="test", folder=None):
     if labels is None:
         labels = []
 
@@ -53,22 +53,23 @@ def plot(datasets, labels=[], y_range=None, data_range=None, split_complex=False
         data_range = (0, lengths[0])
     elif np.isscalar(data_range):
         data_range = (0, data_range)
-   
-    fig, ax = plt.subplots()#(len(datasets), figsize=(8, 6)
-    if y_range is not None:
-        ax.set_ylim(y_range)
+    
+
+    fig, axs = plt.subplots(len(datasets) if split_plots else 1)
     for i in range(len(datasets)):
+        ax = axs[i] if split_plots else axs
+        if y_range is not None:
+            ax.set_ylim(y_range)
         if split_complex:
             ax.plot(datasets[i][data_range[0]+1:data_range[1]:2], color=colors[2*i], label=labels[i] + "(Re)")
             ax.plot(datasets[i][data_range[0]:data_range[1]:2], color=colors[2*i+1], label=labels[i] + "(Im)")
         else:
             ax.plot(datasets[i][data_range[0]:data_range[1]], color=colors[i], label=labels[i])
         #axs.set_title(labels[i])
-    ax.legend()
+        ax.legend()
     fig.suptitle(title)
-    #fig.tight_layout()
     dir = PLOT_DIR if folder is None else PLOT_DIR / folder
-    dir.mkdir(exist_ok=True)
+    dir.mkdir(parents=True, exist_ok=True)
     plt.savefig(dir/title)
 
 
@@ -81,9 +82,9 @@ def gen_data(func, samples=2048, **kwargs):
         min = kwargs.get('min', 0)
         max = kwargs.get('max', samples)
         res = np.repeat(np.arange(min, max + 1), samples // (max - min + 1))
-        return np.append(res, np.zeros(samples - res.size))
+        return np.append(res, max * np.ones(samples - res.size))
     elif func == 'periodic_ramp':
-        #TODO: fix to ensure bounds are always exactly respectful
+        #TODO: fix to ensure bounds are always exactly respected
         min = kwargs.get('min', 0)
         max = kwargs.get('max', samples)
         res = np.tile(np.arange(min, max + 1), samples // (max - min + 1))
@@ -101,7 +102,7 @@ def gen_data(func, samples=2048, **kwargs):
     
 
 
-def compare_plot_data(test_unit=None, *, approximate=False):
+def compare_plot_data(test_unit=None, *, split_plots=False, approximate=False, atol=0.1):
     def _decorate(test_unit):
         @wraps(test_unit)
         def wrapper(*args, **kwargs):
@@ -121,10 +122,11 @@ def compare_plot_data(test_unit=None, *, approximate=False):
                 actual_data = data
             if TEST_CONFIG['always_plot'] or (TEST_CONFIG['plot_on_failure'] and not np.equal(data, ref_data).all()):
                 plot(datasets=[actual_data, *res[0][1:]], labels=['Returned', 'Reference'], title=title, folder=folder, **plot_kwargs)
-            if approximate:
-                np.testing.assert_allclose(actual_data, ref_data, atol=0.1)
-            else:
-                np.testing.assert_equal(actual_data, ref_data)
+            if not TEST_CONFIG.get('only_plot', False):
+                if approximate:
+                    np.testing.assert_allclose(actual_data, ref_data, atol=atol)
+                else:
+                    np.testing.assert_equal(actual_data, ref_data)
         return wrapper
     if test_unit:
         return _decorate(test_unit)

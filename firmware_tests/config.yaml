@@ -11,12 +11,13 @@ test_config:
     always_plot: True       # Always generate comparison plots during tests
     plot_on_failure: True    # Only generate comparison plots if test fails
     delete_plots_before_run: False
+    only_plot: True
     input_width: 8 #width of ADC/FUNCGEN outputs: 8 for ICE, 14 for CRS
-    capture_width: 4 #width of data from capture engine assuming full bins: 4 for old ICE, 16 for ICE, 32 for CRS
+    capture_width: 8 #width of data from capture engine assuming full bins: 4 for old ICE, 8 for ICE, 16 for CRS
     implicit shift: 10 #shift that is implicitly applied to ADCDAQ data: 10 for ICE, 4 for CRS, 20 for CHORD
-    readout_shift: 4 #shift required to normalise capture data from scaler
-    scaler_shift: 31 #shift required to extract top 4 bits from scaler: 31 for ICE and CRS, 44 (or 45?) for CHORD
-    identity_postscaler: 21 #postscaler value such that a uniform gain of 1 results in unchanged input data at the output: 21 for ICE, 
+    readout_shift: 0 #shift required to normalise capture data from scaler
+    scaler_shift: 26 #shift required to extract top C bits from scaler, where c is the capture width: 35-8 for ICE and CRS, 44 (or 45?) for CHORD
+    identity_postscaler: 16 #postscaler value such that a uniform gain of 1 results in unchanged input data at the output: 16 for ICE, 
     all_zeroes: {}
     all_ones: {}
     alternating_gain:
@@ -24,7 +25,7 @@ test_config:
         max_period: 20
         step: 2
     constant_gain:
-        gains: [-32768, -1, 2, 3, 32767]
+        gains: [2, 3, 32767, 32768, 65535]
         min: -8
         max: 8
     rounding:

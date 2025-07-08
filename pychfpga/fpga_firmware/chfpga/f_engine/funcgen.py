@@ -153,7 +153,7 @@ class FUNCGEN(MMI):
         """ Resets the function generator"""
         self.pulse_bit('RESET')
 
-    def set_data_source(self, source_name, data=None, seed=None, **kwargs):
+    def set_data_source(self, source_name, seed=None, **kwargs):
         """
         Selects the type of data outputed by the function generator: ADC
         signal, noise generator, frame counters, predetermined or user-provided waveform.
@@ -183,8 +183,8 @@ class FUNCGEN(MMI):
             self.BYTE_A = seed & 0xff
             self.BYTE_B = (seed >> 8) & 0xff | 0x80  # Set bit 7 to indicate unknown waveform
 
-        if data is not None:
-            self.set_function('arb', data=data)
+        #if data is not None:
+        #    self.set_function('arb', data=data)
 
         self.FUNCTION = self.DATA_SOURCE_NAMES[source_name]
 

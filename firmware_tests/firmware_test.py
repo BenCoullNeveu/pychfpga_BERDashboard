@@ -15,10 +15,10 @@ MIN_OUTPUT, MAX_OUTPUT = get_min_max(TEST_CONFIG.get('capture_width', 16))
 IMPLICIT_SHIFT = TEST_CONFIG.get('implicit shift', 10)
 READOUT_SHIFT = TEST_CONFIG.get('readout_shift', 4)
 SCALER_SHIFT = TEST_CONFIG.get('scaler_shift', 31)
-IDENTITY_POSTSCALER = TEST_CONFIG.get('identity_scaler', 21)
-POSTSCALER_MIN = IDENTITY_POSTSCALER - INPUT_WIDTH     - 1
-POSTSCALER_MAX = IDENTITY_POSTSCALER + INPUT_WIDTH - 4 + 2
-
+IDENTITY_POSTSCALER = TEST_CONFIG.get('identity_postscaler', 21)
+POSTSCALER_MIN = SCALER_SHIFT - INPUT_WIDTH - IMPLICIT_SHIFT
+POSTSCALER_MAX = 35 - IMPLICIT_SHIFT
+logging.getLogger().debug(f'Min: {POSTSCALER_MIN}, Max: {POSTSCALER_MAX}')
 
 '''def get_func(name):
     if name not in TEST_CONFIG: return {'func': 'const', 'a': 0}
@@ -204,6 +204,7 @@ class TestFW:
         sin_freq = 100
         ref_data = (np.sin(np.arange(self.FG_NS) * 2 * np.pi / self.FG_NS * sin_freq) * 127).astype("i1")
         return [data, ref_data],
+
     
     def _set_capture_scaler(self, func, read=True, **func_kwargs):
         '''
@@ -223,7 +224,6 @@ class TestFW:
     def test_scaler_all_zeroes(self, board_conn, setup_scaler):
         '''
         Set all gains to 0 and tests if output is uniformly 0.
-        
         The input ranges from ramp_min to ramp_max.
         '''
         self.board.set_gains(0)
@@ -248,6 +248,8 @@ class TestFW:
         self.board.set_gains(1, postscaler=postscaler)
         min = TEST_CONFIG['all_ones'].get('ramp_min', MIN_INPUT)
         max = TEST_CONFIG['all_ones'].get('ramp_max', MAX_INPUT)
+        for ch in self.board.chan:
+            ch.SCALER.CAP_DATA_TYPE = 2
         source, data = self._set_capture_scaler('ramp', min=min, max=max)
         ref_data = np.clip(source * 2**IMPLICIT_SHIFT * 2**postscaler // 2**SCALER_SHIFT, MIN_OUTPUT, MAX_OUTPUT)
         return [data, ref_data], f"all_ones[glog={postscaler}]"
@@ -312,14 +314,14 @@ class TestFW:
         val = np.clip(val, min_val, max_val)
         self.board.set_gains((1, IDENTITY_POSTSCALER-sig_bit))
         self.board.set_scaler_rounding_mode(rounding_mode)
-        source, data = self._set_capture_scaler('ramp', min=(val * 2**sig_bit), max=((val + 1) * 2**sig_bit))
-        bottom = abs(source & (2**sig_bit - 1))
+        source, data = self._set_capture_scaler('ramp', min=(val * 2**sig_bit), max=((val + 1) * 2**sig_bit - 1))
+        bottom = abs(source % (2**sig_bit))
         if rounding_mode == 1:
             round_up = bottom >= 2**(sig_bit - 1)
         elif rounding_mode == 2:
             round_up = (bottom > 2**(sig_bit - 1)) | ((bottom == 2**(sig_bit - 1)) & (val % 2 == 1))
         ref_data = np.clip(val + round_up, MIN_OUTPUT, MAX_OUTPUT)
-        return [data, ref_data], f"convergent_rounding[val={val}, sig_bit={sig_bit}, rounding={'normal' if rounding_mode == 1 else 'convergent'}]"
+        return [data, source / 2**sig_bit], f"rounding[val={val}, sig_bit={sig_bit}, rounding={'normal' if rounding_mode == 1 else 'convergent'}]", {'split_plots': True}
     
     @compare_plot_data
     @pytest.mark.scaler

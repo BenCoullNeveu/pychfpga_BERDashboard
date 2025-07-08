@@ -205,7 +205,7 @@ class SCALER(MMI):
 
             else: # use linear + log gains
                 self.USE_FLOAT_GAINS = 0
-                if any(gains < 0) or any(gains > 65535) or any(gains != gains.astype('<i2')):
+                if any(gains < 0) or any(gains > 65535) or any(gains != gains.astype('<u2')):
                     raise ValueError('All gains must be integers between 0 and 65535')
 
 

@@ -9,8 +9,7 @@ import glob
 CONN_CONFIG = load_yaml_config("connection_config")
 TEST_CONFIG = load_yaml_config("test_config")
 
-RESULT_DIR = Path("test_results")
-PLOT_DIR = RESULT_DIR / "comp_plots"
+PLOT_DIR = Path("test_results")
 
 
 if TEST_CONFIG['always_plot'] or TEST_CONFIG['plot_on_failure']:
