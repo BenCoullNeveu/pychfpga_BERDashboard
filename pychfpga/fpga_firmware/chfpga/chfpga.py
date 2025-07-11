@@ -2887,7 +2887,6 @@ class chFPGA(FPGAFirmware):
         changed. Use `set_funcgen_function()` if the function generator is
         already active and you want to change only the waveform
         """
-
         source = source.lower()
 
         if channels is None:
