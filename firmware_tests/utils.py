@@ -1,11 +1,14 @@
 import matplotlib.pyplot as plt
+from cycler import cycler
 import numpy as np
 from test_setup import PLOT_DIR, TEST_CONFIG
 from functools import wraps
+from textwrap import wrap
 
-colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+styles = cycler(color=['orange', 'midnightblue', 'forestgreen', 'sienna'], linestyle=['-', '-', '-', '-'])
+plt.rc('axes', prop_cycle=styles)
 
-def plot(datasets, labels=[], split_plots=False, y_range=None, data_range=None, split_complex=False, title="test", folder=None):
+def plot(datasets, labels=[], y_range=None, data_range=None, split_complex=False, title="test", folder=None):
     if labels is None:
         labels = []
 
@@ -25,19 +28,23 @@ def plot(datasets, labels=[], split_plots=False, y_range=None, data_range=None, 
         data_range = (0, data_range)
     
 
-    fig, axs = plt.subplots(len(datasets) if split_plots else 1)
-    for i in range(len(datasets)):
-        ax = axs[i] if split_plots else axs
+    fig, axs = plt.subplots(2 if split_complex else 1)
+    for i in range(2*len(datasets)):
+        im = i >= len(datasets)
+        ax = axs[int(im)] if split_complex else axs
+        if im and not split_complex:
+            break
         if y_range is not None:
             ax.set_ylim(y_range)
-        if split_complex:
-            ax.plot(datasets[i][data_range[0]:data_range[1]:2], color=colors[2*i], label=labels[i] + "(Re)")
-            ax.plot(datasets[i][data_range[0]+1:data_range[1]:2], color=colors[2*i+1], label=labels[i] + "(Im)")
+        if split_complex and not im:
+            ax.plot(datasets[i][data_range[0]:data_range[1]:2], label=labels[i] + "(Re)")
+        elif split_complex and im:
+            ax.plot(datasets[i % len(datasets)][data_range[0]+1:data_range[1]:2], label=labels[i % len(datasets)] + "(Im)")
         else:
-            ax.plot(datasets[i][data_range[0]:data_range[1]], color=colors[i], label=labels[i])
+            ax.plot(datasets[i][data_range[0]:data_range[1]], label=labels[i])
         #axs.set_title(labels[i])
         ax.legend()
-    fig.suptitle(title)
+    fig.suptitle("\n".join(wrap(title, 60)))
     dir = PLOT_DIR if folder is None else PLOT_DIR / folder
     dir.mkdir(parents=True, exist_ok=True)
     plt.savefig(dir/title)
@@ -76,12 +83,14 @@ def compare_plot_data(test_unit=None, *, split_plots=False, approximate=False, a
     def _decorate(test_unit):
         @wraps(test_unit)
         def wrapper(*args, **kwargs):
-            if args[0] == None:
-                return
             res = test_unit(*args, **kwargs)
+            if res is None:
+                return
             data = res[0][0]
             ref_data = res[0][1]
             title = test_unit.__name__[5:] if len(res) < 2 else res[1]
+            title = title.replace('_', ' ')
+            title = title.capitalize()
             folder = test_unit.__name__[5:] if len(res) >= 2 else None 
             plot_kwargs = {} if len(res) < 3 else res[2]
             if len(data.shape) > 1:
