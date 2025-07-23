@@ -3244,10 +3244,14 @@ class chFPGA(FPGAFirmware):
             burst_period_in_seconds=None,
             burst_period_in_frames=None,
             offset=0,
-            send_delay=0):
+            send_delay=0,
+            mode = 0):
         """
-        Starts the transmission of ADC (post-function generator / pre-FFT) or SCALER (post
-        scaler) data frames to the Ethernet port at the specified rate.
+        Starts periodic capture and transmission to the host computer of the Function generator (or ADC) raw data or SCALER data frames.
+
+
+        Some parameter are applicable to the PROBER or the UCAP capture engines, depending on which
+        one is supported by the platform.
 
         Parameters:
 
@@ -3257,32 +3261,43 @@ class chFPGA(FPGAFirmware):
 
             burst_period_in_frames (int): Number of frames between captured bursts.
 
-            number_of_bursts (int): Number of bursts to send, after which the FPGA stops sending
+            number_of_bursts (int): (PROBER only) Number of bursts to send, after which the FPGA stops sending
                 data. If `number_of_bursts` =0, the transmission continues indefinitely, until
                 stopped by `stop_data_capture()`.
 
-            frames_per_burst (int): Number of frames to send in a single burst. Default is 1.
-                Limited by buffer space in the FPGA.
+            frames_per_burst (int): (PROBER only) Number of frames to send in a single burst. Default is 1.
+                Limited by buffer space in the FPGA. This field is ignored if the UCAP capture
+                engine is used by the platform (see ``mode`` parameter).
 
-            source (str): selects the data source. 'adc':  the data is taken after the function
-                generator (sorry, non intuitive). `scaler`: the data is taken after the scaler.
-                Default is 'scaler'.
+            source (str): string specifying the data source.
+                - 'funcgen':  the data is taken after the function generator, which can be
+                  configured to pass on the ADC data or an internally generated waveform.
+                - `scaler`: the data is taken on the scaler capture output port.
 
             channels (list): list of channels for which the data capture will be enabled. others are
-            left untouched.
+                left untouched. with PROBER, any channel can be slelected. With UCAP mode 3, all
+                channels are sent and ``channels`` is ignored. In mode 1-3, only the first 4, 2 or 1
+                channels listed in ``channels`` will be sent.
 
-            sync (bool):
+            sync (bool): When True, a local sync is performed.
 
-            verbose (int):
+            verbose (int): A non-zero value increases the amount of information that is printed or logged.
 
-            offset (int): Number that translates to how many frames are skipped before the capture
+            offset (int): (PROBER only) Number that translates to how many frames are skipped before the capture
                 counters starts after a sync(). This is used to stagger capture frame transmission
                 between boards in a crate to prevent UDP packets from being dropped by a switch.
 
-            send_delay (int): Number that sets the amount of time to wait
+            send_delay (int): (PROBER only) Number that sets the amount of time to wait
                 before sending a group of packets that are captured in the local
                 buffer. This is a 16-bit number, where each unit corresponds to
                 524.288 us.
+
+            mode (int): (UCAP only). Sets the UCAP cature mode:
+
+                - 0: captures 2 contiguous frames from all 8 channels (``channels`` has no effect)
+                - 1: captures 4 contiguous frames from the first 4 channels listed in ``channels``.
+                - 2: captures 8 contiguous frames from the first 2 channels listed in ``channels``.
+                - 3: captures 16 contiguous frames from the first channel listed in ``channels``.
 
         Data is sent as N bursts ('number_of_bursts') of M frames ('frames_per_burst') . If
         'number_of_bursts' is zero or not specified, burst transmission is continuous.
@@ -3341,7 +3356,30 @@ class chFPGA(FPGAFirmware):
             self.UCAP.CAPTURE_PERIOD = burst_period_in_frames-1
             self.UCAP.CAPTURE_PERIOD2 = burst_period_in_frames-1
 
+            if mode == 0:
+                if channels[:8] != range(8):
+                    raise RuntimeError('UCAP mode 0 can only capture channels 0-7')
+            elif mode == 1:
+                self.UCAP.CH0 = channels[0]
+                self.UCAP.CH1 = channels[1]
+                self.UCAP.CH2 = channels[2]
+                self.UCAP.CH3 = channels[3]
+            elif mode == 2 :
+                self.UCAP.CH0 = channels[0]
+                self.UCAP.CH1 = channels[1]
+            elif mode == 1:
+                self.UCAP.CH0 = channels[0]
+            else:
+                raise RuntimeError(f'Invalid UCAP mode number {mode}')
+            self.UCAP.MODE = mode
+
+
+
         if self.CAPTURE_TYPE =='PROBER':
+
+            # Do not limit the transfer rate
+            self.GPIO.HOST_FRAME_READ_RATE = 5
+
             # Stop data capture on *ALL* channels
             for chan in self.get_channelizers():
                 chan.PROBER.RESET = 1
