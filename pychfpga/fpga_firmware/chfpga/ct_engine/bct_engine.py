@@ -439,7 +439,7 @@ class BCTEngine(MMIRouter):
 
             if self.CROSSBAR1_TYPE=="URAM":
                 self.set_corr_reset(0)
-                self.set_ant_reset(0)
+                self.set_chan_reset(0)
                 return (0,)
 
             # Get raw data from the channelizer (all 32-bit sent as is). Only 8 lanes are available to the GPU.
@@ -1298,7 +1298,7 @@ class BCTEngine(MMIRouter):
             """
             if self.CT_TYPE == "UCT": # hack
                 self.set_corr_reset(0)
-                self.set_ant_reset(0)
+                self.set_chan_reset(0)
                 return 0
 
             raise RuntimeError('Unsupported mode corr8 with current firmware configuration')

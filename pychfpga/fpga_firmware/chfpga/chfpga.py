@@ -1166,7 +1166,7 @@ class chFPGA(FPGAFirmware):
         await asyncio.sleep(0)
         if self.HAS_ADCDAQ:
             self.set_adc_mask(0)  # null the ADC data before it gets to the channelizers to reduce power consumption
-        self.set_ant_reset(1)
+        self.set_chan_reset(1)
         self.set_corr_reset(1)
         for mezz in self.mezzanine.values():
             await mezz.set_mezzanine_power_async(False)
@@ -1208,7 +1208,7 @@ class chFPGA(FPGAFirmware):
 
         # self.logger.debug('%r:   Taking channelizers out of reset after FMC enabling' % (self))
 
-        self.set_ant_reset(1)
+        self.set_chan_reset(1)
 
         self.logger.debug(f'{self!r}:   Sending sync()')
         await asyncio.sleep(0)
@@ -1273,7 +1273,7 @@ class chFPGA(FPGAFirmware):
         self.logger.debug(f"{self!r}: Done with initializations.")
 
         await asyncio.sleep(0)
-        self.set_ant_reset(0)  # Disable channelizer reset
+        self.set_chan_reset(0)  # Disable channelizer reset
 
         self.check_adc_frequencies('after final channelizer reset release')
 
@@ -2731,10 +2731,10 @@ class chFPGA(FPGAFirmware):
         """ Resets the channelizers, corner-turn and correlator engines.
         Memory-mapped registers are not affected.
         """
-        self.set_ant_reset(1)
+        self.set_chan_reset(1)
         self.set_corr_reset(1)
         self.set_corr_reset(0)
-        self.set_ant_reset(0)
+        self.set_chan_reset(0)
 
     def set_default_channels(self, channels):
         """
@@ -3303,13 +3303,11 @@ class chFPGA(FPGAFirmware):
 
         # stop data from going into the PROBER and MASTER to minimize the risk
         # of malformed packets and unstable communications
-        reset_state = self.get_ant_reset()
+        reset_state = self.get_chan_reset()
 
         self.set_trig(0)  # disable data transmission if continuous mode is currently selected
-        self.set_ant_reset(1)  # no longer supported by firmware
+        self.set_chan_reset(1)  # no longer supported by firmware
 
-        # Do not limit the transfer rate
-        self.GPIO.HOST_FRAME_READ_RATE = 5
 
         if self.CAPTURE_TYPE == 'UCAP':
             self.UCAP.set_data_source(source)
@@ -3339,7 +3337,7 @@ class chFPGA(FPGAFirmware):
 
         # ** line below no longer supported by firmware *** enables data transmission if continuous mode is selected
         self.set_trig(1)
-        self.set_ant_reset(reset_state)
+        self.set_chan_reset(reset_state)
 
     def set_data_capture(self, channels=None, sub_period=23, source='adc'):
         """ Set the dynamic data capture parameters that can be changed on the
