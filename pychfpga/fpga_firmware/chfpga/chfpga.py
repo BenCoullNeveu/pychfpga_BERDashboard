@@ -5164,11 +5164,11 @@ class chFPGA(FPGAFirmware):
 
         self.CORR.stop_correlator()
 
-    def get_corr_receiver(self, verbose=1):
+    def get_corr_receiver(self, verbose=1, **kwargs):
         if self.corr_recv:
             return self.corr_recv
         sock = self.get_data_socket()
-        self.corr_recv = self.CORR.get_data_receiver(sock)
+        self.corr_recv = self.CORR.get_data_receiver(sock, **kwargs)
         return self.corr_recv
 
 
