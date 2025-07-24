@@ -5,10 +5,10 @@ from test_setup import PLOT_DIR, TEST_CONFIG
 from functools import wraps
 from textwrap import wrap
 
-styles = cycler(color=['orange', 'midnightblue', 'forestgreen', 'sienna'], linestyle=['-', '-', '-', '-'])
+styles = cycler(color=['tab:blue', 'orange', 'forestgreen'], marker=['.', ' ', ' '])
 plt.rc('axes', prop_cycle=styles)
 
-def plot(datasets, labels=[], y_range=None, data_range=None, split_complex=False, title="test", folder=None):
+def plot(datasets, labels=[], y_range=None, data_range=None, split_complex=False, title="test", xlabel=None, ylabel=None, folder=None):
     if labels is None:
         labels = []
 
@@ -42,8 +42,12 @@ def plot(datasets, labels=[], y_range=None, data_range=None, split_complex=False
             ax.plot(datasets[i % len(datasets)][data_range[0]+1:data_range[1]:2], label=labels[i % len(datasets)] + "(Im)")
         else:
             ax.plot(datasets[i][data_range[0]:data_range[1]], label=labels[i])
+        
         #axs.set_title(labels[i])
         ax.legend()
+        
+    fig.supxlabel("Bin" if xlabel is None else xlabel)
+    fig.supylabel("Output" if ylabel is None else ylabel)
     fig.suptitle("\n".join(wrap(title, 60)))
     dir = PLOT_DIR if folder is None else PLOT_DIR / folder
     dir.mkdir(parents=True, exist_ok=True)
@@ -53,8 +57,10 @@ def plot(datasets, labels=[], y_range=None, data_range=None, split_complex=False
 def gen_data(func, samples=2048, **kwargs):
     if func == 'a':
         return np.ones(samples) * kwargs.get('a', 1)
-    elif func == 'alternate':
-        return np.tile((kwargs.get('a', 0), kwargs.get('b', 1)), samples//2)
+    elif func == 'ab':
+        period = kwargs.get('period', 1)
+        res = np.tile(np.concatenate((np.repeat(kwargs.get('a', 0), period), np.repeat(kwargs.get('b', 1), period))), samples//(2*period))
+        return np.append(res, np.repeat(kwargs.get('a', 0), samples - res.size))
     elif func == 'ramp':
         min = kwargs.get('min', 0)
         max = kwargs.get('max', samples)
@@ -70,8 +76,9 @@ def gen_data(func, samples=2048, **kwargs):
         min = kwargs.get('min', 0)
         max = kwargs.get('max', np.sqrt(samples))
         half_samples = samples // 2
-        reals = np.arange(half_samples) // int(half_samples / (max - min)) + min
-        cmplx = np.tile(np.arange(min, max), half_samples // (max - min))
+        reals = np.repeat(np.arange(min, max + 1), half_samples // (max - min + 1))
+        reals = np.append(reals, max * np.ones(half_samples - reals.size))
+        cmplx = np.tile(np.arange(min, max + 1), half_samples // (max - min + 1))
         cmplx = np.append(cmplx, np.arange(min, min + half_samples - cmplx.size))
         return np.stack((reals, cmplx), axis=1).reshape(-1) #interleave the real and complex arrays
     elif func == 'arb':
@@ -102,7 +109,7 @@ def compare_plot_data(test_unit=None, *, split_plots=False, approximate=False, a
             else:
                 actual_data = data
             if TEST_CONFIG['always_plot'] or (TEST_CONFIG['plot_on_failure'] and not np.equal(data, ref_data).all()):
-                plot(datasets=[actual_data, *res[0][1:]], labels=['Returned', 'Reference'], title=title, folder=folder, **plot_kwargs)
+                plot(datasets=[*res[0][1:], actual_data], labels=['Reference', 'Returned'], title=title, folder=folder, **plot_kwargs)
             if not TEST_CONFIG.get('only_plot', False):
                 if approximate:
                     np.testing.assert_allclose(actual_data, ref_data, atol=atol)
@@ -112,3 +119,9 @@ def compare_plot_data(test_unit=None, *, split_plots=False, approximate=False, a
     if test_unit:
         return _decorate(test_unit)
     return _decorate
+
+def unsplit_imag(array):
+    return (array[::2] + array[1::2]*1j).astype(np.complex64)
+
+def split_imag(array):
+    return np.stack((np.real(array), np.imag(array)), axis=1).reshape(-1).astype(np.int64)

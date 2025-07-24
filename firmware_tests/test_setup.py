@@ -61,9 +61,16 @@ def setup_scaler(request, board_conn):
         scaler_bypass=False, 
         offset_binary_encoding=False, 
         scaler_eight_bit=request.cls.CAPTURE_WIDTH > 4, 
-        prober_user_flags=False, 
+        prober_user_flags=True, 
         scaler_rounding_mode=0,
         symmetric_saturation=False)
     for ch in request.cls.board.chan:
         ch.CAP_DATA_TYPE = 0
     logger.debug("Setup channelizer for testing scaler")
+
+@pytest.fixture(autouse=True)
+def check_fifo_overflow(request): #check that fifo overflow flag never went high during test
+    yield
+    for ch in request.cls.board.chan:
+        assert(ch.SCALER.CHAN_FIFO_OVERFLOW == 0)
+

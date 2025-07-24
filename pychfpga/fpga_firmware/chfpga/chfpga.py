@@ -4329,7 +4329,7 @@ class chFPGA(FPGAFirmware):
             self,
             scaler_eight_bit: bool,
             prober_user_flags: bool,
-            channels: List[int],
+            channels: List[int] = None,
     ):
         """
             Sets the scaler to 8-bit/4bit mode. The mode will be set individually for each channelizer.
@@ -5028,7 +5028,7 @@ class chFPGA(FPGAFirmware):
             self.logger.error('%r: Error getting FPGA channelizer metrics. Error is %r' % (self, e))
         return metrics'''
 
-    async def get_channel_metrics_async(self, ch, frame_cnt=1000, polling_interval=0.01):
+    async def get_channel_metrics_async(self, ch, frame_cnt=300_000, polling_interval=0.01):
         '''
         Returns the channelizer metrics for a specific channel in the format (scaler_overflow_count, adc_overflow_count)
 
@@ -5047,6 +5047,7 @@ class chFPGA(FPGAFirmware):
         self.chan[ch].SCALER.STATS_CAPTURE = 1
         while True:
             if self.chan[ch].SCALER.STATS_READY:
+                self.chan[ch].SCALER.STATS_CAPTURE = 0
                 return (self.chan[ch].SCALER.STATS_SCALER_OVERFLOWS, self.chan[ch].SCALER.STATS_ADC_OVERFLOWS)
             await asyncio.sleep(polling_interval)
                 

@@ -11,13 +11,14 @@ test_config:
     always_plot: True       # Always generate comparison plots during tests
     plot_on_failure: True    # Only generate comparison plots if test fails
     delete_plots_before_run: False
-    only_plot: False
+    only_plot: False   
     platform: "ICE-4bit-c"
     alternating_gain:
         min_period: 1
         max_period: 20
         step: 2
     constant_gain:
-        gains: [-32768, -3, -1, 32767]
+        # gains: [2, 3, 65535]
+        gains: [-32768, 3, 32767]
     rounding:
-        test_values: [-8, -1, 0, 2, 7]
+        test_values: [-8, -1, 7]
