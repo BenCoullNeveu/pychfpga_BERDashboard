@@ -1851,6 +1851,13 @@ class IceBoard(Motherboard, TuberIceBoardBase):
         print('%r: Waiting %i seconds' % (self, delay))
         await asyncio.sleep(delay)
         return True
+    
+    async def _update_arm_MLO(self, mlo_filename):
+        await self.arm_exec('mount -o remount,rw /dev/mmcblk0p1')
+        await self.arm_scp(mlo_filename, '/boot/MLO')
+        await self.arm_exec('sync')
+
+        return True
 
     async def _upload_fpga_bitstream(self, filename, card_filename=None, delay=120):
         """

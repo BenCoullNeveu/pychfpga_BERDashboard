@@ -1293,7 +1293,7 @@ class chFPGA(FPGAFirmware):
         target_frequency = self._sampling_frequency/self.adc_clock_divider
 
         for trial in range(10):
-            freqs = [self.FreqCtr.read_frequency(f'ADC_CLK{i}', gate_time=0.001) for i in self.ADC_FREQS_TO_CHECK] # ***JFC debug
+            freqs = [self.FreqCtr.read_frequency(f'ADC_CLK{i}', gate_time=0.001) for i in range(16)] # ***JFC debug
             err = any(abs(f - target_frequency) > 2.1e3 for f in freqs)
             msg = f'{self!r}: ADC output frequencies at stage {stage} are {[f/1e6 for f in freqs]} (check #{trial+1}) {"ERROR!" if err else ""}'
             if err:
@@ -2770,6 +2770,8 @@ class chFPGA(FPGAFirmware):
             postscaler=None,
             scaler_eight_bit=None,
             scaler_rounding_mode=None,
+            symmetric_saturation=None,
+            zero_on_sat=None,
             prober_user_flags=None,
             offset_binary_encoding=None,
             local_sync=True,
@@ -2828,6 +2830,12 @@ class chFPGA(FPGAFirmware):
                 channels=channels,
             )
 
+        if symmetric_saturation is not None:
+            self.set_symmetric_saturation(symmetric_saturation=symmetric_saturation, channels=channels)
+
+        if zero_on_sat is not None:
+            self.set_zero_on_sat(zero_on_sat=zero_on_sat, channels=channels)
+        
         if gain is not None:
             self.set_gains(gain=gain, postscaler=postscaler, channels=channels)
 
@@ -3259,7 +3267,7 @@ class chFPGA(FPGAFirmware):
 
             burst_period_in_seconds (float): Same as `period` or as a number of frames
 
-            burst_period_in_frames (int): Number of frames between captured bursts.
+            burst_period_in_frames (int): Number of frames between captured bursts - 1 second corresponds to approximately 39 000 frames.
 
             number_of_bursts (int): (PROBER only) Number of bursts to send, after which the FPGA stops sending
                 data. If `number_of_bursts` =0, the transmission continues indefinitely, until
@@ -4435,7 +4443,7 @@ class chFPGA(FPGAFirmware):
     def set_scaler_rounding_mode(
             self,
             scaler_rounding_mode: Literal[1, 2, 3],
-            channels: List[int],
+            channels: List[int] = None,
     ):
         """
             Sets the rounding mode of the scaler. The mode will be set individually for each channelizer.
@@ -4468,7 +4476,27 @@ class chFPGA(FPGAFirmware):
         for ch in range(len(self.chan)):
             if ch in channels:
                 self.logger.debug(f"Setting rounding mode of scaler in channel {ch} to {rm_name}.")
-                self.chan[ch].SCALER.ROUNDING_MODE = not rm_code
+                self.chan[ch].SCALER.ROUNDING_MODE = rm_code #not rm_code
+
+    def set_symmetric_saturation(self, symmetric_saturation, channels=None):
+        
+        if channels is None:
+            channels = self.default_channels
+
+        for ch in range(len(self.chan)):
+            if ch in channels:
+                self.logger.debug(f"{'Enabling' if symmetric_saturation else 'Disabling'} symmetric saturation on channel {ch}")
+                self.chan[ch].SCALER.SATURATE_ON_MINUS_7 = symmetric_saturation
+    
+    def set_zero_on_sat(self, zero_on_sat, channels=None):
+        
+        if channels is None:
+            channels = self.default_channels
+
+        for ch in range(len(self.chan)):
+            if ch in channels:
+                self.logger.debug(f"{'Enabling' if zero_on_sat else 'Disabling'} zeroing of saturated real+complex pairs on channel {ch}")
+                self.chan[ch].SCALER.ZERO_ON_SATURATION = zero_on_sat
 
     def set_gains(
             self,
@@ -4500,20 +4528,11 @@ class chFPGA(FPGAFirmware):
 
                 where:
 
-<<<<<<< HEAD
-                - ``Glin_scalar`` is a real or complex number. The real and imaginary part of the
-                  linear gain are integer values ranging from -32768 to 32767.
-
-                - ``Glog`` is the postscaler factor. This is a binary scaling factor, which is an
-                  integer between 0 and 31 representing a power of two that multiplies the linear
-                  gain. It is common to every bin.
-=======
                     - ``Glin_scalar`` is a real or complex number. The real and imaginary part of the linear
                     gain are integer values ranging from -32768 to 32767.
                     - ``Glog`` is the postscaler factor. This is a binary scaling factor, which is an integer
                           between 0 and 31 representing a power of two that multiplies the linear
                           gain. It is common to every bin.
->>>>>>> origin/vb/firmtest
 
                 - ``Glin_vector`` is a 1024-element vector of ``Glin_scalar``, where each element is
                   the individual gain of every bin.
@@ -5048,7 +5067,7 @@ class chFPGA(FPGAFirmware):
             metrics = Metrics()
         return metrics
 
-    async def get_channelizer_metrics_async(self, reset=True):
+    '''async def get_channelizer_metrics_async(self, reset=True):
         metrics = Metrics(
             type='GAUGE',
             slot=(self.slot or 0) - 1,
@@ -5069,8 +5088,37 @@ class chFPGA(FPGAFirmware):
                     chan.FFT.reset_fft_overflow_count()
         except IOError as e:
             self.logger.error('%r: Error getting FPGA channelizer metrics. Error is %r' % (self, e))
-        return metrics
+        return metrics'''
 
+    async def get_channel_metrics_async(self, ch, frame_cnt=1000, polling_interval=0.01):
+        '''
+        Returns the channelizer metrics for a specific channel in the format (scaler_overflow_count, adc_overflow_count)
+
+        Internally, this resets the STATS_CAPTURE flag, sets it, then waits for the STATS_READY flag to be asserted and collects the data.
+
+        Parameters:
+            - ch: the channel to collect the data from
+            - frame_cnt: number of data frames to integrate these statistics over
+            - polling_interval: how like to sleep in between checking if the stats_ready has been set
+
+        '''
+
+        self.chan[ch].SCALER.STATS_FRAME_COUNT = frame_cnt
+        self.chan[ch].SCALER.STATS_CAPTURE = 0
+        await asyncio.sleep(polling_interval * 10)
+        self.chan[ch].SCALER.STATS_CAPTURE = 1
+        while True:
+            if self.chan[ch].SCALER.STATS_READY:
+                return (self.chan[ch].SCALER.STATS_SCALER_OVERFLOWS, self.chan[ch].SCALER.STATS_ADC_OVERFLOWS)
+            await asyncio.sleep(polling_interval)
+                
+    async def get_scaler_metrics_async(self, frame_cnt=1000, polling_interval=0.00001, channels=None):
+        if channels is None:
+            channels = self.default_channels
+
+        results = await asyncio.gather(*[self.get_channel_metrics_async(ch, frame_cnt=frame_cnt, polling_interval=polling_interval) for ch in channels])
+        return results
+    
     async def get_crossbar_metrics_async(self, reset=True):
         metrics = Metrics()
         if not self.is_open():

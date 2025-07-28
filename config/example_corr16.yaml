@@ -299,23 +299,14 @@ def: &default  # defaults, referenced below
             comet_broker:
                 <<: *comet_broker
 
-# - for use of new D3A_config.yaml file at DRAO:
-#       - syntax to run fpga_master: fpga_master ~/path/to/config/D3A_config.yaml:D3A
-#       - change hwm to specific boards
-#       - change sync_method back to distributed_time
-#       - uncomment sync_source (actually, this is not included under fpga_array_params below, but could be added.
-#       - uncomment DRAO GPS, comment out R232 GPS
-#       - can customize hdf5_capture_elements_per_file
-#       - make sure to update pychfpga on basil to latest on jfc/dev branch (hopefully on its own D3A branch by now)
-#       - new key under index_map: uid, tells which board data comes from; new load_acq indexes by board.
 
-UAPISHKA:
+EXAMPLE:
     <<: *default
-    corr_sn: "UAPISHKA"
-    corr_name: "UAPISHKA"
-    comment: "UAPISHKA, corr16 mode, one board"
+    corr_sn: "EXAMPLE"
+    corr_name: "EXAMPLE"
+    comment: "EXAMPLE, corr16 mode, one board"
     run_name: '%(isotime)s_%(corr_name)s'
-    data_folder: '~/UAPISHKA/data'
+    data_folder: '~/EXAMPLE/data'
     run_folder: '%(data_folder)s/%(run_name)s'
     current_folder: '%(data_folder)s/current'  # symlink that points to the latest run folder
 
@@ -327,7 +318,7 @@ UAPISHKA:
         <<: *default_fpga
         fpga_array_params:
             <<: *default_fpga_array_params
-            hwm: 'mb 257:1' # ID of the board used. Can also use a direct IP
+            hwm: 'mb 498:1' # ID of the board used. Can also use a direct IP
             mode: corr16  # shuffle 256 and 512 require crate numbers
             prog: 1
             sync_method: local #  distributed_time # <-- For R232. Change to --> sync_method: distributed_time <-- for D3A. #local_soft_trigger
@@ -473,7 +464,7 @@ UAPISHKA:
 
             metrics_refresh_time: 1
             adc_rms_refresh_count: 60
-            input_number_map: [12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 4] # Translates FPGA channel number into CHIME input #. Used to label metrics in more user-friendly way
+            input_number_map: [12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3] # Translates FPGA channel number into CHIME input #. Used to label metrics in more user-friendly way
             jump_thresholds: [ 24, 48, 96] # thresholds used to generate signal jump counter metrics
 
 
