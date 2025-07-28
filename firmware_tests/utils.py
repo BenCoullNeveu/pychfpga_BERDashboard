@@ -1,11 +1,14 @@
 import matplotlib.pyplot as plt
+from cycler import cycler
 import numpy as np
 from test_setup import PLOT_DIR, TEST_CONFIG
 from functools import wraps
+from textwrap import wrap
 
-colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+styles = cycler(color=['tab:blue', 'orange', 'forestgreen'], marker=['.', ' ', ' '])
+plt.rc('axes', prop_cycle=styles)
 
-def plot(datasets, labels=[], split_plots=False, y_range=None, data_range=None, split_complex=False, title="test", folder=None):
+def plot(datasets, labels=[], y_range=None, data_range=None, split_complex=False, title="test", xlabel=None, ylabel=None, folder=None):
     if labels is None:
         labels = []
 
@@ -25,63 +28,45 @@ def plot(datasets, labels=[], split_plots=False, y_range=None, data_range=None, 
         data_range = (0, data_range)
     
 
-    fig, axs = plt.subplots(len(datasets) if split_plots else 1)
-    for i in range(len(datasets)):
-        ax = axs[i] if split_plots else axs
+    fig, axs = plt.subplots(2 if split_complex else 1)
+    for i in range(2*len(datasets)):
+        im = i >= len(datasets)
+        ax = axs[int(im)] if split_complex else axs
+        if im and not split_complex:
+            break
         if y_range is not None:
             ax.set_ylim(y_range)
-        if split_complex:
-            ax.plot(datasets[i][data_range[0]:data_range[1]:2], color=colors[2*i], label=labels[i] + "(Re)")
-            ax.plot(datasets[i][data_range[0]+1:data_range[1]:2], color=colors[2*i+1], label=labels[i] + "(Im)")
+        if split_complex and not im:
+            ax.plot(datasets[i][data_range[0]:data_range[1]:2], label=labels[i] + "(Re)")
+        elif split_complex and im:
+            ax.plot(datasets[i % len(datasets)][data_range[0]+1:data_range[1]:2], label=labels[i % len(datasets)] + "(Im)")
         else:
-            ax.plot(datasets[i][data_range[0]:data_range[1]], color=colors[i], label=labels[i])
+            ax.plot(datasets[i][data_range[0]:data_range[1]], label=labels[i])
+        
         #axs.set_title(labels[i])
         ax.legend()
-    fig.suptitle(title)
+        
+    fig.supxlabel("Bin" if xlabel is None else xlabel)
+    fig.supylabel("Output" if ylabel is None else ylabel)
+    fig.suptitle("\n".join(wrap(title, 60)))
     dir = PLOT_DIR if folder is None else PLOT_DIR / folder
     dir.mkdir(parents=True, exist_ok=True)
     plt.savefig(dir/title)
 
 
-def gen_data(func, samples=2048, **kwargs):
-    if func == 'a':
-        return np.ones(samples) * kwargs.get('a', 1)
-    elif func == 'alternate':
-        return np.tile((kwargs.get('a', 0), kwargs.get('b', 1)), samples//2)
-    elif func == 'ramp':
-        min = kwargs.get('min', 0)
-        max = kwargs.get('max', samples)
-        res = np.repeat(np.arange(min, max + 1), samples // (max - min + 1))
-        return np.append(res, max * np.ones(samples - res.size))
-    elif func == 'periodic_ramp':
-        #TODO: fix to ensure bounds are always exactly respected
-        min = kwargs.get('min', 0)
-        max = kwargs.get('max', samples)
-        res = np.tile(np.arange(min, max + 1), samples // (max - min + 1))
-        return np.append(res, np.arange(min, min + (samples - res.size)))
-    elif func == 'complex_ramp':
-        min = kwargs.get('min', 0)
-        max = kwargs.get('max', np.sqrt(samples))
-        half_samples = samples // 2
-        reals = np.arange(half_samples) // int(half_samples / (max - min)) + min
-        cmplx = np.tile(np.arange(min, max), half_samples // (max - min))
-        cmplx = np.append(cmplx, np.arange(min, min + half_samples - cmplx.size))
-        return np.stack((reals, cmplx), axis=1).reshape(-1) #interleave the real and complex arrays
-    elif func == 'arb':
-        return kwargs.get('data', np.zeros(2048))
     
-
-
 def compare_plot_data(test_unit=None, *, split_plots=False, approximate=False, atol=0.1):
     def _decorate(test_unit):
         @wraps(test_unit)
         def wrapper(*args, **kwargs):
-            if args[0] == None:
-                return
             res = test_unit(*args, **kwargs)
+            if res is None:
+                return
             data = res[0][0]
             ref_data = res[0][1]
             title = test_unit.__name__[5:] if len(res) < 2 else res[1]
+            title = title.replace('_', ' ')
+            title = title.capitalize()
             folder = test_unit.__name__[5:] if len(res) >= 2 else None 
             plot_kwargs = {} if len(res) < 3 else res[2]
             if len(data.shape) > 1:
@@ -93,7 +78,7 @@ def compare_plot_data(test_unit=None, *, split_plots=False, approximate=False, a
             else:
                 actual_data = data
             if TEST_CONFIG['always_plot'] or (TEST_CONFIG['plot_on_failure'] and not np.equal(data, ref_data).all()):
-                plot(datasets=[actual_data, *res[0][1:]], labels=['Returned', 'Reference'], title=title, folder=folder, **plot_kwargs)
+                plot(datasets=[*res[0][1:], actual_data], labels=['Reference', 'Returned'], title=title, folder=folder, **plot_kwargs)
             if not TEST_CONFIG.get('only_plot', False):
                 if approximate:
                     np.testing.assert_allclose(actual_data, ref_data, atol=atol)
@@ -103,3 +88,9 @@ def compare_plot_data(test_unit=None, *, split_plots=False, approximate=False, a
     if test_unit:
         return _decorate(test_unit)
     return _decorate
+
+def unsplit_imag(array):
+    return (array[::2] + array[1::2]*1j).astype(np.complex64)
+
+def split_imag(array):
+    return np.stack((np.real(array), np.imag(array)), axis=1).reshape(-1).astype(np.int64)

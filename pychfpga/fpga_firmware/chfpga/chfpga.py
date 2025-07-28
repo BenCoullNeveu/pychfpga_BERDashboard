@@ -2766,6 +2766,8 @@ class chFPGA(FPGAFirmware):
             fft_bypass=None,
             fft_shift=None,
             scaler_bypass=None,
+            scaler_cap_data_type=None,
+            scaler_out_data_type=None,
             gain=None,
             postscaler=None,
             scaler_eight_bit=None,
@@ -2782,7 +2784,7 @@ class chFPGA(FPGAFirmware):
 
         The data processing chain is:
 
-                  ADC --> ADCDAQ --> FUNCGEN --> --> FFT --> SCALER
+                  ADC --> ADCDAQ --> FUNCGEN --> FFT --> SCALER
         """
         # Set the ADC chip operational mode (data, ramp, pulse)
         if adc_mode is not None or adc_sampling_mode is not None or adc_bandwidth is not None:
@@ -2814,8 +2816,10 @@ class chFPGA(FPGAFirmware):
             self.set_fft_shift(fft_shift, channels=channels)
 
         # Set Scaler parameters
-        if scaler_bypass is not None:
-            self.set_scaler_bypass(bypass_mode=scaler_bypass, channels=channels)
+        if scaler_bypass == False or scaler_out_data_type is not None or scaler_cap_data_type is not None:
+            self.set_scaler_output_modes(bypass=scaler_bypass, 
+                                         out_data_type=scaler_out_data_type, 
+                                         cap_data_type=scaler_cap_data_type, channels=channels)
 
         if scaler_rounding_mode is not None:
             self.set_scaler_rounding_mode(
@@ -3365,7 +3369,7 @@ class chFPGA(FPGAFirmware):
             self.UCAP.CAPTURE_PERIOD2 = burst_period_in_frames-1
 
             if mode == 0:
-                if channels[:8] != range(8):
+                if channels[:8] != list(range(8)):
                     raise RuntimeError('UCAP mode 0 can only capture channels 0-7')
             elif mode == 1:
                 self.UCAP.CH0 = channels[0]
@@ -3489,34 +3493,35 @@ class chFPGA(FPGAFirmware):
 
     get_FFT_bypass = get_fft_bypass  # for legacy code compatibility
 
-    def set_scaler_bypass(self, bypass_mode, channels=None):
-        """
-        Sets the BYPASS flag on the SCALER modules.
-        If the list of channels is specified, only these channels will be set.
-
-        History:
-            2013-12-05 JFC: Added this function
-        """
-
-        if channels is None:
-            channels = self.default_channels
-
-        self.logger.debug('%r: Setting SCALER bypass mode for channel %s' % (
-            self,
-            ', '.join([str(i) for i in channels])))
-        for chan in self.chan.values():
-            if chan.chan_number in channels:
-                chan.SCALER.BYPASS = bypass_mode
-            # else:
-            #     self.logger.warning('Attempting to set SCALER bypass mode for channel channel %i '
-            #                          'which is not present on this card' % ch)
-
     def get_scaler_bypass(self):
         """
         Returns a list indicating if the SCALER is bypassed or not for each channel.
         """
         return [bool(chan.SCALER.BYPASS) for chan in self.chan.values()]
 
+    def set_scaler_output_modes(self, bypass=None, out_data_type=None, cap_data_type=None, channels=None):
+        if channels is None:
+            channels = self.default_channels
+        
+        if bypass == False:
+            self.logger.debug(f'Setting scaler bypass to 0 for channel {channels}')
+            for ch in channels:
+                self.chan[ch].SCALER.DATA_TYPE = 0
+                self.chan[ch].SCALER.BYPASS = False
+        elif out_data_type is not None:
+            self.logger.debug(f'Setting scaler output data type to {out_data_type} for channel {channels}')
+            for ch in channels:
+                self.chan[ch].SCALER.DATA_TYPE = out_data_type
+                self.chan[ch].SCALER.BYPASS = True
+        
+        if cap_data_type is not None:
+            self.logger.debug(f'Setting scaler capture data type to {cap_data_type} for channel {channels}')
+            for ch in channels:
+                self.chan[ch].SCALER.CAP_DATA_TYPE = cap_data_type
+        
+
+                
+    
     def reset_scaler_overflow_flags(self, channels=None):
         """ Resets the SCALER overflow flags.
 
@@ -4391,7 +4396,7 @@ class chFPGA(FPGAFirmware):
             self,
             scaler_eight_bit: bool,
             prober_user_flags: bool,
-            channels: List[int],
+            channels: List[int] = None,
     ):
         """
             Sets the scaler to 8-bit/4bit mode. The mode will be set individually for each channelizer.
@@ -4423,7 +4428,7 @@ class chFPGA(FPGAFirmware):
             channels = self.default_channels
 
         eb_support = [chan.SCALER.EIGHT_BIT_SUPPORT for chan in self.chan]
-        if not all(eb_support):
+        if not all(eb_support) and scaler_eight_bit:
             raise RuntimeError(
                 f"The scaler of channelizers {[ch for ch in range(len(self.chan)) if not eb_support[ch]]} "
                 f"does not support 8-bit mode."
@@ -5090,7 +5095,7 @@ class chFPGA(FPGAFirmware):
             self.logger.error('%r: Error getting FPGA channelizer metrics. Error is %r' % (self, e))
         return metrics'''
 
-    async def get_channel_metrics_async(self, ch, frame_cnt=1000, polling_interval=0.01):
+    async def get_channel_metrics_async(self, ch, frame_cnt=300_000, polling_interval=0.0001):
         '''
         Returns the channelizer metrics for a specific channel in the format (scaler_overflow_count, adc_overflow_count)
 
@@ -5109,16 +5114,10 @@ class chFPGA(FPGAFirmware):
         self.chan[ch].SCALER.STATS_CAPTURE = 1
         while True:
             if self.chan[ch].SCALER.STATS_READY:
+                self.chan[ch].SCALER.STATS_CAPTURE = 0
                 return (self.chan[ch].SCALER.STATS_SCALER_OVERFLOWS, self.chan[ch].SCALER.STATS_ADC_OVERFLOWS)
             await asyncio.sleep(polling_interval)
-                
-    async def get_scaler_metrics_async(self, frame_cnt=1000, polling_interval=0.00001, channels=None):
-        if channels is None:
-            channels = self.default_channels
 
-        results = await asyncio.gather(*[self.get_channel_metrics_async(ch, frame_cnt=frame_cnt, polling_interval=polling_interval) for ch in channels])
-        return results
-    
     async def get_crossbar_metrics_async(self, reset=True):
         metrics = Metrics()
         if not self.is_open():
