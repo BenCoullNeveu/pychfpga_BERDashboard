@@ -54,38 +54,7 @@ def plot(datasets, labels=[], y_range=None, data_range=None, split_complex=False
     plt.savefig(dir/title)
 
 
-def gen_data(func, samples=2048, **kwargs):
-    if func == 'a':
-        return np.ones(samples) * kwargs.get('a', 1)
-    elif func == 'ab':
-        period = kwargs.get('period', 1)
-        res = np.tile(np.concatenate((np.repeat(kwargs.get('a', 0), period), np.repeat(kwargs.get('b', 1), period))), samples//(2*period))
-        return np.append(res, np.repeat(kwargs.get('a', 0), samples - res.size))
-    elif func == 'ramp':
-        min = kwargs.get('min', 0)
-        max = kwargs.get('max', samples)
-        res = np.repeat(np.arange(min, max + 1), samples // (max - min + 1))
-        return np.append(res, max * np.ones(samples - res.size))
-    elif func == 'periodic_ramp':
-        #TODO: fix to ensure bounds are always exactly respected
-        min = kwargs.get('min', 0)
-        max = kwargs.get('max', samples)
-        res = np.tile(np.arange(min, max + 1), samples // (max - min + 1))
-        return np.append(res, np.arange(min, min + (samples - res.size)))
-    elif func == 'complex_ramp':
-        min = kwargs.get('min', 0)
-        max = kwargs.get('max', np.sqrt(samples))
-        half_samples = samples // 2
-        reals = np.repeat(np.arange(min, max + 1), half_samples // (max - min + 1))
-        reals = np.append(reals, max * np.ones(half_samples - reals.size))
-        cmplx = np.tile(np.arange(min, max + 1), half_samples // (max - min + 1))
-        cmplx = np.append(cmplx, np.arange(min, min + half_samples - cmplx.size))
-        return np.stack((reals, cmplx), axis=1).reshape(-1) #interleave the real and complex arrays
-    elif func == 'arb':
-        return kwargs.get('data', np.zeros(2048))
     
-
-
 def compare_plot_data(test_unit=None, *, split_plots=False, approximate=False, atol=0.1):
     def _decorate(test_unit):
         @wraps(test_unit)
