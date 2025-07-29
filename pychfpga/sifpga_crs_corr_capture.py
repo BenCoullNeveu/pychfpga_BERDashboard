@@ -34,17 +34,17 @@ class CRS_CORR_CAPTURE:
         """
         The CRS_CORR_CAPTURE class is a wrapper for fpga_array.py designed to optimize data collection with a t0.CRS
         board. It provides an additional layer of processing to simplify measuremsnts of ADC, FUNCGEN, FFT, Scaler,
-        and correlated data. 
+        and correlated data.
 
-        This class was initially designed to function as an automated script to function as a single-board digital backend 
-        for computing and storing visibilities at the Deep Dish Development Array (D3A) at the Dominion Radio Astrophysical 
+        This class was initially designed to function as an automated script to function as a single-board digital backend
+        for computing and storing visibilities at the Deep Dish Development Array (D3A) at the Dominion Radio Astrophysical
         Observatory (DRAO), the site of the Canadian Hydrogen Observatory and Radio transient Detector (CHORD).
 
         Parameters
         ----------
         hwm : (str) The hardware map (hwm) provides a description of the part number and serial number of the part
         to which you'd like to connect. This script is designed for t0.CRS boards, so the part number will always
-        be "crs" (unless this script is upgraded in the future.) 
+        be "crs" (unless this script is upgraded in the future.)
 
         Ex) hwm = 'crs 0016' will search the network for t0.CRS SN0016.
 
@@ -85,7 +85,7 @@ class CRS_CORR_CAPTURE:
         if self.ucap.MODE == 0:
             self.n_frames_per_capture = 2
 
-        
+
         for n in range(self.NPOLS):
 
             # Configure each FFT
@@ -134,7 +134,7 @@ class CRS_CORR_CAPTURE:
 
         # Make sure we can get data from all channels:
         if self.ucap.MODE != 0:
-            self.ucap.MODE = 0 
+            self.ucap.MODE = 0
 
         # Check that the FFT is not bypassed, the SCALER is bypassed, and set the data source as desired
         for n in range(self.NPOLS):
@@ -143,23 +143,23 @@ class CRS_CORR_CAPTURE:
                 self.i.chan[n].FFT.BYPASS = 1
             if not self.i.chan[n].SCALER.BYPASS:
                 self.i.chan[n].SCALER.BYPASS = 1
-        
+
         # Start data capture, grabbing data at the output of the
         # scaler, which has been bypassed.
-        self.i.start_data_capture(period = period, 
+        self.i.start_data_capture(period = period,
                                   source = 'adc'
                                   )
 
         # Capture data!
-        t, d_adc, c = self.u_receiver.read_raw_frames(format = '16', 
-                                                      ncap = ncap, 
-                                                      split = split, 
+        t, d_adc, c = self.u_receiver.read_raw_frames(format = '16',
+                                                      ncap = ncap,
+                                                      split = split,
                                                       verbose = verbose)
         d_adc = d_adc >> 2 # shift to 14 bits
 
         return d_adc
 
-    def read_fft_frames(self, 
+    def read_fft_frames(self,
                         data_source = 'adc',
                         period = 0.02,
                         ncap = 50,
@@ -186,7 +186,7 @@ class CRS_CORR_CAPTURE:
 
         # Make sure we can get data from all channels:
         if self.ucap.MODE != 0:
-            self.ucap.MODE = 0 
+            self.ucap.MODE = 0
 
         # Check that the FFT is not bypassed, the SCALER is bypassed, and set the data source as desired
         for n in range(self.NPOLS):
@@ -195,25 +195,25 @@ class CRS_CORR_CAPTURE:
                 self.i.chan[n].FFT.BYPASS = 0
             if not self.i.chan[n].SCALER.BYPASS:
                 self.i.chan[n].SCALER.BYPASS = 1
-        
+
         # Start data capture, grabbing data at the output of the
         # scaler, which has been bypassed.
-        self.i.start_data_capture(period = period, 
+        self.i.start_data_capture(period = period,
                                   source = 'scaler'
                                   )
 
         # Capture data!
-        t, d_fft, c = self.u_receiver.read_raw_frames(format = '16+16', 
-                                                      ncap = ncap, 
+        t, d_fft, c = self.u_receiver.read_raw_frames(format = '16+16',
+                                                      ncap = ncap,
                                                       split = split,
                                                       verbose = verbose)
         d_fft *= 2**2 # shift by two bits so we have 18+18 - we need to promote the data to np.float64 to do this!
-        
+
         return d_fft
 
     def read_scaler_frames(self,
                            data_source = 'adc',
-                           period = 0.02, 
+                           period = 0.02,
                            ncap = 1,
                            split = True,
                            verbose = 0
@@ -238,7 +238,7 @@ class CRS_CORR_CAPTURE:
 
         # Make sure we can get data from all channels:
         if self.ucap.MODE != 0:
-            self.ucap.MODE = 0 
+            self.ucap.MODE = 0
 
         # Check that the FFT and SCALER are not bypassed, and set the data source as desired
         for n in range(self.NPOLS):
@@ -247,13 +247,13 @@ class CRS_CORR_CAPTURE:
                 self.i.chan[n].FFT.BYPASS = 0
             if self.i.chan[n].SCALER.BYPASS:
                 self.i.chan[n].SCALER.BYPASS = 0
-        
+
         # Start data capture, grabbing data at the output of the
         # scaler, which has been bypassed.
         self.i.start_data_capture(0.01, source = 'scaler')
 
-        t, d_scaler, c = self.u_receiver.read_raw_frames(format = '16+16', 
-                                                         ncap = ncap, 
+        t, d_scaler, c = self.u_receiver.read_raw_frames(format = '16+16',
+                                                         ncap = ncap,
                                                          split = True,
                                                          verbose = verbose)
         d_scaler /= 2**12 # shift by 12 bits so we have 4+4 - we need to promote the data to np.float64 to do this!
@@ -285,7 +285,7 @@ class CRS_CORR_CAPTURE:
         self.corr.NO_ACCUM = no_accum # 0: do accumulate
         self.NCORR_PROD = int(self.NPOLS*(self.NPOLS + 1) // 2)
         self.corr.INTEGRATION_PERIOD = n_firmware_frames # Default: 16384 - 1, minimum (all N^2 products): 8192 -1, maximimum: 65536 - 1
-        
+
         # Update corr_is_configured
         self.corr_is_configured = True
 
@@ -400,7 +400,7 @@ class CRS_CORR_CAPTURE:
                 for n in range(self.NPOLS):
                     print(f'Applying final shift schedule to Pol {n}:', bin(shifts[stage]))
                     # Configure each FFT shift
-                    self.i.chan[n].FFT.FFT_SHIFT = shifts[stage] 
+                    self.i.chan[n].FFT.FFT_SHIFT = shifts[stage]
                 break
             else:
                 # Change the shift schedule by 1 stage
@@ -410,9 +410,9 @@ class CRS_CORR_CAPTURE:
                     self.i.chan[n].FFT.FFT_SHIFT = shifts[stage]
 
         return final_shift
-    
-    def set_gains(self, 
-                  lin_gain, 
+
+    def set_gains(self,
+                  lin_gain,
                   log_gain):
         """
         Description.
@@ -440,11 +440,11 @@ class CRS_CORR_CAPTURE:
             self.i.chan[n].SCALER.set_gain_table(lin_gain[n], bank = 0)
             self.i.chan[n].SCALER.SHIFT_LEFT = log_gain[n]
 
-        return 
-  
+        return
+
     def compute_gains(self,
                       target = 1.5*np.sqrt(2), # default value borrowed from CHIME
-                      gain_type = 'raw', 
+                      gain_type = 'raw',
                       number_of_fft_averages = 250,
                       rms_accuracy_tol = None, # %
                       save_gains = False
@@ -465,7 +465,7 @@ class CRS_CORR_CAPTURE:
 
         # Capture ncap FFT frames of data, checking for FFT overflows. If there are any, start the FFT capture again
         # until we have a clean set of data.
-        
+
         ctr = 0
         while True:
             print(f'Gain computation trial {ctr}')
@@ -477,7 +477,7 @@ class CRS_CORR_CAPTURE:
                 # Pulse FFT overflow reset
                 self.i.chan[n].FFT.OVERFLOW_RESET = 1
                 self.i.chan[n].FFT.OVERFLOW_RESET = 0
-            
+
             # ==================
             # Capture ncap FFT frames of data
             fft_data = self.read_fft_frames(period = 0.02,
@@ -496,7 +496,7 @@ class CRS_CORR_CAPTURE:
 
             if all(fft_overflows == 0):
                 break
-        
+
         # ==================
         # Compute FFT RMS. The np.abs just converts the np.complex128 to np.float64, since the magnitude is real-valued
         fft_rms = np.sqrt(np.mean(np.abs(fft_data*np.conj(fft_data)), axis = 1))
@@ -510,12 +510,12 @@ class CRS_CORR_CAPTURE:
         gain = target / fft_rms
 
         # Treat any possible infinities
-        gain[gain == np.inf] = 2**31 
+        gain[gain == np.inf] = 2**31
 
         # ==================
         # Break down the raw gains into linear and log gains, where gain = lin * 2**log
 
-        # IMPORTANT! let the linear gains absorb some of the bits that would otherwise 
+        # IMPORTANT! let the linear gains absorb some of the bits that would otherwise
         # be used in the log gains so that we have better linear gain resolution.
         # print('log2 gain', np.log2(gain)) # need to make a loop to check best log
         trim_bits = 12 # need a way to cycle through the number that preserves the largest linear gain
@@ -527,7 +527,7 @@ class CRS_CORR_CAPTURE:
         log = np.clip((np.ceil(np.log2(np.median(gain, axis = 1)))), 0, 31) - trim_bits
         print('log', log)
 
-        # Allocate the remainder of the raw gains to the linear gains. 
+        # Allocate the remainder of the raw gains to the linear gains.
         lin = (gain / 2**np.repeat(log.reshape(self.NPOLS, 1), self.NBINS, axis = 1)) + 0.5 # add 0.5 for rounding
 
         # ==================
@@ -571,11 +571,11 @@ class CRS_CORR_CAPTURE:
             lin_smooth = np.zeros((self.NPOLS, len(self.f)))
             for n in range(self.NPOLS):
                 # Trim first 300 MHz when running the fit
-                m = lstsqr_fit(x = self.f, # [np.where(self.f > 50)[0]], 
-                               y = lin[n], # , np.where(self.f > 50)[0]], 
+                m = lstsqr_fit(x = self.f, # [np.where(self.f > 50)[0]],
+                               y = lin[n], # , np.where(self.f > 50)[0]],
                                sigma = np.repeat(10, len(self.f)), # 10 is just a guess
                                # sigma = np.repeat(10, len(self.f[np.where(self.f > 50)[0]])), # 10 is just a guess
-                               order = order) 
+                               order = order)
                 lin_smooth[n] = make_poly(x = self.f, coeffs = m)
             # lin_smooth = lin_smooth.astype(np.int16) # cast to np.int16
 
@@ -601,7 +601,7 @@ class CRS_CORR_CAPTURE:
             scaler_data_rms = np.sqrt(abs(np.mean(scaler_data * scaler_data.conj(), axis = 1)))
             mean_abs_rms = np.mean(scaler_data_rms, axis = 1)
 
-            tol = (rms_accuracy_tol/100) * (target / 2**31) # Calculate 
+            tol = (rms_accuracy_tol/100) * (target / 2**31) # Calculate
             tol_range = np.array([(target / 2**31) - tol, (target / 2**31) + tol]) # Tolerance range
 
             out_of_tol_channels = []
@@ -626,8 +626,8 @@ class CRS_CORR_CAPTURE:
             self.save_gains(lin, log, gain_type)
 
         return fft_data, fft_rms, gain, lin, log, scaler_data
-                      
-    def save_gains(self, 
+
+    def save_gains(self,
                    lin_gain,
                    log_gain,
                    gain_type):
@@ -664,8 +664,8 @@ class CRS_CORR_CAPTURE:
                                          dtype = np.int16)
 
         lin_gain_dset.attrs['gain_type'] = gain_type
-        
-        log_gain_dset = f.create_dataset('log', 
+
+        log_gain_dset = f.create_dataset('log',
                                          (self.NPOLS,),
                                          data = log_gain,
                                          dtype = np.int8) # type might be 'int', but small enough that 8 bits is plenty (max log gain is 31)
@@ -723,9 +723,9 @@ class CRS_CORR_CAPTURE:
 
         return f'{y}{mth}{d}T{h}{m}{s}Z'
 
-    def observe(self, 
+    def observe(self,
                 data_path = None, # No default data path
-                digital_gains_path = None, 
+                digital_gains_path = None,
                 n_vis_per_file = 256,
                 integration_time = 10,
                 autocorr_only = 0, # Get all products by default
@@ -741,64 +741,87 @@ class CRS_CORR_CAPTURE:
                 ):\
 
         """
-        A method for computing and storing visibility data. 
+        A method for computing and storing visibility data.
 
-        Keep in mind that the default UCAP mode is 0, meaning that bursts of ADC and FFT data have 2 frames per input channel. Therefore, any burst 
-        of ADC or FFT data will return double the number of frames requested. 
+        Keep in mind that the default UCAP mode is 0, meaning that bursts of ADC and FFT data have 2 frames per input channel. Therefore, any burst
+        of ADC or FFT data will return double the number of frames requested.
 
         Parameters
         ----------
-        data_path : (str) The path to the directory to which visibility data will be written. If it doesn't exist, a parent directory will be created according
-        to data_path. Within this directory, another directory will be created according to the date and time of the acquisition. HDF5 files will be written within 
-        this directory, beginning with 0.hdf5 and incrementing the number by 1 with each new file. In this manner, all data can be stored in a parent directory,
-        with specific acquisitions identified by the date and time of the acquisiton.
 
-        digital_gains_path : (str) The path to which digital gains will be stored, or the file from which digital gains will be called. If None, then observe()
-        will compute the digital gains with self.compute_gains(), which will be stored in the directory f'{data_path}/digital_gains/{acq_string}_digitalgain' as
-        the file 'gains.hdf5'. The acq_string corresponds to the date and time of the acquisition, as with the data itself.
+        data_path (str): The path to the directory to which visibility data will be written. If it
+            doesn't exist, a parent directory will be created according to data_path. Within this
+            directory, another directory will be created according to the date and time of the
+            acquisition. HDF5 files will be written within this directory, beginning with 0.hdf5 and
+            incrementing the number by 1 with each new file. In this manner, all data can be stored
+            in a parent directory, with specific acquisitions identified by the date and time of the
+            acquisiton.
 
-        If digitial_gains_path is specified, observe() will search for a 'gains.hdf5' file within the specified directory. These gains will be opened and set 
-        in the Scaler during the observation. 
+        digital_gains_path (str): The path to which digital gains will be stored, or the file from
+            which digital gains will be called. If None, then observe() will compute the digital
+            gains with self.compute_gains(), which will be stored in the directory
+            f'{data_path}/digital_gains/{acq_string}_digitalgain' as the file 'gains.hdf5'. The
+            acq_string corresponds to the date and time of the acquisition, as with the data itself.
 
-        n_vis_per_file : (int) The number of visibilities to store per HDF5 file. Increasing this number will increase the size of each HDF5 file. Reducing this
-        may be useful to collect more ADC and/or FFT snapshots during the observation, as the ADC and/or FFT snapshots are collected when a new HDF5 file is created. 
+            If digitial_gains_path is specified, observe() will search for a 'gains.hdf5' file
+            within the specified directory. These gains will be opened and set in the Scaler during
+            the observation.
 
-        integration_time : (int or float) The integration time for correlated data.
+        n_vis_per_file (int): The number of visibilities to store per HDF5 file. Increasing this
+            number will increase the size of each HDF5 file. Reducing this may be useful to collect
+            more ADC and/or FFT snapshots during the observation, as the ADC and/or FFT snapshots
+            are collected when a new HDF5 file is created.
 
-        autocorr_only : (int, 0 or 1 only) Specifies whether or not to return all correlated products or autocorrelations only. If '0', all correlation products 
-        are returned. If '1', only autocorrelations are returned. Note that self.prod and the shape of the visibility array are the same in each case.
+        integration_time (int or float): The integration time for correlated data.
 
-        no_accum : (int, 0 or 1 only) Specifies whether to accumulate correlated frames or not in the firmware accumulator/integrator. If '0', the accumulation/integration
-        of correlated frames is enabled. If '1', accumulation/integration is disabled.
+        autocorr_only (int): (0 or 1 only) Specifies whether or not to return all correlated
+            products or autocorrelations only. If '0', all correlation products are returned. If
+            '1', only autocorrelations are returned. Note that self.prod and the shape of the
+            visibility array are the same in each case.
 
-        n_firmware_frames : (int) The number of frames to be accumulated/integrated in the firmware accumulator/integrator. The minimum is 8192 - 1, the maximum is
-        32768 - 1, and the default is 16384 - 1. Note that the data rate of correlated through the 1G ethernet link is proportional to this setting. The more firmware frames 
-        that are integrated, the slower the data rate --- beware, as this could also lead to the saturation of the firmware accumulator/integrator. Likewise, the 
-        fewer firmware frames that are integrated, the data rate will increase, but there is less likelihood of saturation. 
+        no_accum (int): (0 or 1 only) Specifies whether to accumulate correlated frames or not in
+            the firmware accumulator/integrator. If '0', the accumulation/integration of correlated
+            frames is enabled. If '1', accumulation/integration is disabled.
 
-        gain_target : (float) The mean of the absolute value of many Scaler frames after applying digital gains. The target value balances the minimization of 
-        quantization noise and saturations of the Scaler. The default is 1.5*sqrt(2), inspired by the CHIME value.
+        n_firmware_frames (int): The number of frames to be accumulated/integrated in the firmware
+            accumulator/integrator. The minimum is 8192 - 1, the maximum is 32768 - 1, and the
+            default is 16384 - 1. Note that the data rate of correlated through the 1G ethernet link
+            is proportional to this setting. The more firmware frames that are integrated, the
+            slower the data rate --- beware, as this could also lead to the saturation of the
+            firmware accumulator/integrator. Likewise, the fewer firmware frames that are
+            integrated, the data rate will increase, but there is less likelihood of saturation.
 
-        To check that you're meeting the target, run compute_gains(), and then take many (e.g., 100) Scaler frames, compute their magnitude, and take the
-        mean across the frame axis. Compare the mean to the target.
+        gain_target (float): The mean of the absolute value of many Scaler frames after applying
+            digital gains. The target value balances the minimization of quantization noise and
+            saturations of the Scaler. The default is 1.5*sqrt(2), inspired by the CHIME value.
 
-        number_of_fft_averages : (int) The number of FFT frames used to calculate the digital gains. It is recommended to set this to approximately 1000.
+            To check that you're meeting the target, run compute_gains(), and then take many (e.g., 100)
+            Scaler frames, compute their magnitude, and take the mean across the frame axis. Compare
+            the mean to the target.
 
-        gain_type : (str) Specifies whether any post-processing is applied to the computed digital gains. The default is 'raw', meaning no additional processing
-        is done after computing digital gains. See compute_gains() for further details --- note that 'raw' has performed the best out of the current algorithms.
+        number_of_fft_averages (int): The number of FFT frames used to calculate the digital gains.
+            It is recommended to set this to approximately 1000.
 
-        capture_adc_bursts : (bool) Specifies whether to capture ADC frames at the beginning of each HDF5 file. If True, capture ADC data. If False, don't capture
-        ADC data.
+        gain_type (str): Specifies whether any post-processing is applied to the computed digital
+            gains. The default is 'raw', meaning no additional processing is done after computing
+            digital gains. See compute_gains() for further details --- note that 'raw' has performed
+            the best out of the current algorithms.
 
-        n_adc_bursts : (int) The number of ADC frames to capture for each HDF5 file if capture_adc_bursts = True.
+        capture_adc_bursts (bool): Specifies whether to capture ADC frames at the beginning of each
+            HDF5 file. If True, capture ADC data. If False, don't capture ADC data.
 
-        capture_fft_bursts : (bool) Specifies whether to capture FFT frames at the beginning of each HDF5 file. If True, capture FFT data. If False, don't capture
-        FFT data.
+        n_adc_bursts (int): The number of ADC frames to capture for each HDF5 file if
+            capture_adc_bursts = True.
 
-        n_fft_bursts : (int) The number of FFT frames to capture for each HDF5 file if capture_fft_bursts = True.
+        capture_fft_bursts (bool): Specifies whether to capture FFT frames at the beginning of each
+            HDF5 file. If True, capture FFT data. If False, don't capture FFT data.
+
+        n_fft_bursts (int): The number of FFT frames to capture for each HDF5 file if
+            capture_fft_bursts = True.
 
         Returns
         -------
+
         None.
 
         """
@@ -852,8 +875,8 @@ class CRS_CORR_CAPTURE:
             print('--- C O M P U T E   G A I N S  ---')
             print('')
             self.compute_gains(target = gain_target,
-                               gain_type = gain_type, 
-                               number_of_fft_averages = number_of_fft_averages, 
+                               gain_type = gain_type,
+                               number_of_fft_averages = number_of_fft_averages,
                                rms_accuracy_tol = None, # let's just ignore this parameter for now
                                save_gains = True)
             print('Gain computation completed!')
@@ -998,7 +1021,7 @@ class CRS_CORR_CAPTURE:
                     # 2*16384*16*8/8/1e6 = 0.524288 MB of data.
 
                     # Create data set
-                    dset_adc = f.create_dataset('adc', (self.NPOLS, self.n_frames_per_capture*n_adc_bursts, self.M), dtype = np.int16) 
+                    dset_adc = f.create_dataset('adc', (self.NPOLS, self.n_frames_per_capture*n_adc_bursts, self.M), dtype = np.int16)
 
                     # Capture bursts
                     print(f'Capturing {self.n_frames_per_capture*n_adc_bursts} ADC frames...')
@@ -1015,8 +1038,8 @@ class CRS_CORR_CAPTURE:
                     # 2*8192*(16+16)*8/8/1e6 = 0.524288 MB of data.
 
                     # Create data set
-                    dset_fft = f.create_dataset('fft', (self.NPOLS, self.n_frames_per_capture*n_adc_bursts, self.NBINS), dtype = np.complex128) 
-                    
+                    dset_fft = f.create_dataset('fft', (self.NPOLS, self.n_frames_per_capture*n_adc_bursts, self.NBINS), dtype = np.complex128)
+
                     # Capture bursts
                     print(f'Capturing {self.n_frames_per_capture*n_adc_bursts} FFT frames...')
                     d_fft = self.read_fft_frames(data_source = 'adc',
@@ -1056,7 +1079,7 @@ class CRS_CORR_CAPTURE:
                         flush = True # Not very pythonic, but flush on first capture
                     else:
                         flush = False # Otherwise, no flush
-                        
+
                     # Capture correlated data (note that many default arguments are used here)
                     t, vis, counts, sat = self.read_corr_frames(soft_integ_period = n_software_frames,
                                                                 number_of_results = 1,
@@ -1155,28 +1178,28 @@ class CRS_CORR_CAPTURE:
 
 def create_ccc(args = None):
     """
-    Creates CCC object in the command line using argparse. 
+    Creates CCC object in the command line using argparse.
 
     Returns
     -------
     ccc object - see the CRS_CORR_CAPTURE docstring.
 
     """
-    
+
     # The description is that which is included in the CCC docstring,
     # not including the parameters/returns. Grab parser object:
     parser = argparse.ArgumentParser()
-    
+
     # ====================
     # Add arguments:
-        
-    parser.add_argument('--serial', type = str, 
+
+    parser.add_argument('--serial', type = str,
                         help = '(str) The serial number of the target hardware. The CCC class is designed'
                         'to be used with a single t0.CRS board; therefore, when creating the FPGAArray instance,'
                         'the part \'crs\' is automatically assumed.'
                         )
 
-    parser.add_argument('--stderr_log_level', type = str, 
+    parser.add_argument('--stderr_log_level', type = str,
                         help = '(str) The level of logging printed to the screen when controlling the CRS board. Options are:'
                         '\'error\' (only shows errors)'
                         '\'warning\' (quiet, only shows warnings)'
@@ -1184,7 +1207,7 @@ def create_ccc(args = None):
                         '\'debug\' (lowest-level, provides highest density of information)'
                         )
 
-    parser.add_argument('--prog', type = int, 
+    parser.add_argument('--prog', type = int,
                         help = '(int) The prog argument defines whether to force the FPGA to be reprogrammed when the script is re-run.'
                         'The FPGA will be programmed by default if the CRS board is power cycled. The options for prog are:'
                         '0: do not program the FPGA'
@@ -1199,13 +1222,13 @@ def create_ccc(args = None):
     #     with open(args.config, 'r') as file:
     #         config_args = yaml.safe_load(file)
     #         parser.set_defaults(**config_args)
-            
+
     #     # Reload arguments to override config file values with command line values
     #     args = parser.parse_args()
-        
+
     # ====================
     # Applying some processing to certain parameters that accept multiple types:
-    
+
     # First change args from Namespace to dict:
     args_dict = vars(args) # vars([object]) -> dictionary
 
@@ -1213,15 +1236,15 @@ def create_ccc(args = None):
     args_dict['hwm'] = 'crs ' + args_dict['serial']
 
     args_dict.pop('serial')
-    
+
     # Need to convert some strings to ints explicitly:
     args_dict['prog'] = int(args_dict['prog'])
-        
+
     # ====================
     # Instantiate and return the SOIL object:
 
     ccc = CRS_CORR_CAPTURE(**args_dict)
-    
+
     return ccc
 
 if __name__ == '__main__':

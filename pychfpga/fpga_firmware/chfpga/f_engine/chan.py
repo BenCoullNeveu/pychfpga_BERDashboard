@@ -268,9 +268,15 @@ class ChanArray(MMIRouter):
     def set_data_width(self, width):
         """
         Set the number of bits used to represent the values computed by the channelizers.
+
         All channelizers are set to the new setting.
-            width=4: data is 4 bits Real + 4 bits Imaginary
-            width=8: data is 8 bits Real + 8 bits Imaginary
+
+        Parameters:
+
+            width (int): Target data width:
+
+                - width=4: data is 4 bits Real + 4 bits Imaginary
+                - width=8: data is 8 bits Real + 8 bits Imaginary
         """
 
         if width == 4:
