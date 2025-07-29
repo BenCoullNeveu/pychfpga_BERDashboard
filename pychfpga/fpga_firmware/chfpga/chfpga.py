@@ -1293,7 +1293,7 @@ class chFPGA(FPGAFirmware):
         target_frequency = self._sampling_frequency/self.adc_clock_divider
 
         for trial in range(10):
-            freqs = [self.FreqCtr.read_frequency(f'ADC_CLK{i}', gate_time=0.001) for i in range(16)] # ***JFC debug
+            freqs = [self.FreqCtr.read_frequency(f'ADC_CLK{i}', gate_time=0.001) for i in self.ADC_FREQS_TO_CHECK] # ***JFC debug
             err = any(abs(f - target_frequency) > 2.1e3 for f in freqs)
             msg = f'{self!r}: ADC output frequencies at stage {stage} are {[f/1e6 for f in freqs]} (check #{trial+1}) {"ERROR!" if err else ""}'
             if err:
