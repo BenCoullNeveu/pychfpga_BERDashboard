@@ -1,5 +1,5 @@
 ICE System Quality Control Handbook
-=======================
+===================================
 
 
 .. role:: bash(code)
@@ -18,17 +18,19 @@ Authors:
 
 
 MGADC08 - CHIME Mezzanine
------------------
+-------------------------
+
 TODO
 
 MGK7MB - ICE Motherboard
---------------
-.. figure:: ../images/iceqc/IceBoardPhotos/main_view.jpg
+------------------------
+
+.. figure:: ../../images/iceqc/IceBoardPhotos/main_view.jpg
     :width: 75%
     :alt: Motherboard
     :align: center
 
-    Motherboard 
+    Motherboard
 
 Inspection Test
 ^^^^^^^^^^^^^^^
@@ -36,7 +38,7 @@ Inspection Test
 **Step 2:** Are the FPGA heatsink pins cut near the stiffener?
 
 
-.. figure:: ../images/iceqc/IceBoardPhotos/InspTest/inspection_step12.jpeg
+.. figure:: ../../images/iceqc/IceBoardPhotos/InspTest/inspection_step12.jpeg
     :width: 60%
     :alt: example
     :align: center
@@ -47,7 +49,7 @@ Inspection Test
 **Step 4:** Are the PLL heatsinks attached?
 **Step 5:** Does the arm shield fence look straight?
 
-.. figure:: ../images/iceqc/IceBoardPhotos/InspTest/inspection_step345.jpeg
+.. figure:: ../../images/iceqc/IceBoardPhotos/InspTest/inspection_step345.jpeg
     :width: 60%
     :alt: example
     :align: center
@@ -58,7 +60,7 @@ Inspection Test
 **Step 6:** Are the dipswitches set correctly?
 **Step 7:** Are the jumpers set correctly?
 
-.. figure:: ../images/iceqc/IceBoardPhotos/InspTest/inspection_step67.jpeg
+.. figure:: ../../images/iceqc/IceBoardPhotos/InspTest/inspection_step67.jpeg
     :width: 60%
     :alt: example
     :align: center
@@ -71,7 +73,7 @@ side)
 **Step 10:** Do all the buck converters have the additional hand-soldered ca-
 pacitor? (backside)
 
-.. figure:: ../images/iceqc/IceBoardPhotos/InspTest/inspection_step8910.jpeg
+.. figure:: ../../images/iceqc/IceBoardPhotos/InspTest/inspection_step8910.jpeg
     :width: 60%
     :alt: example
     :align: center
@@ -80,18 +82,19 @@ pacitor? (backside)
 **Step 11:** Do all the FMC power switches look well soldered?
 **Step 12:** Is the blue patch wire in place and secured?
 
-.. figure:: ../images/iceqc/IceBoardPhotos/InspTest/inspection_step1112.jpeg
+.. figure:: ../../images/iceqc/IceBoardPhotos/InspTest/inspection_step1112.jpeg
     :width: 60%
     :alt: example
     :align: center
 
 
 Impedance test
-^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+
 Before taking measurements, make sure that the board setup is as shown in
 figure 16.
 
-.. figure:: ../images/iceqc/IceBoardPhotos/ImpTest/CroppedIceboard.jpeg
+.. figure:: ../../images/iceqc/IceBoardPhotos/ImpTest/CroppedIceboard.jpeg
     :width: 60%
     :alt: example
     :align: center
@@ -104,7 +107,7 @@ supply followed by the buck converters in a counter clockwise order - see
 figure 17. Refer to probe location 10 in the diagram for instructions on
 where to apply the test probe for all buck converters.
 
-.. figure:: ../images/iceqc/IceBoardPhotos/ImpTest/ImpTest/Impedance_test-points.jpeg
+.. figure:: ../../images/iceqc/IceBoardPhotos/ImpTest/Impedance_test-points.jpeg
     :width: 60%
     :alt: example
     :align: center
@@ -114,10 +117,11 @@ where to apply the test probe for all buck converters.
 
 
 Power test
-^^^^^^^^^^^^^^^^^
+^^^^^^^^^^
+
 Connect the power cable to the backplane as shown in figure 18.
 
-.. figure:: ../images/iceqc/IceBoardPhotos/PowerUpTest/power_cable.jpegg
+.. figure:: ../../images/iceqc/IceBoardPhotos/PowerUpTest/power_cable.jpeg
     :width: 60%
     :alt: example
     :align: center
@@ -126,7 +130,7 @@ Connect the power cable to the backplane as shown in figure 18.
 
 Check that all 9 power LEDs are turned on as shown in figure 19.
 
-.. figure:: ../images/iceqc/IceBoardPhotos/PowerUpTest/power_leds.jpeg
+.. figure:: ../../images/iceqc/IceBoardPhotos/PowerUpTest/power_leds.jpeg
     :width: 60%
     :alt: example
     :align: center
@@ -134,11 +138,12 @@ Check that all 9 power LEDs are turned on as shown in figure 19.
     Figure 19: Motherboards 9 power LEDS
 
 PLL programming
-^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^
+
 Connect the PLL programming cable to the board, making sure that the
 black marked side faces the SFP connectors - see figure 20.
 
-.. figure:: ../images/iceqc/IceBoardPhotos/PLLTest/PLLDongle.jpeg
+.. figure:: ../../images/iceqc/IceBoardPhotos/PLLTest/PLLDongle.jpeg
     :width: 60%
     :alt: example
     :align: center
@@ -147,7 +152,7 @@ black marked side faces the SFP connectors - see figure 20.
 
 Check that both PLL lock lights are turned on (green & yellow on the right) see figure 21
 
-.. figure:: ../images/iceqc/IceBoardPhotos/PLLTest/PLLLock.jpeg
+.. figure:: ../../images/iceqc/IceBoardPhotos/PLLTest/PLLLock.jpeg
     :width: 60%
     :alt: example
     :align: center
@@ -157,7 +162,7 @@ Check that both PLL lock lights are turned on (green & yellow on the right) see 
 
 
 Memory test
-^^^^^^^^^^^^^^^
+^^^^^^^^^^^
 
 
 

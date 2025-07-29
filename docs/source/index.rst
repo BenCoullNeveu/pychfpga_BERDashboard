@@ -22,18 +22,21 @@
 
    howto/pocket_correlator
    howto/deploy
+   howto/common_issues
+   howto/networking
+   howto/takeData
+   howto/quick_start
+   Old installation <howto/installation>
+   Old setup <howto/setup_python>
 
 .. toctree::
    :hidden:
    :maxdepth: 4
-   :caption: Old Home
+   :caption: Hardware
 
-   Old installation <installation>
-   Old setup <howto/setup_python>
-   howto/takeData
-   howto
-   quick_start
-
+   hardware/ice/index
+   hardware/gps/gps
+   hardware/ps/ps
 
 .. toctree::
    :maxdepth: 3
@@ -41,6 +44,8 @@
    :hidden:
 
    _autosummaries/pychfpga
+   _autosummaries/firmware_tests.scaler_test
+
 
 .. toctree::
    :maxdepth: 3
