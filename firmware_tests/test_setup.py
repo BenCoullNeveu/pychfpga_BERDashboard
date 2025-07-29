@@ -5,8 +5,11 @@ from wtl.config import load_yaml_config
 from pathlib import Path
 import os
 
-CONN_CONFIG = load_yaml_config("connection_config")
-TEST_CONFIG = load_yaml_config("test_config")
+cwd = os.path.split(__file__)[0]
+
+
+CONN_CONFIG = load_yaml_config(os.path.join(cwd, "config.yaml:connection_config"))
+TEST_CONFIG = load_yaml_config(os.path.join(cwd, "config.yaml:test_config"))
 
 PLOT_DIR = Path("test_results")
 

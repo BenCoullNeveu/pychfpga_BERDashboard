@@ -8,7 +8,7 @@ from textwrap import wrap
 styles = cycler(color=['tab:blue', 'orange', 'forestgreen'], marker=['.', ' ', ' '])
 plt.rc('axes', prop_cycle=styles)
 
-def plot(datasets, labels=[], y_range=None, data_range=None, split_complex=False, title="test", xlabel=None, ylabel=None, folder=None):
+def plot(datasets, labels=[], y_range=None, data_range=None, split_complex=False, title="test", xlabel=None, ylabel=None, xrange=None, folder=None):
     if labels is None:
         labels = []
 
@@ -27,6 +27,8 @@ def plot(datasets, labels=[], y_range=None, data_range=None, split_complex=False
     elif np.isscalar(data_range):
         data_range = (0, data_range)
     
+    if xrange is None:
+        xrange = np.arange(data_range[1])
 
     fig, axs = plt.subplots(2 if split_complex else 1)
     for i in range(2*len(datasets)):
@@ -37,11 +39,11 @@ def plot(datasets, labels=[], y_range=None, data_range=None, split_complex=False
         if y_range is not None:
             ax.set_ylim(y_range)
         if split_complex and not im:
-            ax.plot(datasets[i][data_range[0]:data_range[1]:2], label=labels[i] + "(Re)")
+            ax.plot(xrange, datasets[i][data_range[0]:data_range[1]:2], label=labels[i] + "(Re)")
         elif split_complex and im:
-            ax.plot(datasets[i % len(datasets)][data_range[0]+1:data_range[1]:2], label=labels[i % len(datasets)] + "(Im)")
+            ax.plot(xrange, datasets[i % len(datasets)][data_range[0]+1:data_range[1]:2], label=labels[i % len(datasets)] + "(Im)")
         else:
-            ax.plot(datasets[i][data_range[0]:data_range[1]], label=labels[i])
+            ax.plot(xrange, datasets[i][data_range[0]:data_range[1]], label=labels[i])
         
         #axs.set_title(labels[i])
         ax.legend()

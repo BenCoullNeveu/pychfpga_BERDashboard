@@ -11,10 +11,10 @@ test_config:
     always_plot: True       # Always generate comparison plots during tests
     plot_on_failure: True    # Only generate comparison plots if test fails
     delete_plots_before_run: True
-    only_plot: False   
+    only_plot: True
     platform: "ICE-4bit-r"
-    global_postscaler_min: 16
-    global_postscaler_max: 22
+    global_postscaler_min: 20
+    global_postscaler_max: 31
     alternating_gain:
         min_period: 1
         max_period: 20

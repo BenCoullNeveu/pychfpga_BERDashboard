@@ -22,6 +22,7 @@
 
    howto/pocket_correlator
    howto/deploy
+   howto/scaler_test
 
 .. toctree::
    :hidden:
