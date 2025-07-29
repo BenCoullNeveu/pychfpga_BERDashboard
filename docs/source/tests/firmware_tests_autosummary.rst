@@ -4,17 +4,12 @@ This file is not included in any toctree, but is recognized by ``autosummary`` w
 
 The ``:orphan:`` metadata field at the beginning of this file tells Sphinx not to generate a warning is this file is not in any toctree.
 
-.. autosummary::
-   :recursive:
-   :toctree: _autosummaries
-   :template: custom-module-template.rst
+.. .. autosummary::
+..    :recursive:
+..    :toctree: ../_autosummaries
+..    :template: custom-module-template.rst
 
-	pychfpga
-   wtl.rest
-   wtl.metrics
-   wtl.config
-   firmware_tests
+.. 	firmware_tests
 
 
-.. project-module.rst.jinja2
 

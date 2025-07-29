@@ -1293,7 +1293,7 @@ class chFPGA(FPGAFirmware):
         target_frequency = self._sampling_frequency/self.adc_clock_divider
 
         for trial in range(10):
-            freqs = [self.FreqCtr.read_frequency(f'ADC_CLK{i}', gate_time=0.001) for i in range(16)] # ***JFC debug
+            freqs = [self.FreqCtr.read_frequency(f'ADC_CLK{i}', gate_time=0.001) for i in self.ADC_FREQS_TO_CHECK] # ***JFC debug
             err = any(abs(f - target_frequency) > 2.1e3 for f in freqs)
             msg = f'{self!r}: ADC output frequencies at stage {stage} are {[f/1e6 for f in freqs]} (check #{trial+1}) {"ERROR!" if err else ""}'
             if err:
@@ -2817,8 +2817,8 @@ class chFPGA(FPGAFirmware):
 
         # Set Scaler parameters
         if scaler_bypass == False or scaler_out_data_type is not None or scaler_cap_data_type is not None:
-            self.set_scaler_output_modes(bypass=scaler_bypass, 
-                                         out_data_type=scaler_out_data_type, 
+            self.set_scaler_output_modes(bypass=scaler_bypass,
+                                         out_data_type=scaler_out_data_type,
                                          cap_data_type=scaler_cap_data_type, channels=channels)
 
         if scaler_rounding_mode is not None:
@@ -2839,7 +2839,7 @@ class chFPGA(FPGAFirmware):
 
         if zero_on_sat is not None:
             self.set_zero_on_sat(zero_on_sat=zero_on_sat, channels=channels)
-        
+
         if gain is not None:
             self.set_gains(gain=gain, postscaler=postscaler, channels=channels)
 
@@ -3159,7 +3159,8 @@ class chFPGA(FPGAFirmware):
         Parameters:
 
             port_number (int): Port number to use:
-                - If `None`, attempts to open a socket at the destination port currently programmed in the FPGA. If that port is zero, act as if `port_number`=0.
+
+                - If ``None``, attempts to open a socket at the destination port currently programmed in the FPGA. If that port is zero, act as if ``port_number`` =0.
                 - If zero, open a socket at a random  (OS-provided) port, and set the corresponding destination port in the FPGA.
                 - If non-zero, get a socket bound to the specified port. An exception will be raised if that port is already used by another program.
 
@@ -3282,9 +3283,10 @@ class chFPGA(FPGAFirmware):
                 engine is used by the platform (see ``mode`` parameter).
 
             source (str): string specifying the data source.
-                - 'funcgen':  the data is taken after the function generator, which can be
+
+                - ``'funcgen'``:  the data is taken after the function generator, which can be
                   configured to pass on the ADC data or an internally generated waveform.
-                - `scaler`: the data is taken on the scaler capture output port.
+                - ``'scaler'``: the data is taken on the scaler capture port.
 
             channels (list): list of channels for which the data capture will be enabled. others are
                 left untouched. with PROBER, any channel can be slelected. With UCAP mode 3, all
@@ -3311,11 +3313,11 @@ class chFPGA(FPGAFirmware):
                 - 2: captures 8 contiguous frames from the first 2 channels listed in ``channels``.
                 - 3: captures 16 contiguous frames from the first channel listed in ``channels``.
 
-        Data is sent as N bursts ('number_of_bursts') of M frames ('frames_per_burst') . If
-        'number_of_bursts' is zero or not specified, burst transmission is continuous.
+        Data is sent as N bursts (`number_of_bursts`) of M frames (`frames_per_burst`) . If
+        `number_of_bursts` is zero or not specified, burst transmission is continuous.
 
-        Burst repetition rate is set either as a period specified in seconds ('period' or
-        'burst_period_in_seconds') or as a number of frames ('burst_period_in-frames').
+        Burst repetition rate is set either as a period specified in seconds (`period` or
+        `burst_period_in_seconds`) or as a number of frames (`burst_period_in_frames`).
         """
         if channels is None:
             channels = self.default_channels
@@ -3502,7 +3504,7 @@ class chFPGA(FPGAFirmware):
     def set_scaler_output_modes(self, bypass=None, out_data_type=None, cap_data_type=None, channels=None):
         if channels is None:
             channels = self.default_channels
-        
+
         if bypass == False:
             self.logger.debug(f'Setting scaler bypass to 0 for channel {channels}')
             for ch in channels:
@@ -3513,15 +3515,15 @@ class chFPGA(FPGAFirmware):
             for ch in channels:
                 self.chan[ch].SCALER.DATA_TYPE = out_data_type
                 self.chan[ch].SCALER.BYPASS = True
-        
+
         if cap_data_type is not None:
             self.logger.debug(f'Setting scaler capture data type to {cap_data_type} for channel {channels}')
             for ch in channels:
                 self.chan[ch].SCALER.CAP_DATA_TYPE = cap_data_type
-        
 
-                
-    
+
+
+
     def reset_scaler_overflow_flags(self, channels=None):
         """ Resets the SCALER overflow flags.
 
@@ -4484,7 +4486,7 @@ class chFPGA(FPGAFirmware):
                 self.chan[ch].SCALER.ROUNDING_MODE = rm_code #not rm_code
 
     def set_symmetric_saturation(self, symmetric_saturation, channels=None):
-        
+
         if channels is None:
             channels = self.default_channels
 
@@ -4492,9 +4494,9 @@ class chFPGA(FPGAFirmware):
             if ch in channels:
                 self.logger.debug(f"{'Enabling' if symmetric_saturation else 'Disabling'} symmetric saturation on channel {ch}")
                 self.chan[ch].SCALER.SATURATE_ON_MINUS_7 = symmetric_saturation
-    
+
     def set_zero_on_sat(self, zero_on_sat, channels=None):
-        
+
         if channels is None:
             channels = self.default_channels
 
@@ -4528,16 +4530,17 @@ class chFPGA(FPGAFirmware):
                 - G = (Glin_scalar, None): same as above
                 - G = (Glin_scalar, Glog): Single gain for all bins with specified postscaler
                 - G = Glin_vector: Gain value for each bin, using the default post-scaler value
-                - G = (Glin_vector, None) : same as above
-                - G = (Glin_vector, Glog) : Gain value for each bin with specified post-scaler value
+                - G = (Glin_vector, None): same as above
+                - G = (Glin_vector, Glog): Gain value for each bin with specified post-scaler value
 
                 where:
 
-                    - ``Glin_scalar`` is a real or complex number. The real and imaginary part of the linear
-                    gain are integer values ranging from -32768 to 32767.
-                    - ``Glog`` is the postscaler factor. This is a binary scaling factor, which is an integer
-                          between 0 and 31 representing a power of two that multiplies the linear
-                          gain. It is common to every bin.
+                - ``Glin_scalar`` is a real or complex number. The real and imaginary part of the
+                  linear gain are integer values ranging from -32768 to 32767.
+
+                - ``Glog`` is the postscaler factor. This is a binary scaling factor, which is an
+                  integer between 0 and 31 representing a power of two that multiplies the linear
+                  gain. It is common to every bin.
 
                 - ``Glin_vector`` is a 1024-element vector of ``Glin_scalar``, where each element is
                   the individual gain of every bin.

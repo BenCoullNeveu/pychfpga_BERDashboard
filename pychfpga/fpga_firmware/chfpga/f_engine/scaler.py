@@ -128,7 +128,7 @@ class SCALER(MMI):
                 - if `gain_list` is a 1024-element list or ndarray, the numeric gains therein are
                   applied to each bin.
 
-                - if `gains_list is a scalar int, float or complex numbers, all bins are set to that
+                - if `gains_list` is a scalar int, float or complex numbers, all bins are set to that
                   scalar value.
 
                 - if `gain_list` is `None`, no gains are set.
@@ -231,8 +231,8 @@ class SCALER(MMI):
 
         Returns:
 
-            Gain table, as a list of self.fpga.NUMBER_OF_FREQUENCY_BINS values. If self.USE_COMPLEX_GAINS == True, we
-            have complex values, where the real and imaginary parts are 16 bit integers. If self.USE_COMPLEX_GAINS == False,
+            Gain table, as a list of self.fpga.NUMBER_OF_FREQUENCY_BINS values. If ``self.USE_COMPLEX_GAINS == True``, we
+            have complex values, where the real and imaginary parts are 16 bit integers. If ``self.USE_COMPLEX_GAINS == False``,
             we just have real gains.
         """
         if use_cache and bank in self.cached_gain_table:

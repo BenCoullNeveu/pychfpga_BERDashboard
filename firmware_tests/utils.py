@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 from cycler import cycler
 import numpy as np
-from test_setup import PLOT_DIR, TEST_CONFIG
+from .test_setup import PLOT_DIR, TEST_CONFIG
 from functools import wraps
 from textwrap import wrap
 
@@ -15,7 +15,7 @@ def plot(datasets, labels=[], y_range=None, data_range=None, split_complex=False
     l = len(labels)
     for i in range(len(datasets) - l):
         labels.append(f"Datset {i}")
-    
+
     # Check all datasets are the same length
     lengths = [d.size for d in datasets]
     if len(set(lengths)) != 1 and data_range is None:
@@ -43,11 +43,16 @@ def plot(datasets, labels=[], y_range=None, data_range=None, split_complex=False
         elif split_complex and im:
             ax.plot(xrange, datasets[i % len(datasets)][data_range[0]+1:data_range[1]:2], label=labels[i % len(datasets)] + "(Im)")
         else:
+<<<<<<< HEAD
             ax.plot(xrange, datasets[i][data_range[0]:data_range[1]], label=labels[i])
         
+=======
+            ax.plot(datasets[i][data_range[0]:data_range[1]], label=labels[i])
+
+>>>>>>> origin/jfc/dev
         #axs.set_title(labels[i])
         ax.legend()
-        
+
     fig.supxlabel("Bin" if xlabel is None else xlabel)
     fig.supylabel("Output" if ylabel is None else ylabel)
     fig.suptitle("\n".join(wrap(title, 60)))
@@ -56,7 +61,7 @@ def plot(datasets, labels=[], y_range=None, data_range=None, split_complex=False
     plt.savefig(dir/title)
 
 
-    
+
 def compare_plot_data(test_unit=None, *, split_plots=False, approximate=False, atol=0.1):
     def _decorate(test_unit):
         @wraps(test_unit)
@@ -69,7 +74,7 @@ def compare_plot_data(test_unit=None, *, split_plots=False, approximate=False, a
             title = test_unit.__name__[5:] if len(res) < 2 else res[1]
             title = title.replace('_', ' ')
             title = title.capitalize()
-            folder = test_unit.__name__[5:] if len(res) >= 2 else None 
+            folder = test_unit.__name__[5:] if len(res) >= 2 else None
             plot_kwargs = {} if len(res) < 3 else res[2]
             if len(data.shape) > 1:
                 for i in range(data.shape[0]):
