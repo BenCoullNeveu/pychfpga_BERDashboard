@@ -25,8 +25,9 @@ class FUNCGEN(MMI):
     FUNCTION         = BitField(CONTROL, 0x00, 0, width=3, doc="Selects the source of the signal to be generated")
     BYTE_A           = BitField(CONTROL, 0x01, 0, width=8, doc="Byte A to be used by the function generator")
     BYTE_B           = BitField(CONTROL, 0x02, 0, width=8, doc="Byte B to be used by the function generator")
-    NUMBER_OF_FRAMES = BitField(CONTROL, 0x03, 0, width=8, doc="Number of frames to send. If 0, send continuously.")
-    BYTE_C           = BitField(CONTROL, 0x04, 0, width=8, doc="Byte C to be used by the function generator")
+    NUMBER_OF_FRAMES = BitField(CONTROL, 0x03, 0, width=8, doc="Number of frames to send. If 0, send continuously")
+    FUNCTION_NUMBER  = BitField(CONTROL, 0x04, 0, width=8, doc="Function number stored in buffer")
+    RST_LFST         = BitField(CONTROL, 0x06, 6, width=1, doc="Reset the noise generator to inject seed for LFSR")
     SHIFT            = BitField(CONTROL, 0x05, 0, width=4, doc="Number of bits to shift-right the ADC data before it is passed on")
     RAM_PAGE_MSB     = BitField(CONTROL, 0x05, 4, width=4, doc="MSB of the 512-byte RAM page we want to access")
     RESET_STATS      = BitField(CONTROL, 0x06, 7, doc="Reset the overflow statistics counter")
@@ -154,6 +155,10 @@ class FUNCGEN(MMI):
         """ Resets the function generator"""
         self.pulse_bit('RESET')
 
+    def reset_noise(self):
+        """Resets the seed of the noise generator and the output to 0"""
+        self.pulse_bit('RST_LFST')
+
     def set_data_source(self, source_name, data=None, seed=None, **kwargs):
         """
         Selects the type of data outputed by the function generator: ADC
@@ -178,7 +183,6 @@ class FUNCGEN(MMI):
         elif source_name not in data_sources:
             raise ValueError(f"Invalid data source or function name '{source_name}'. "
                              f"Valid values are {', '.join(list(data_sources) + list(function_names))}")
-
 
         if seed is not None:
             self.BYTE_A = seed & 0xff
@@ -297,7 +301,7 @@ class FUNCGEN(MMI):
             self.buffer_cache[page_slice] = page_data
 
         # Store info on the buffer contents
-        self.BYTE_C = function_number
+        self.FUNCTION_NUMBER = function_number
         # self.RAM_PAGE = 4
         # self.write_ram(0, function_number)
         # self.write_ram(1, info.encode() + b'\x00')
@@ -318,7 +322,7 @@ class FUNCGEN(MMI):
         # fn_number = data[0]
         # data_str = data[1:].tostring()
         # info = data_str[:data_str.index(chr(0))]
-        fn_number = self.BYTE_C
+        fn_number = self.FUNCTION_NUMBER
         fn_names = [name for name, (n, _) in self.FUNCTION_NAMES.items() if n==fn_number]
         fn_name = fn_names[0] if len(fn_name) == 1 else 'Unknown'
         info = f'Function {fn_number}: {fn_name}'

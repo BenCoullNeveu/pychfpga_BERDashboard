@@ -291,6 +291,9 @@ class RawFrameReceiver(object):
                 '8': return the data as array of bytes (int8)
                 '16': return the data as array of 16-bit signed integers. Use when capturing the output of the FUNCGEN.
                 '16+16': return the data as an array of (16+16) bit complex numbers. Use for data at the output of the SCALER (unless the FFT is bypassed)
+
+            ncap (int): Number of bursts to capture
+            
             verbose (int): verbosity level. 0: no messages, 1: basic messages, 2: detailed messages
 
         Returns:
@@ -315,6 +318,7 @@ class RawFrameReceiver(object):
                 print(f'Flushed {flushed} packets while emptying UDP buffers')
             self.last_ts = None
             flushed = self.wait_for_new_timestamp(self.cookie, data_timeout, verbose=verbose)
+            print(f'Done with waiting for new timestamps')
             if verbose:
                 print(f'Skipped {flushed} packets while waiting for a fresh timestamp')
         self.socket.settimeout(data_timeout)
