@@ -28,8 +28,8 @@ class WiredCrossbar(MMI):
         return 4
 
     def set_frames_per_packet(self, frames):
-        if False:#frames != 1:
-            raise RuntimeError(f'CT engine only supports packaging 1 frame per packet. {frames} frames are not supported')
+        if frames != 1:
+            self.logger.warning(f'{self!r}: CT engine only supports packaging 1 frame per packet. {frames} frames are not supported')
 
     def get_frames_per_packet(self):
         return 1
