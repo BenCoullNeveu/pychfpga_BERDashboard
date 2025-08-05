@@ -23,6 +23,7 @@ def board_conn(request):
     logger.info("Connecting to the ICE board")
     ca = FPGAArray(**CONN_CONFIG)
     request.cls.board = ca.ib[0]
+    logger.info(f"Firmware version: {ca.ib[0].get_version()}")
 
 
 @pytest.fixture(scope=TEST_CONFIG['conn_scope'])
