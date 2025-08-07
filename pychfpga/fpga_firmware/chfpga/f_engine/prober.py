@@ -477,3 +477,11 @@ class RawFrameReceiver(object):
             return self.ts[:NF], self.data[:,:NF,:], self.data_count[:, :NF]
         else:
             return self.ts[0], self.data[:,0,:], self.data_count[:,0]
+
+    def read_raw_frames_double_resolution(self, *args, **kwargs):
+        '''
+        Thin wrapper around read_raw_frames which then combines adjacent bytes of data into a single 16-bit number
+        '''
+        ts, data, flags = self.read_raw_frames(*args, **kwargs)
+        combined = data[:, ::2].astype(np.int16) * 2**8 + data[:, 1::2].astype(np.uint8)
+        return ts, combined, flags

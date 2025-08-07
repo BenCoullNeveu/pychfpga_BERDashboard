@@ -144,6 +144,7 @@ class chFPGA(FPGAFirmware):
         1: dict(name='CHIME', latency=3230, samples_per_frame=2048, bits_per_sample=8, bits_per_bin=18+18),
         2: dict(name='D3A', latency=12533, samples_per_frame=16384, bits_per_sample=14, bits_per_bin=18+18),
         3: dict(name='CHORD', latency=10452, samples_per_frame=16384, bits_per_sample=14, bits_per_bin=32+32),
+        4: dict(name='HIRAX', latency=0, samples_per_frame=2048, bits_per_sample=18+18, bits_per_bins=29+29)
     }
 
     ################################################################################################
