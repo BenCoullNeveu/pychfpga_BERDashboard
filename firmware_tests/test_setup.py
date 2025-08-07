@@ -5,13 +5,6 @@ from wtl.config import load_yaml_config
 from pathlib import Path
 import os
 
-<<<<<<< HEAD
-cwd = os.path.split(__file__)[0]
-
-
-CONN_CONFIG = load_yaml_config(os.path.join(cwd, "config.yaml:connection_config"))
-TEST_CONFIG = load_yaml_config(os.path.join(cwd, "config.yaml:test_config"))
-=======
 root = os.path.split(__file__)[0]
 config_pathname = os.path.join(root,'config.yaml')
 print(f'root of {__file__} is {root}. config file is {config_pathname}')
@@ -19,7 +12,6 @@ CONN_CONFIG = load_yaml_config("connection_config", config_pathname)
 TEST_CONFIG = load_yaml_config("test_config", config_pathname)
 print(f'***test config is {TEST_CONFIG}')
 
->>>>>>> origin/jfc/dev
 
 PLOT_DIR = Path("test_results")
 
@@ -79,15 +71,15 @@ def setup_scaler(request, board_conn):
         scaler_cap_data_type=0,
         offset_binary_encoding=False,
         scaler_eight_bit=request.cls.CAPTURE_WIDTH > 4 and request.cls.PLATFORM == 'ICE',
-        prober_user_flags=True if request.cls.PLATFORM == 'ICE' else None,
+        prober_user_flags=False,# if request.cls.PLATFORM == 'ICE' else None,
         scaler_rounding_mode=0,
         symmetric_saturation=False)
     logger.debug("Setup channelizer for testing scaler")
 
-@pytest.fixture(autouse=True)
+'''@pytest.fixture(autouse=True)
 def check_fifo_overflow(request): #check that fifo overflow flag never went high during test
     yield
     for ch in request.cls.board.chan:
         pass
         #assert(ch.SCALER.CHAN_FIFO_OVERFLOW == 0)
-
+'''
