@@ -1244,7 +1244,7 @@ class chFPGA(FPGAFirmware):
         # Initialize X-Engine
         # -------------------
 
-        if self.CORR:
+        if self.CORR and False:
             self.logger.debug(f'{self!r}: === Initializing FPGA-based correlator (X-Engine)')
             await asyncio.sleep(0)
             self.logger.debug(f'{self!r}:  - CORR')
