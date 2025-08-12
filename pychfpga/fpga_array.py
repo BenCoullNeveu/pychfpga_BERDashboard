@@ -1787,8 +1787,8 @@ class FPGAArray(object):
             # Sync was performed by init_corner_turn()
 
         elif mode in ('corr16', 'corr8', 'corr32', 'corr4'):
-            if not all(self.ib.CORR):
-                raise RuntimeError(f'Mode {mode} requires all boards to have a firmware correlator engine')
+            #if not all(self.ib.CORR):
+            #    raise RuntimeError(f'Mode {mode} requires all boards to have a firmware correlator engine')
             bin_map = self.get_corner_turn_bin_map(
                 mode=mode,
                 bad_links=corner_turn_bad_links,
