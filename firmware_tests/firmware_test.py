@@ -1,16 +1,14 @@
 import logging
 import numpy as np
-from test_setup import board_conn, setup_funcgen, TEST_CONFIG, CONN_CONFIG
+from test_setup import board_conn, setup_funcgen, TEST_CONFIG, CONN_CONFIG,PLOT_DIR
 from utils import plot_comp_data
 import pytest
 import socket
 import psutil
 from net_tools import ping_sources_async
 from functools import wraps 
-import sts
 import matplotlib.pyplot as plt
 import math
-from test_setup import PLOT_DIR
 from time import sleep
 
 
@@ -41,10 +39,10 @@ def compare_plot_data(test_unit):
 class TestFW:
     """
     Collection of tests for an ICE/CRS board firmware. Most tests utilize the board_conn fixture, that reads
-    connection parameters specified in config.yaml and connects to the boards. Some tests also use setup_funcgen
-    fixture which allows controlling function generator within tests. The @compare_plot_data decorator is used
-    to compare the data read from the board and reference data. For this to work, test units must return data and
-    ref_data numpy arrays.
+    connection parameters specified in config.yaml and connects to the boards. Some tests also use the setup_funcgen
+    or the setup_scaler fixture which allows controlling the function generator or the scaler, respectively, within tests. 
+    The @compare_plot_data decorator is used to compare the data read from the board and reference data. For this to work, 
+    test units must return data and ref_data numpy arrays.
     """
     # All parameters are set by fixtures
     board = None
@@ -156,11 +154,6 @@ class TestFW:
     def test_funcgen_ramp(self, board_conn, setup_funcgen):
         ref_data = (np.arange(self.FG_NS, dtype="u2")<<self.FG_LSHIFT).view("i1")>>self.FG_LSHIFT
         data = self._set_capture_funcgen('ramp')
-        plt.plot(data,label="data")
-        # plt.plot(ref_data, data="expected")
-        # plt.legend()
-        # plt.title(ref_data.shape)
-        # plt.savefig(PLOT_DIR/f"ramp")
         return data, ref_data
 
     @compare_plot_data
@@ -168,10 +161,6 @@ class TestFW:
         sin_freq = 1
         ref_data = (np.sin(np.arange(self.FG_NS) * 2 * np.pi / self.FG_NS * sin_freq) * 127).astype('i2')
         data = self._set_capture_funcgen('sin', freq=sin_freq, ampl=127)
-        plt.plot(data[0],label="data")
-        plt.plot(ref_data, data="expected")
-        plt.legend()
-        plt.savefig(PLOT_DIR/f"sin")
         return data, ref_data
 
     @compare_plot_data
@@ -182,12 +171,12 @@ class TestFW:
         ref_data = (np.sin(t * freq_sin) * 127 / 2 + np.cos(t * freq_cos) * 127 / 2).astype('i2')
         print(ref_data)
         data = self._set_capture_funcgen('arb', data=ref_data)
-        return data, ref_data
+        return [data, ref_data],
 
     @compare_plot_data
     def test_funcgen_const(self, board_conn, setup_funcgen):
         a = 13
-        ref_data = np.full(self.FG_NS, a, self.FG_DTYPE)
+        ref_data = np.full(self.FG_NS, a, self.FG_DTYPE).astype('i2')
         data = self._set_capture_funcgen('a', a=a, flatten=False)
         return data, ref_data
 
@@ -197,9 +186,6 @@ class TestFW:
         b = 42
         ref_data = np.tile(np.array((a, b), self.FG_DTYPE), self.FG_NS // 2).view('u1')
         data = self._set_capture_funcgen('ab', period=0.01, a=a, b=b, flatten=False)
-        logger = self.get_logger()
-        logger.debug(f"{data=}")
-        logger.debug(f"{ref_data=}")
         return data, ref_data
 
     @compare_plot_data
@@ -230,6 +216,30 @@ class TestFW:
         sin_freq = 100
         ref_data = (np.sin(np.arange(self.FG_NS) * 2 * np.pi / self.FG_NS * sin_freq) * 127).astype(self.FG_DTYPE_SIGNED)
         return data, ref_data
+
+
+    
+    
+    
+    
+    '''def plot_all_values(self, board_conn, setup_scaler):
+        #create a colourmap of data from scaler with all values from scaler and all values from -128 to 127 as input
+        for i in range(16):
+            self.board.set_gains(1, postscaler=i, channels=[i])
+        _, data0 = self._set_capture_scaler(func='ramp', min=-128, max=128)
+        for i in range(16):
+            self.board.set_gains(1, postscaler=16+i, channels=[i])
+        _, data1 = self._set_capture_scaler(func='ramp',  min=-128, max=128)
+        #merge data0 and data1 into 1 2d array
+        data = np.concatenate((data0, data1), axis=0)
+        fig, ax = plt.subplots()
+        ax.set_ylabel("Postscaler")
+        ax.set_xlabel("Input value")
+        plt.imshow(data, cmap='coolwarm', aspect='auto')
+        
+        plt.colorbar()
+        plt.savefig("cmap.png")'''
+    
 
     @pytest.mark.parametrize("seed", seeds[:10])
     def test_funcgen_deterministic_after_rst_lfsr(self, board_conn, setup_funcgen, seed):

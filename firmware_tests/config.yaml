@@ -8,4 +8,19 @@ test_config:
     logleveltest: "DEBUG"   # Log level during tests
     conn_scope: "class"     # Select "function" to re-establish connection for each test or
                             # "class" if you want to reuse connection.
-    comp_plots: True        # Generate comparison plots during tests
+    only_plot: False              #Don't compare results, only plot them  
+    platform: "ICE-4bit-r"
+    global_postscaler: range(IDENTITY_POSTSCALER - 1, IDENTITY_POSTSCALER + 2) #range(SCALER_SHIFT - INPUT_WIDTH - IMPLICIT_SHIFT + 1, SCALED_WIDTH - IMPLICIT_SHIFT)
+    global_frame_cnt: [100, 30000]
+    alternating_gain:
+        period: range(1, 20, 2)
+    constant_gain:
+        gain: [3, 65535]
+        #gain: [-3, 32767]
+    rounding:
+        value: [-8, 7]
+    double_resolution_capture:
+        postscaler: range(12, 22)
+    averages:
+        num_frames: [120]
+        postscaler_range: ((IDENTITY_POSTSCALER - CAPTURE_WIDTH, IDENTITY_POSTSCALER + CAPTURE_WIDTH),)
