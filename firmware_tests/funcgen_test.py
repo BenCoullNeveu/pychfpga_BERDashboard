@@ -1,46 +1,25 @@
 import logging
 import numpy as np
-from test_setup import board_conn, setup_funcgen, TEST_CONFIG, CONN_CONFIG
-from utils import plot_comp_data
+# from test_setup import board_conn, setup_funcgen, TEST_CONFIG, CONN_CONFIG
+from utils import plot_comp_data, compare_plot_data
 import pytest
 import socket
 import psutil
 from net_tools import ping_sources_async
 from functools import wraps 
-import sts
 import matplotlib.pyplot as plt
 import math
 from test_setup import PLOT_DIR
 from time import sleep
+from wtl.pytest_xreport import xr
+from wtl.namespace import Namespace
 
+#include test setup functions in class
+#config within class
 
-def compare_plot_data(test_unit):
+class TestFuncgen:
     """
-    A wrapper for unit tests that plots data (if requested) and compares all read rows to reference data using
-    np.isclose(). Unit tests must return data and ref_data which are np.ndarray type.
-    """
-    @wraps(test_unit)
-    def wrapper(*args, **kwargs):
-        data, ref_data = test_unit(*args, **kwargs)
-
-        logger = TestFW.get_logger()
-
-        if TEST_CONFIG['comp_plots']:
-            logger.debug("Generating plots")
-            plot_comp_data(test_unit.__name__, ref_data, data, title=test_unit.__name__)
-
-        for i, data_row in enumerate(data):            
-            np.testing.assert_allclose(
-                data_row,
-                ref_data,
-                err_msg=f"Data row with index {i} does not match the reference data",
-            )
-    return wrapper
-
-
-class TestFW:
-    """
-    Collection of tests for an ICE/CRS board firmware. Most tests utilize the board_conn fixture, that reads
+    Collection of funcgen tests for an ICE/CRS board firmware. Most tests utilize the board_conn fixture, that reads
     connection parameters specified in config.yaml and connects to the boards. Some tests also use setup_funcgen
     fixture which allows controlling function generator within tests. The @compare_plot_data decorator is used
     to compare the data read from the board and reference data. For this to work, test units must return data and
@@ -53,17 +32,45 @@ class TestFW:
     FG_DTYPE_SIGNED = None
     FG_LSHIFT = None
     NUMBER_OF_CHANNELIZERS = None
+    PLATFORM = None
 
-    PLATFORM = "CRS" if "crs" in CONN_CONFIG['hwm'] else "ICE"
-
-    #list of 10 seeds to test noise from funcgen (seeds are 16 bits signed int)
+    #list of 100 seeds to test noise from funcgen (seeds are 16 bits signed int)
     seeds = [-7680, 7744, -14296, -65, -32175, -29190, 30160, 5679, -2070, 24601, 29784, -18765, -25554, -10744, -27608, 3207, 5129, 5031, 22606, 11371, 2446, -28089, 29554, -24103, -26437, 18246, -6527, 10486, -25707, -5372, -16068, 25810, 14648, 23623, 4812, 4715, -2645, -28820, -15584, 13563, 32522, 31152, 17351, -22105, -2246, 25818, 17051, -2280, -25287, -20404, -15797, -12642, -15709, -31140, 7986, 22594, -6864, -32133, 11524, -4534, -11304, 16974, -14582, -19158, -30167, 18625, 24000, -12775, -2598, 10724, -17769, -6480, -21887, -20074, -20059, 14521, -5225, 4359, 6366, 30513, -25340, 4396, -224, -4468, 28533, -14307, 13536, -24931, 20594, -30438, -10245, -4246, 25084, -3154, 26509, -16821, -1224, 10499, -16869, -1795]
 
-    @classmethod
-    def get_logger(cls):
-        logger = logging.getLogger(cls.__class__.__name__)
-        logger.setLevel(TEST_CONFIG['logleveltest'])
-        return logger
+    def __init__(self):
+        config = Namespace(load_yaml_config())
+        self.conn_config = config.connection_config
+        self.test_config = config.test_config
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(self.test_config.logleveltest)
+
+    @pytest.fixture(scope='class') # class or function
+    def board_conn(self):
+        conn_logger_name = FPGAArray.__name__.rsplit('.', 1)[0] if '.' in __name__ else ''
+        logging.getLogger(conn_logger_name).setLevel(self.test_config['loglevelconn'])
+        self.logger.info("Connecting to the motherboard")
+        ca = FPGAArray(**self.conn_config)
+        self.board = ca.ib[0]
+        logger.info(f"Firmware version: {ca.ib[0].get_version()}")
+        self.PLATFORM = self.board.mb.part_number #indicates if board is CRS, ZCU111 or MGK7MB (IceBoard)
+
+    @pytest.fixture(scope='class')
+    def setup_funcgen(self):
+        self.FG_NS = self.board.ADC_SAMPLES_PER_FRAME
+        self.NUMBER_OF_CHANNELIZERS = self.board.NUMBER_OF_CHANNELIZERS
+        # Should throw an exception when ADC_BYTES_PER_FRAME not 1 or 2 but the connection does it itself
+        if self.board.ADC_BYTES_PER_SAMPLE == 1:
+            self.FG_DTYPE = 'u1'
+            self.FG_DTYPE_SIGNED = 'i1'
+            self.FG_LSHIFT = 8 - self.board.ADC_BITS_PER_SAMPLE
+        else:
+            self.FG_DTYPE = '>u2'
+            self.FG_DTYPE_SIGNED = 'i2'
+            self.FG_LSHIFT = 16 - self.board.ADC_BITS_PER_SAMPLE
+        logger.debug(f"Setting funcgen output dtype to {self.FG_DTYPE}")
+
+    def get_logger(self):
+        return self.logger
 
     def test_udp_buffers_size(self):
         logger = self.get_logger()

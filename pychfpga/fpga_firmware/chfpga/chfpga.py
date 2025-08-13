@@ -3104,8 +3104,13 @@ class chFPGA(FPGAFirmware):
         Stops the transmission of data.
         """
         self.GPIO.GLOBAL_TRIG = 0  # disable data transmission if continuous mode is currentlly selected
-        for chan in self.chan.values():
-            chan.PROBER.RESET = 1
+        if self.CAPTURE_TYPE == "PROBER":
+            for chan in self.chan.values():
+                chan.PROBER.RESET = 1
+        elif self.CAPTURE_TYPE == "UCAP":
+            self.UCAP.USER_RESET = 1
+        else:
+            raise RuntimeError("Stop data capture only implemented on prober and ucap currently")
 
     def get_data_receiver(self, verbose=1, threaded=False):
         self.logger.debug(f'{self!r}: Creating data receiver')

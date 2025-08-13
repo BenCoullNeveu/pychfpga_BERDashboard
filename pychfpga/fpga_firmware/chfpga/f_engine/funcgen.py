@@ -9,8 +9,9 @@ History:
 
 from ..mmi import MMI, BitField
 import numpy as np
+import asyncio
 
-
+#ADD METHOD TO SET NUMBER OF FRAMES OVER WHICH WE COUNT SAMPLES OVERFLOWS!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 class FUNCGEN(MMI):
     """ Implements interface to the function generator within a procecessor
     pipeline"""
@@ -25,20 +26,23 @@ class FUNCGEN(MMI):
     FUNCTION         = BitField(CONTROL, 0x00, 0, width=3, doc="Selects the source of the signal to be generated")
     BYTE_A           = BitField(CONTROL, 0x01, 0, width=8, doc="Byte A to be used by the function generator")
     BYTE_B           = BitField(CONTROL, 0x02, 0, width=8, doc="Byte B to be used by the function generator")
-    NUMBER_OF_FRAMES = BitField(CONTROL, 0x03, 0, width=8, doc="Number of frames to send. If 0, send continuously")
-    FUNCTION_NUMBER  = BitField(CONTROL, 0x04, 0, width=8, doc="Function number stored in buffer")
-    RST_LFST         = BitField(CONTROL, 0x06, 6, width=1, doc="Reset the noise generator to inject seed for LFSR")
+    STATS_PERIOD     = BitField(CONTROL, 0x04, 0, width=16, doc="Number of frames to send. If 0, send continuously")
+    # FUNCTION_NUMBER  = BitField(CONTROL, 0x04, 0, width=8, doc="Function number stored in buffer") --deprecate
+    RST_LFSR         = BitField(CONTROL, 0x06, 6, width=1, doc="Reset the noise generator to inject seed for LFSR")
+    FUNCTION_NUMBER  = BitField(CONTROL, 0x06, 4, width=2, doc="Function number stored in buffer")
     SHIFT            = BitField(CONTROL, 0x05, 0, width=4, doc="Number of bits to shift-right the ADC data before it is passed on")
     RAM_PAGE_MSB     = BitField(CONTROL, 0x05, 4, width=4, doc="MSB of the 512-byte RAM page we want to access")
-    RESET_STATS      = BitField(CONTROL, 0x06, 7, doc="Reset the overflow statistics counter")
-    CLIP_WIDTH       = BitField(CONTROL, 0x06, 0, width=4, doc="Saturates the ADC data to a ``clip_width-1``-bit wide signed value (i.e. clip_width is the position of the sign bit). Saturation is applied after the right-shift.")
-
+    STATS_ENABLE     = BitField(CONTROL, 0x06, 7, doc="Enables overflow_ctr update. Clears stats_done when stats_enabled cleared.")
+    CLIP_WIDTH       = BitField(CONTROL, 0x00, 4, doc="Saturates the output data to a ``clip_width-1``-bit wide signed value (i.e. clip_width is the position of the sign bit). Saturation is applied after the right-shift. ")
+    FUNCTION_NUMBER  = BitField(CONTROL, 0x07, 0, width=8, doc="Function number stored in buffer")
 
     RAMP_CTR   = BitField(STATUS, 0x00, 0, width=8, doc="Last 8 bits of the ramp counter (for debuging)")
     FRAME_CTR  = BitField(STATUS, 0x01, 0, width=8, doc="Frame counter")
+    FRAME_OVERFLOW_FLAG = BitField(STATUS, 0x02, 2, doc="Indicates if there is at least an adc overflow in current frame.")
+    STATS_DONE = BitField(STATUS, 0x02, 1, doc="overflow_ctr ready with new value for new integration period")
     SEND_FRAME = BitField(STATUS, 0x02, 0, doc="debug")
     DELAY_CTR = BitField(STATUS, 0x04, 0, width=16, doc="Debug: Delay counter")
-    ADC_OVERFLOW_CTR = BitField(STATUS, 0x05, 0, width=8, doc="Number of ADC overflows since the counter was last cleared")
+    OVERFLOW_CTR = BitField(STATUS, 0x08, 0, width=32, doc="Number of ADC overflows since the counter was last cleared")
 
     FN_ADC = 0
     FN_BUFFER = 1
@@ -157,7 +161,7 @@ class FUNCGEN(MMI):
 
     def reset_noise(self):
         """Resets the seed of the noise generator and the output to 0"""
-        self.pulse_bit('RST_LFST')
+        self.pulse_bit('RST_LFSR')
 
     def set_data_source(self, source_name, data=None, seed=None, **kwargs):
         """
@@ -279,7 +283,6 @@ class FUNCGEN(MMI):
                 data = ((data.astype(int) << self.lshift)).astype(self.dtype).tobytes()  # convert to dtype *after* shift otherwise we lose type and endianness
             else:
                 data = (np.fromiter(data, int) << self.lshift).astype(self.dtype).tobytes()
-
         # data = data.tobytes()
         # print(len(data), data[:100].hex(':'))
 
@@ -289,7 +292,6 @@ class FUNCGEN(MMI):
 
         if self.buffer_cache is None:
             self.buffer_cache = bytearray(self.NB)
-
         # Write the data, page by page
         for page in range(self.N_PAGES):
             page_slice = slice(page * self.PAGE_SIZE, (page + 1) * self.PAGE_SIZE)

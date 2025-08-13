@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from test_setup import PLOT_DIR
+from test_setup import PLOT_DIR, TEST_CONFIG
 
 
 def plot_comp_data(fname: str, ref_data: np.ndarray, data: np.ndarray, x: np.ndarray = None, title: str = None, crop_data_ind: int = -1):
@@ -30,3 +30,24 @@ def plot_comp_data(fname: str, ref_data: np.ndarray, data: np.ndarray, x: np.nda
     fig.suptitle(title)
     fig.tight_layout()
     plt.savefig(PLOT_DIR/fname)
+
+def compare_plot_data(test_unit):
+    """
+    A wrapper for unit tests that plots data (if requested) and compares all read rows to reference data using
+    np.isclose(). Unit tests must return data and ref_data which are np.ndarray type.
+    """
+    @wraps(test_unit)
+    def wrapper(*args, **kwargs):
+        data, ref_data = test_unit(*args, **kwargs)
+
+        if TEST_CONFIG['comp_plots']:
+            logger.debug("Generating plots")
+            plot_comp_data(test_unit.__name__, ref_data, data, title=test_unit.__name__)
+
+        for i, data_row in enumerate(data):            
+            np.testing.assert_allclose(
+                data_row,
+                ref_data,
+                err_msg=f"Data row with index {i} does not match the reference data",
+            )
+    return wrapper
