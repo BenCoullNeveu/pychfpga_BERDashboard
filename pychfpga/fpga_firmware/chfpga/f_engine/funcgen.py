@@ -198,7 +198,7 @@ class FUNCGEN(MMI):
         """ Resets the function generator"""
         self.pulse_bit('RESET')
 
-    def set_data_source(self, source_name, verbose=True, **kwargs):
+    def set_data_source(self, source_name, verbose=False, **kwargs):
         """
         Selects the type of data outputted by the function generator.
 

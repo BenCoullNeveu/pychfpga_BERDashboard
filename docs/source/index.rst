@@ -22,12 +22,7 @@
 
    howto/pocket_correlator
    howto/deploy
-   howto/common_issues
-   howto/networking
-   howto/takeData
-   howto/quick_start
-   Old installation <howto/installation>
-   Old setup <howto/setup_python>
+   howto/scaler_test
 
 .. toctree::
    :hidden:

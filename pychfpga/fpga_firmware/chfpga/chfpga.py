@@ -144,6 +144,7 @@ class chFPGA(FPGAFirmware):
         1: dict(name='CHIME', latency=3230, samples_per_frame=2048, bits_per_sample=8, bits_per_bin=18+18),
         2: dict(name='D3A', latency=12533, samples_per_frame=16384, bits_per_sample=14, bits_per_bin=18+18),
         3: dict(name='CHORD', latency=10452, samples_per_frame=16384, bits_per_sample=14, bits_per_bin=32+32),
+        4: dict(name='HIRAX', latency=0, samples_per_frame=2048, bits_per_sample=18+18, bits_per_bins=29+29)
     }
 
     ################################################################################################
@@ -5098,7 +5099,7 @@ class chFPGA(FPGAFirmware):
             self.logger.error('%r: Error getting FPGA channelizer metrics. Error is %r' % (self, e))
         return metrics'''
 
-    async def get_channel_metrics_async(self, ch, frame_cnt=300_000, polling_interval=0.0001):
+    def get_channel_metrics(self, ch, frame_cnt=300_000, polling_interval=0.0001):
         '''
         Returns the channelizer metrics for a specific channel in the format (scaler_overflow_count, adc_overflow_count)
 
@@ -5113,13 +5114,13 @@ class chFPGA(FPGAFirmware):
 
         self.chan[ch].SCALER.STATS_FRAME_COUNT = frame_cnt
         self.chan[ch].SCALER.STATS_CAPTURE = 0
-        await asyncio.sleep(polling_interval * 10)
+        time.sleep(polling_interval * 10)
         self.chan[ch].SCALER.STATS_CAPTURE = 1
         while True:
             if self.chan[ch].SCALER.STATS_READY:
                 self.chan[ch].SCALER.STATS_CAPTURE = 0
                 return (self.chan[ch].SCALER.STATS_SCALER_OVERFLOWS, self.chan[ch].SCALER.STATS_ADC_OVERFLOWS)
-            await asyncio.sleep(polling_interval)
+            time.sleep(polling_interval)
 
     async def get_crossbar_metrics_async(self, reset=True):
         metrics = Metrics()
