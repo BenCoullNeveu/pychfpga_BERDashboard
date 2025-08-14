@@ -2768,7 +2768,7 @@ class chFPGA(FPGAFirmware):
             fft_shift=None,
             scaler_bypass=None,
             scaler_cap_data_type=None,
-            scaler_out_data_type=None,
+            scaler_bypass_data_type=None,
             gain=None,
             postscaler=None,
             scaler_eight_bit=None,
@@ -2817,9 +2817,9 @@ class chFPGA(FPGAFirmware):
             self.set_fft_shift(fft_shift, channels=channels)
 
         # Set Scaler parameters
-        if scaler_bypass == False or scaler_out_data_type is not None or scaler_cap_data_type is not None:
+        if scaler_bypass == False or scaler_bypass_data_type is not None or scaler_cap_data_type is not None:
             self.set_scaler_output_modes(bypass=scaler_bypass,
-                                         out_data_type=scaler_out_data_type,
+                                         bypass_data_type=scaler_bypass_data_type,
                                          cap_data_type=scaler_cap_data_type, channels=channels)
 
         if scaler_rounding_mode is not None:
@@ -3502,7 +3502,31 @@ class chFPGA(FPGAFirmware):
         """
         return [bool(chan.SCALER.BYPASS) for chan in self.chan.values()]
 
-    def set_scaler_output_modes(self, bypass=None, out_data_type=None, cap_data_type=None, channels=None):
+    def set_scaler_output_modes(self, bypass=None, bypass_data_type=None, cap_data_type=None, channels=None):
+        '''
+        Configures both the science and capture outputs of the scaler. 
+
+        Parameters:
+            bypass: When set to False, the science output will output normal (i.e. 4+4 bit scaled FFT data). Also sets bypass_data_type to 0.
+
+            bypass_data_type: Sets the mode of the science output. These are: 
+                - 0: The input FFT data is forwarded directly to the output.
+                - 1: If an overflow occurs in either the real or imaginary component of the bin, 1+0j is output for that bin. Otherwise, 0+0j is output.
+                - 2: If a positive overflow occurs in the real component of the bin, 1+0j is output for that bin. If a negative overflow occurs in that component, 0+1j is output. Otherwise, 0+0j is output.
+                - 3: If a positive overflow occurs in the imaginary component of the bin, 1+0j is output for that bin. If a negative overflow occurs in that component, 0+1j is output. Otherwise, 0+0j is output. 
+            Note that setting bypass_data_type also automatically sets the bypass register to True (otherwise the science output will continue outputting normal)
+
+            cap_data_type: Sets the mode of the capture output. These are: 
+                - 0: Forward science output directly to capture output. 
+                - 1: Output the input FFT data.
+                - 2: Output raw scaled FFT data, before rounding is applied. The data is saturated, but disregarding symmetric saturation. 
+                - 3: Output 4+4 bit scaled FFT data (e.g. normal scaler output, even if the science output is set to another mode)
+                - 4: Output the input FFT data of the even bins only, at double the bitwidth.
+                - 5: Output the input FFT data of the odd bins only, at double the bitwidth.
+                - 6: Output the raw scaled FFT data (see above) of the even bins only, at double the bitwidth.
+                - 7: Output the raw scaled FFT data (see above) of the odd bins only, at double the bitwidth.
+        '''
+        
         if channels is None:
             channels = self.default_channels
 
@@ -3511,10 +3535,10 @@ class chFPGA(FPGAFirmware):
             for ch in channels:
                 self.chan[ch].SCALER.DATA_TYPE = 0
                 self.chan[ch].SCALER.BYPASS = False
-        elif out_data_type is not None:
-            self.logger.debug(f'Setting scaler output data type to {out_data_type} for channel {channels}')
+        elif bypass_data_type is not None:
+            self.logger.debug(f'Setting scaler output data type to {bypass_data_type} for channel {channels}')
             for ch in channels:
-                self.chan[ch].SCALER.DATA_TYPE = out_data_type
+                self.chan[ch].SCALER.DATA_TYPE = bypass_data_type
                 self.chan[ch].SCALER.BYPASS = True
 
         if cap_data_type is not None:
@@ -5101,14 +5125,19 @@ class chFPGA(FPGAFirmware):
 
     def get_channel_metrics(self, ch, frame_cnt=300_000, polling_interval=0.0001):
         '''
-        Returns the channelizer metrics for a specific channel in the format (scaler_overflow_count, adc_overflow_count)
+        Accesses the overflow metrics collected in the scaler.
 
         Internally, this resets the STATS_CAPTURE flag, sets it, then waits for the STATS_READY flag to be asserted and collects the data.
 
         Parameters:
-            - ch: the channel to collect the data from
-            - frame_cnt: number of data frames to integrate these statistics over
-            - polling_interval: how like to sleep in between checking if the stats_ready has been set
+            ch: the channel to collect the data from
+            
+            frame_cnt: number of data frames to integrate these statistics over
+            
+            polling_interval: how long to sleep in between checking if the sSTATS_READY has been set
+        
+        Returns:
+            (scaler_overflow_count, adc_overflow_count)
 
         '''
 
