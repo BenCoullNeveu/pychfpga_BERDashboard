@@ -47,8 +47,6 @@
         "psutil",  # was ==5.4.7, now testing 5.7.3
         "netifaces",   # was not specified, now using 0.10.9
         "zeroconf==0.34.3",  # new, was tested with 0.34.3
-        "sts-pylib",
-
         ]
 
 [project.urls]
@@ -113,7 +111,6 @@ errors-only = true
         # Private packages
         "wtl.pytest-xreport @ git+ssh://git@bitbucket.org/winterlandcosmology/wtl.pytest-xreport.git@jfc/dev",
         "labpy @ git+ssh://git@bitbucket.org/winterlandcosmology/labpy.git@qc",
-
 
         # Pypi packages
         "numpy",

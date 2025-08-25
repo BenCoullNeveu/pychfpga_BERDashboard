@@ -265,7 +265,7 @@ class RawFrameReceiver(object):
             format='8',
             ncap = None,
             split = False,
-            verbose=1):
+            verbose=0):
         """ Capture raw data frames sent by UCAP.
 
         Parameters:
