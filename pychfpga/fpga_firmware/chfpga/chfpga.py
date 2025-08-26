@@ -128,8 +128,8 @@ class chFPGA(FPGAFirmware):
     # procrssing clock.For the CRS, the procssing clock is Fs/ 8 and the monitoring clock is Fs/ 16. For the
     # IceBoard, it's both fs/4. (fs=sampling frequency)
     PLATFORM_SUPPORT = { # (platform_model, firmware_config, modes): {firmware_filename: <fw_fn>, <other platform parameters>}
-        ("MGK7MB", "chFPGA", ("shuffle16", "shuffle128", "shuffle256", "shuffle512", "chan8", "chan4")): dict(firmware_url='chFPGA_MGK7MB_Rev2.bit', sampling_frequency=800e6, processing_frequency=200e6, adc_clock_divider=4),
-        ("MGK7MB", "siFPGA", ("corr16",)): dict(firmware_url='SIFPGA_MGK7MB.bit', sampling_frequency=800e6, processing_frequency = 200e6, adc_clock_divider=4),
+        ("MGK7MB", "chFPGA", ("shuffle16", "shuffle128", "shuffle256", "shuffle512", "chan8", "chan4")): dict(firmware_url='chfpga_ice_ct.bit', sampling_frequency=800e6, processing_frequency=200e6, adc_clock_divider=4),
+        ("MGK7MB", "siFPGA", ("corr16",)): dict(firmware_url='chfpga_ice_corr16.bit', sampling_frequency=800e6, processing_frequency = 200e6, adc_clock_divider=4),
         ("MGK7MB", "chordFPGA", ("chord16",)): dict(firmware_url='chordFPGA_MGK7MB_Rev2.bit', sampling_frequency=1200e6, processing_frequency = 300e6),
         ("ZCU111", "siFPGA", ("corr4", "corr8")): dict(firmware_url='sifpga_zcu111_wrapper.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
         ("ZCU111", "chFPGA", ("chan8",)): dict(firmware_url='chfpga_zcu111.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
@@ -3124,8 +3124,13 @@ class chFPGA(FPGAFirmware):
         Stops the transmission of data.
         """
         self.GPIO.GLOBAL_TRIG = 0  # disable data transmission if continuous mode is currentlly selected
-        for chan in self.chan.values():
-            chan.PROBER.RESET = 1
+        if self.CAPTURE_TYPE == "PROBER":
+            for chan in self.chan.values():
+                chan.PROBER.RESET = 1
+        elif self.CAPTURE_TYPE == "UCAP":
+            self.UCAP.USER_RESET = 1
+        else:
+            raise RuntimeError("Stop data capture only implemented on prober and ucap currently")
 
     def get_data_receiver(self, verbose=1, threaded=False):
         self.logger.debug(f'{self!r}: Creating data receiver')

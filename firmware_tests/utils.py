@@ -4,8 +4,6 @@ import numpy as np
 from pathlib import Path
 from textwrap import wrap
 
-
-
 def plot(datasets, split_complex=False, title="test"):
     styles = cycler(color=['tab:blue', 'orange', 'forestgreen'], marker=['.', ' ', ' '])
     plt.rc('axes', prop_cycle=styles)

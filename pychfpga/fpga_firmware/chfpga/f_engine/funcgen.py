@@ -9,7 +9,7 @@ History:
 
 from ..mmi import MMI, BitField, CONTROL, STATUS
 import numpy as np
-
+import asyncio
 
 class FUNCGEN(MMI):
     """ Implements interface to the function generator within a procecessor
@@ -24,19 +24,21 @@ class FUNCGEN(MMI):
     FUNCTION         = BitField(CONTROL, 0x00, 0, width=3, doc="Selects the source of the signal to be generated")
     BYTE_A           = BitField(CONTROL, 0x01, 0, width=8, doc="Byte A to be used by the function generator")
     BYTE_B           = BitField(CONTROL, 0x02, 0, width=8, doc="Byte B to be used by the function generator")
-    NUMBER_OF_FRAMES = BitField(CONTROL, 0x03, 0, width=8, doc="Number of frames to send. If 0, send continuously.")
-    FN_ID            = BitField(CONTROL, 0x04, 0, width=8, doc="Stores a number identifying the currently programmed function. Used by Python only (has no effect on FUNCGEN operation)")
+    STATS_PERIOD     = BitField(CONTROL, 0x04, 0, width=16, doc="Number of frames to send. If 0, send continuously")
+    RST_LFSR         = BitField(CONTROL, 0x06, 6, width=1, doc="Reset the noise generator to inject seed for LFSR")
     SHIFT            = BitField(CONTROL, 0x05, 0, width=4, doc="Number of bits to shift-right the ADC data before it is passed on")
     RAM_PAGE_MSB     = BitField(CONTROL, 0x05, 4, width=4, doc="MSB of the 512-byte RAM page we want to access")
-    RESET_STATS      = BitField(CONTROL, 0x06, 7, doc="Reset the overflow statistics counter")
-    CLIP_WIDTH       = BitField(CONTROL, 0x06, 0, width=4, doc="Saturates the ADC data to a ``clip_width-1``-bit wide signed value (i.e. clip_width is the position of the sign bit). Saturation is applied after the right-shift.")
-
+    STATS_ENABLE     = BitField(CONTROL, 0x06, 7, doc="Enables overflow_ctr update. Clears stats_done when stats_enabled cleared.")
+    CLIP_WIDTH       = BitField(CONTROL, 0x06, 0, width=4, doc="Saturates the output data to a ``clip_width-1``-bit wide signed value (i.e. clip_width is the position of the sign bit). Saturation is applied after the right-shift. ")
+    FN_ID            = BitField(CONTROL, 0x07, 0, width=8, doc="Function number stored in buffer")
 
     RAMP_CTR   = BitField(STATUS, 0x00, 0, width=8, doc="Last 8 bits of the ramp counter (for debuging)")
     FRAME_CTR  = BitField(STATUS, 0x01, 0, width=8, doc="Frame counter")
+    FRAME_OVERFLOW_FLAG = BitField(STATUS, 0x02, 2, doc="Indicates if there is at least an adc overflow in current frame.")
+    STATS_DONE = BitField(STATUS, 0x02, 1, doc="overflow_ctr ready with new value for new integration period")
     SEND_FRAME = BitField(STATUS, 0x02, 0, doc="debug")
     DELAY_CTR = BitField(STATUS, 0x04, 0, width=16, doc="Debug: Delay counter")
-    ADC_OVERFLOW_CTR = BitField(STATUS, 0x05, 0, width=8, doc="Number of ADC overflows since the counter was last cleared")
+    OVERFLOW_CTR = BitField(STATUS, 0x08, 0, width=32, doc="Number of ADC overflows since the counter was last cleared")
 
     FN_ADC = 0 # Sends the ADC data
     FN_BUFFER = 1 # Sends the data stored in the buffer
@@ -141,13 +143,13 @@ class FUNCGEN(MMI):
 
         'adc':            (17, FN_ADC, None),
         'noise':          (16, FN_NOISE, noise),
-        'word_ctr_buffer_flags': (18, FN_WORD_CTR, None),  # 32-bit Frame/word counter, with ADC overflow from bit 0 of buffer bytes
-        'frame8':         (19, FN_FRAME8, None),  # Sends the frame number
-        'frame4':         (20, FN_FRAME4, None),  # Sends the frame number if the upper 4 bits of each samples. The lower bits are zero.
-        'nibble4':        (21, FN_BUFFER_NIBBLE4, None),  # Sends the lower/upper nibble of the bytes in the buffer as a real value based on whether the frame number is even/odd.
-        'buffer':         (0, FN_BUFFER, lambda buffer=None, self=None: buffer),  # Arbitrary waveform
-        'arb':            (0, FN_BUFFER, lambda data, self=None: data),  # Arbitrary waveform
-        'funcgen':        (0, FN_BUFFER, lambda data, self=None: data),  # Arbitrary waveform, use 'buffer' instead
+        'word_ctr_buffer_flags': (18, FN_WORD_CTR, lambda self, overflow_buffer=None: overflow_buffer),  # 32-bit Frame/word counter, with ADC overflow from bit 0 of buffer bytes
+        'frame8':         (19, FN_FRAME8, lambda self, overflow_buffer=None: overflow_buffer),  # Sends the frame number
+        'frame4':         (20, FN_FRAME4, lambda self, overflow_buffer=None: overflow_buffer),  # Sends the frame number if the upper 4 bits of each samples. The lower bits are zero.
+        'nibble4':        (21, FN_BUFFER_NIBBLE4, lambda self, buffer=None: buffer),  # Sends the lower/upper nibble of the bytes in the buffer as a real value based on whether the frame number is even/odd.
+        'buffer':         (0, FN_BUFFER, lambda self, buffer=None: buffer),  # Arbitrary waveform
+        'arb':            (0, FN_BUFFER, lambda self, data=None: data),  # Arbitrary waveform
+        'funcgen':        (0, FN_BUFFER, lambda self, data: data),  # Arbitrary waveform, use 'buffer' instead
 
         'a':              (1, FN_BUFFER, lambda self, a: np.full(self.NS, a)),  # All bytes are Byte A. 16-bit friendly
         'b':              (2, FN_BUFFER, lambda self, b: np.full(self.NS, b)),  # All bytes are Byte B
@@ -198,7 +200,11 @@ class FUNCGEN(MMI):
         """ Resets the function generator"""
         self.pulse_bit('RESET')
 
-    def set_data_source(self, source_name, verbose=False, **kwargs):
+    def reset_noise(self):
+        """Resets the seed of the noise generator and the output to 0"""
+        self.pulse_bit('RST_LFSR')
+
+    def set_data_source(self, source_name, verbose=0, **kwargs):
         """
         Selects the type of data outputted by the function generator.
 
@@ -241,6 +247,9 @@ class FUNCGEN(MMI):
         if buffer_fn:
             self.set_buffer(data=buffer_fn(self=self, **kwargs), verbose=verbose)
 
+        # if seed is not None:
+        #     self.BYTE_A = seed & 0xff
+        #     self.BYTE_B = (seed >> 8) & 0xff | 0x80  # Set bit 7 to indicate unknown waveform
 
         # # data_sources = self.DATA_SOURCE_NAMES.keys()
         # function_names = self.FUNCTION_NAMES.keys()
@@ -349,7 +358,6 @@ class FUNCGEN(MMI):
                 data = ((data.astype(int) << self.lshift)).astype(self.dtype).tobytes()  # convert to dtype *after* shift otherwise we lose type and endianness
             else:
                 data = (np.fromiter(data, int) << self.lshift).astype(self.dtype).tobytes()
-
         # data = data.tobytes()
         # print(len(data), data[:100].hex(':'))
 
@@ -359,7 +367,6 @@ class FUNCGEN(MMI):
 
         if self.buffer_cache is None:
             self.buffer_cache = bytearray(self.NB)
-
         # Write the data, page by page
         for page in range(self.N_PAGES):
             page_slice = slice(page * self.PAGE_SIZE, (page + 1) * self.PAGE_SIZE)
@@ -369,7 +376,6 @@ class FUNCGEN(MMI):
             if verbose:
                 print(f'page={page}, slice={page_slice}')
             self.buffer_cache[page_slice] = page_data
-
 
     def get_buffer(self, use_cache=True):
 
