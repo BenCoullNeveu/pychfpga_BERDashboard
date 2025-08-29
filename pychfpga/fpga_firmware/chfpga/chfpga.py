@@ -134,7 +134,7 @@ class chFPGA(FPGAFirmware):
         ("ZCU111", "siFPGA", ("corr4", "corr8")): dict(firmware_url='sifpga_zcu111_wrapper.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
         ("ZCU111", "chFPGA", ("chan8",)): dict(firmware_url='chfpga_zcu111.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
         ("CRS",    "siFPGA", ("corr4","corr8")): dict(firmware_url='chfpga_crs_corr8.bit', sampling_frequency=3200e6, processing_frequency = 3200e6/8, adc_clock_divider=32),
-        ("CRS",    "siFPGA", ("corr32")): dict(firmware_url='chfpga_crs_corr32.bit', sampling_frequency=3200e6, processing_frequency = 3200e6/8, adc_clock_divider=32),
+        ("CRS",    "siFPGA", ("corr32, corr64")): dict(firmware_url='chfpga_crs_corr64.bit', sampling_frequency=3200e6, processing_frequency = 3200e6/8, adc_clock_divider=32),
         ("CRS",    "chFPGA", ("chan8", "shuffle8")): dict(firmware_url='chfpga_crs_ct.bit', sampling_frequency=3200e6, processing_frequency = 3200e6/8, adc_clock_divider=32),
     }
 
@@ -3509,29 +3509,29 @@ class chFPGA(FPGAFirmware):
 
     def set_scaler_output_modes(self, bypass=None, bypass_data_type=None, cap_data_type=None, channels=None):
         '''
-        Configures both the science and capture outputs of the scaler. 
+        Configures both the science and capture outputs of the scaler.
 
         Parameters:
             bypass: When set to False, the science output will output normal (i.e. 4+4 bit scaled FFT data). Also sets bypass_data_type to 0.
 
-            bypass_data_type: Sets the mode of the science output. These are: 
+            bypass_data_type: Sets the mode of the science output. These are:
                 - 0: The input FFT data is forwarded directly to the output.
                 - 1: If an overflow occurs in either the real or imaginary component of the bin, 1+0j is output for that bin. Otherwise, 0+0j is output.
                 - 2: If a positive overflow occurs in the real component of the bin, 1+0j is output for that bin. If a negative overflow occurs in that component, 0+1j is output. Otherwise, 0+0j is output.
-                - 3: If a positive overflow occurs in the imaginary component of the bin, 1+0j is output for that bin. If a negative overflow occurs in that component, 0+1j is output. Otherwise, 0+0j is output. 
+                - 3: If a positive overflow occurs in the imaginary component of the bin, 1+0j is output for that bin. If a negative overflow occurs in that component, 0+1j is output. Otherwise, 0+0j is output.
             Note that setting bypass_data_type also automatically sets the bypass register to True (otherwise the science output will continue outputting normal)
 
-            cap_data_type: Sets the mode of the capture output. These are: 
-                - 0: Forward science output directly to capture output. 
+            cap_data_type: Sets the mode of the capture output. These are:
+                - 0: Forward science output directly to capture output.
                 - 1: Output the input FFT data.
-                - 2: Output raw scaled FFT data, before rounding is applied. The data is saturated, but disregarding symmetric saturation. 
+                - 2: Output raw scaled FFT data, before rounding is applied. The data is saturated, but disregarding symmetric saturation.
                 - 3: Output 4+4 bit scaled FFT data (e.g. normal scaler output, even if the science output is set to another mode)
                 - 4: Output the input FFT data of the even bins only, at double the bitwidth.
                 - 5: Output the input FFT data of the odd bins only, at double the bitwidth.
                 - 6: Output the raw scaled FFT data (see above) of the even bins only, at double the bitwidth.
                 - 7: Output the raw scaled FFT data (see above) of the odd bins only, at double the bitwidth.
         '''
-        
+
         if channels is None:
             channels = self.default_channels
 
@@ -5136,11 +5136,11 @@ class chFPGA(FPGAFirmware):
 
         Parameters:
             ch: the channel to collect the data from
-            
+
             frame_cnt: number of data frames to integrate these statistics over
-            
+
             polling_interval: how long to sleep in between checking if the sSTATS_READY has been set
-        
+
         Returns:
             (scaler_overflow_count, adc_overflow_count)
 
