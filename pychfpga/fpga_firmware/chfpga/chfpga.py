@@ -134,7 +134,7 @@ class chFPGA(FPGAFirmware):
         ("ZCU111", "siFPGA", ("corr4", "corr8")): dict(firmware_url='sifpga_zcu111_wrapper.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
         ("ZCU111", "chFPGA", ("chan8",)): dict(firmware_url='chfpga_zcu111.bit', sampling_frequency=3000e6, processing_frequency = 375e6, adc_clock_divider=16),
         ("CRS",    "siFPGA", ("corr4","corr8")): dict(firmware_url='chfpga_crs_corr8.bit', sampling_frequency=3200e6, processing_frequency = 3200e6/8, adc_clock_divider=32),
-        ("CRS",    "siFPGA", ("corr32, corr64")): dict(firmware_url='chfpga_crs_corr64.bit', sampling_frequency=3200e6, processing_frequency = 3200e6/8, adc_clock_divider=32),
+        ("CRS",    "siFPGA", ("corr32", "corr64")): dict(firmware_url='chfpga_crs_corr64.bit', sampling_frequency=3200e6, processing_frequency = 3200e6/8, adc_clock_divider=32),
         ("CRS",    "chFPGA", ("chan8", "shuffle8")): dict(firmware_url='chfpga_crs_ct.bit', sampling_frequency=3200e6, processing_frequency = 3200e6/8, adc_clock_divider=32),
     }
 
