@@ -50,7 +50,6 @@ class QPLL(MMI):
     COMMON_CFG1              = BitField(DRP, 0x0044, 0, width=16, doc="COMMON_CFG[31:16] 0-65535")
 
     def __init__(self, *, router, router_port, instance_number):
-        # self.fpga = fpga
         self.logger = logging.getLogger(__name__)
         super().__init__(router=router, router_port=router_port, instance_number=instance_number)
 

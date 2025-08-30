@@ -140,7 +140,7 @@ class MMIRouter(object):
 
     This class represents a BSB router.
 
-    In case of a top router (i.e a a router that does not have a parent), do not specify `router`
+    In case of a top router (i.e a router that does not have a parent), do not specify `router`
       and `router_port`, but instead have the top router subclass ADDRESS_WIDTH with the BSB full
       address space and specify `fpga_instance` at router instantiation.
 
