@@ -34,6 +34,10 @@ The majority of the tests follow the same procedure.
 First, data is generated, sent to the FPGA as input, and the result is read back from the output.
 Then, using the generated input data, the code computes the expected output.
 The two are then plotted and compared.
+
+TODO: 1. Import pytest_generate_tests into .utils so that both funcgen, scaler and future test modules use the same hook.
+      2. Separate config files for each module if config.yaml becomes too convoluted.  
+      3. Parametrize scaler tests to work with CRS (add ucap capture)
 '''
 
 platforms = {
@@ -204,13 +208,23 @@ class TestScaler:
         if not read:
             return source, source
         receiver = self.board.get_data_receiver()
-        if double:
-            _, data, _ = receiver.read_raw_frames_double_resolution(verbose=False)
+        if self.data.PLATFORM == 'ICE':
+            if double:
+                _, data, _ = receiver.read_raw_frames_double_resolution(verbose=False)
+            else:
+                _, data, _ = receiver.read_raw_frames(verbose=False)
+            if get_flags:
+                return source, data & (2**self.data.READOUT_SHIFT-1)
+            return source, data // (2**self.data.READOUT_SHIFT)
+        #TODO: add capture mode for ucap
         else:
-            _, data, _ = receiver.read_raw_frames(verbose=False)
-        if get_flags:
-            return source, data & (2**self.data.READOUT_SHIFT-1)
-        return source, data // (2**self.data.READOUT_SHIFT)
+            if double:
+                pytest.skip("Double resolution not supported on UCAP yet")
+            else:
+                 _, data, _ = receiver.read_raw_frames(format='16', split = True, verbose=False)
+            if get_flags:
+                raise Exception("Flag feature not implemented on UCAP")
+            return source, data // (2**self.data.READOUT_SHIFT)
 
     def plot_and_test(self, xr, data, ref_data, title, **kwargs):
         test_name = title[:title.find('(')] #up to position of first bracket
@@ -668,7 +682,8 @@ class TestScaler:
     @pytest.mark.scaler
     @pytest.mark.asyncio
     @pytest.mark.parametrize("ch", range(16))
-    def test_adc_overflow_stats(self, ch, frame_cnt, setup_scaler, xr):
+    @pytest.mark.parametrize("fft_bypass", [True, False])
+    def test_adc_overflow_stats(self, ch, frame_cnt, fft_bypass, setup_scaler, xr):
         '''
         Tests the collection of adc overflow statistics by setting the adc overflow flag each frame and ensuring that the scaler counts a number of adc overflows equal to the number of frames integrated.
 
@@ -676,11 +691,15 @@ class TestScaler:
             ch (int): ch to capture statistics from
             frame_cnt (int): the integration period in frames
         '''
-        self.board.chan[ch].FUNCGEN.BYTE_A = 1 #set adc overflow flag to true
-        _, _ = self._set_capture_scaler(read=False, func='a', a=0) #we don't care about the data we send
+        injected_data = np.zeros(self.data.NUM_SAMPLES)
+        injected_data[0] = 1 #inject 1 overflow per frame
+        self.board.set_channelizer(data_source='frame8', fft_bypass=fft_bypass, scaler_bypass=0, overflow_buffer=injected_data)
+        self.board.start_data_capture(period=0.01, source='scaler')
         overflow_stats = self.board.get_channel_metrics(ch=ch, frame_cnt=frame_cnt)[1]
+        self.board.chan[0].FUNCGEN.STATS_PERIOD = frame_cnt - 1
+        sleep(1)
+        assert(self.board.chan[0].FUNCGEN.OVERFLOW_CTR == frame_cnt)
         assert(overflow_stats == frame_cnt)
-        self.board.chan[ch].FUNCGEN.BYTE_A = 0
 
     @pytest.mark.scaler
     def test_delay_counter(self, setup_scaler, xr):
