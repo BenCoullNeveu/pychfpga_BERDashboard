@@ -319,11 +319,12 @@ class TestFuncgen:
         plt.plot(self.seeds, p_val_l, marker='o', linestyle='None')
         plt.ylabel("p-val")
         plt.xlabel("seed")
-        plt.title("p-val")
+        plt.title("p-val for each seed with: \n{frames_per_burst} frames per burst, {number_of_bursts} bursts and {burst_period_in_frames} frames between bursts")
         xr.insert_plot()
+        plt.close()
         p = 1 - p_val_threshold
         success_proportion = np.sum(p_val_l >= p_val_threshold) / len(self.seeds)
-        print(f"Number of successful pvals (less than 0.01): {np.sum(p_val_l >= p_val_threshold)}")
+        print(f"Number of successful pvals (greater than 0.01): {np.sum(p_val_l >= p_val_threshold)}")
         print(f"Percentage of successful runs: {success_proportion * 100}%")
         assert success_proportion >= (p - 3 * math.sqrt(p * (1 - p) / len(self.seeds))) and success_proportion <= (p + 3 * math.sqrt(p * (1 - p) / len(self.seeds)))
 
@@ -364,7 +365,7 @@ class TestFuncgen:
         num_samples = frames_per_burst * number_of_bursts * self.SAMPLES_PER_FRAME
         data = np.zeros(num_samples)
         for i in range(len(data)):
-            data[i] = np.random.randint(-(2**self.ADC_BITS_PER_SAMPLE - 1), (2**self.ADC_BITS_PER_SAMPLE - 1)-1)
+            data[i] = np.random.randint(-(2**(self.ADC_BITS_PER_SAMPLE - 1)), 2**(self.ADC_BITS_PER_SAMPLE - 1) -1)
         return data
     
     def plot_histogram(self, data):
@@ -375,8 +376,8 @@ class TestFuncgen:
         lower_deviation = avg - std_deviation
 
         plt.scatter(unique, counts, s=1)
-        plt.axhline(y=upper_deviation, color="g", linestyle="--", label="upper deviation")
-        plt.axhline(y=lower_deviation, color="r", linestyle="--", label="lower deviation")
+        plt.axhline(y=upper_deviation, color="g", linestyle="--", label=r'+ 1$\sigma$')
+        plt.axhline(y=lower_deviation, color="r", linestyle="--", label=r'- 1$\sigma$')
         plt.xlabel("noise value")
         plt.ylabel("count")
         plt.legend()
@@ -406,6 +407,7 @@ class TestFuncgen:
 
         plt.tight_layout()
         xr.insert_plot()
+        plt.close()
 
     def plot_min_max_count(self, data):
         unique, counts = np.unique(data, return_counts=True)
@@ -462,6 +464,7 @@ class TestFuncgen:
 
         plt.tight_layout()
         xr.insert_plot()
+        plt.close()
 
     # @pytest.mark.skip
     @pytest.mark.funcgen_noise_gen
@@ -502,6 +505,7 @@ class TestFuncgen:
 
         plt.tight_layout()
         xr.insert_plot()
+        plt.close()
 
     @pytest.mark.funcgen_counters
     def test_word_and_frame_ctr(self, xr, frames_per_burst, number_of_bursts, burst_period_in_frames):
@@ -558,6 +562,7 @@ class TestFuncgen:
         plt.ylabel("Word/Frame Count")
         plt.title(f"Frame/Word Count with: \n{frames_per_burst} frames per burst, {number_of_bursts} bursts and {burst_period_in_frames} frames between bursts")
         xr.insert_plot()
+        plt.close()
 
         assert np.array_equal(frame_count, expected_frame_count)
         logger.debug(f"Frame count matches expected frame count")
@@ -681,7 +686,7 @@ class TestFuncgen:
                 )
 
     def test_shift_clip_width(self, xr, shift, clip_width):
-        """Test that the ouput is right shifted by specified bits then saturated at clip width"""
+        """Test that the ouput is saturated at clip width"""
         logger = self.get_logger()
         max = 2 ** (self.board.ADC_BITS_PER_SAMPLE - 1) - 1
         min = - 2 **(self.board.ADC_BITS_PER_SAMPLE - 1)
