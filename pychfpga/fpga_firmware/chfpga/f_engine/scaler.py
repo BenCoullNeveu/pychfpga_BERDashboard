@@ -44,6 +44,7 @@ class SCALER(MMI):
     GAIN_BANK_SWITCH_FRAME_NUMBER = BitField(CONTROL, 0x09, 0, width=32, doc="Frame number at which the target gain bak is to be activated.")
     USE_FLOAT_GAINS       = BitField(CONTROL, 0x0A, 7, doc="When '1', floating point gains are used. Works only if USE_COMPLEX_GAINS=0")
     MON_RESET_STATS       = BitField(CONTROL, 0x0A, 6, doc="When '1', MON stats are reset")
+    MON_CTRL              = BitField(CONTROL, 10, 5, doc="When '1', Disable FIFO write")
     DATA_TYPE             = BitField(CONTROL, 0x0A, 3, width=2, doc=" Selects the main output data in conjunction with BYPASS.\n"
                                 "   BYPASS=0, DATA_TYPE=X: Send normal scaled data in 4 or 8 bit mode\n"
                                 "   BYPASS=1, DATA_TYPE=0: Send the most significant bits of the raw FFT values\n"
@@ -75,6 +76,9 @@ class SCALER(MMI):
     MON_PACKET_CTR              = BitField(STATUS, 10, 0, width=8, doc="Debug")
     MON_WORD_CTR              = BitField(STATUS, 12, 0, width=16, doc="Debug")
     CAP_FRAME_CTR              = BitField(STATUS, 13, 0, width=8, doc="Debug")
+    MON_WORD              = BitField(STATUS, 15, 0, width=16, doc="Debug")
+    MON_CLK_CTR           = BitField(STATUS, 16, 0, width=8, doc="Debug")
+    MON_BIT_CTR           = BitField(STATUS, 17, 0, width=8, doc="Debug")
 
 
     ROUNDING_MODE_TRUNCATE         = 0b00
