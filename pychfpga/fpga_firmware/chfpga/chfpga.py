@@ -2954,7 +2954,7 @@ class chFPGA(FPGAFirmware):
             self.set_chan_reset(1)  # Reset is needed to resynchronize the system with the new data
         for chan in self.get_channelizers(channels):
             chan.FUNCGEN.set_output_shifting(left_shift, right_shift)
-            chan.FUNCGEN.set_data_source(function.lower(), **kwargs)
+            chan.FUNCGEN.set_data_source(function, **kwargs)
         if reset_chan:
             self.set_chan_reset(0)  # Release reset
 
@@ -4284,8 +4284,8 @@ class chFPGA(FPGAFirmware):
             channels (list of int): List of channels to which the command is applied
 
         """
-        if not offset:
-            self.logger.warning(f'Offset binary Encoding is disabled: this mode is incompatible with the firmware correlator and may confuse gain calibrations. This should not be done.')
+        # if not offset:
+        #     self.logger.warning(f'Offset binary Encoding is disabled: this mode is incompatible with the firmware correlator and may confuse gain calibrations. This should not be done.')
 
         if channels is None:
             channels = self.default_channels
