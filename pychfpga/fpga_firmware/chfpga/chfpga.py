@@ -2707,26 +2707,37 @@ class chFPGA(FPGAFirmware):
     #     self.write(addr, (old_data | mask))
     #     self.write(addr, (old_data & (~mask)))
 
-    def sync(self, local=1, verbose=0):
+    def sync(self, local=True, verbose=0):
         if verbose:
-            self.logger.debug("%r: Syncing board" % self)
+            self.logger.debug(f"{self!r}: Syncing board")
+
+        if not local:
+            raise DeprecatedError(f'{self!r}: remote sync no longer supported using `sync()`. use `generate_sync()` instead.')
 
         if self.HAS_ADCDAQ:
             self.set_adc_mask(0)  # null the ADC data before it gets to the channelizers to reduce power consumption
 
-        if local:
-            self.REFCLK.local_sync()
-        else:
-            self.REFCLK.remote_sync()
+        self.REFCLK.local_sync()
 
         if self.HAS_ADCDAQ:
             self.set_adc_mask(0xff)  # restore full ADC data
 
-    def pulse_ant_reset(self):
-        """ Resets the stats of all channelizers and clear the processing pipeline.
-        Memory-mapped registers are not affected.
+    def generate_sync(self):
+        """ Have the REFCLK generate a SYNC signal.
+
+        For this to work, the signal `sync_out` should be routed beforehand to the desired sync output
+        using ``set_user_output_source(source='sync_out', output=<desired_output>)``.
+
         """
-        self.GPIO.pulse_ant_reset()  # resets all
+        self.REFCLK.remote_sync()
+
+
+    # def pulse_ant_reset(self):
+    #     """ Resets the stats of all channelizers and clear the processing pipeline.
+
+    #     Memory-mapped registers are not affected.
+    #     """
+    #     self.GPIO.pulse_ant_reset()  # resets all
 
     def reset(self):
         """ Resets the channelizers, corner-turn and correlator engines.
@@ -3025,9 +3036,8 @@ class chFPGA(FPGAFirmware):
             return
 
         if mode.lower() not in self.ADC_MODE_NAMES:
-            raise ValueError("Invalid ADC mode '%s'. Valid modes are %s" % (
-                mode,
-                ', '.join(self.ADC_MODE_NAMES.keys())))
+            valid_modes = ', '.join(self.ADC_MODE_NAMES.keys())
+            raise ValueError(f"Invalid ADC mode '{mode}'. Valid modes are {valid_modes}")
         (mode_value, capture_period) = self.ADC_MODE_NAMES[mode.lower()]
 
         if channels is None:
@@ -3139,7 +3149,7 @@ class chFPGA(FPGAFirmware):
         else:
             raise RuntimeError("Stop data capture only implemented on prober and ucap currently")
 
-    def get_data_receiver(self, verbose=1, threaded=False):
+    def get_data_receiver(self, verbose=1, threaded=False, port_number=None):
         self.logger.debug(f'{self!r}: Creating data receiver')
         if self.recv:
             return self.recv
@@ -3149,13 +3159,13 @@ class chFPGA(FPGAFirmware):
                 raise RuntimeError('The old threaded receiver is supported only by PROBER')
             chFPGA_config = run_async(self.get_config_async(basic=True))  # get only the info needed to start the receiver
             self.recv = chFPGA_receiver(chFPGA_config, verbose=verbose)
-            self.logger.debug('Started data receiver threads on %s:%i' % (self.recv.host_ip, self.recv.port_number))
+            self.logger.debug(f'Started data receiver threads on {self.recv.host_ip}:{self.recv.port_number}')
             run_async(self.set_local_data_port_number_async(self.recv.port_number))
         elif self.CAPTURE_TYPE == "PROBER":
-            sock = self.get_data_socket()
+            sock = self.get_data_socket(port_number=port_number)
             self.recv = prober.RawFrameReceiver(sock)
         elif self.CAPTURE_TYPE == "UCAP":
-            sock = self.get_data_socket()
+            sock = self.get_data_socket(port_number=port_number)
             self.recv = self.UCAP.get_data_receiver(sock)
             self.logger.debug(f'{self!r}: UCAP data receiver created on socket {sock}, ({self._data_socket.getsockname()})')
         else:
@@ -3351,12 +3361,6 @@ class chFPGA(FPGAFirmware):
             burst_period_in_frames = max(float(period) / self.FRAME_PERIOD, 1)
 
         burst_period_in_frames = int(burst_period_in_frames)
-        # print "%s" % channels.__repr__()
-        # print "%i" frames_per_burst
-        # print burst_period_in_frames
-        # print burst_period_in_frames*self.FRAME_PERIOD*1000
-        # print ('continuously when TRIG=1' if not number_of_bursts else \
-        #       ('for a total of %i bursts' % number_of_bursts) )
         if verbose:
             self.logger.debug(
                 f'{self!r}: Configuring channelizer {channels} to capture '
@@ -3408,9 +3412,8 @@ class chFPGA(FPGAFirmware):
                     offset=offset,
                     send_delay=send_delay)
                 ch = chan.chan_number
-                self.logger.debug('%r: %s raw data capture on channel %i' % (
-                    self,
-                    ('Disabling', 'Enabling')[ch in channels], ch))
+                action = ('Disabling', 'Enabling')[ch in channels]
+                self.logger.debug(f'{self!r}: {action} raw data capture on channel {ch}')
                 chan.PROBER.RESET = 0
 
         # ** line below no longer supported by firmware *** enables data transmission if continuous mode is selected
@@ -3471,18 +3474,16 @@ class chFPGA(FPGAFirmware):
         configured_channels = set()
         for ch in channels:
             if ch not in self.chan:
-                self.logger.warning('%r: FFT bypass mode on channel %i are not set '
-                                     'because that channel is not available' % (self, ch))
+                self.logger.warning(f'{self!r}: FFT bypass mode on channel {ch} are not set '
+                                    f'because that channel is not available')
             elif ch not in self.LIST_OF_ANTENNAS_WITH_FFT and not bypass_mode:
-                self.logger.warning('%r: FFT bypass mode was disabled on channel %i'
-                                     ' which has no FFT module. The command will have no effect.' % (self, ch))
+                self.logger.warning(f'{self!r}: FFT bypass mode was disabled on channel {ch}'
+                                    f' which has no FFT module. The command will have no effect.')
             else:
                 self.chan[ch].FFT.BYPASS = bypass_mode
                 configured_channels.add(ch)
-        self.logger.debug('%r: Setting FFT bypass mode to %s for channel %s' % (
-            self,
-            str(bool(bypass_mode)),
-            ', '.join([str(i) for i in configured_channels])))
+        channels_str = ', '.join([str(i) for i in configured_channels])
+        self.logger.debug(f'{self!r}: Setting FFT bypass mode to {bool(bypass_mode)} for channel {channels_str}')
         # self.reset()
         # self.sync()
 
@@ -3808,15 +3809,14 @@ class chFPGA(FPGAFirmware):
                 return
 
     def _load_adc_delays(self, tag='default', delay_table_folder=ADC_DELAY_TABLE_FOLDER):
-        filename = '%s.yaml' % self.get_string_id()
+        filename = f'{self.get_string_id()}.yaml'
         fullpath = os.path.join(delay_table_folder, filename)
 
-        # print 'Loading YAML file %s' % filename
         try:
             with open(fullpath, 'r') as yamlfile:
                 file_data = yaml.load(yamlfile, Loader=yaml.SafeLoader)
         except IOError:
-            print('%s not found' % fullpath)
+            print(f'{fullpath} not found')
             return None
         if file_data is None:
             return None
@@ -3839,14 +3839,14 @@ class chFPGA(FPGAFirmware):
     def _save_adc_delays(self, delay_table, tag='default', delay_table_folder=ADC_DELAY_TABLE_FOLDER):
         if not delay_table:
             raise ValueError('Please specify a valid delay table')
-        filename = '%s.yaml' % self.get_string_id()
+        filename = f'{self.get_string_id()}.yaml'
         fullpath = os.path.join(delay_table_folder, filename)
-        print('Loading YAML file %s' % filename)
+        print(f'Loading YAML file {filename}')
         try:
             with open(fullpath, 'r') as yamlfile:
                 file_data = yaml.load(yamlfile, Loader=yaml.SafeLoader)
         except IOError:
-            print('%s not found' % fullpath)
+            print(f'{fullpath} not found')
             file_data = []
 
         if file_data is None:
@@ -3967,7 +3967,7 @@ class chFPGA(FPGAFirmware):
 
         for i, ch in enumerate(channels):
             # d = np.zeros((32, 11), dtype=np.uint8) # 32 delays x 11 offsets
-            # self.logger.info('%.32s: Reading channel %i.' % (self, ch))
+            # self.logger.info(f'{self!r}: Reading channel {ch}.')
             adcdaq = self.chan[ch].ADCDAQ
             for dly in range(32):
                 # Set delay, don't change sample delay. No need to sync because sample delay not changed.
@@ -4090,7 +4090,7 @@ class chFPGA(FPGAFirmware):
             q = np.array([((data[i] & (1 << bit)) != 0).sum(axis=0) for bit in range(8)]).min(axis=0)
             # Step 2: find the offset that has the largest number of '1's
             offset = q.argmax()
-            print('CH%02i: offset=%2i : %s' % (ch, offset, q))
+            print(f'CH{ch:02d}: offset={offset:2d} : {q}')
 
             # Extract the samples for the current channel and selected offset, byt keep all 32 delays
             n = data[i, :, offset]
@@ -4832,7 +4832,7 @@ class chFPGA(FPGAFirmware):
 
             source (str): is the source name
 
-                * 'sync' : User-generated SYNC signal (sunc_out)
+                * 'sync_out' : User-generated SYNC signal (sync_out)
                 * 'pps' : 1 PPS signal from the IRIG-B decoder (pps_out)
                 * 'pwm' : Output from the frame-based pwm generator (pwm_out)
                 * 'irigb_trig' :# not(irigb_before_target)
@@ -4874,7 +4874,9 @@ class chFPGA(FPGAFirmware):
         return self.GPIO.get_user_output_source(output=output)
 
     def set_sync_source(self, source):
-        """ Sets the source of the signal that will trigger SYNC events.
+        """ Sets the source of the signal that will trigger SYNC events in the REFCLK module.
+
+        If the source matches a user I/O SMA, makes sure that I/O is set an an input.
 
         Parameters:
 
@@ -4886,8 +4888,8 @@ class chFPGA(FPGAFirmware):
             return
 
         if source not in self.REFCLK.SYNC_SOURCE_TABLE:
-            raise ValueError('Invalid SYNC source name. Valid names are %s' %
-                             ', '.join(self.REFCLK.SYNC_SOURCE_TABLE))
+            valid_sources = ', '.join(self.REFCLK.SYNC_SOURCE_TABLE)
+            raise ValueError(f'Invalid SYNC source name. Valid names are {valid_sources}')
         self.REFCLK.set_sync_source(source)
         # If an user SMA is used, configure it as an input
         if source in self.GPIO.USER_OUTPUTS:
