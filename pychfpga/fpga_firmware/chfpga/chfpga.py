@@ -3281,6 +3281,7 @@ class chFPGA(FPGAFirmware):
             verbose=1,
             burst_period_in_seconds=None,
             burst_period_in_frames=None,
+            burst_period_frame_rounding=4,
             offset=0,
             send_delay=0,
             mode = 0):
@@ -3298,6 +3299,8 @@ class chFPGA(FPGAFirmware):
             burst_period_in_seconds (float): Same as `period` or as a number of frames
 
             burst_period_in_frames (int): Number of frames between captured bursts - 1 second corresponds to approximately 39 000 frames.
+
+            burst_period_frame_rounding (int): rounds burst period to an integer multiple of `burst_period_frame_rounding`.
 
             number_of_bursts (int): (PROBER only) Number of bursts to send, after which the FPGA stops sending
                 data. If `number_of_bursts` =0, the transmission continues indefinitely, until
@@ -3360,7 +3363,9 @@ class chFPGA(FPGAFirmware):
         if period is not None:
             burst_period_in_frames = max(float(period) / self.FRAME_PERIOD, 1)
 
-        burst_period_in_frames = int(burst_period_in_frames)
+        # round the burst period to an integer multiple of burst_period_frame_rounding
+        burst_period_in_frames = (int(burst_period_in_frames) // burst_period_frame_rounding) * burst_period_frame_rounding
+
         if verbose:
             self.logger.debug(
                 f'{self!r}: Configuring channelizer {channels} to capture '
@@ -3377,8 +3382,12 @@ class chFPGA(FPGAFirmware):
                 f'    1 crate: {16 * 16 * frames_per_second * packet_size_in_bits / 1e6:.3f} Mbits/s'
                 )))
 
-        for ch in self.chan:
-            ch.SCALER.set_capture_data_type(data_type)
+        if data_type is not None:
+            if source == 'scaler':
+                for ch in self.chan:
+                    ch.SCALER.set_capture_data_type(data_type)
+            else:
+                raise RuntimeError(f"'data_type' can be specified only for source='scaler'")
 
         # stop data from going into the PROBER and MASTER to minimize the risk
         # of malformed packets and unstable communications

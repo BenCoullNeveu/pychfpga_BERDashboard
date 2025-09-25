@@ -2753,15 +2753,9 @@ class FPGAArray(object):
             master.set_user_output_source(source=master_source, output=master_output or 0)
             if source == 'bp_gpio_int':
                 # Enable GPIO_INT as an output only on the master board
+                # TODO: JFC: This code should be moved to lower-level methods
                 self.ib.GPIO.BP_GPIO_INT_EN = 0
                 master.GPIO.BP_GPIO_INT_EN = 1
-
-
-        # # aliases for distrimuted time
-        # if method in ('irig-b', 'irigb'):
-        #     method = 'distributed_time'
-        # if method in ('local',):
-        #     method = 'local_soft_trigger'
 
         self.sync_master = master
         self.sync_method = method
@@ -2783,15 +2777,8 @@ class FPGAArray(object):
         #     master.set_user_output_source('irigb_trig')
         elif method in self.TRIG_SYNC_METHODS: # REFCLK trigs directly on the rising edge of the specified source signal
             source = source or 'bp_time'
-            # if not master:
-            #     raise ValueError('In the centralized soft trigger mode, a master board must be specified')
-            # if master_source:
-            #     raise ValueError('In the centralized soft trigger mode, no master_source must be specified')
             self.ib.set_sync_source(source)
-            # master.set_user_output_source('sync')
         elif method in self.LOCAL_SYNC_METHODS:
-            if master:
-                raise ValueError('In the local soft trigger mode, a master board should NOT specified')
             self.ib.set_sync_source('local')
             self.ib.sync()
         # elif method == 'external':
