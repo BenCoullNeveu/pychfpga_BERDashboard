@@ -1282,7 +1282,7 @@ class chFPGA(FPGAFirmware):
         self._last_init_time = time.time()
 
         # Create a data socket. The socket will be cached for future use. This also sets the destination address/port for data streams in the FPGA.
-        self.get_data_socket()
+        # self.get_data_socket()
 
         # Create a data receiver
         if create_receiver:
