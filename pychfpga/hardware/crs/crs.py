@@ -1,4 +1,4 @@
-""" Defines the class to operate the ZCU111.
+""" Defines the class to operate the CRS.
 """
 # Standard Python packages
 import logging
