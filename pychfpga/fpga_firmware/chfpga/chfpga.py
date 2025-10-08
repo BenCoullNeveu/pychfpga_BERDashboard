@@ -54,7 +54,7 @@ from .system import freqctr
 from .system import refclk
 
 # FPGA Channelizer (F-Engine)
-from .f_engine import chan
+from .f_engine import chan, fft
 from .f_engine import prober  # needed to access RawFrameReceiver
 
 # FPGA Corner-turn Engine
@@ -138,14 +138,7 @@ class chFPGA(FPGAFirmware):
         ("CRS",    "chFPGA", ("chan8", "shuffle8")): dict(firmware_url='chfpga_crs_ct.bit', sampling_frequency=3200e6, processing_frequency = 3200e6/8, adc_clock_divider=32),
     }
 
-    # Lookup table to provice information of the FFT implemented in the firmware. Is indexed using the FFT_TYPE value provided by the firmware.
-    FFT_INFO = {
-        0: dict(name='NONE', latency=0),
-        1: dict(name='CHIME', latency=3230, samples_per_frame=2048, bits_per_sample=8, bits_per_bin=18+18),
-        2: dict(name='D3A', latency=12533, samples_per_frame=16384, bits_per_sample=14, bits_per_bin=18+18),
-        3: dict(name='CHORD', latency=10452, samples_per_frame=16384, bits_per_sample=14, bits_per_bin=32+32),
-        4: dict(name='HIRAX', latency=0, samples_per_frame=2048, bits_per_sample=18+18, bits_per_bins=29+29)
-    }
+    FFT_INFO = fft.FFT_INFO
 
     ################################################################################################
     # Byte-Serial-Bus (BSB) Memory map
@@ -5181,17 +5174,20 @@ class chFPGA(FPGAFirmware):
 
 
     def get_correlator_params(self):
-        """ Returns the correlator geometry and configuration """
-        return dict(
-            number_of_correlators=self.NUMBER_OF_CORRELATORS,  # hard coded in firmware
-            number_of_correlated_inputs=self.NUMBER_OF_INPUTS_TO_CORRELATE,  # hard coded in firmware
-            number_of_bins_per_frame=self.CROSSBAR.BIN_SEL[0].NUMBER_OF_SELECTED_WORDS  # depends on crossbar configuration
-            )
+        """ Returns the correlator geometry and configuration
+
+        Notes:
+
+            - start_correlator() must have been called before for some software-configurable
+                parameters to be updated.
+        """
+        return self.CORR.get_params()
 
     def start_correlator(
             self,
             integration_period=16384,
             autocorr_only=False,
+            no_accum=False,
             correlators=None,
             bandwidth_limit=0.5e9,
             verbose=1):
@@ -5200,34 +5196,32 @@ class chFPGA(FPGAFirmware):
 
         Parameters:
 
-            integration_period (32-bit int): Number of frames to integrate
-               before sending the correlated products. Lower integration
-               period increase the frequency at which correlated frames are
-               sent and increase the require bandwidth. Longer integration
-               periods will procuce larger accumulated products that will
-               saturate if they exceed the accumulator limits (from -131072 to
-               131071 for each if the real and imaginary component).
+            integration_period (32-bit int): Number of frames to integrate before sending the
+               correlated products. Lower integration period increase the frequency at which
+               correlated frames are sent and increase the require bandwidth. Longer integration
+               periods will procuce larger accumulated products that will saturate if they exceed
+               the accumulator limits (from -131072 to 131071 for each if the real and imaginary
+               component).
 
-            autocorr_only (bool): When 'True', the correlator will only send
-               the autocorrelation products, which will reduce bandwidth
-               requirement (12% of the full bandwidth) and will allow shorter
-               integration periods. Note that the imaginary parts are always
-               zero but are sent anyways to keep the frame format identical
-               despite the waste of bandwidth.
+            autocorr_only (bool): When 'True', the correlator will only send the autocorrelation
+               products, which will reduce bandwidth requirement (12% of the full bandwidth) and
+               will allow shorter integration periods. Note that the imaginary parts are always zero
+               but are sent anyways to keep the frame format identical despite the waste of
+               bandwidth.
 
-            correlators (list of int): List of correlator cores to enable. All
-               other cores will be disabled. Default is None, which means all
-               correlators will be enabled. Each correlator core process the
-               frequency bins selected with its corresponding bin selector.
-               Using a smaller number of cores will process less frequency
-               bins but will proportionnally usee less data bandwidth.
+            no_accum (bool): When 'True', the correlator does not accumulate products from multiple
+                frames. It just returns the product from the last frame on the integration period.
 
-            bandwidth_limit (float): Maximum acceptable data bandwidth that
-               the correlator can produce, in bits/s. Default is 0.5 Gbps. If the correlator
-               parameters are to make the data exceed this bandwidth, an
-               exception will be raised, with a message that describe
-               alternate settings. In this case, no changes are made to the
-               correlator operation.
+            correlators (list of int): List of correlator cores to enable. All other cores will be
+               disabled. Default is None, which means all correlators will be enabled. Each
+               correlator core process the frequency bins selected with its corresponding bin
+               selector. Using a smaller number of cores will process less frequency bins but will
+               proportionnally usee less data bandwidth.
+
+            bandwidth_limit (float): Maximum acceptable data bandwidth that the correlator can
+               produce, in bits/s. Default is 0.5 Gbps. If the correlator parameters are to make the
+               data exceed this bandwidth, an exception will be raised, with a message that describe
+               alternate settings. In this case, no changes are made to the correlator operation.
 
         Returns:
             None
@@ -5241,11 +5235,10 @@ class chFPGA(FPGAFirmware):
         if not self.CORR:
             raise RuntimeError('The FPGA firmware does not contain a correlator core')
 
-        corr_params = self.get_correlator_params()
         self.CORR.start_correlator(integration_period=integration_period,
                                    autocorr_only=autocorr_only,
+                                   no_accum=no_accum,
                                    correlators=correlators,
-                                   bins_per_frame=corr_params['number_of_bins_per_frame'],
                                    bandwidth_limit=bandwidth_limit,
                                    verbose=verbose)
 
