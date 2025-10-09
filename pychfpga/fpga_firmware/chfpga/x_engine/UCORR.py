@@ -370,6 +370,11 @@ class UCorrFrameReceiver:
         self.bin_map = self.corrs[0].get_input_bin_map()
         self.flush = True  # start first acquisition with UDP buffer flush
 
+        # Storage for a single integrated result when streaming
+        self.integ_sats = np.empty(( self.NBINS, self.NCMAC), dtype=np.complex64)
+        self.integ_counts = 0
+        self.integ_data = np.empty((self.NBINS, self.NCMAC), dtype=np.complex128)
+
     def get_corr_param(self,param):
         """ Return a correlator parameter, raising an arror if if is not the same for all correlators"""
         v = set(getattr(c,param) for c in self.corrs)
@@ -389,6 +394,7 @@ class UCorrFrameReceiver:
             data_timeout=0.1,
             flush_timeout=0.001,
             return_format='raw',
+            skip_partial_integs=True,
             select = True,
             out = None,
             verbose=0):
@@ -436,7 +442,7 @@ class UCorrFrameReceiver:
             for c in self.corrs:
                 c.select_stream()
 
-
+        self.skip_partial_integs = skip_partial_integs
         self.soft_integ_period = soft_integ_period
         self.firmware_integ_period = self.get_corr_param('INTEGRATION_PERIOD') + 1
         # Compute the software integration period in number of frames. This will be used to determine the integration_number index in the destination matrix.
@@ -444,24 +450,16 @@ class UCorrFrameReceiver:
         integ_period = np.uint64(self.soft_integ_period * self.firmware_integ_period)
 
         if out: # if we provided destination arrays, use them
-            self.data, self.data_counts, self.data_sats = out
-            number_of_results = self.data.shape[0]
             self.stream = False
+            self.out_data, self.out_counts, self.out_sats = out
+            number_of_results = self.out_data.shape[0]
         else:
-            if number_of_results: # we we provided a length, create an array of that length
-                self.stream = False
-            else:
-                number_of_results = 1 # if no length, allocate only one result that will be yielded as we go
-                self.stream = True
-            # Allocate memory to store reordered data
-            self.data_sats = np.empty((number_of_results, self.NBINS, self.NCMAC), dtype=np.complex64)
-            self.data_counts = np.empty((number_of_results,), dtype=np.int32)
-            self.data = np.empty((number_of_results, self.NBINS, self.NCMAC), dtype=np.complex128)
+            self.stream = True
 
         self.overrun = 0
 
         self.pr.settimeout(data_timeout)
-        # timeouts = 0
+
         if flush is not None:
             self.flush = flush
 
@@ -475,9 +473,9 @@ class UCorrFrameReceiver:
             self.current_integ = None
             self.flush = False
 
-        N_PACKETS_PER_SETS = self.NCORRS * self.NPROD_PER_CMAC * self.soft_integ_period
+        self.expected_packets_per_integ = self.NCORRS * self.NPROD_PER_CMAC * self.soft_integ_period
 
-        self.discard_next_integ = align
+        self.skip_next_integ = align
         self.n = 0 # current result
         while True: # process packets until we have checked ncap+1 timestamps to make sure we have all the data for ncap timestamps
             # Get some packets until a new timestamp, timeout, or buffer full
@@ -505,7 +503,7 @@ class UCorrFrameReceiver:
             if integ_max - integ_min >= self.N_SETS-1:
                 print(f'Received stale data from integration periods ({set(integ)}), but expected values between {self.current_integ}-{self.current_integ+self.N_SETS-1}. Ignoring data' )
                 self.clear_integ_slot()
-                self.discard_next_integ = True
+                self.skip_next_integ = True
                 self.current_integ = None
                 continue
             if integ_min < self.current_integ:
@@ -522,13 +520,13 @@ class UCorrFrameReceiver:
             self.accumulate_data(buf_ix, integ % self.N_SETS)
 
             if verbose >= 2:
-                print(f'Current_integ={self.current_integ}, Set counts: {self.total_count}. Expecting {N_PACKETS_PER_SETS} packets')
+                print(f'Current_integ={self.current_integ}, Set counts: {self.total_count}. Expecting {self.expected_packets_per_integ} packets')
             # Flush integs as long as there are complete data sets
-            while any(self.total_count >= N_PACKETS_PER_SETS) and (number_of_results is None  or self.n < number_of_results):
+            while any(self.total_count >= self.expected_packets_per_integ) and not (number_of_results and self.n >= number_of_results):
                 yield from self.store_integ()
 
             # exit the loop when we have all the results we need
-            if number_of_results is not None and self.n == number_of_results:
+            if number_of_results and self.n == number_of_results:
                 break
 
 
@@ -538,37 +536,38 @@ class UCorrFrameReceiver:
         # print(f'Got {packet_percent:.1f}% of the packets')
         if self.overrun:
             print(f"*** Warning: the correlator experienced an overrun condition. All products could not be sent within the hardware integration period.")
-        # print(f'stream={self.stream}. returning = {(self.data, self.data_counts, self.data_sats)}')
-        yield (self.data, self.data_counts, self.data_sats) #, tt, self.bin_)
+        # print(f'stream={self.stream}. returning = {(self.out, self.out_counts, self.out_sats)}')
+        yield (self.out_data, self.out_counts, self.out_sats) #, tt, self.bin_)
 
     def store_integ(self):
         """ Move the integrated results in the current integration slot into the destination array,
         clear the integration slot,  and increment both the destination and current integration
         counters.
         """
-
-        n = self.n
         cs = self.current_integ % self.N_SETS
-        result = None
-        if not self.discard_next_integ:
+        # print(f'{self.total_count[cs] == self.expected_packets_per_integ} {self.skip_partial_integs} {self.skip_next_integ}')
+        yield_result = False
+        if self.total_count[cs] == self.expected_packets_per_integ or not (self.skip_partial_integs or self.skip_next_integ):
+
             if self.verbose:
-                print(f'Storing result {n}: integ={self.current_integ} ({type(self.current_integ)}), set={cs}, len={self.total_count[cs]}')
+                print(f'Storing result {self.n}: integ={self.current_integ} ({type(self.current_integ)}), set={cs}, len={self.total_count[cs]}')
             # watch out: if you extract .real/.imag  *after* doing the advanced indexing, you will
             # store data to a copy
-            # self.data_sat.real[n, self.bin_map] = self.sat[cs, ..., 0] / 32.
-            # self.data_sat.imag[n, self.bin_map] = self.sat[cs, ..., 1] / 16.
-            # self.data.real[n, self.bin_map] = self.acc_re[cs]
-            # self.data.imag[n, self.bin_map] = self.acc_im[cs]
-            # self.data_counts[n] = self.total_count[cs]
-            self.data_sats.real[n, self.bin_map] = self.sat[cs, ..., 0] / 32.
-            self.data_sats.imag[n, self.bin_map] = self.sat[cs, ..., 1] / 16.
-            self.data.real[n, self.bin_map] = self.acc_re[cs]
-            self.data.imag[n, self.bin_map] = self.acc_im[cs]
-            self.data_counts[n] = self.total_count[cs]
             if self.stream:
-                result = (self.data[0], self.data_counts[0], self.data_sats[0])
+                self.integ_sats.real[self.bin_map] = self.sat[cs, ..., 0] / 32.
+                self.integ_sats.imag[self.bin_map] = self.sat[cs, ..., 1] / 16.
+                self.integ_data.real[self.bin_map] = self.acc_re[cs]
+                self.integ_data.imag[self.bin_map] = self.acc_im[cs]
+                self.integ_counts = self.total_count[cs]
+                yield_result = True
             else:
-                self.n += 1
+                n = self.n
+                self.out_sats.real[n,self.bin_map] = self.sat[cs, ..., 0] / 32.
+                self.out_sats.imag[n,self.bin_map] = self.sat[cs, ..., 1] / 16.
+                self.out_data.real[n, self.bin_map] = self.acc_re[cs]
+                self.out_data.imag[n, self.bin_map] = self.acc_im[cs]
+                self.out_counts[n] = self.total_count[cs]
+            self.n += 1
 
         else:
             if self.verbose:
@@ -577,9 +576,9 @@ class UCorrFrameReceiver:
         # Clear the integration slot
         self.clear_integ_slot(cs)
         self.current_integ += 1
-        self.discard_next_integ = False
-        if result:
-            yield result
+        self.skip_next_integ = False
+        if yield_result:
+            yield (self.integ_data, self.integ_counts, self.integ_sats)
 
     def clear_integ_slot(self, slice_=slice(None)):
         self.total_count[slice_] = 0
@@ -661,8 +660,15 @@ class UCorrFrameReceiver:
                   f' overrun={self.overrun}')
 
 
+    def create_data_set(self, n):
+            # Allocate memory to store reordered data
+            data_sats = np.empty((n, self.NBINS, self.NCMAC), dtype=np.complex64)
+            data_counts = np.empty((n,), dtype=np.int32)
+            data = np.empty((n, self.NBINS, self.NCMAC), dtype=np.complex128)
+            return (data, data_counts, data_sats)
+
     def read_corr_frames(self, number_of_results=1, **kwargs):
-        """
+        """ Allocate a data set and capture correlator data into it.
 
         Parameters:
 
@@ -697,23 +703,8 @@ class UCorrFrameReceiver:
         """
 
         # Pre-Allocate memory to store processed data
-        data = np.empty((number_of_results, self.NBINS, self.NCMAC), dtype=np.complex128)
-        data_sats = np.empty((number_of_results, self.NBINS, self.NCMAC), dtype=np.complex64)
-        data_counts = np.empty((number_of_results,), dtype=np.int32)
-
-        return next(self.read_corr_gen(number_of_results=number_of_results, **kwargs))
-
-        # for out  in self.read_corr_gen(number_of_results=number_of_results, **kwargs):
-        #     print(f'received out={out}')
-        #     return out
-        # return out
-        # for out in self.read_corr_gen(out=(data, data_counts, data_sats), **kwargs):
-        #     return out
-        # # for i, (d,c,s) in enumerate(self.read_corr_gen(number_of_results=number_of_results, **kwargs)):
-        #     data[i] = d
-        #     data_sats[i] = s
-        #     data_counts[i] = c
-        # return data, data_counts, data_sats
+        data = self.create_data_set(number_of_results)
+        return next(self.read_corr_gen(out=data, **kwargs))
 
     def plot_corr_frames(
             self,
