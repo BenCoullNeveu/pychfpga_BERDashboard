@@ -571,7 +571,7 @@ class UCorrFrameReceiver:
 
         else:
             if self.verbose:
-                print(f'Discarding result {n}: integ={self.current_integ} ({type(self.current_integ)}), set={cs}, len={self.total_count[cs]}')
+                print(f'Discarding result {self.n}: integ={self.current_integ} ({type(self.current_integ)}), set={cs}, len={self.total_count[cs]}')
 
         # Clear the integration slot
         self.clear_integ_slot(cs)
