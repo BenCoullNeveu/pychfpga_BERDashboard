@@ -3314,10 +3314,14 @@ class chFPGA(FPGAFirmware):
 
             data_type (str or int): If the data is from the scaler, indicates what type of data is to be captured.
 
-            channels (list): list of channels for which the data capture will be enabled. others are
-                left untouched. with PROBER, any channel can be slelected. With UCAP mode 3, all
-                channels are sent and ``channels`` is ignored. In mode 1-3, only the first 4, 2 or 1
-                channels listed in ``channels`` will be sent.
+            channels (list): list of channels for which the data capture will be enabled. Behavior differs depending on the capture engine:
+                - PROBER: Capture is configured ont he selected channels only
+                - UCAP: Only specified channels will be captured. The number of allowed channels differs depending
+                  on `mode`:
+                  - mode 0: All 8 channels are sent, and `channels` must be exactly [0,1,2,3,4,5,6,7]. This is the default when None.
+                  - mode 1: Any 4 channels are sent. `channels` must be a list of exactly 4 channel numbers. Default when None is [0,1,2,3].
+                  - mode 2: Any 2 channels are sent. `channels` must be a list of exactly 2 channel numbers. Default when None is [0,1].
+                  - mode 3: A single `channel` is sent. Default when None is [0].
 
             sync (bool): When True, a local sync is performed.
 
@@ -3366,14 +3370,6 @@ class chFPGA(FPGAFirmware):
                 f'with first frame offset of {offset} frames ({offset * self.FRAME_PERIOD * 1000:.3f} ms)'
                 f'and a send delay factor of {send_delay} ({send_delay * 65536 / 125e6 * 1000:.3f} ms).')
 
-            frames_per_second = frames_per_burst * 1.0 / self.FRAME_PERIOD / burst_period_in_frames
-            packet_size_in_bits = (self.FRAME_LENGTH + 10 + 42) * 8  # 10 header bytes, 42 Ethernet/IP/UDP overhead
-            self.logger.debug('\n'.join((
-                f'{self!r}: Data rates are:',
-                f'    1 board, 1 channel: {frames_per_second * packet_size_in_bits / 1e6:.3f} Mbits/s',
-                f'    1 board, {len(channels)} channels: {len(channels) * frames_per_second * packet_size_in_bits / 1e6:.3f} Mbit/s',
-                f'    1 crate: {16 * 16 * frames_per_second * packet_size_in_bits / 1e6:.3f} Mbits/s'
-                )))
 
         if data_type is not None:
             if source == 'scaler':
@@ -3386,14 +3382,22 @@ class chFPGA(FPGAFirmware):
         # of malformed packets and unstable communications
         reset_state = self.get_chan_reset()
 
-        self.set_trig(0)  # disable data transmission if continuous mode is currently selected
-        self.set_chan_reset(1)  # no longer supported by firmware
+        self.set_chan_reset(1)
 
 
         if self.CAPTURE_TYPE == 'UCAP':
             self.UCAP.set_data_capture(source=source, mode=mode, channels=channels, select=select, periods=[burst_period_in_frames-1, burst_period_in_frames-1])
 
         elif self.CAPTURE_TYPE =='PROBER':
+
+            frames_per_second = frames_per_burst * 1.0 / self.FRAME_PERIOD / burst_period_in_frames
+            packet_size_in_bits = (self.FRAME_LENGTH + 10 + 42) * 8  # 10 header bytes, 42 Ethernet/IP/UDP overhead
+            self.logger.debug('\n'.join((
+                f'{self!r}: Data rates are:',
+                f'    1 board, 1 channel: {frames_per_second * packet_size_in_bits / 1e6:.3f} Mbits/s',
+                f'    1 board, {len(channels)} channels: {len(channels) * frames_per_second * packet_size_in_bits / 1e6:.3f} Mbit/s',
+                f'    1 crate: {16 * 16 * frames_per_second * packet_size_in_bits / 1e6:.3f} Mbits/s'
+                )))
 
             if channels is None:
                 channels = self.default_channels
