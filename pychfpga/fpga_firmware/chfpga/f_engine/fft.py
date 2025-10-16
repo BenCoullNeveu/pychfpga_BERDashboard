@@ -94,7 +94,7 @@ class FFT(MMI):
         # bins coming out straight out of the CASPER FFT
         bins = np.arange(n_bins).reshape((n_lanes, -1), order='F' if unscrambled else 'C')
         if rotate:
-            bins -= (np.arange(n_bins_per_lane) * n_bins_per_lane) % n_bins
+            bins = (bins - np.arange(n_bins_per_lane) * n_bins_per_lane) % n_bins
         return bins.flatten(order='F') if flatten else bins
 
     def status(self):
