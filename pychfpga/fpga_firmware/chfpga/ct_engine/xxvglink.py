@@ -131,9 +131,10 @@ class GTY(MMI):
 
     RXHEADER      = BitField(STATUS, 5, 6, width=2, doc='Debug')
     RXGEARBOXSLIP = BitField(STATUS, 5, 5, doc='Debug')
+    RXPRBSLOCKED  = BitField(STATUS, 5, 3, doc='GTY Output to indicate that the RX PRBS checker has been error free. Is reset by RXPRBSCNTRESET.')
     RXBUFSTATUS   = BitField(STATUS, 5, 0, width=3)
 
-    RXMONITOR     = BitField(STATUS, 6, 0, width=7, doc='Debug')
+    RXMONITOR     = BitField(STATUS, 6, 0, width=8, doc='Reserved port according to the GTY manuals. Not clear what this does.')
     RXDATA        = BitField(STATUS, 10, 0, width=32)
 
     # ERR_CTR       = BitField(STATUS, 10, 0, width=32)
