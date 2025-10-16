@@ -571,6 +571,10 @@ class FPGAArray(object):
         self.tx_power = tx_power
         self.mode = mode
 
+        self.packet_receiver = None
+        self.corr_recv = None
+        self.raw_data_recv = None
+
         discover_slot = True
         discover_crate = True
         ###########################################
@@ -3065,10 +3069,111 @@ class FPGAArray(object):
 
         return stream_id_map
 
+    # ---------------------
+    # -- Correlator methods
+    # ---------------------
+
+    def get_data_socket(self, port_number=None):
+        """
+        Return a UDP socket that receives the raw/correlator data, and setup all boards to use that same socket.
+
+        If the socket does not already exists, the FPGA will be configured to send the data to the returned socket.
+
+        Parameters:
+
+            port_number (int): Port number to use:
+                - If ``None``, attempts to open a socket at the destination port currently programmed in the FPGA. If that port is zero, act as if ``port_number`` =0.
+                - If zero, open a socket at a random  (OS-provided) port, and set the corresponding destination port in the FPGA.
+                - If non-zero, get a socket bound to the specified port. An exception will be raised if that port is already used by another program.
+
+        Returns:
+
+            socket.socket(): a UDP socket.
+        """
+        # get socket from one board in the array
+        sock = self.ib[0].get_data_socket(port_number=None)
+        for b in self.ib:
+            b.set_data_socket(sock)
+        return sock
+
+
     def get_correlator_params(self):
         """ Returns the correlator geometry and configuration """
         ib = self.ib[0]  # we assume all boards have correlators and they are all the same
         return ib.get_correlator_params()
+
+    def get_packet_receiver(self, port_number=None):
+        """ Returns an existing UDP packet receiver or create a new one if none has been created yet.
+
+        Parameters:
+
+            port_number (int): Specifies the port to use if a socket has not already been allocated.
+                - If ``None``, attempts to open a socket at the destination port currently programmed in the FPGA. If that port is zero, act as if ``port_number`` =0.
+                - If zero, open a socket at a random  (OS-provided) port, and set the corresponding destination port in the FPGA.
+                - If non-zero, get a socket bound to the specified port. An exception will be raised if that port is already used by another program.
+
+        Returns:
+
+            UDPPacketReceiver instance
+        """
+        if not self.packet_receiver:
+            sock = self.get_data_socket(port_number=port_number)
+            self.packet_receiver = self.ib[0].CORR.get_packet_receiver(sock) # ***todo: move packet receiver to utils (can be used by raw capture also)
+        return self.packet_receiver
+
+    def get_corr_receiver(self, port_number=None):
+        """ Returns a correlator packet receiver.
+
+        A UDP packet receiver and associated socket will be created if none already exist, otherwise the existing ones will be reused.
+        The correlator packet receiver and the raw data receiver share the same socket and UDP packet receiver.
+
+
+        Parameters:
+
+            port_number (int): Specifies the port to use if a socket has not already been allocated for the UDP packet receiver.
+                - If ``None``, attempts to open a socket at the destination port currently programmed in the FPGA. If that port is zero, act as if ``port_number`` =0.
+                - If zero, open a socket at a random  (OS-provided) port, and set the corresponding destination port in the FPGA.
+                - If non-zero, get a socket bound to the specified port. An exception will be raised if that port is already used by another program.
+
+        Returns:
+
+            UCorrFrameReceiver instance
+        """
+
+        if not self.corr_recv:
+            pr = self.get_packet_receiver(port_number=port_number)
+            self.corr_recv = self.ib[0].CORR.get_corr_receiver(packet_receiver=pr, correlators=[b.CORR for b in self.ib])
+        return self.corr_recv
+
+
+    def start_correlators(self, integration_period, autocorr_only=False, no_accum=False,
+                          bandwidth_limit=0.5e9, verbose=0):
+        """
+        Start all the correlators in the array.
+
+
+        Parameters:
+
+            integration_period (32-bit int): Number of frames to integrate before sending the
+               correlated products.
+
+            autocorr_only (bool): When 'True', the correlator will only send the autocorrelation
+               products
+
+            no_accum (bool): When 'True', the correlator does not accumulate products from multiple
+                frames. It just returns the product from the last frame on the integration period.
+
+            bandwidth_limit (float): Maximum acceptable data bandwidth that each correlator can
+               produce, in bits/s. Default is 0.5 Gbps/number_of_boards. An exception will be raised if the correlator parameters are to make the
+               data exceed this bandwidth in order to avoid operating in a high packet loss environment
+
+        """
+        for ib in self.ib:
+            ib.start_correlator(integration_period=integration_period,
+                                autocorr_only=autocorr_only,
+                                no_accum=no_accum,
+                                bandwidth_limit=bandwidth_limit/len(self.ib),
+                                verbose=verbose)
 
     async def start_correlators_async(self, integration_period, autocorr_only=False):
         """
