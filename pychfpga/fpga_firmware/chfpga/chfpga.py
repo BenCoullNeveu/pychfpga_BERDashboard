@@ -3206,14 +3206,31 @@ class chFPGA(FPGAFirmware):
                 raise OSError(f'Socket at port {port_number} is already in use on interface {self.interface_ip_addr}. On Linux, use "netstat -ulpe" to find which user/process has the port already open')
             # store the socket in the main module so it will live persistently until the Python session is closed.
 
+        self.set_data_socket(sock)
+        return sock
+
+    def set_data_socket(self, sock, force=False):
+        """ Specified the data socket to which data will be sent
+
+        Parameters:
+
+            sock (socket.socket): Valid, opened and bound UDP socket to use.
+
+            force (bool): If True, the socket cache and FPGA port numbers will be updated even if the socket has already been set
+        """
+        # Return if the board already uses that socket
+        if sock is self._data_socket and not force:
+            return
+
+        opened_sockets = __main__.__dict__.setdefault('__opened_sockets__', {})
+
         (actual_ip_addr, actual_port_number) = sock.getsockname()
         opened_sockets[actual_port_number] = sock
-        if self._data_socket and sock is not self._data_socket:
+        if self._data_socket:
             self.logger.warning(f'{self!r}: Abandonning previously allocated socket {self._data_socket} for new socket {sock}')
         self._data_socket = sock
         run_async(self.set_local_data_port_number_async(actual_port_number))
 
-        return self._data_socket
 
     def set_data_capture_stream_ids(self, stream_ids):
         """ Set the STREAM ID of the raw data capture packets for each of the channels
