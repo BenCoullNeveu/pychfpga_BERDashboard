@@ -1,8 +1,8 @@
 #!/usr/bin/python
 
 """
-This module defines the `chFPGA_controller` class, which provides a Python interface to operate an
-IceBoard and its chFPGA firmware.
+This module defines the `chFPGA` class, which provides a Python interface to operate an
+chFPGA firmware and its associated hardware platform.
 
 .. Notes:
 ..     Created 2011-01-10. See GIT for commit history.
@@ -67,7 +67,7 @@ from .ct_engine import cge
 from .ct_engine import ucap
 
 # FPGA Correlator (X-Engine)
-from .x_engine import CORR, UCORR  # 16-channel correlator (if implemented in firmware)
+from .x_engine import CORR, UCORR  # Correlators (if implemented in firmware)
 
 
 # Default ADC delays
@@ -125,7 +125,7 @@ class chFPGA(FPGAFirmware):
     # Define the motherboard models and operational modes supported by this class, and associate corresponding FPGA
     # configuration bitstreams and initialization parameters The 'clock_divider' is used to know when clock frequency
     # to expect when we monitor the ADC clock with the frequency counter.This could be independent from the
-    # procrssing clock.For the CRS, the procssing clock is Fs/ 8 and the monitoring clock is Fs/ 16. For the
+    # procrssing clock. For the CRS, the processing clock is Fs/8 and the monitoring clock is Fs/16. For the
     # IceBoard, it's both fs/4. (fs=sampling frequency)
     PLATFORM_SUPPORT = { # (platform_model, firmware_config, modes): {firmware_filename: <fw_fn>, <other platform parameters>}
         ("MGK7MB", "chFPGA", ("shuffle16", "shuffle128", "shuffle256", "shuffle512", "chan8", "chan4")): dict(firmware_url='chfpga_ice_ct.bit', sampling_frequency=800e6, processing_frequency=200e6, adc_clock_divider=4),
@@ -297,7 +297,6 @@ class chFPGA(FPGAFirmware):
 
     _XILINX_OUI = 0x000A35
 
-
     _CHFPGA_COOKIE = 0x42  # Expected cookie value for chFPGA, both on the SPI and UDP MMI
 
     # GPIO Register addresses
@@ -314,7 +313,6 @@ class chFPGA(FPGAFirmware):
 
     # # Register address of the first byte of the IP config word
     # _GPIO_IPCONFIG_REG       = _CONTROL_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 0x08D
-
 
 
     def __init__(self, motherboard, mode, **fw_params):
@@ -346,7 +344,6 @@ class chFPGA(FPGAFirmware):
         self.mode = mode # operational mode that was requested to load the firmware
         self.logger = logging.getLogger(__name__)
         self.logger.debug(f"{self!r}: Creating chFPGA FPGAFirmware object")
-
 
         # Firmware attributes provided by PLATFORM_SUPPORT. Those will be used later by `init_async`.
         self.fw_params = fw_params
@@ -396,7 +393,6 @@ class chFPGA(FPGAFirmware):
             - Direct UDP communication with the FPGA
             - TCPipe connection with the on-board processor (requires the self.mb.tcpipe object)
 
-
         Parameters:
 
             udp_retries (int): How many times UDP commands will be retried
@@ -411,10 +407,7 @@ class chFPGA(FPGAFirmware):
                 communicate with both the ARM and FPGA. If `None`, the interface
                 will be detected automatically by establishing a connection with
                 the ARM.
-
         """
-
-        # print '%r: opening MMI core' % self
 
         # Check if core communications with the FPGA was already opened
         if self.mmi:
@@ -428,7 +421,7 @@ class chFPGA(FPGAFirmware):
                 f"{self!r}: The FPGA is not programmed with a bitstream. "
                 f'Cannot open link with the FPGA and initialize it')
 
-        # Discover ethernet interface through which we communicate withthe
+        # Discover ethernet interface through which we communicate with the
         # motherboard. We will use the same interface to listen to data.
         self.set_interface_ip_address()
 
@@ -471,8 +464,6 @@ class chFPGA(FPGAFirmware):
                 self.interface_ip_addr = None
 
 
-
-
     ######################################################
     # Firmware UDP stack methods
     ######################################################
@@ -480,33 +471,12 @@ class chFPGA(FPGAFirmware):
     # use it to establish a UDP-based FPGA MMI interface.
 
     async def open_udp_mmi_async(self):
-        """ Setup the FPGA UDP communication and return a mmi object.
+        """Setup the FPGA UDP communication and return a mmi object.
 
         This method is IceBoard-specific.
         """
 
         self.logger.debug(f'{self!r}: Opening UDP connection to the FPGA')
-        # # Overrides communication parameter defaults if specified
-        # if udp_retries is not None:
-        #     self.udp_retries = udp_retries
-
-        # if fpga_ip_addr_fn is not None:
-        #     self.fpga_ip_addr_fn = fpga_ip_addr_fn
-
-        # if interface_ip_addr is not None:
-        #     self.interface_ip_addr = interface_ip_addr
-
-
-        # # Check the FPGA firmware cookie obtained through the ARM SPI interface to the FPGA
-        # cookie = await self.get_fpga_application_cookie()
-        # if cookie != self._CHFPGA_COOKIE:
-        #     raise RuntimeError(
-        #         '%r: The firmware currently configured on the FPGA is not '
-        #         'chFPGA (got cookie 0x%04X instead of 0x%04X). '
-        #         'Direct UDP link to FPGA and other chFPGA-specific methods and '
-        #         'resources are not available.' % (self, cookie, self._CHFPGA_COOKIE))
-
-        # self.fpga_serial_number = self.get_fpga_serial_number()  # Get SN from the SPI link (slow)
 
         # Compute the IP address to use for the FPGA UDP interface For now, we
         # replace a.b.c.d by a.b.3.d. We need to find a more generic mechanism
@@ -3483,12 +3453,6 @@ class chFPGA(FPGAFirmware):
         Sets the BYPASS flag on both the FFT modules.
         If the list of channels is specified, only these channels will be set.
         All channelizers are reset to force the FFT to resynchronize to the frame boundaries.
-
-        History:
-            2012-08-31 JFC: Added this function
-            2012-10-02 JFC: Added channelizer reset after bypass change to ensure the FFT is synced.
-            2013-12-05 JFC: Changed behavior so only the specified channels are changed.
-            2014-02-09 JFC: Removed scaler bypass setting
         """
 
         if channels is None:
@@ -3598,9 +3562,6 @@ class chFPGA(FPGAFirmware):
         the data frames on a frame-by-frame basis (the CAPTURE flag is set at
         the begining of the frame ans syats constant until the end of the
         frame so no partial frames will be captured downstream.)
-
-        History:
-            120918 JFC: Added this function
         """
         self.GPIO.set_global_trig(trigger_state)
 
@@ -3642,7 +3603,6 @@ class chFPGA(FPGAFirmware):
         Set all the hardware delays (sync delays, ADC tap delays, sample_delay, clock_delay) required
         to achieve proper data acquisition from the ADCs.
 
-
         If `source` is None, does not contain or does not point to an existing delay table entry
         (including a missing delay file or missing tag), new delays will be computed if
         `compute_delays > 0`. If recomputing is not allowed, an exception will be raised.
@@ -3657,7 +3617,6 @@ class chFPGA(FPGAFirmware):
         If new delays were computed successfully and `save_delays` is True, the new delays will be
         saved in the delay table under the tag specified in `source`, or under the 'default' tag if
         `source` is None or empty.
-
 
         Scenarios:
 
@@ -3699,7 +3658,6 @@ class chFPGA(FPGAFirmware):
             check_adc_delays (int): Number of times the ADC is sync'ed and ramp data is read to
                 check the integrity of the data acquisition. If the test fails and if
                 `compute_delays` allows it, new data line delays will be computed.
-
 
             delay_table_folder (str): folder in which the delay table should be loaded from or save to.
 
@@ -3788,7 +3746,6 @@ class chFPGA(FPGAFirmware):
         self.logger.debug(f'{self!r}: Computing new sync and/or ADC delays')
 
         for trial in range(retry):
-
 
             sync_delays = self.compute_sync_delays(
                 set_sync_delays=True,
@@ -3926,7 +3883,6 @@ class chFPGA(FPGAFirmware):
         Returns:
             A dictionary listing the total number of mismatched words words were detected for all channels and all
             trials combined.
-
         """
 
         assert self.HAS_ADCDAQ, 'The platform does not support the MGADC08 mezzanine and associated ADCDAQ firmware'
@@ -3970,9 +3926,6 @@ class chFPGA(FPGAFirmware):
 
             ``N_channels`` x 32 x 11 byte array, where ``N_channels`` is the numbe of channels
             specified in `channels`.
-
-        Note:
-
         """
         assert self.HAS_ADCDAQ, 'The platform does not support the MGADC08 mezzanine and associated ADCDAQ firmware'
 
@@ -4015,8 +3968,6 @@ class chFPGA(FPGAFirmware):
         Returns:
 
             list of tap delays to be applied to the ADC sync line of each mezzanine.
-
-
         """
 
         old_adc_mode = self.get_adc_mode(channels=channels)
@@ -4044,7 +3995,6 @@ class chFPGA(FPGAFirmware):
         Returns:
 
             int: number of errors (phase jumps)
-
         """
 
         old_adc_mode = self.get_adc_mode(channels=channels)
@@ -4067,13 +4017,10 @@ class chFPGA(FPGAFirmware):
             set_delays=True):
         """ Computes the ADC data line delays to ensure reliable data acquisition.
 
-
-
         The ADC data line delays are adjusted by sweeping the delay of each
         data line (bit) of the ADC in pulse mode and looking for the center of
         the pulse. In other words, it measures the eye diagram of the ADC
         digital data lines and computes the optimum delays
-
 
         Parameters:
 
@@ -4088,10 +4035,6 @@ class chFPGA(FPGAFirmware):
             check_adc_delays (bool):
 
             set_delays (bool):
-
-
-        Returns:
-
         """
 
         new_delays = {}
@@ -4099,9 +4042,6 @@ class chFPGA(FPGAFirmware):
         tap_delay = 1 / 200e6 / 32 / 2
         adc_sampling_freq = self._sampling_frequency
         pulse_period = int((1 / adc_sampling_freq) / tap_delay)  # 800 MHz period in tap delays (16 taps)
-
-
-
 
         data = self.capture_adc_eye_diagram(channels)  # N_chan x 32 x 11 array
 
@@ -4129,7 +4069,6 @@ class chFPGA(FPGAFirmware):
                 s = (d.astype(np.int8) + ord('0')).tobytes()
                 re = s.find(b'0111')
                 fe = s.find(b'1110')
-                # print s,re,fe
                 if re >= 0 and fe >= 0 and fe > re:  # if we have both a rising edge
                     delay = (fe + 2 + re + 1) / 2
                 elif re >= 0:  # if we have a rising edge only
@@ -4353,7 +4292,8 @@ class chFPGA(FPGAFirmware):
             crate_slot_format='FCC{crate:02d}{slot:02d}',
             no_crate_format='{slot!s}',
             no_slot_format='{crate!s})'):
-        """ Return a string that represent the board using the provided format list.
+        """
+        Return a string that represent the board using the provided format list.
 
         Parameters:
 
@@ -4378,15 +4318,13 @@ class chFPGA(FPGAFirmware):
             return self.get_string_id()
 
     def get_gains_filename(self, folder=''):
-        """ Return the name of the fulle path and filename of the file containing the gains for this board.
-
-
+        """Return the name of the full path and filename of the file containing the gains for this board.
         """
         gain_filename = os.path.join(folder, 'gains_%s.pkl' % self.get_formatted_id())
         return gain_filename
 
     def load_gains(self, folder='.'):
-        """ Loads the gain file associated with this board and return the gains.
+        """Loads the gain file associated with this board and return the gains.
 
         The gain file is a pickled dictionary in the format {channel_number:gains,..}.
 
@@ -4397,7 +4335,6 @@ class chFPGA(FPGAFirmware):
         Returns:
 
             gains that have been loaded. `None` if the gains are not found.
-
         """
 
         gain_filename = self.get_gains_filename(folder=folder)
@@ -4430,7 +4367,6 @@ class chFPGA(FPGAFirmware):
         Returns:
 
             gains that have been loaded. `None` if the gains are not found.
-
         """
         gain_filename = self.get_gains_filename(folder=folder)
 
@@ -4469,9 +4405,6 @@ class chFPGA(FPGAFirmware):
                                                                 taking the whole byte
                 set_eight_bit_scaler(True, True)                # Sets active channels to the 4-bit mode, but last
                                                                 4-bits in each byte will be returned user flags
-
-            History:
-                2023-10-10 Vadym B.: Added this function
             """
 
         if channels is None:
@@ -4509,9 +4442,6 @@ class chFPGA(FPGAFirmware):
 
                 channels (list of int): channels to which the specified mode is applied. If 'channels' is None, it is
                 applied to the default (active) channels (see set_default_channels()).
-
-            History:
-                2023-10-23 Vadym B.: Added this function
             """
 
         rounding_options = {
@@ -4652,10 +4582,6 @@ class chFPGA(FPGAFirmware):
             set_gain(16384,8) # In 4-bit, FFT enabled mode, outputs a value of '1' on bin 0 when the input of the FFT is a constant '1'.
             set_gain(np.arange(1024), channels=[1,2,3])
             set_gain({1: 16384, 4: 1300+15000*j, 5: np.arange(1024)}) # sets ADC channels 1-3 to a real gain of 16384, channel 4 to complex gain of (1300+15000j), and channels 5-7 with a gain ramp from 0 to 1023.
-
-        History:
-            2012-11-28 JM: Added this function
-            2014-02-08 JFC: Rewrote and documented this function for the new scaler supporting complex gain tables.
         """
 
         # if postscaler is not None:
@@ -4820,9 +4746,6 @@ class chFPGA(FPGAFirmware):
                 result (i.e divide by 2) of that stage. Each bit represents a divide by 2 for that
                 stage of the FFT.  Default is to shift every stage.  11 stage FFT, so default is
                 2**11-1. expects a number  in the range 0b11111111111 (2047) and 0b00000000000 (0)
-
-        History:
-            2013-02-19 KMB: Added this function
         """
 
         if channels is None:
@@ -5009,47 +4932,6 @@ class chFPGA(FPGAFirmware):
         for ch in channels:
             self.chan[ch].ADCDAQ.BYTE_MASK = mask
 
-#     def check_adc_data_acquisition(self, test_duration=1):
-#         """
-#         Sets the ADC in ramp mode and compare the incoming ramp in real time with an internally
-#         generated ramp to compute the total number of words in error (and an error count for each
-#         bit)
-#         """
-#         old_adc_mode = self.get_adc_mode()
-#         self.set_adc_mode('ramp')
-#         self.sync() # sync the board to make sure that data acquisition starts on the right ramp sample
-
-#         # Clear the word and bit error counters
-#         for chan in self.chan.values():
-#             print 'Clearing channelizer', chan.chan_number
-#             chan.ADCDAQ.RAMP_ERR_CLEAR=0
-#             chan.ADCDAQ.RAMP_ERR_CLEAR=1
-#         self.logger.info('%r: Measuring the data acquisition error rate over %0.1f seconds...' % (
-#               self, test_duration))
-#         t0 = time.time();
-#         word_error = np.zeros(len(self.chan))
-#         bit_error = np.zeros((len(self.chan), 8))
-#         try:
-#             while time.time() - t0 <= test_duration:
-#                 for (i, chan) in self.chan.items():
-#                     print  self.chan[i].ADCDAQ.RAMP_ERR_CTR,
-#                     word_error[i] += chan.ADCDAQ.RAMP_ERR_CTR
-#                     for bit_number in range(8):
-#                         bit_error[i, bit_number] += ((chan.ADCDAQ.BIT_ERR_CTR >> (bit_number*4)) & 0x0F)
-#                     chan.ADCDAQ.RAMP_ERR_CLEAR = 0
-#                     chan.ADCDAQ.RAMP_ERR_CLEAR = 1
-#                     # self.logger.info('CH%i: %3i (%08X)' % (
-#                       chan.chan_number, chan.ADCDAQ.RAMP_ERR_CTR, chan.ADCDAQ.BIT_ERR_CTR))
-#         except KeyboardInterrupt:
-#             pass
-#
-#         for (i, chan) in enumerate(self.chan):
-#             self.logger.info('%r: CH%i: %5i word errors, bit errors (7:0) = (%s)' % (
-#                   self, chan.chan_number, word_error[i], ','.join('%3i' % e for e in bit_error[i,::-1])))
-#         total_word_errors = np.sum(word_error)
-#         self.logger.info('%r: There were %i word errors in total' % (self, total_word_errors))
-# #        self.set_adc_mode(old_adc_mode)
-#         return total_word_errors
 
     def test_speed(self, n=1000, timeout=0.1):
         """ Test the speed of UDP communications and measure the number of errors.
