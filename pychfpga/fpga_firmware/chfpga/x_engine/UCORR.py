@@ -78,6 +78,7 @@ class UCORR(MMI):
                 number_of_correlators=self.fpga.NUMBER_OF_CORRELATORS,  # hard coded in firmware
                 number_of_correlated_inputs=self.fpga.NUMBER_OF_INPUTS_TO_CORRELATE,  # hard coded in firmware
                 number_of_bins_per_frame=self.fpga.FRAME_LENGTH // 2  # CT engine always sends all bins in corr8
+                # fft_bypass = get_common_chan_attr('FFT','BYPASS')
                 )
     def get_input_bin_map(self):
         return self.fpga.chan[0].FFT.get_bin_map()
@@ -85,26 +86,27 @@ class UCORR(MMI):
     def get_bin_map(self):
         ct_level = self.fpga.CT.CT_LEVEL
         fft = self.fpga.chan[0].FFT
-        if fft.BYPASS:
-            fft_bin_map = np.arange(n_bins).reshape((n_lanes, -1), order='F')
-        else:
-            fft_bin_map = fft.get_bin_map()
+
+        fft_bin_map = fft.get_bin_map()
+
         if ct_level == 1:
-            return fft_bin_map, np.arange(fft_bin_map.shape[1])[None,None,:]
+            corr_bins = fft_bin_map
 
-        # Cull bins
-        # The 2nd CT can transfer 25 Gbps/lane, but our data has 25.6 Gbps/lane.
-        # We need to drop some bins in order to fit the pipe. Here we remove 256 bins total, i.e. 64 bins per lane.
-        # The culling takes into account the bin rotation and remove only the first 256 bins (first 50 MHz) of the spectrum
-        # In fact, the bin rotation is essential to ensure the culling affects all lanes equally.
-        # ---------
-        # ct2_bins: (lane, binid) = bin, ct2_bins.shape = (4,1984), 1984=2048-256/4
-        ct2_bins = np.array([[b for clk,b in enumerate(lane_bins) if not (clk < 256 and clk & 0b11 == lane)] for lane,lane_bins in enumerate(fft_bin_map)])
-        # that are sent to each slot,
+        elif ct_level >= 2:
 
-        # Apply correlator bin decimation
-        # corr_bins := (slot, bin_id) = bin   corr_bins.shape=(4, 496) (496 = 1984/4)
-        corr_bins = ct2_bins[:, 3::4]
+            # Cull bins
+            # The 2nd CT can transfer 25 Gbps/lane, but our data has 25.6 Gbps/lane.
+            # We need to drop some bins in order to fit the pipe. Here we remove 256 bins total, i.e. 64 bins per lane.
+            # The culling takes into account the bin rotation and remove only the first 256 bins (first 50 MHz) of the spectrum
+            # In fact, the bin rotation is essential to ensure the culling affects all lanes equally.
+            # ---------
+            # ct2_bins: (lane, binid) = bin, ct2_bins.shape = (4,1984), 1984=2048-256/4
+            ct2_bins = np.array([[b for clk,b in enumerate(lane_bins) if not (clk < 256 and clk & 0b11 == lane)] for lane,lane_bins in enumerate(fft_bin_map)])
+            # that are sent to each slot,
+
+            # Apply correlator bin decimation
+            # corr_bins := (slot, bin_id) = bin   corr_bins.shape=(4, 496) (496 = 1984/4)
+            corr_bins = ct2_bins[:, 3::4]
 
         # Get the product number for each i,j coordinates
         ij_map = self.get_ij_to_prod_map()
