@@ -49,6 +49,8 @@ class UCORR(MMI):
     BIN_DECIMATION_FACTOR   = BitField(STATUS, 2, 0, width=4, doc="Bin decimation factor")
     IN_FRAME_CTR  = BitField(STATUS, 3, 0, width=8, doc="Input frame counter")
     OUT_FRAME_CTR = BitField(STATUS, 4, 0, width=8, doc="Output frame counter")
+    NCLK_PER_BIN  = BitField(STATUS, 5, 0, width=4, doc="Number of clocks required to send all channels for one bin")
+
 
     def __init__(self, *, router, router_port, verbose=0):
         super().__init__(router=router, router_port=router_port)
@@ -57,13 +59,10 @@ class UCORR(MMI):
 
     def init(self):
         """ Inisializes all modules of a correlator block."""
-        # self.INTEGRATION_PERIOD = 16384-1
-        # self.USER_ID = self.fpga.slot - 1 if self.fpga.slot else 0
         self.CORR_ID = (self.fpga.slot-1) if self.fpga.slot else 0
         self.bins_per_frame = self.fpga.FRAME_LENGTH // 2 # total number of bins at the output of the channelizers
-        self.NCHAN_PER_CLK = 32 # **TODO** Refer to firmware STATUS register
-        self.NCLK = self.BIN_DECIMATION_FACTOR * self.NCHAN // self.NCHAN_PER_CLK  # Number of clocks available to compute all the products. Will reduce the number of required CMACs, but increase the number of products per CMAC
-        self.NPROD = self.NCHAN * (self.NCHAN + 1) // 2
+        self.NCLK = self.BIN_DECIMATION_FACTOR * self.NCLK_PER_BIN  # Number of clocks available to compute all the products. Will reduce the number of required CMACs, but increase the number of products per CMAC
+        self.NPROD = self.NCHAN * (self.NCHAN + 1) // 2 # total number of computed products
 
     def status(self):
         """Displays the status of the correlator array"""
@@ -80,6 +79,21 @@ class UCORR(MMI):
                 number_of_bins_per_frame=self.fpga.FRAME_LENGTH // 2  # CT engine always sends all bins in corr8
                 # fft_bypass = get_common_chan_attr('FFT','BYPASS')
                 )
+
+    def get_config(self):
+        """ Return a dict containing the essential information required to receive and assemble correlator packets.
+        """
+
+        bin_map, prod_map = self.get_bin_map()
+        conf = dict(
+            NCHAN = self.NCHAN,
+            NCLK = self.NCLK,
+            bin_map = bin_map,
+            prod_map = prod_map,
+            firmware_integ_period = self.INTEGRATION_PERIOD + 1
+            )
+        return conf
+
     def get_input_bin_map(self):
         return self.fpga.chan[0].FFT.get_bin_map()
 
@@ -103,6 +117,8 @@ class UCORR(MMI):
             # ct2_bins: (lane, binid) = bin, ct2_bins.shape = (4,1984), 1984=2048-256/4
             ct2_bins = np.array([[b for clk,b in enumerate(lane_bins) if not (clk < 256 and clk & 0b11 == lane)] for lane,lane_bins in enumerate(fft_bin_map)])
             # that are sent to each slot,
+
+            ct2_bins = fft_bin_map[:,64:]   #***Hack for temp simplified culling
 
             # Apply correlator bin decimation
             # corr_bins := (slot, bin_id) = bin   corr_bins.shape=(4, 496) (496 = 1984/4)
@@ -158,7 +174,7 @@ class UCORR(MMI):
         z[j, i] = np.arange(len(i))
         return z
 
-    def select_stream(self):
+    def select(self):
         """ Configures UCAP to stream the correlator data instead of raw data.
         """
         self.fpga.UCAP.OUTPUT_SOURCE_SEL = 1
@@ -182,16 +198,16 @@ class UCORR(MMI):
         self.verbose = verbose
 
 
-    def get_data_receiver(self, sock, **kwargs):
+    def get_data_receiver(self, sock):
         packet_receiver = UDPPacketReceiver(sock)
-        return UCorrFrameReceiver(packet_receiver, correlators=(self,), **kwargs)
+        return UCorrFrameReceiver(packet_receiver, config=self.get_config())
 
 
     @classmethod
-    def get_corr_receiver(cls, packet_receiver, correlators):
+    def get_corr_receiver(cls, packet_receiver, config, select_func=None):
         """ Return an instance of a correlator packet receiver
         """
-        return UCorrFrameReceiver(packet_receiver, correlators=correlators)
+        return UCorrFrameReceiver(packet_receiver, config=config, select_func=select_func)
 
     @classmethod
     def get_packet_receiver(cls, sock, n_packets=2048, max_packet_size=9000, verbose=0):
@@ -299,13 +315,8 @@ class UDPPacketReceiver:
 
 class UCorrFrameReceiver:
     """
-    Pure Python socket receiver to capture the data from the FPGA-based
-    16-channel full N-square firmware correlator and integrates it in real
-    time.
+    Packet processor for UCORR FPGA-based N-square firmware correlator.
 
-    Note that the packets are larger than 1500 bytes, which requires the
-    networking equipment and the computer interface to be configured to
-    receive Jumbo frames.
 
     The receiver is fast enough to capture data that is integrated in firmware
     down to a rate of about 10 ms/integrated frame, that is, exceeding 500
@@ -318,13 +329,31 @@ class UCorrFrameReceiver:
 
     Parameters:
 
-        socket (socket.socket): An opened and bound UDP socket to which the
-            FPGA correlator data will be sent. The socket will not be closed
-            when the call is completed.
+        packet_receiver (object): Instance to the UDP packet receiver that stores UDP packets to be
+            processed. The receiver shall have a get_packets() method if the standalone
+            `read_corr_frames` method is to be used.
+
+        corr_params (dict or callable): Dict containing initial information on the correlator
+            configuration, or function  to be called to get that dict. The dict shall also be passed
+            to subsequent correlator packet request calls if the configuration has changed.
+
+            If `corr_params` is a function it should have the signature ``corr_params(init)`` where
+            True on initial setup to force an update of all parameters, and generally False on each
+            subsequent packet request unless a re-init is requested by the user. The function can be
+            used to setup the correlator data transmission path when init=False if needed by the
+            firmware. If ``init=False``, the function can return `None` to indicate that no
+            configuration change has occured. Since the function will be called on every
+            time-sensitive packet requests, care should be taken to avoid any lengthy or unnecessary
+            processing.
+
+            Note that the user can manually call the `update_params` method after changes that impact the receiver.
 
 
     Data format
     -----------
+    The number of correlation products computed ny the N-square correlator is NPROD = NCHAN*(NCHAN+1)/2.
+
+    Correlator products are sent as N_CLKBINS=NCLK*NPROD_PER_CMAC packets from each correlator core in the array, each packet containing N_PROD/NCLK complex products.
 
     Complex value data results
 
@@ -343,18 +372,19 @@ class UCorrFrameReceiver:
     System Requirements
     -------------------
 
-    The transmit rate must be fast enough to accommodate the desired bandwidth
-    by setting ib.GPIO.HOST_FRAME_READ_RATE = rate. rate=16 limits to about
-    260 Mbps but is slow enough to allow python to process the data with a
-    small standard UDP buffer. ``rate`` =15 is good for about 500 Mbps, and
-    ``rate`` =16 is good for the full Gigabit bandwidth. The latetr two requireabs(vis[0, :, 0])
-    bigger UDP buffers. See below::
+    Jumbo Frames
+    ............
 
-        ib.GPIO.HOST_FRAME_READ_RATE = 14
 
-    The Ethernet interface must be set to receive Jumbo frames::
+    UCAP packets are small and do not require Jumbo frames.
 
-        sudo ifconfig eno1 mtu 9000
+    System UDP Buffers
+    ..................
+
+
+    Correlator packets are sent if very fast bursts and need to be stored in the OS networking stack until Python gets around to read them, otherwise packet loss will occur.
+
+    Insufficient OS buffering is the main cause for UDP packet loss (not the computer speed, not the switches, not Python).
 
     The UDP buffers shall be increased to reduce packet loss to a minimum::
 
@@ -363,124 +393,175 @@ class UCorrFrameReceiver:
         sudo sysctl -w net.ipv4.udp_mem='26214400 26214400 262144000'
         sudo sysctl -w net.ipv4.udp_rmem_min=262144000
 
-    Check udp buffers::
+    To check UDP buffers::
 
         sysctl -a | grep mem
 
-    Monitor UDP buffer::
+    The following command can be used to monitor packet dropped by the OS in real time due to insufficient UDP buffer space::
 
         watch -cd -n .5 "cat  /proc/net/udp"
     """
 
-    NBYTES_PER_HEADER = 10
-    NBYTES_PER_PROD = 5
+    NBYTES_PER_HEADER = 10 # Number of bytes in the UDP payload header
+    NBYTES_PER_PROD = 5  # Number of bytes used to store each complex correlator product ( (18+18) bits = 36 bits, 5 bytes = 40 bits)
 
 
-    def __init__(self, packet_receiver, correlators):
+    def __init__(self, packet_receiver, config, select_func=None):
 
-        if not isinstance(correlators, (tuple, list)):
-            correlators = (correlators,)
 
-        self.corrs = correlators
-
-        # packets_per_chunk=10*NBINS_TOTAL,
         self.pr = packet_receiver
-        self.NCHAN = NCHAN = self.get_corr_param('NCHAN')
-        self.NDECIM = NDECIM = self.get_corr_param('BIN_DECIMATION_FACTOR')
-        self.NBOARDS = NBOARDS = len(correlators)
-        self.NBINS = Nbins = self.get_corr_param('bins_per_frame') # number of bins in the array
-        # self.NPACKETS = packets_per_chunk
-        self.NCORR_PER_BOARD = NCORR_PER_BOARD = self.get_corr_param('NCORR') # number of correlator per board, i.e. number of streams per board
-        self.NPROD = NCHAN * (NCHAN + 1) // 2   # Total number of products per correlator frame
-        self.NCLK = self.NDECIM  # number of clocks required to compute the products for one bin
-        self.NCMAC = self.NPROD // self.NCLK # Number of complex multipliers/accumulators
+        self.select_func = select_func
+        self.config_getter = None
+        if callable(config):
+            self.config_getter = config
+            config = self.config_getter(init=True)
+
+
+
+        # Define numpy data types that will be used to parse the correlator packets
+
+        self.NCHAN = None
+        self.NCLK = None
+        self.bin_map = None
+        self.prod_map = None
+        self.firmware_integ_period = None
+
+        self.update_config(config)
+
+    def update_config(self, config, force=False):
+        """ Update the correlator receiver configuration
+
+
+        """
+
+        def set_param(name):
+            v = config.get(name, getattr(self,name))
+            if v is None:
+                raise RuntimeError(f'Parameter {name} must be provided')
+            if force or (np.all(v != getattr(self, name)) if isinstance(v, np.ndarray) else v != getattr(self, name)):
+                setattr(self, name, v)
+                return True
+            return False
+
+        # Fundametal paramaters
+        NCHAN_updated = set_param('NCHAN')
+        # self.NDECIM = NDECIM = self.get_corr_param('BIN_DECIMATION_FACTOR')
+        # self.NCLK_PER_BIN =
+        NCLK_updated = set_param('NCLK') # number of clocks required to compute the products for one bin
+        # self.NBOARDS = NBOARDS = len(correlators)
+        # self.NBINS = Nbins = self.get_corr_param('bins_per_frame') # number of bins in the array. Used only for final storage.
+        # self.NCORR_PER_BOARD = NCORR_PER_BOARD = self.get_corr_param('NCORR') # number of correlator per board, i.e. number of streams per board
+        bin_map_updated = set_param('bin_map')
+        prod_map_updated = set_param('prod_map')
+        set_param('firmware_integ_period')
+
+
+        # Derived parameters
+        self.NBINS = self.bin_map.max() + 1
+        self.NCORRS, self.NPROD_PER_CMAC = self.bin_map.shape[:2]
+        self.NPROD = self.NCHAN * (self.NCHAN + 1) // 2   # Total number of products per correlator frame
+        self.NCMAC = self.NPROD // self.NCLK # Number of complex multipliers/accumulators per correlator
+        self.NPROD_PER_ARRAY = self.NCORRS * self.NPROD_PER_CMAC
+
+        # self.NCLK = self.NDECIM * self.NCLK_PER_BIN  # number of clocks required to compute the products for one bin
+        # self.NPROD_PER_CMAC = self.NBINS_PER_STREAM // self.NDECIM * self.NCLK
+        # NCORR: total number of correlator cores in the array
+        # NPROD_PER_CMAC: number of CLKBINS per correlator. Equals to NBINS/NCORRS/NDECIM*NCLK if there is no bin culling.
         # self.NPROD = NCHAN   # Autocorrelation-only Total number of products per correlator frame
-        self.NCORRS = self.NCORR_PER_BOARD * self.NBOARDS # total number of correlators in the array
+        # self.NCORRS = self.NCORR_PER_BOARD * self.NBOARDS # total number of correlators in the array
         # self.NBINS_PER_STREAM = self.NBINS // self.NCORRS
 
-        self.bin_map, self.prod_map = self.corrs[0].get_bin_map()
-
-        # self.NPROD_PER_CMAC = self.NBINS_PER_STREAM // self.NDECIM * self.NCLK
-        self.NPROD_PER_CMAC = self.bin_map.shape[1]
-        self.NPROD_PER_ARRAY = self.bin_map.shape[0] * self.bin_map.shape[1]
-
-        self.PACKET_SIZE = self.NBYTES_PER_HEADER + self.NCMAC * self.NBYTES_PER_PROD # size of one packet (all products for a single bin plus header)
-
-        # Define numpy data types that will be used to efficiently parse the data
-        self.header_dtype = np.dtype(dict(
-            names=['cookie', 'stream_id', 'flags', 'ts'],
-            offsets=[0, 1, 3, 2],
-            formats=['u1', '>u2', 'u1', '>u8']))
-
-        self.product_dtype = np.dtype(dict(
-            names=['sat', 'l', 'h'],
-            offsets=[4, 0, 1],
-            formats=['u1', '<i4', '<i4']))
-
-        self.packet_dtype = np.dtype([
-            ('header', self.header_dtype, (1, )),
-            ('data', self.product_dtype, (self.NCMAC, ))])
-
-        # Pre-allocate buffers in which recv_into() will put the received data
-        # directly. We could use empty() to save some cycles, but the
-        # uninitialized data can be confusing for debugging
-        # self.buf = np.zeros((self.NPACKETS, self.PACKET_SIZE), dtype=np.uint8)
-
-        # Various views of the buffer to allow quick and easy access to the
-        # packet contents. This does not cause new memory allocations.
-        self.buf_struct = self.pr.buf[:,:self.packet_dtype.itemsize].view(self.packet_dtype)[:, 0]  # (NPACKETS,)
-        self.buf_cookie = self.buf_struct['header']['cookie'][:, 0]
-        self.buf_flags = self.buf_struct['header']['flags'][:, 0]
-        self.buf_stream_id = self.buf_struct['header']['stream_id'][:, 0]
-        self.buf_ts = self.buf_struct['header']['ts'][:, 0]
-
-        self.buf_data_h = self.buf_struct['data']['h']  # (NPACKETS, NPROD)
-        self.buf_data_l = self.buf_struct['data']['l']  # (NPACKETS, NPROD)
-        self.buf_data_sat = self.buf_struct['data']['sat']  # (NPACKETS, NPROD)
-        self.ts_mask = np.uint64(0xFFFFFFFFFFFF)  # just keep the last 48 bits
-
-        # Initialize variables used by the packet receiver
-        # self.n = 0  # number of packets currently stored in the buffer
-        self.last_ts = None  # timestamp of the last packet written in the buffer
-        NPACKETS = self.pr.n_packets
-        # Pre-allocate temporary storage to extract the real/imaginary part from the 5-byte packed product
-        self.temp32 = np.empty((NPACKETS, self.NCMAC), dtype=np.int32)
-
-        # Intermediate Storage slots for the accumulated value (a.k.a integration slots)
-        self.NINTEG_SLOTS = 3 # Number of data sets (timestamps) to store
-        self.current_set = None
-        # self.ts = np.zeros((self.NINTEG_SLOTS,), dtype=np.uint64)
-        # ts_dict = {} # {timestamp:n, ...): keeps track of the known timestamps and associated capture sets
-        self.acc_re = np.zeros((self.NINTEG_SLOTS, self.NCORRS, self.NPROD_PER_CMAC, self.NCMAC), dtype=np.int64)
-        self.acc_im = np.zeros((self.NINTEG_SLOTS, self.NCORRS, self.NPROD_PER_CMAC, self.NCMAC), dtype=np.int64)
-        print(f'acc_re shape (N_results, Ncorr, Ncmac, Nprod) = {self.acc_re.shape}')
-        # Number of saturations for the real and imaginary part of each product
-        self.sat = np.zeros((self.NINTEG_SLOTS, self.NCORRS, self.NPROD_PER_CMAC, self.NCMAC, 2), dtype=np.int32)
-        # Number of packets received for each NCMAC (and therefore each
-        # product). Can be used to know how many packets were lost and to
-        # normalize the data
-        self.count = np.zeros((self.NINTEG_SLOTS, self.NCORRS, self.NPROD_PER_CMAC), dtype=np.uint32)
-        self.total_count = np.zeros((self.NINTEG_SLOTS,), dtype=np.uint32)
-        self.last_ts = None
-        self.current_integ = None
 
 
-        self.flush = True  # start first acquisition with UDP buffer flush
 
-        # Storage for a single integrated result when streaming
-        self.integ_sats = np.empty((self.NBINS, self.NPROD), dtype=np.complex64)
-        self.integ_counts = 0
-        self.integ_data = np.empty((self.NBINS, self.NPROD), dtype=np.complex128)
 
-    def get_corr_param(self,param):
-        """ Return a correlator parameter, raising an arror if if is not the same for all correlators"""
-        v = set(getattr(c,param) for c in self.corrs)
-        if len(v) != 1:
-            raise RuntimeError(f"Parameter'{param}' is not the same for all correlators")
-        return v.pop()
+        # Needed below this: NCMAC, self.NCORRS, self.NPROD_PER_CMAC, NBINS, NPROD, self.NPROD_PER_ARRAY
 
-    def get_freqs(self):
-        return np.arange(self.NBINS)/self.NBINS/2*self.corrs[0].fpga._sampling_frequency
+
+        # Create the views into the receiver buffer
+        # Update on NCMAC  (NCHAN, NCLK)
+
+
+        # self.PACKET_SIZE = self.NBYTES_PER_HEADER + self.NCMAC * self.NBYTES_PER_PROD # size of one packet (all products for a single bin plus header)
+
+        if NCHAN_updated or NCLK_updated:
+            # Packet buffers views should be updated if the following change: NCMAC (NCHAN,NCLK)
+
+            self.header_dtype = np.dtype(dict(
+                names=['cookie', 'stream_id', 'flags', 'ts'],
+                offsets=[0, 1, 3, 2],
+                formats=['u1', '>u2', 'u1', '>u8']))
+
+            self.product_dtype = np.dtype(dict(
+                names=['sat', 'l', 'h'],
+                offsets=[4, 0, 1],
+                formats=['u1', '<i4', '<i4']))
+
+            self.packet_dtype = np.dtype([
+                ('header', self.header_dtype, (1, )),
+                ('data', self.product_dtype, (self.NCMAC, ))])
+
+            # Pre-allocate buffers in which recv_into() will put the received data
+            # directly. We could use empty() to save some cycles, but the
+            # uninitialized data can be confusing for debugging
+            # self.buf = np.zeros((self.NPACKETS, self.PACKET_SIZE), dtype=np.uint8)
+
+            # Various views of the buffer to allow quick and easy access to the
+            # packet contents. This does not cause new memory allocations.
+            self.buf_struct = self.pr.buf[:,:self.packet_dtype.itemsize].view(self.packet_dtype)[:, 0]  # (NPACKETS,)
+            self.buf_cookie = self.buf_struct['header']['cookie'][:, 0]
+            self.buf_flags = self.buf_struct['header']['flags'][:, 0]
+            self.buf_stream_id = self.buf_struct['header']['stream_id'][:, 0]
+            self.buf_ts = self.buf_struct['header']['ts'][:, 0]
+
+            self.buf_data_h = self.buf_struct['data']['h']  # (NPACKETS, NPROD)
+            self.buf_data_l = self.buf_struct['data']['l']  # (NPACKETS, NPROD)
+            self.buf_data_sat = self.buf_struct['data']['sat']  # (NPACKETS, NPROD)
+            self.ts_mask = np.uint64(0xFFFFFFFFFFFF)  # just keep the last 48 bits
+
+            # Pre-allocate temporary storage to extract the real/imaginary part from the 5-byte packed product
+            NPACKETS = self.pr.buf.shape[0]
+            self.temp32 = np.empty((NPACKETS, self.NCMAC), dtype=np.int32)
+
+
+        if NCHAN_updated or NCLK_updated or bin_map_updated or prod_map_updated:
+
+            # Allocate integration slots used to accumulate the packets as they arrive
+            # update on change on  NCORRS, NPROD_PER_CMAC, NCMAC (bin_map, NCHAN, NCLK)
+            self.NINTEG_SLOTS = 3 # Number of data sets (timestamps) to store
+            self.current_set = None
+            # self.ts = np.zeros((self.NINTEG_SLOTS,), dtype=np.uint64)
+            # ts_dict = {} # {timestamp:n, ...): keeps track of the known timestamps and associated capture sets
+            self.acc_re = np.zeros((self.NINTEG_SLOTS, self.NCORRS, self.NPROD_PER_CMAC, self.NCMAC), dtype=np.int64)
+            self.acc_im = np.zeros((self.NINTEG_SLOTS, self.NCORRS, self.NPROD_PER_CMAC, self.NCMAC), dtype=np.int64)
+            print(f'acc_re shape (N_results, Ncorr, Ncmac, Nprod) = {self.acc_re.shape}')
+            # Number of saturations for the real and imaginary part of each product
+            self.sat = np.zeros((self.NINTEG_SLOTS, self.NCORRS, self.NPROD_PER_CMAC, self.NCMAC, 2), dtype=np.int32)
+            # Number of packets received for each NCMAC (and therefore each
+            # product). Can be used to know how many packets were lost and to
+            # normalize the data
+            self.count = np.zeros((self.NINTEG_SLOTS, self.NCORRS, self.NPROD_PER_CMAC), dtype=np.uint32)
+            self.total_count = np.zeros((self.NINTEG_SLOTS,), dtype=np.uint32)
+            self.current_integ = None
+            self.flush = True  # start first acquisition with UDP buffer flush
+
+        if NCHAN_updated or bin_map_updated:
+
+            # Storage for a single integrated result when streaming
+            # Update on change on: NBINS, NPROD (bin_map, NCHAN)
+            self.integ_sats = np.empty((self.NBINS, self.NPROD), dtype=np.complex64)
+            self.integ_counts = 0
+            self.integ_data = np.empty((self.NBINS, self.NPROD), dtype=np.complex128)
+
+    # def get_corr_param(self,param):
+    #     """ Return a correlator parameter, raising an arror if if is not the same for all correlators"""
+    #     v = set(getattr(c,param) for c in self.corrs)
+    #     if len(v) != 1:
+    #         raise RuntimeError(f"Parameter'{param}' is not the same for all correlators")
+    #     return v.pop()
+
+    # def get_freqs(self):
+    #     return np.arange(self.NBINS)/self.NBINS/2*self.corrs[0].fpga._sampling_frequency
 
     def read_corr_gen(
             self,
@@ -535,13 +616,12 @@ class UCorrFrameReceiver:
         if return_format not in ('raw',):
             raise ValueError('Invalid return format "%s"' % return_format)
 
-        if select:
-            for c in self.corrs:
-                c.select_stream()
+        if self.select_func:
+            self.select_func()
 
         self.skip_partial_integs = skip_partial_integs
         self.soft_integ_period = soft_integ_period
-        self.firmware_integ_period = self.get_corr_param('INTEGRATION_PERIOD') + 1
+        # self.firmware_integ_period = self.get_corr_param('INTEGRATION_PERIOD') + 1
         # Compute the software integration period in number of frames. This will be used to determine the integration_number index in the destination matrix.
         # Note that we HAVE TO cast integ_period in an unsigned integer, otherwise any operations with other unsigned (e.g ts differences) will be promoted to a float64.
         integ_period = np.uint64(self.soft_integ_period * self.firmware_integ_period)
@@ -804,22 +884,22 @@ class UCorrFrameReceiver:
         data = self.create_data_set(number_of_results)
         return next(self.read_corr_gen(out=data, **kwargs))
 
-    def plot_corr_frames(
-            self,
-            soft_integ_period=1,
-            flush=True,
-            align=False,
-            data_timeout=0.001,
-            flush_timeout=0.001
-            ):
+    # def plot_corr_frames(
+    #         self,
+    #         soft_integ_period=1,
+    #         flush=True,
+    #         align=False,
+    #         data_timeout=0.001,
+    #         flush_timeout=0.001
+    #         ):
 
-        # fig =  plt.figure()
-        fig = plt.gcf()
-        d, c, sat = self.read_corr_frames(soft_integ_period=soft_integ_period, flush=flush, align=align)
-        p = plt.plot(arange(1024)/1024*400, d[0,:4,1,:256].real[...,::-1].flatten(order='F'))[0]
+    #     # fig =  plt.figure()
+    #     fig = plt.gcf()
+    #     d, c, sat = self.read_corr_frames(soft_integ_period=soft_integ_period, flush=flush, align=align)
+    #     p = plt.plot(arange(1024)/1024*400, d[0,:4,1,:256].real[...,::-1].flatten(order='F'))[0]
 
-        while True:
-            d, c, sat = r.read_corr_frames(soft_integ_period=soft_integ_period, flush=False, align=False)
-            p.set_ydata( d[0,:4,1,:256].real[...,::-1].flatten(order='F'))
-            fig.canvas.draw()
-            fig.canvas.flush_events()
+    #     while True:
+    #         d, c, sat = r.read_corr_frames(soft_integ_period=soft_integ_period, flush=False, align=False)
+    #         p.set_ydata( d[0,:4,1,:256].real[...,::-1].flatten(order='F'))
+    #         fig.canvas.draw()
+    #         fig.canvas.flush_events()

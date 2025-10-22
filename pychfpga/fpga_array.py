@@ -3140,9 +3140,16 @@ class FPGAArray(object):
             UCorrFrameReceiver instance
         """
 
+        def select_func():
+            for b in self.ib:
+                b.CORR.select()
+        def config_func():
+            return self.ib[0].CORR.get_config()
+
+
         if not self.corr_recv:
             pr = self.get_packet_receiver(port_number=port_number)
-            self.corr_recv = self.ib[0].CORR.get_corr_receiver(packet_receiver=pr, correlators=[b.CORR for b in self.ib])
+            self.corr_recv = self.ib[0].CORR.get_corr_receiver(packet_receiver=pr, config=config_func(), select_func=select_func)
         return self.corr_recv
 
 
