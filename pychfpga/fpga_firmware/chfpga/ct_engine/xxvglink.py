@@ -574,6 +574,7 @@ class XXVGLinkArray(XXVGLinkCore):
     BYPASS_PCB_SHUFFLE  = BitField(CONTROL, 5, 0, doc='')
     BYPASS_QSFP_SHUFFLE = BitField(CONTROL, 5, 1, doc='')
 
+    LANE_MON_EN       = BitField(CONTROL, 6, 6, doc='When True, allows RXCLK_MON_WORD and TXCLK_MON_WORD to update. Disable during register reads.')
     LANE_MON_SRC      = BitField(CONTROL, 6, 4, width=2, doc='Selects source of data being monitored for selected lane (TXCLK domain: 0=TX, 1=RX, RXCLK domain: no effect, always RX FIFO IN)')
     LANE_MON_TYPE      = BitField(CONTROL, 6, 0, width=4, doc='Selects type of data being monitored for selected lane (0: word counter, 1: packet length, 2: current packet length, 3: min packet length, 4: max packet length, 5: error counter, 6: FIFO overflow counter)')
 
