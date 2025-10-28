@@ -477,8 +477,8 @@ class XXVGLinkCore(MMI):
         router_port = 1
 
         # Instantiate QUAD objects
-        self.logger.info(f'{self!r}: Instantiating {self.NUMBER_OF_QUADS} QPLLs')
-        print(f'{self!r}: Instantiating {self.NUMBER_OF_QUADS} QPLLs and {self.NUMBER_OF_LINKS} GTYs, XXVGLINK base addr={self.base_address:06x}, width={self.address_width}')
+        self.logger.info(f'{self!r}: Instantiating {self.NUMBER_OF_QUADS} QPLLs and {self.NUMBER_OF_LINKS} GTYs, XXVGLINK base addr={self.base_address:06x}, width={self.address_width}')
+        self.logger.debug(f'{self!r}: Instantiating {self.NUMBER_OF_QUADS} QPLLs ')
         self.qpll = []
         for j in range(self.NUMBER_OF_QUADS):
             self.qpll.append(QPLL(router=xxvgl_router, router_port=router_port, instance_number=j))
