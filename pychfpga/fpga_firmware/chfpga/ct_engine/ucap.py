@@ -48,7 +48,8 @@ class UCAP(MMI):
 
     def init(self):
         """ Initializes UCAP module"""
-        self.USER_STREAM_ID = self.fpga.slot or 0
+        slot = self.fpga.slot
+        self.USER_STREAM_ID = slot-1 if slot else 0
 
     DATA_SOURCE_TABLE = {
         'funcgen': 0,
@@ -59,7 +60,14 @@ class UCAP(MMI):
 
         Parameters:
 
-            source (str): Source to use
+            source (str): Source to use. The source string represents where the tata is tapped in
+                the channelizer pipeline:
+
+                - 'funcgen': The captured data is taken at the output of the function generator module
+                  (which can be configured to pass the ADC data or internally-generated waveforms)
+                - 'scaler': The captured data is taken from the capture output port (not the main
+                  output) of the scaler. The scaler can be configured to output various signals on this
+                  port (scaled/unscaled raw FFT data, overflow flags etc.)
 
             mode (int): capture mode to use
 

@@ -195,44 +195,6 @@ class chFPGA(FPGAFirmware):
             'I2C': 5 #:  SYSTEM.I2C submodule
         }
 
-    # _SYSTEM_BASE_ADDR = 0x00000
-    # _SYSTEM_BASE_ADDR      = BSB_TOP_ADDR + _TOP_SUBSYSTEM_INCREMENT * 0  #: 0x00000: System peripherals base address.
-    # _CHAN_BASE_ADDR        = BSB_TOP_ADDR + _TOP_SUBSYSTEM_INCREMENT * 1  #: 0x10000: F-Engine (channelizer) base address. The ADCDAQ subsystem is located in the CHAN address space.
-    # _CROSSBAR1_BASE_ADDR   = BSB_TOP_ADDR + _TOP_SUBSYSTEM_INCREMENT * 2  #: 0x20000: CT-Engine 1st CROSSBAR (channelizer crossbar) base address
-    # _GPU_LINK_BASE_ADDR    = BSB_TOP_ADDR + _TOP_SUBSYSTEM_INCREMENT * 3  #: 0x30000: GPU Link base address
-    # _CROSSBAR3_BASE_ADDR   = BSB_TOP_ADDR + _TOP_SUBSYSTEM_INCREMENT * 4  #: 0x40000: CT-Engine 3rd crossbar (shard with correlator)
-    # _CORR_BASE_ADDR        = BSB_TOP_ADDR + _TOP_SUBSYSTEM_INCREMENT * 4  #: 0x40000: X-Engine (correlator) (shared with 3rd crossbar)
-    # _BP_SHUFFLE_BASE_ADDR  = BSB_TOP_ADDR + _TOP_SUBSYSTEM_INCREMENT * 5  #: 0x50000: CT-Engine Backplane PCB and Backplane QSFP 10Gbps packet transmitter/receivers
-    # _CROSSBAR2_BASE_ADDR   = BSB_TOP_ADDR + _TOP_SUBSYSTEM_INCREMENT * 6  #: 0x60000: CT-Engine 2nd CROSSBAR base address
-    # _UCAP_BASE_ADDR        = BSB_TOP_ADDR + _TOP_SUBSYSTEM_INCREMENT * 7  #: 0x60000: UCAP base address
-
-    # _SYSTEM_ADDR_INCREMENT         = 0x01000  #: Address increment between each system peripheral (addressed by bits 15:12 -> 16 possible submodules)
-    # _CHAN_ADDR_INCREMENT           = 0x01000  #: Address increment between each channelizer (addressed by bits 15:12 -> 16 possible submodules)
-    # _CROSSBAR_ADDR_INCREMENT       = 0x00800  #: Address increment between subsystems in 1st, 2nd and 3rd crossbars (addressed by bits 15:11 -> 32 possible submodules)
-    # _GPU_LINK_ADDR_INCREMENT       = 0x00800  #: Address increment between each subsystem of the GPU links (addressed by bits 15:11 -> 32 possible submodules)
-    # _CORR_ADDR_INCREMENT           = 0x01000  #: Address increment between each correlator
-    # _BP_SHUFFLE_ADDR_INCREMENT     = 0x00800  #: Address increment between each shuffle submodule (addressed by bits 15:11 -> 32 possible submodules)
-
-    # _CHAN_SUBMODULE_ADDR_INCREMENT = 0x00200  #: Address increment between each submodule within a channelizer (ADCDAQ, FUNCGEN, FFT, SCALER etc.)
-
-
-    # # SYSTEM Peripherals Submodules addresses
-    # # _SYSTEM_GPIO_BASE_ADDR = _SYSTEM_BASE_ADDR + 0x00000
-
-    # _SYSTEM_GPIO_PORT = 0
-
-    # _SYSTEM_GPIO_BASE_ADDR     = BSB_TOP_ADDR + _SYSTEM_ADDR_INCREMENT * 0  #: 0x00000: Address of the SYSTEM.GPIO submodule
-    # _SYSTEM_SYSMON_BASE_ADDR   = BSB_TOP_ADDR + _SYSTEM_ADDR_INCREMENT * 1  #: 0x01000: Address of the SYSTEM.SYSMON submodule
-    # _SYSTEM_FREQ_CTR_BASE_ADDR = BSB_TOP_ADDR + _SYSTEM_ADDR_INCREMENT * 2  #: 0x02000: Address of the SYSTEM.FREQ_CTR submodule
-    # _SYSTEM_SPI_BASE_ADDR      = BSB_TOP_ADDR + _SYSTEM_ADDR_INCREMENT * 3  #: 0x03000: Address of the SYSTEM.SPI submodule
-    # _SYSTEM_REFCLK_BASE_ADDR   = BSB_TOP_ADDR + _SYSTEM_ADDR_INCREMENT * 4  #: 0x04000: Address of the SYSTEM.REFCLK submodule
-    # # _SYSTEM_I2C_BASE_ADDR = _SYSTEM_BASE_ADDR + 0x05000
-    # _SYSTEM_I2C_BASE_ADDR      = BSB_TOP_ADDR + _SYSTEM_ADDR_INCREMENT * 5 #: 0x05000: Address of the SYSTEM.I2C submodule
-
-    # # Base address is always at zero so we can gather info from the FPGA
-    # # before we know the number of channelizers etc.
-
-    # _GPIO_COOKIE_ADDR = 0x00 # Register address of the firmware cookie
 
     ################################################################################################
     # Core FPGA firmware registers
@@ -301,18 +263,6 @@ class chFPGA(FPGAFirmware):
 
     # GPIO Register addresses
     _GPIO_COOKIE_ADDR = 0  # MMI address of the firmware cookie
-    # _FPGA_TIMESTAMP_ADDR = _STATUS_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 7
-    # _FPGA_SERIAL_NUMBER_ADDR = _STATUS_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 12
-    # _FPGA_IP_SETUP_BASE_ADDR = _CONTROL_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 13
-    # Unused addresses:
-    #   (13-18): target MAC,
-    #   (19-22): target IP,
-    #   (23-24): target_base_port,
-    #   (25-32) = Target FPGA serial,
-    #   (33): bit 7 = trigger, bits 3:2: mac source select, 1:0: broadcast group
-
-    # # Register address of the first byte of the IP config word
-    # _GPIO_IPCONFIG_REG       = _CONTROL_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 0x08D
 
 
     def __init__(self, motherboard, mode, **fw_params):
@@ -1233,6 +1183,11 @@ class chFPGA(FPGAFirmware):
             self.GPU.init()
             self.GPU.set_enable(enable_gpu_link)
             self.logger.debug(f"{self!r}: Data offload links are currently {('Disabled', 'Enabled')[bool(enable_gpu_link)]}")
+
+        if self.CAPTURE_TYPE == 'UCAP':
+            self.logger.debug(f'{self!r}: === Initializing UCAP')
+            self.UCAP.init()
+
 
         self.logger.debug(f"{self!r}: Done with initializations.")
 
