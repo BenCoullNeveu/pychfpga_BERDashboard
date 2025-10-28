@@ -972,12 +972,12 @@ class chFPGA(FPGAFirmware):
             sampling_frequency=None,
             processing_frequency=None,
             reference_frequency=None,
+            adc_clock_divider=None,
+
             adc_mode=0,
             adc_bandwidth=2,
             adc_delay_table=ADC_DELAY_TABLE,
-            adc_clock_divider=None,
             data_width=4,
-            group_frames=4,
             enable_gpu_link=1,
             create_receiver=False,
             verbose=0,
@@ -987,27 +987,27 @@ class chFPGA(FPGAFirmware):
 
         Parameters:
 
-             sampling_frequency (float): Sampling frequency in Hz to set on the ADC Mezzanine boards. If `None`, the platform/mode default is used.
-                 (default 800 MHz)
+             sampling_frequency (float): Sampling frequency in Hz to set on the ADC Mezzanine
+                 boards. If `None`, the platform/mode default is used. (default 800 MHz). Normally
+                 `None`, in which case the value is taken from firmware parameter table.
 
-             processing_frequency (float): Frequency of the internally
-                 generated channelizer signal processing clock in Hz. Is
-                 compared with sampling_frequency/4 to determine if we can use
-                 the internal clock instead of the ADC clock to avoid causing
-                 large current spikes when we start and stop the ADCs. If `None`, the platform/mode defaut is used.
+             processing_frequency (float): Frequency of the internally generated channelizer signal
+                 processing clock in Hz. Is compared with sampling_frequency/4 to determine if we
+                 can use the internal clock instead of the ADC clock to avoid causing large current
+                 spikes when we start and stop the ADCs. Is notmally `None`, in which case the
+                 platform/mode defaut is used.
 
              reference_frequency (float): Frequency in Hz of the Iceboard's reference clock (default
-                 is 10 MHz).
+                 is 10 MHz). Normally `None`, in which case the value is taken from firmware parameter table.
 
              adc_delay_table (dict): initial setting of the ADC delays. see `set_adc_delays`.
                  A default delay table is used if none is provided.
 
-             adc_clock_divider (float): ratio between the ADC sampling frequency and the measured ADC clock speed. If `None`, the platform/mode default is used.
+             adc_clock_divider (float): ratio between the ADC sampling frequency and the measured
+                 ADC clock speed. Is normally `None` to use the platform/mode default.
 
              data_width (int): 4 or 8. Indicate of the channelizer output is in (4+4)bit or (8+8
                  bit) mode
-
-             group_frames (int): Number of frames per packets used by the corner-turn engine
 
              enable_gpu_link (bool): 1
 
@@ -1162,17 +1162,16 @@ class chFPGA(FPGAFirmware):
             await asyncio.sleep(0)
             self.logger.debug(f'{self!r}:  - CORR')
             self.CORR.init()
+            self.set_offset_binary_encoding(self.CORR.REQUIRES_OFFSET_BINARY_ENCODING)
         else:
             self.logger.debug(f'{self!r}: There are no FPGA correlators in this firmware build')
+
 
 
         self.set_data_width(data_width)  # Sets the data width of both the Channelizer(SCALER) output and Corner-turn engine
         self.logger.debug(f'{self!r}: Data width set to (Re+Im) = ({self.get_data_width()}+{self.get_data_width()}) bits')
 
-        if self.CT:
-            self.CT.set_frames_per_packet(group_frames)
-            self.logger.debug(f'{self!r}: The 1st crossbar will pack {group_frames} frames per packet')
-        else:
+        if not self.CT:
             self.logger.debug(f'{self!r}: There is no Corner-turn engine in this firmware build')
 
         await asyncio.sleep(0)
@@ -4192,7 +4191,7 @@ class chFPGA(FPGAFirmware):
     def configure_crossbar(self, *args, **kwargs):
         self.CROSSBAR.configure(*args, **kwargs)
 
-    def set_offset_binary_encoding(self, offset=True, channels=None, sync=True):
+    def set_offset_binary_encoding(self, offset=True, channels=None):
         """
         Set the output to be encoded in offset binary instead of 2's complement
         if sync is true, perform a sync afterward.  Necessary for data to continue flowing
@@ -4201,20 +4200,18 @@ class chFPGA(FPGAFirmware):
             channels (list of int): List of channels to which the command is applied
 
         """
-        # if not offset:
-        #     self.logger.warning(f'Offset binary Encoding is disabled: this mode is incompatible with the firmware correlator and may confuse gain calibrations. This should not be done.')
+        if self.CORR and offset != self.CORR.REQUIRES_OFFSET_BINARY_ENCODING:
+            self.logger.warning(f'Offset binary encoding is set to {bool(offset)}. The correlator required it to be {self.CORR.REQUIRES_OFFSET_BINARY_ENCODING}. Correlator output will not make sense.')
+            raise RuntimeError()
 
         if channels is None:
             channels = self.default_channels
 
         if not isinstance(channels, list):
             raise ValueError("Channels must be a list")
-        else:
-            # Set the scaler to use offset binary
-            for channel in channels:
-                self.chan[channel].SCALER.USE_OFFSET_BINARY = offset
-            if sync:
-                self.sync()
+        # Set the scaler to use offset binary
+        for channel in channels:
+            self.chan[channel].SCALER.USE_OFFSET_BINARY = offset
 
     def set_send_flags(self, send_flags=True, crossbar_outputs=None, sync=True):
         """
