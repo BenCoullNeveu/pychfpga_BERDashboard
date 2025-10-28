@@ -56,6 +56,7 @@ from wtl.namespace import NameSpace, merge_dict
 from wtl.config import load_yaml_config
 
 from pychfpga.common import Ccoll
+from pychfpga.common.udp_packet_receiver import UDPPacketReceiver
 
 from pychfpga.mdns_discovery import mdns_discover
 
@@ -123,7 +124,7 @@ class FPGAArray(object):
             adc_bandwidth=2,
 
             mode=None,
-            frames_per_packet=2,
+            frames_per_packet=None,
             chan8_channel_map=list(range(8)),
             tx_power=None,
             integration_period=None,
@@ -573,7 +574,7 @@ class FPGAArray(object):
 
         self.packet_receiver = None
         self.corr_recv = None
-        self.raw_data_recv = None
+        self.data_recv = None
 
         discover_slot = True
         discover_crate = True
@@ -1125,7 +1126,7 @@ class FPGAArray(object):
                         adc_mode=adc_mode,
                         adc_bandwidth=adc_bandwidth,
                         sampling_frequency=sampling_frequency,
-                        group_frames = frames_per_packet,  # is also passed to set_operational_mode
+                        # group_frames = frames_per_packet,  # Removed because not needed by CRS. is also passed to set_operational_mode
                         **kwargs
                     ) for ib in self.ib])
 
@@ -1808,7 +1809,7 @@ class FPGAArray(object):
             for ib in self.ib:
                 ib.set_corr_reset(0)
                 ib.init_crossbars(mode=mode, frames_per_packet=1, bin_map=bin_map[ib.get_id()])
-            self.ib.set_offset_binary_encoding(True)  # The firmware correlator engine expects offset encoding
+            # self.ib.set_offset_binary_encoding()  # The firmware correlator engine expects offset encoding
             if integration_period:
                 self.ib.start_correlator(integration_period=integration_period, autocorr_only=autocorr_only)
             # Sync board(s)
@@ -2929,30 +2930,29 @@ class FPGAArray(object):
                 self.logger.warning(f'{self!r}: SYNC failed on trial {trial}/{max_trials} '
                                     f'due to the following error. Will retry.\n{e!r}')
 
-    async def set_channelizers_async(
-            self,
-            adc_mode=None, adc_sampling_mode=None, adc_bandwidth=None,
-            adcdaq_mode=None,
-            data_source=None, function=None, freq_test_bins=None,
-            fft_bypass=None, fft_shift=None,
-            scaler_bypass=None, gain=None, postscaler=None, offset_binary_encoding=None,
-            sync=True,
-            channels=None,
-            **function_kwargs):
+    def set_channelizers(self, channels=None, local_sync=None, sync=True, **kwargs):
         """
-            Configures the operations of all channelizers for all boards in the array.
+        Configures all channelizers in the array.
 
-            See firmware set_channelizer(...) for details.
+        See firmware set_channelizer(...) for details.
         """
+        if local_sync is not None:
+            raise RuntimeError('local_sync parameter is not supported on array-wide set_channelizer call')
         for ib in self.ib:
-            ib.set_channelizer(
-                adcdaq_mode=adcdaq_mode,
-                adc_mode=adc_mode, adc_sampling_mode=adc_sampling_mode, adc_bandwidth=adc_bandwidth,
-                data_source=data_source, function=function, freq_test_bins=freq_test_bins,
-                fft_bypass=fft_bypass, fft_shift=fft_shift,
-                scaler_bypass=scaler_bypass, gain=gain, postscaler=postscaler,
-                offset_binary_encoding=offset_binary_encoding,
-                **function_kwargs)
+            ib.set_channelizer(**kwargs, channels=channels, local_sync=False)
+        if sync:
+            self.sync()
+
+    async def set_channelizers_async(channels=None, local_sync=None, sync=True, **kwargs):
+        """
+        Configures all channelizers in the array.
+
+        See firmware set_channelizer(...) for details.
+        """
+        if local_sync is not None:
+            raise RuntimeError('local_sync parameter is not supported on array-wide set_channelizer call')
+        for ib in self.ib:
+            ib.set_channelizer(**kwargs, channels=channels, local_sync=False)
             await asyncio.sleep(0)
         if sync:
             self.sync()
@@ -3118,8 +3118,40 @@ class FPGAArray(object):
         """
         if not self.packet_receiver:
             sock = self.get_data_socket(port_number=port_number)
-            self.packet_receiver = self.ib[0].CORR.get_packet_receiver(sock) # ***todo: move packet receiver to utils (can be used by raw capture also)
+            self.packet_receiver = UDPPacketReceiver(sock) # ***todo: move packet receiver to utils (can be used by raw capture also)
         return self.packet_receiver
+
+    def get_data_receiver(self, port_number=None):
+        """ Returns a raw data receiver.
+
+        A UDP packet receiver and associated socket will be created if none already exist, otherwise the existing ones will be reused.
+        The correlator packet receiver and the raw data receiver share the same socket and UDP packet receiver.
+
+
+        Parameters:
+
+            port_number (int): Specifies the port to use if a socket has not already been allocated for the UDP packet receiver.
+                - If ``None``, attempts to open a socket at the destination port currently programmed in the FPGA. If that port is zero, act as if ``port_number`` =0.
+                - If zero, open a socket at a random  (OS-provided) port, and set the corresponding destination port in the FPGA.
+                - If non-zero, get a socket bound to the specified port. An exception will be raised if that port is already used by another program.
+
+        Returns:
+
+            A PROBER or UCAP data receiver instance (RawFrameReceiver)
+        """
+
+        if not self.data_recv:
+            pr = self.get_packet_receiver(port_number=port_number)
+            self.data_recv = self.ib[0].UCAP.get_data_receiver(pr)
+        return self.data_recv
+
+    def start_data_capture(self, *args, sync=None, **kwargs):
+        """ Starts data capture on all channelizers of all boards in the array
+        """
+        for b in self.ib:
+            b.start_data_capture(*args, **kwargs)
+        if sync:
+            self.sync()
 
     def get_corr_receiver(self, port_number=None):
         """ Returns a correlator packet receiver.
