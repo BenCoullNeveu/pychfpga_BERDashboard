@@ -71,8 +71,9 @@ class CT2Regs(MMI):
     def init(self):
         # Compute a lane map so input lane x goes to slot x
         rx_slot = tx_slot = (self.fpga.slot-1) % 4
+        sub_bp = (self.fpga.slot-1) // 4
         lane_premap = [self.fpga.mb.TX_TO_RX_LANE_MAP[(tx_slot, bp_tx_lane)][0] for bp_tx_lane in range(self.NUMBER_OF_CT2_INPUTS)]
-        lane_postmap = [self.fpga.mb.RX_TO_TX_LANE_MAP[(rx_slot, bp_rx_lane)][0] for bp_rx_lane in range(self.NUMBER_OF_CT2_OUTPUTS)]
+        lane_postmap = [self.fpga.mb.SLOT_TO_LANE_MAP[(ss, rx_slot)][1] for ss in range(self.NUMBER_OF_CT2_OUTPUTS)]
 
         self.set_lane_map(lane_premap, lane_postmap);
 

@@ -77,12 +77,19 @@ class FFT(MMI):
         self.OVERFLOW_RESET = 1
         self.OVERFLOW_RESET = 0
 
-    def get_bin_map(self, flatten=False):
+    def get_bin_map(self, flatten=False, reverse=False):
         """ Returns an array providing the bin number sent on every clock by every FFT output lane.
 
         Note that the map changes  during operation if BYPASS is changed.
 
         If BYPASS=1, the map is simply bin_number=real_sample_number//2 = complex_sample_number.
+
+
+        Parameters:
+
+            flatten (bool): If True, the map will be flatten, lane being the fast axis, then bin index.
+
+            reverse (bool): If True, returns the list of index at which each bin can be found. `flatten` is ignored.
 
         Returns:
 
@@ -102,7 +109,14 @@ class FFT(MMI):
             if self.is_rotated:
                 bins = (bins - np.arange(self.n_bins_per_lane) * self.n_bins_per_lane) % self.n_bins
 
-        return bins.flatten(order='F') if flatten else bins
+        fbins = bins.flatten(order='F')
+
+        if reverse:
+            rbins = np.empty(self.n_bins, dtype=np.intp)
+            rbins[fbins] = np.arange(self.n_bins)
+            return rbins
+
+        return fbins if flatten else bins
 
     def status(self):
         """ Displays the status of the data capture module"""

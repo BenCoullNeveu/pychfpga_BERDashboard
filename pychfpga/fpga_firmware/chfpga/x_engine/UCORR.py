@@ -118,7 +118,8 @@ class UCORR(MMI):
             ct2_bins = np.array([[b for clk,b in enumerate(lane_bins) if not (clk < 256 and clk & 0b11 == lane)] for lane,lane_bins in enumerate(fft_bin_map)])
             # that are sent to each slot,
 
-            ct2_bins = fft_bin_map[:,64:]   #***Hack for temp simplified culling
+            # ct2_bins = fft_bin_map[:,64:]   #***Hack for temp simplified culling
+            # ct2_bins = np.array([[b for clk,b in enumerate(lane_bins) if clk & 31 != 16] for lane,lane_bins in enumerate(fft_bin_map)])
 
             # Apply correlator bin decimation
             # corr_bins := (slot, bin_id) = bin   corr_bins.shape=(4, 496) (496 = 1984/4)
@@ -147,23 +148,6 @@ class UCORR(MMI):
 
 
         return bin_map, prod_map
-
-    # def get_prod_map(self):
-    #     """ Compute (i,j) product indices coming out of the correlator on each clock for a single bin.
-
-    #     The map reflects is in the dimension (NCLK, NPROD/NCLK) (or (NCLK, (NCHAN+1) * (NCHAN/(2*NCLK))) and is used as::
-
-    #         prod_map(clk, prod) = (i, j), e.g. prod_map.shape=(4, 132, (2)) for NCLK=4 and NCHAN=32
-
-    #     The code below reflects the way the correlator is wired to perform the products.
-
-    #     """
-    #     N = self.NCHAN
-    #     NCLK = self.NCLK
-    #     prod_map = np.array([[(i, (j+i) % N) if i < N-j else ((j+i) % N, i-1)
-    #                         for i in range(N+1) for j in range(N//2//NCLK*clk, N//2//NCLK*(clk+1)) ]
-    #                         for clk in range(NCLK) ])
-    #     return prod_map
 
     def get_ij_to_prod_map(self):
         """ Return an array that maps a (i,j) pair to a product index """
