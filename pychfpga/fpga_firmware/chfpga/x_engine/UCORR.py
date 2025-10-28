@@ -9,8 +9,8 @@ import time
 import logging
 import numpy as np
 import matplotlib.pyplot as plt
-import socket
-import select
+
+from pychfpga.common.udp_packet_receiver import UDPPacketReceiver
 
 from ..mmi import MMI, BitField, CONTROL, STATUS
 
@@ -28,6 +28,9 @@ class UCORR(MMI):
     """ Implements interface the UCORR44_ARRAY correlator array"""
 
     ADDRESS_WIDTH = 16
+
+    REQUIRES_OFFSET_BINARY_ENCODING = False
+    BIT_WIDTH = 4 # (4+4) bit correlator
 
     # Control registers
     SOFT_RESET         = BitField(CONTROL, 0x00, 7, doc="Resets the correlator array.")
@@ -126,7 +129,7 @@ class UCORR(MMI):
             corr_bins = ct2_bins[:, 3::4]
 
         # Get the product number for each i,j coordinates
-        ij_map = self.get_ij_to_prod_map()
+        ij_map = self.get_ij_to_prod_map(self.NCHAN)
 
 
         N = self.NCHAN
@@ -149,14 +152,15 @@ class UCORR(MMI):
 
         return bin_map, prod_map
 
-    def get_ij_to_prod_map(self):
+    @staticmethod
+    def get_ij_to_prod_map(NCHAN):
         """ Return an array that maps a (i,j) pair to a product index """
-        N = self.NCHAN
-        z = np.empty((N, N), dtype=np.intp)
-        i, j = np.triu_indices(N)
+        z = np.empty((NCHAN, NCHAN), dtype=np.intp)
+        i, j = np.triu_indices(NCHAN)
         z[i, j] = np.arange(len(i))
         z[j, i] = np.arange(len(i))
         return z
+
 
     def select(self):
         """ Configures UCAP to stream the correlator data instead of raw data.
@@ -199,102 +203,6 @@ class UCORR(MMI):
         """
         return UDPPacketReceiver(sock, n_packets=n_packets, max_packet_size=max_packet_size, verbose=verbose)
 
-class UDPPacketReceiver:
-    """ Receives and stores UDP packets until the buffer is full or a timout has occured.
-
-        Parameters:
-
-            sock (socket.socket): Socket to use for receiving UDP packets
-
-            n_packets (int): Size of the packet buffer in number of packets
-
-            max_packet_size (int): Maximum expected UDP payload length
-    """
-
-    def __init__(self, socket, n_packets=2048, max_packet_size=9000, verbose=1):
-
-        self.socket = socket
-        self.n_packets = n_packets
-        self.max_packet_size = max_packet_size;
-        self.verbose = verbose
-
-        self.buf = np.zeros((n_packets, max_packet_size), dtype=np.uint8)
-        self.pkt_len = np.zeros((n_packets,), dtype=np.uint32) # packet length. 0= unused slot.
-        self.n = 0  # number of packets currently stored in the buffer
-
-    def settimeout(self, timeout):
-        """ Sets the timeout on the socket
-
-        Parameter:
-
-            timeout (float): timeout in seconds
-
-        """
-        self.socket.settimeout(timeout)
-
-    def gettimeout(self):
-        """ Returns the current timeout on the socket
-
-        Returns:
-
-            float: current timeout in seconds
-
-        """
-        return self.socket.gettimeout()
-
-    def get_packets(self, verbose=0):
-        """ Receive some packets into the buffer until there is a timeout or the buffer is full
-        """
-        verbose = max(verbose, self.verbose)
-        # n = self.n # current packet number
-        n = 0
-        # last_ts = None
-        while n < self.n_packets:
-            try:
-                s = self.pkt_len[n] = self.socket.recv_into(self.buf[n])
-                # check if the packet has the right cookie
-                if verbose >= 3:
-                    print(f"get_packets: got raw packet {n:03d}, len={s}: {self.buf[n,:16].tobytes().hex(':')}")
-                n += 1
-            except socket.timeout:  # we have a timeout, so we probably have time to process data
-                if not n:
-                    continue
-                if verbose >= 3:
-                    print(f'get_packets: timeout')
-                break
-        # we get here if there is a timeout or if the buffer is full
-        if verbose >= 2:
-            print(f'get_packets: Returning {n} packets')
-        self.n = n
-        return n
-
-
-
-    def flush(self, timeout=0.001, max_flush_time=2, verbose=0):
-        """ Flush the UDP buffer (read packets until timeout).
-        Note: Partial frame data may start to fill the UDP buffer while we start to flush it. There is still likely a partial frame in the buffer after this operation.
-
-        """
-        flushed_packets = 0
-        t0 = time.time()
-        # Read packets until timeout
-        self.socket.settimeout(timeout)
-        # self.socket.setblocking(1)
-        if verbose >=2:
-            print('Flushing UDP buffer')
-        while time.time() - t0 < max_flush_time:  # give up after some time
-            try:
-                s = self.socket.recv_into(self.buf[0])
-                flushed_packets += 1
-                if verbose >=2:
-                    print(f'flushing packet cookie=0x{self.buf_cookie[0]:02x} ts={self.buf_ts[0] & self.ts_mask}')
-
-            except socket.timeout:
-                break
-        else:
-            print(f'Stopped flushing after {max_flush_time} s: packets are arriving faster that the specified timeout period of {timeout} s')
-        if verbose:
-            print(f'Flushed {flushed_packets} packets')
 
 
 class UCorrFrameReceiver:
@@ -447,27 +355,6 @@ class UCorrFrameReceiver:
         self.NCMAC = self.NPROD // self.NCLK # Number of complex multipliers/accumulators per correlator
         self.NPROD_PER_ARRAY = self.NCORRS * self.NPROD_PER_CMAC
 
-        # self.NCLK = self.NDECIM * self.NCLK_PER_BIN  # number of clocks required to compute the products for one bin
-        # self.NPROD_PER_CMAC = self.NBINS_PER_STREAM // self.NDECIM * self.NCLK
-        # NCORR: total number of correlator cores in the array
-        # NPROD_PER_CMAC: number of CLKBINS per correlator. Equals to NBINS/NCORRS/NDECIM*NCLK if there is no bin culling.
-        # self.NPROD = NCHAN   # Autocorrelation-only Total number of products per correlator frame
-        # self.NCORRS = self.NCORR_PER_BOARD * self.NBOARDS # total number of correlators in the array
-        # self.NBINS_PER_STREAM = self.NBINS // self.NCORRS
-
-
-
-
-
-        # Needed below this: NCMAC, self.NCORRS, self.NPROD_PER_CMAC, NBINS, NPROD, self.NPROD_PER_ARRAY
-
-
-        # Create the views into the receiver buffer
-        # Update on NCMAC  (NCHAN, NCLK)
-
-
-        # self.PACKET_SIZE = self.NBYTES_PER_HEADER + self.NCMAC * self.NBYTES_PER_PROD # size of one packet (all products for a single bin plus header)
-
         if NCHAN_updated or NCLK_updated:
             # Packet buffers views should be updated if the following change: NCMAC (NCHAN,NCLK)
 
@@ -537,12 +424,9 @@ class UCorrFrameReceiver:
             self.integ_counts = 0
             self.integ_data = np.empty((self.NBINS, self.NPROD), dtype=np.complex128)
 
-    # def get_corr_param(self,param):
-    #     """ Return a correlator parameter, raising an arror if if is not the same for all correlators"""
-    #     v = set(getattr(c,param) for c in self.corrs)
-    #     if len(v) != 1:
-    #         raise RuntimeError(f"Parameter'{param}' is not the same for all correlators")
-    #     return v.pop()
+        if NCHAN_updated:
+            # Compute an array that maps a (i,j) pair to a product index
+            self.ij_to_prod_map = UCORR.get_ij_to_prod_map(self.NCHAN)
 
     # def get_freqs(self):
     #     return np.arange(self.NBINS)/self.NBINS/2*self.corrs[0].fpga._sampling_frequency
