@@ -9,18 +9,20 @@ import logging
 import asyncio
 import socket
 import time
-
-from ..mmi import MMI, BitField
-import numpy as np
 import __main__
+
+import numpy as np
+
+from pychfpga.common.udp_packet_receiver import UDPPacketReceiver
+
+from ..mmi import MMI, BitField, CONTROL, STATUS
 
 
 
 class UCAP(MMI):
     """ Object that allows access to an UltraRAM-based frame capture module"""
+    ADDRESS_WIDTH = 16
 
-    CONTROL = BitField.CONTROL
-    STATUS = BitField.STATUS
     MODE             = BitField(CONTROL, 0, 6, width=2, doc='Capture mode: 0: 8 channel, 1: 4 channel, 2: 2 channel, 3: 1 channel')
     CH0              = BitField(CONTROL, 0, 0, width=3, doc='Channel #0 in 1, 2, or 4-channel mode')
     CH1              = BitField(CONTROL, 0, 3, width=3, doc='Channel #1 in 2 or 4-channel mode')
@@ -41,29 +43,111 @@ class UCAP(MMI):
     PERIOD_CTR       = BitField(STATUS, 1, 0, width=8, doc='debug')
     SOURCE_SEL_IN    = BitField(STATUS, 2, 0, width=8, doc='debug')
 
-    def __init__(self, fpga_instance, base_address, address_increment, verbose=0):
-        self.fpga = fpga_instance
+    def __init__(self, *, router, router_port, verbose=0):
         self.verbose = verbose
         self.logger = logging.getLogger(__name__)
-        super().__init__(fpga_instance, base_address)
+        super().__init__(router=router, router_port=router_port)
         self.sock = None
 
     def init(self):
         """ Initializes UCAP module"""
-        self.USER_STREAM_ID = self.fpga.slot or 0
+        slot = self.fpga.slot
+        self.USER_STREAM_ID = slot-1 if slot else 0
 
     DATA_SOURCE_TABLE = {
-        'adc': 0,
+        'funcgen': 0,
         'scaler': 255} # 255: set data source for all 8 channels (11111111 = 255 for unsigned 8-bit bin)
 
-    def set_data_source(self, source):
+    def set_data_capture(self, source, mode=0, channels=None, periods=[195312,195312], select=False):
+        """ Selects the source of the data to be captured (FUNCGEN or SCALER). Optionally enables streaming the captured data instead of the correlator data.
+
+        Parameters:
+
+            source (str): Source to use. The source string represents where the tata is tapped in
+                the channelizer pipeline:
+
+                - 'funcgen': The captured data is taken at the output of the function generator module
+                  (which can be configured to pass the ADC data or internally-generated waveforms)
+                - 'scaler': The captured data is taken from the capture output port (not the main
+                  output) of the scaler. The scaler can be configured to output various signals on this
+                  port (scaled/unscaled raw FFT data, overflow flags etc.)
+
+            mode (int): capture mode to use
+
+            channels (list of int): list of channels do capture. Can be ``None`` for mode 0 since all channels are captured anyways.
+
+            periods (list of int): Time between data captures for each of the sources, expressed in
+                number of frames MINUS ONE. The number of consecutive frames stored by each capture
+                is set by the `mode`.
+
+            select (bool): If True, the output multiplexer of UCAP will be set to stream the
+                captured data instead of the auxiliary (correlator) data.
+
+        """
         # Set the data source (either 'adc' or 'scaler') in the control register
         if isinstance(source, str):
             if source in self.DATA_SOURCE_TABLE:
                 source = self.DATA_SOURCE_TABLE[source]
             else:
-                ValueError(f'Unknown data capture source \'{source}\'. Valid sources are {self.DATA_SOURCE_TABLE.keys()}')
+                valid_sources = ', '.join(self.DATA_SOURCE_TABLE)
+                raise ValueError(f"Unknown data capture source '{source}'. Valid sources are {valid_sources}")
         self.SOURCE_SEL = source
+
+        if isinstance(channels, int):
+            channels = [channels]
+
+        if mode == 0:
+            if channels is None:
+                channels = list(range(8))
+            if channels != list(range(8)):
+                raise RuntimeError('UCAP mode 0 can only capture channels 0-7, in that order')
+        elif mode == 1:
+            if channels is None:
+                channels = list(range(4))
+            if len(channels) != 4:
+                raise RuntimeError('UCAP mode 1 can only capture 4 channels')
+            self.CH0 = channels[0]
+            self.CH1 = channels[1]
+            self.CH2 = channels[2]
+            self.CH3 = channels[3]
+        elif mode == 2 :
+            if channels is None:
+                channels = list(range(2))
+            if len(channels) != 2:
+                raise RuntimeError('UCAP mode 2 can only capture 2 channels')
+            self.CH0 = channels[0]
+            self.CH1 = channels[1]
+        elif mode == 3:
+            if channels is None:
+                channels = list(range(1))
+            if len(channels) != 1:
+                raise RuntimeError('UCAP mode 3 can only capture 1 channel')
+            self.CH0 = channels[0]
+        else:
+            raise RuntimeError(f'Invalid UCAP mode number {mode}')
+        self.MODE = mode
+        self.CAPTURE_PERIOD = periods[0]
+        self.CAPTURE_PERIOD2 = periods[1]
+
+        if select:
+            self.select_output('ucap')
+
+    OUTPUT_NAMES = {
+        'cap':0,
+        'ucap': 0,
+        'aux': 1,
+        'corr': 1}
+
+    def select_output(self, out):
+        """ Select whether UCAP streams capture or auxiliary (correlator) data
+
+        Parameters:
+
+            out (str or int): Output to stream: 0: Captured data; 1: auxiliary (correlator) data. If a string, the value will be looked up in OUTPUT_NAMES.
+
+        """
+        self.OUTPUT_SOURCE_SEL = out if isinstance(out, int) else self.OUTPUT_NAMES[out]
+
 
     def get_data(self, flush_timeout=0.01):
 
@@ -98,8 +182,8 @@ class UCAP(MMI):
 
         return b[:64, 5:]
 
-    def get_data_receiver(self, sock=None):
-        return RawFrameReceiver(sock or self.fpga.get_data_socket())
+    def get_data_receiver(self, packet_receiver):
+        return RawFrameReceiver(packet_receiver)
 
 class RawFrameReceiver(object):
     """
@@ -141,10 +225,10 @@ class RawFrameReceiver(object):
         watch -cd -n .5 "cat /proc/net/udp"
     """
 
-    def __init__(self, socket, buffer_length=256):
+    def __init__(self, packet_receiver):
 
-        self.socket = socket
-        self.NPACKETS = buffer_length
+        self.pr = packet_receiver
+        # self.NPACKETS = buffer_length
         self.FRAME_SIZE = 16384*2 # bytes
         self.DATA_SIZE = self.FRAME_SIZE // 4
         # self.ignore_packet_size = ignore_packet_size
@@ -163,13 +247,13 @@ class RawFrameReceiver(object):
 
         # Pre-allocate buffers
         # Buffer in which recv_into() will put the data directly
-        self.buf = np.zeros((self.NPACKETS, self.PACKET_SIZE), dtype=np.int8)  # can use empty(), but the uninitialized data can be confusing for debugging
+        # self.buf = np.zeros((self.NPACKETS, self.PACKET_SIZE), dtype=np.int8)  # can use empty(), but the uninitialized data can be confusing for debugging
         self.n = 0  # buffer write index
         self.last_ts = None  # timestamp of the last packet written in the buffer
 
         # Various views of the buffer to allow quick and easy access to the packet contents
 
-        self.buf_struct = self.buf.view(self.packet_dtype)[:,0]
+        self.buf_struct = self.pr.buf[:,:self.PACKET_SIZE].view(self.packet_dtype)[:,0]
 
         self.buf_cookie = self.buf_struct['header']['cookie'][:, 0]
         self.buf_stream_id = self.buf_struct['header']['stream_id'][:, 0]
@@ -184,22 +268,7 @@ class RawFrameReceiver(object):
         FRAMES_PER_CHANNEL_MAX = 16
         self.cookie = cookie = 0xa0
 
-    def flush(self, timeout, verbose=0):
-            # Read packets until timeout
-            flushed = 0
-            self.socket.settimeout(timeout)
-            while True:
-                try:
-                    s = self.socket.recv_into(self.buf[0])
-                    flushed += 1
-                    if verbose >=2:
-                        print(f'flushing packet len={s} cookie=0x{self.buf_cookie[0]:02x} ts={self.buf_ts[0] & self.ts_mask}')
 
-                except socket.timeout:
-                    break
-            # We assume the buffer might have overflowed and contains partial
-            # timestamp. We flush until we gen a new timestamp.
-            return flushed
     def wait_for_new_timestamp(self, cookie, timeout, verbose=0):
             self.socket.settimeout(timeout)
             flushed = 0
@@ -224,40 +293,39 @@ class RawFrameReceiver(object):
                     continue
             return flushed
 
-    def receive_packets(self, cookie, verbose=0):
-        """ Receive some packets into the buffer until there is a timeout or the buffer is full
-        """
-        while True:
-            if self.n == self.NPACKETS:
-                return
-            try:
-                s = self.socket.recv_into(self.buf[self.n])
-                # check if the packet has the right cookie
-                if verbose >= 2:
-                    print(f'got packet len={s} cookie=0x{self.buf_cookie[self.n]:02x} ts={self.buf_ts[self.n] & self.ts_mask}')
-                if self.buf_cookie[self.n] & 0xfe != cookie:
-                    continue
+    # def receive_packets(self, cookie, verbose=0):
+    #     """ Receive some packets into the buffer until there is a timeout or the buffer is full
+    #     """
+    #     n = self.n # current packet number
+    #     last_ts = None
+    #     while n < self.NPACKETS:
+    #         try:
+    #             s = self.socket.recv_into(self.buf[n])
+    #             # check if the packet has the right cookie
+    #             if verbose >= 2:
+    #                 print(f'got packet len={s} cookie=0x{self.buf_cookie[n]:02x} ts={self.buf_ts[n] & self.ts_mask}')
+    #             if self.buf_cookie[n] & 0xfe != cookie: # ignore packets with wrong cookie
+    #                 continue
 
-                # Ignore packets that don't have the right length
-                if s != self.PACKET_SIZE:
-                    continue
-                ts = self.buf_ts[self.n] & self.ts_mask
-                self.n += 1
-                if verbose >=2:
-                    print(f'ts={ts}, last_ts={self.last_ts}, sid={self.buf_stream_id[self.n]:04x}')
-                if self.last_ts is None:
-                    self.last_ts = ts
-                    continue
-                if ts != self.last_ts:
-                    break
-            except socket.timeout:  # we have a timeout, so we probably have time to process data
-                if self.n:  # continue if we don't have any data to process
-                    print('timeout')
-                    continue
-        # we get here if there is a timeout, a timestamp change, or if the buffer is full
-        if verbose:
-            print(f'got {self.n} packets, delta_ts={ts-self.last_ts}')
-        self.last_ts = ts
+    #             # Ignore packets that don't have the right length
+    #             if s != self.PACKET_SIZE:
+    #                 continue
+    #             ts = self.buf_ts[n] & self.ts_mask
+    #             if verbose >=2:
+    #                 print(f'ts={ts}, last_ts={self.last_ts}, sid={self.buf_stream_id[n]:04x}')
+    #             n += 1
+    #             if last_ts is None: # if we don't have a last timestamp, initialize it and continue
+    #                 self.last_ts = ts
+    #             elif ts != last_ts: # if we have a new timestamp, exit
+    #                 break
+    #         except socket.timeout:  # we have a timeout, so we probably have time to process data
+    #             print('timeout')
+    #             continue
+    #     # we get here if there is a timeout, a timestamp change, or if the buffer is full
+    #     if verbose:
+    #         print(f'got {n} packets, delta_ts={ts-self.last_ts}')
+    #     self.n = n
+    #     return n
 
     def read_raw_frames(
             self,
@@ -268,7 +336,7 @@ class RawFrameReceiver(object):
             format='8',
             ncap = None,
             split = False,
-            verbose=1):
+            verbose=0):
         """ Capture raw data frames sent by UCAP.
 
         Parameters:
@@ -291,6 +359,9 @@ class RawFrameReceiver(object):
                 '8': return the data as array of bytes (int8)
                 '16': return the data as array of 16-bit signed integers. Use when capturing the output of the FUNCGEN.
                 '16+16': return the data as an array of (16+16) bit complex numbers. Use for data at the output of the SCALER (unless the FFT is bypassed)
+
+            ncap (int): Number of bursts to capture
+
             verbose (int): verbosity level. 0: no messages, 1: basic messages, 2: detailed messages
 
         Returns:
@@ -310,58 +381,74 @@ class RawFrameReceiver(object):
         sid_map = {sid:ix for ix, sid in enumerate(stream_ids)}
 
         if flush:
-            flushed = self.flush(flush_timeout, verbose=verbose)
+            flushed = self.pr.flush(flush_timeout, verbose=verbose)
             if verbose >=1:
                 print(f'Flushed {flushed} packets while emptying UDP buffers')
             self.last_ts = None
-            flushed = self.wait_for_new_timestamp(self.cookie, data_timeout, verbose=verbose)
-            if verbose:
-                print(f'Skipped {flushed} packets while waiting for a fresh timestamp')
-        self.socket.settimeout(data_timeout)
+            # flushed = self.wait_for_new_timestamp(self.cookie, data_timeout, verbose=verbose)
+            # if verbose:
+            #     print(f'Skipped {flushed} packets while waiting for a fresh timestamp')
+        self.pr.settimeout(data_timeout)
 
-        if not self.n:
-            raise RuntimeError('There is no initial data in the buffer. Run with Flush=True first')
+        # if not self.n:
+        #     raise RuntimeError('There is no initial data in the buffer. Run with Flush=True first')
         return_multiple_captures = ncap is not None
         ncap = ncap or 1
 
-        # Determine the capture mode based in the first packet in the buffer
-        mode = (self.buf_subframe[0] >> 2) & 0x3
-        frames_per_channel = 2 * 2**(mode)
+        mode = None
         nchan = len(sid_map)  # number of captured channels
-        if verbose:
-            print(f"mode={mode}, {nchan} channel(s), {frames_per_channel} frames per channel, {ncap} captures")
 
         # Allocate destination buffer
 
-        data = np.zeros((nchan, ncap, self.FRAME_SIZE*frames_per_channel), dtype=np.int8)
+        data = np.zeros((nchan, ncap, self.FRAME_SIZE*16), dtype=np.int8)
         data_count = np.zeros((nchan, ncap), dtype=np.uint16)
         ts = np.zeros((ncap,), dtype=np.uint64)
+        ts_dict = {} # {timestamp:n, ...): keeps track of the known timestamps and associated capture slots
+        n = 0 # current capture slot
+        last_timestamp = None
+        while n < ncap + 1: # process packets until we have checked ncap+1 timestamps to make sure we have all the data for ncap timestamps
+            # Get some packets until a new timestamp, timeout, or buffer full
+            npkts = self.pr.get_packets(verbose=verbose)
 
+            if not npkts:
+                continue
 
-        for n in range(ncap):
-            # Get packets until a new timestamp
-            self.receive_packets(cookie=self.cookie, verbose=verbose)
+            (buf_ix, ) = np.where(self.buf_cookie[:npkts] & 0xFE == self.cookie)
+
+            if not buf_ix.size:
+                continue
+
+            if not mode:
+                # Determine the capture mode based in the first packet in the buffer
+                mode = (self.buf_subframe[0] >> 2) & 0x3
+                frames_per_channel = 2 * 2**(mode)
+                if verbose:
+                    print(f"mode={mode}, {nchan} channel(s), {frames_per_channel} frames per channel, {ncap} captures")
 
             if verbose >=2:
                 print(f'sf={self.buf_subframe[:self.n]}')
 
             t0 = time.time()
-            for i in range(self.n-1):
-                bix = sid_map.get(self.buf_stream_id[i] & 0xFFF, None)
-                subframe = self.buf_subframe[i] & 0x3
-                frame = (self.buf_stream_id[i] >> 12) & 0x0F
-                if verbose >=3:
-                    print(f'sid = {self.buf_stream_id[i] & 0xFFF:03x}, Ch={bix}, frame={frame}, subframe={subframe}')
-                if bix is not None:
-                    x = frame * self.FRAME_SIZE + subframe*self.DATA_SIZE
-                    data[bix, n, x:x+self.DATA_SIZE] = self.buf_data[i]
-                    data_count[bix, n] += 1
-            # print(f'proc took {(time.time()-t0)*1000:.3f} ms')
-            ts[n] = self.buf_ts[0] & self.ts_mask
-
-            self.buf[0] = self.buf[self.n-1]
-            self.n = 1
-
+            for i in range(npkts):
+                timestamp = self.buf_ts[i] & self.ts_mask
+                if timestamp != last_timestamp:  # update n only when the timestamp changes to minimize slow lookups
+                    last_timestamp = timestamp
+                    n = ts_dict.setdefault(timestamp, len(ts_dict)) # get existing slot if timestamp exists, otherwise create next slot
+                    if verbose:
+                        print(f'Switching to slot {n} at timestamp {timestamp}')
+                    if n < ncap:
+                        ts[n] = timestamp
+                if n < ncap:
+                    bix = sid_map.get(self.buf_stream_id[i] & 0xFFF, None)
+                    subframe = self.buf_subframe[i] & 0x3
+                    frame = (self.buf_stream_id[i] >> 12) & 0x0F
+                    if verbose >= 3:
+                        print(f'sid = {self.buf_stream_id[i] & 0xFFF:03x}, Ch={bix}, frame={frame}, subframe={subframe}')
+                    if bix is not None:
+                        x = frame * self.FRAME_SIZE + subframe*self.DATA_SIZE
+                        data[bix, n, x:x+self.DATA_SIZE] = self.buf_data[i]
+                        data_count[bix, n] += 1
+            self.n = 0
         if verbose:
             for i in range(nchan):
                 print(f'Chan {i}: {data_count[i].sum()-ncap*16*4 or "no"} missing packets')
@@ -371,21 +458,40 @@ class RawFrameReceiver(object):
 
         if format == "16":
             data = data.view('>i2')
+            if split:
+                data = data.reshape((nchan, ncap*frames_per_channel,-1))
+        elif format == "14":
+            data = data.view('>i2') >> 2
+            if split:
+                data = data.reshape((nchan, ncap*frames_per_channel,-1))
         elif format == "16+16":
             data = data.view('>i2')
             data = data[:, :, ::2] + 1j*data[:, :, 1::2]
+            data = data.reshape((nchan, ncap*frames_per_channel,-1))
         elif format == "32":
             data = data.view('>i4')
+            if split:
+                data = data.reshape((nchan, ncap*frames_per_channel,-1))
         elif format == "32+32":
             data = data.view('>i4')
             data = data[:, :, ::2] + 1j*data[:, :, 1::2]
+            data = data.reshape((nchan, ncap*frames_per_channel,-1))
+        elif format == "32+32d":
+            data = data.view('>i4')
+            data = data[:, :, ::2] + 1j*data[:, :, 1::2]
+            data = data.reshape((nchan, ncap*frames_per_channel,-1)) # split
+            s = data.shape
+            data = data.reshape(s[0],-1,2,s[2]).reshape(s[0],-1,s[2]*2, order='F')
+
+        elif format == "64+64":
+            data = data.view('>i8')
+            data = data[:, :, ::2] + 1j*data[:, :, 1::2]
+            data = data.reshape((nchan, ncap*frames_per_channel,-1))
         elif format == '8':
-            pass
+            if split:
+                data = data.reshape((nchan, ncap*frames_per_channel,-1))
         else:
             raise ValueError(f'Invalid format "{format}"')
-
-        if split:
-            data = data.reshape((nchan, ncap*frames_per_channel,-1))
 
         if return_multiple_captures:
             return ts, data, data_count

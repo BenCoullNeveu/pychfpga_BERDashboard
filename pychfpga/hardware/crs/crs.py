@@ -1,4 +1,4 @@
-""" Defines the class to operate the ZCU111.
+""" Defines the class to operate the CRS.
 """
 # Standard Python packages
 import logging
@@ -54,56 +54,18 @@ class CRS(Motherboard):
     If is assumed that the board is running the bridge software.
 
     Provides:
-        - Lightweight list-based Hardware map management
-        - Model, serial, slot, crate and mezzanine self discovery through the Iceboard (no mDNS required)
-        - Access to the memory-mapped registers in the FPGA's firmware using the TCP link.
+
+    - Lightweight list-based Hardware map management
+    - Model, serial, slot, crate and mezzanine self discovery through the Iceboard (no mDNS required)
+    - Access to the memory-mapped registers in the FPGA's firmware using the TCP link.
 
     Parameters:
 
-
-
-
-
-    Old notes
-
-       `IceBoardPlusHandler` can be created as a standard Python object initialized with a number of
-    parameters which set corresponding attributes (see below). If a `parent_getter` function is
-    provided, the value of these attributes will instead be fetched
-    dynamically from the parent object. Note that any explicitely specified parameter overrides a
-    parent parameter.
-
-    Parameters:
-        parent_getter (func): Function that returns the dynamically return the parent object from which the following parameters will be fetched. Is `None` if there is no parent.
         hostname (str): hostname or IP address of the ICEBoard ARM processor (mandatory)
         serial (str): Serial number of the board. Can be provided by the ARM.
-        part_number (str): Part number of the IceBoard. Can be obtained from the ARM.
-        crate (IceCrateHandler): = object that handle the backplane on which the board is connected. `None` if the board is not connected to a backplane.
         slot (int): Slot number in which the board is installed ona backplane. None if there is no backplane.
-        mezzanine (dict): Map {mezzanine_number: Mezzanine Handler, ...} describing the installed mezzanines. Can be obtained from the ARM.
-        tuber_objname (str): name of the set of software functions that will be provided by the ARM processor through the Tuber interface.
 
-
-
-    .. Any object provided by this this handler can be accessed at any
-    .. hierarchical level. However, objects that are probided by Tuber have these
-    .. restrictions:
-    ..
-    ..    - attributes and methods whise name begin with '_' are not accessible
-    ..    - modification to the object attributes must be done by a setter
-    ..      function provided by the object.
-    ..    - methods or attribute access can only return string or numeric values,
-    ..      or lists or dictionnary thereof
-
-
-    Notes:
-        - The SPI MMI interface is currently provided by peek/poke methods accessed through Tuber.
-          However, if one day the ARM supports it, a faster access could potentially be provided by
-          overriding the fpga_spi_mmi_read_async/write methods to send the commands to a dedicated ARM port
-          and thus bypass Tuber's HTTP/JSON overhead. Since the SPI link is relatively slow anyway, this might not be useful until a faster ARM-FPGA link is in place (such as the unused PCIe link).
-
-        - This handler does *not* define a MMI interface that uses the FPGA's
-          ethernet port directly through the SFP+ connector. Such functionnality is to be provided by a
-          subclass of this class if the firmware supports it.
+    ..        crate (IceCrateHandler): = object that handle the backplane on which the board is connected. `None` if the board is not connected to a backplane.
 
     """
 
@@ -128,7 +90,12 @@ class CRS(Motherboard):
      (2,0): (2,0),    (2, 1): (3, 1),   (2, 2): (1, 2),   (2, 3): (0, 2),
      (3,0): (3,0),    (3, 1): (2, 1),   (3, 2): (1, 1),   (3, 3): (0, 1)}
     RX_TO_TX_LANE_MAP = {rx:tx for tx,rx in TX_TO_RX_LANE_MAP.items()}
+    # (Tx_slot, Rx_slot): (tx_lane, rx_lane)
+    SLOT_TO_LANE_MAP = {(ss,ds):(sl,dl) for (ss,sl),(ds,dl) in TX_TO_RX_LANE_MAP.items()}
     # ---------------
+
+    REFCLK_BP = 1
+    REFCLK_MB_SMA = 2
 
     def __init__(self, hostname=None, serial=None, slot=None, subarray=None, **kwargs):
         super().__init__(
@@ -360,7 +327,7 @@ class CRS(Motherboard):
             fsysref is used to synchronize/align the FPGA's RF ADC . It must be a submultiple of
                 fvco/16, must be < 10 MHz, and must be an even submultiple of fvco (because PLL
                 channel divider values must be even, although the first constraint guarantees this).
-                `fsysref`=2.5 MHz is selected because it is a submultiple of both 3000/16 and
+                `fsysref` =2.5 MHz is selected because it is a submultiple of both 3000/16 and
                 3200/16 MHz, the two frequencies at which the CRS have been used.
 
         Returns:
@@ -474,10 +441,10 @@ class CRS(Motherboard):
                     disp.update()
                     break
                 except OSError as e:
-                    self.logger.warn(f'{self!r}: Error Initializing CRS display on trial {trial}. Error is: {e!r}')
+                    # self.logger.warn(f'{self!r}: Error Initializing CRS display on trial {trial}. Error is: {e!r}')
                     await asyncio.sleep(0.01)
             else:
-                self.logger.warn(f'{self!r}: Failed Initializing CRS display')
+                self.logger.warn(f'{self!r}: Failed Initializing CRS display after {trial} trials')
                 self.display = None
 
 
@@ -754,7 +721,7 @@ class CRS(Motherboard):
         """ Get the motherboard hardware monitoring information.
 
         Returns:
-            a :cls:`Metrics` object.
+            a :class:`Metrics` object.
         """
 
         metrics = await super().get_metrics_async()
