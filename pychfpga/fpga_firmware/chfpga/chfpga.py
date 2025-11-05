@@ -760,7 +760,6 @@ class chFPGA(FPGAFirmware):
             # CT-Engine type (CT_TYPE) is defined by lookup table based on the platform
             self.NUMBER_OF_CROSSBAR_INPUTS = self.GPIO.NUMBER_OF_CROSSBAR_INPUTS
             self.NUMBER_OF_CROSSBAR1_OUTPUTS = self.GPIO.NUMBER_OF_CROSSBAR1_OUTPUTS
-            self.NUMBER_OF_BP_SHUFFLE_LANES = self.GPIO.NUMBER_OF_BP_SHUFFLE_LANES
 
             # Get Real-time data offload link configuration info
             # GPU_LINK_TYPE is defined by lookup table based on the platform
