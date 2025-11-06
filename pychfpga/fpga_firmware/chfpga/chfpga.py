@@ -136,7 +136,7 @@ class chFPGA(FPGAFirmware):
         dict(platform="ZCU111", modes=("corr4", "corr8"),    firmware_url='sifpga_zcu111_wrapper.bit', sampling_frequency=3000e6, processing_frequency=375e6, adc_clock_divider=16),
         dict(platform="ZCU111", modes=("chan8",),            firmware_url='chfpga_zcu111.bit',         sampling_frequency=3000e6, processing_frequency=375e6, adc_clock_divider=16),
         dict(platform="CRS",    modes=("corr4","corr8"),     firmware_url='chfpga_crs_corr8.bit',      sampling_frequency=3200e6, processing_frequency=3200e6/8, adc_clock_divider=32),
-        dict(platform="CRS",    modes=("corr32",),           firmware_url='chfpga_crs_corr64.bit',     sampling_frequency=3200e6, processing_frequency=3200e6/8, adc_clock_divider=32),
+        dict(platform="CRS",    modes=("corr32",),           firmware_url='chfpga_crs_corr32.bit',     sampling_frequency=3200e6, processing_frequency=3200e6/8, adc_clock_divider=32),
         dict(platform="CRS",    modes=("corr64",),           firmware_url='chfpga_crs_corr64.bit',     sampling_frequency=3200e6, processing_frequency=3200e6/8, adc_clock_divider=32),
         dict(platform="CRS",    modes=("chan8", "shuffle8"), firmware_url='chfpga_crs_ct.bit',         sampling_frequency=3200e6, processing_frequency=3200e6/8, adc_clock_divider=32),
     )
@@ -2778,7 +2778,7 @@ class chFPGA(FPGAFirmware):
             self.set_gains(gain=gains, postscaler=postscaler, channels=channels)
 
         if offset_binary_encoding is not None:
-            self.set_offset_binary_encoding(offset=offset_binary_encoding, channels=channels, sync=False)
+            self.set_offset_binary_encoding(offset=offset_binary_encoding, channels=channels)
 
         if local_sync:
             self.sync()
