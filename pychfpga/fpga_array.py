@@ -1796,7 +1796,7 @@ class FPGAArray(object):
             self.ib.CROSSBAR3.reset_stats()
             # Sync was performed by init_corner_turn()
 
-        elif mode in ('corr16', 'corr8', 'corr32', 'corr4'):
+        elif mode in ('corr4', 'corr8', 'corr16', 'corr32', 'corr64'):
             #if not all(self.ib.CORR):
             #    raise RuntimeError(f'Mode {mode} requires all boards to have a firmware correlator engine')
             bin_map = self.get_corner_turn_bin_map(
@@ -3091,7 +3091,7 @@ class FPGAArray(object):
             socket.socket(): a UDP socket.
         """
         # get socket from one board in the array
-        sock = self.ib[0].get_data_socket(port_number=None)
+        sock = self.ib[0].get_data_socket(port_number=port_number)
         for b in self.ib:
             b.set_data_socket(sock)
         return sock
