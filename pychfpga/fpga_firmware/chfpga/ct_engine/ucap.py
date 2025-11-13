@@ -418,7 +418,7 @@ class RawFrameReceiver(object):
             if not buf_ix.size:
                 continue
 
-            if not mode:
+            if mode is not None:
                 # Determine the capture mode based in the first packet in the buffer
                 mode = (self.buf_subframe[0] >> 2) & 0x3
                 frames_per_channel = 2 * 2**(mode)
@@ -455,6 +455,8 @@ class RawFrameReceiver(object):
 
         if ncap > 1 and verbose:
             print(f'Timestamp differences: {set(np.diff(ts))}')
+
+        data = data[:,:, :self.FRAME_SIZE*frames_per_channel]
 
         if format == "16":
             data = data.view('>i2')
