@@ -418,7 +418,7 @@ class RawFrameReceiver(object):
             if not buf_ix.size:
                 continue
 
-            if mode is not None:
+            if mode is None:
                 # Determine the capture mode based in the first packet in the buffer
                 mode = (self.buf_subframe[0] >> 2) & 0x3
                 frames_per_channel = 2 * 2**(mode)
