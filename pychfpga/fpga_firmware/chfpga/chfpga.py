@@ -3424,6 +3424,7 @@ class chFPGA(FPGAFirmware):
                                     f' which has no FFT module. The command will have no effect.')
             else:
                 self.chan[ch].FFT.BYPASS = bypass_mode
+                self.chan[ch].FFT.config_id + 1  # flag a change
                 configured_channels.add(ch)
         channels_str = ', '.join([str(i) for i in configured_channels])
         self.logger.debug(f'{self!r}: Setting FFT bypass mode to {bool(bypass_mode)} for channel {channels_str}')
