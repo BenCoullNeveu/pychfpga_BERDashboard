@@ -1,14 +1,14 @@
 connection_config:
     prog: 1                 # 0 - do not reprogram, 1 - reprogram if outdated, 2 - always reprogram
-    mode: 'corr16'          # Do not change for a single board
-    hwm: 'mb 257'           # For a different board change the serial number
+    mode: 'corr64'          # Do not change for a single board
+    hwm: 'crs 21:1 32:2 25:3 20:4'   #'crs 25:1 21:2 20:3 32:4'         # For a different board change the serial number
 
 test_config:
     loglevelconn: "INFO"   # Log level during connection to the board
     logleveltest: "DEBUG"   # Log level during tests
     conn_scope: "class"     # Select "function" to re-establish connection for each test or
                             # "class" if you want to reuse connection.
-    only_plot: False              #Don't compare results, only plot them 
+    only_plot: True              #Don't compare results, only plot them 
 
     #parameters for scaler tests 
     platform: 'ICE-4bit-r'
@@ -50,5 +50,23 @@ test_config:
         stats_frames: [10]
         mode: ['word_ctr_buffer_flags', 'frame8', 'frame4']
 
+    #backplane shuffle test parameters
 
+    bp_params:
+        prbs_type: [5]
+        tx_power: [5]        # sweep power
+        tx_precursor: [1,3, 5, 20] # range == 0 to 20
+        tx_postcursor: [1,3, 5, 15, 31] # range 0 - 31
+        dwell_time: [1]
+        bit_rate: [2.5e+10]
+        max_allowed_ber: [4.0e-11]
+
+    bp_params_one:
+        prbs_type_one: [5]
+        tx_power_one: [0]        # sweep power
+        tx_precursor_one: [6]      # sweep pre
+        tx_postcursor_one: [0]     # sweep post
+        dwell_time_one: [1]
+        bit_rate_one: [2.5e+10]
+        max_allowed_ber_one: [4.0e-11]
 
