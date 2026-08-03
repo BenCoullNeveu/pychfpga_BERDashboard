@@ -19,7 +19,7 @@ This adds ``ber_dashboard`` to ``~/.local/bin`` and uses the workspace ``.venv``
 After that, you can start the GUI from any working directory by typing:
 
 ```bash
-	ber_dashboard
+ber_dashboard
 ```
 
 .. Use UTF-8 encoding
