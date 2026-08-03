@@ -1,8 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-dashboard_dir="$script_dir/tests/crs_corr_tests/ber_dashboard"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+install_dir="$HOME/.local/bin"
+launcher="$install_dir/ber_dashboard"
+dashboard_dir="$repo_root/tests/crs_corr_tests/ber_dashboard"
+python_bin="$repo_root/.venv/bin/python"
+
+if [[ ! -x "$python_bin" ]]; then
+	python_bin="$(command -v python)"
+fi
+
+mkdir -p "$install_dir"
+
+cat >"$launcher" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+dashboard_dir="$dashboard_dir"
+python_bin="$python_bin"
+
+export PYTHONPATH="$dashboard_dir\${PYTHONPATH:+:\$PYTHONPATH}"
+exec "\$python_bin" "\$dashboard_dir/main.py" "\$@"
+EOF
+
+chmod 755 "$launcher"
 
 export PYTHONPATH="$dashboard_dir${PYTHONPATH:+:$PYTHONPATH}"
-exec python "$dashboard_dir/main.py" "$@"
+exec "$python_bin" "$dashboard_dir/main.py" "$@"
