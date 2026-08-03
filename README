@@ -5,22 +5,22 @@ To install and launch the BER dashboard command:
 
 1. From the repository root, make the launcher executable:
 
-	.. code-block:: bash
-
-		chmod +x ber_dashboard
+```bash
+chmod +x ber_dashboard
+```
 
 2. Run the installer once from the repository root:
 
-	.. code-block:: bash
-
-		./ber_dashboard
+```bash
+./ber_dashboard
+```
 
 This adds ``ber_dashboard`` to ``~/.local/bin`` and uses the workspace ``.venv`` automatically.
 After that, you can start the GUI from any working directory by typing:
 
-.. code-block:: bash
-
+```bash
 	ber_dashboard
+```
 
 .. Use UTF-8 encoding
 
