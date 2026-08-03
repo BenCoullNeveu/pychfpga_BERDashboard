@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+dashboard_dir="$script_dir/tests/crs_corr_tests/ber_dashboard"
+
+export PYTHONPATH="$dashboard_dir${PYTHONPATH:+:$PYTHONPATH}"
+exec python "$dashboard_dir/main.py" "$@"
