@@ -1,0 +1,7 @@
+#!/bin/bash
+echo 'Copying bit file...'
+cp ../chFPGA/_ISE_Projects/chFPGA_ML605/work/chfpga_v6.bit .
+
+echo Done
+
+  

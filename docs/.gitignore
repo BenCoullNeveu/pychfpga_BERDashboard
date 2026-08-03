@@ -1,0 +1,6 @@
+/rtf
+/xml
+*.tmp
+*.~vsd
+/build/
+_autosummaries

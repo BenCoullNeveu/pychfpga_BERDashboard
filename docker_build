@@ -1,0 +1,17 @@
+#!/bin/bash
+
+set -e # stop this script on errors
+
+# Get current git version
+GIT_VERSION=`git describe --tags --dirty --always`
+echo Version is $GIT_VERSION
+
+IMAGE_NAME_TAG="wtlpychfpga/pychfpga:$GIT_VERSION"
+echo Image name is $IMAGE_NAME_TAG
+# login to the pychfpga private repo using a token from the environment
+echo "${DOCKER_PAT:?set DOCKER_PAT before running docker_build}" | docker login -u wtlpychfpga --password-stdin
+
+export BUILDKIT_PROGRESS=plain # optional, for more verbose output
+export DOCKER_BUILDKIT=1
+docker build --target deploy -t $IMAGE_NAME_TAG --ssh default .
+docker image push $IMAGE_NAME_TAG

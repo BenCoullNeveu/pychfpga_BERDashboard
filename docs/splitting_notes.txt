@@ -1,0 +1,605 @@
+Conventions:
+
+repo name
+package name
+branch naming
+  /
+  delete branches
+
+
+
+List of unmerged branches
+--------------------------
+
+$ git branch --all --no-merged master
+
+
+  develop : *** keep it separate
+  griffin_dev
+* jfc_dev
+  jfc_udp_error_restart: ** to be merged, keep separate
+  remotes/origin/8_chan:
+  remotes/origin/ML605_DRAO
+  remotes/origin/adc_testing
+  remotes/origin/adcdelay_badspots
+  Merged remotes/origin/ar-dev
+  remotes/origin/archive_digital_gains : *** Seth
+  remotes/origin/bpqc_temp
+  Merged remotes/origin/cal_broker
+  remotes/origin/cal_realtime ** dead end, in calibration and flaginput
+  remotes/origin/crate_timestream_receiver
+  Merged remotes/origin/dec2018_cal
+  remotes/origin/develop
+  remotes/origin/dvw/ch_translate_weather *8 Keep
+  remotes/origin/flag_gain_h5_update ** Seth, keep
+  remotes/origin/ghsyu_dev ** Digico test update - nor merged
+  remotes/origin/git-annex
+  remotes/origin/griffin_dev
+  remotes/origin/hirax
+  remotes/origin/iceboard_dev
+  remotes/origin/icecrate_multi_16ch
+  remotes/origin/icecrate_multi_16ch_chrx_update
+  remotes/origin/jfc_dev
+  remotes/origin/jfc_udp_error_restart
+  remotes/origin/jm_dev
+  remotes/origin/jm_new_pf_fw
+  remotes/origin/juan_dev
+  No remotes/origin/km-dev
+  remotes/origin/kmb_dev
+  remotes/origin/mbqc
+  remotes/origin/neg_erms_check
+  remotes/origin/not-archive
+
+  remotes/origin/parallel_digital_gain   ** WIP, dead end.
+
+
+  remotes/origin/pathfinder
+  remotes/origin/post_acq
+  remotes/origin/qc
+  remotes/origin/recv2-gossec
+  remotes/origin/rn/km
+  remotes/origin/singleBoard
+  remotes/origin/test_pattern_sync ** drop
+  remotes/origin/tpm_ps
+  remotes/origin/transpose_timeing
+
+
+Splitting method:
+
+git filter-branch --index-filter 'git rm --cached -qr --ignore-unmatch -- . && git reset -q $GIT_COMMIT -- apps/AAA libs/XXX' --prune-empty -- --all
+
+
+
+cd repo_a
+git filter-branch --index-filter 'git rm --cached -r dir8, dir2 || true' -- --all
+git remote rm origin
+git remote add origin git@github.com:YourOrg/repo_a.git
+git push origin --all
+
+
+Splitting out pychfpga/core/metrics.py
+
+cd split_folder
+rm -rf ch_acq
+cp -r ../ch-acq .
+git filter-branch --index-filter 'git rm --cached  --ignore-unmatch -r pychfpga/core/metrics.py' --prune-empty -- --all
+(takes 2 min)
+**8 Does not work, removes everything
+
+github version (https://gist.github.com/ssp/1663093)
+
+git filter-branch --prune-empty --subdirectory-filter pychfpga/core -- --all
+(takes 30 sec)
+
+git clone..
+
+git filter-branch -f --prune-empty --index-filter 'git rm --cached --ignore-unmatch $(git ls-files | grep -v "metrics.py")'
+(about 60 s, not quiet...)
+
+
+Packaging info
+--------------
+
+https://python-packaging.readthedocs.io/en/latest/minimal.html
+
+We don't necesarily create a subpackage folder for single module packages.
+
+
+Namespace package style:
+------------------------
+
+- Native Python 3.3 namespace do not require anything. We aim 2.7 and 3.x, so we can't use them.
+
+- pkgutil-style namespace packages are recommended,and are compatible with both Python 2 and 3::
+    wtl/__init__.py => __path__ = __import__('pkgutil').extend_path(__path__, __name__)
+
+- pkg_resources-style namespace packages are common but are **no longer recommended**::
+    wtl/__init__.py => __path__ = __import__('pkg_resources').declare_namespace(__name__)
+
+namespace issues: https://github.com/pypa/packaging.python.org/issues/265
+
+Minimum struct:
+
+wtl.mypkg: (complex sub-package)
+  setup.py # Do not use namespace_packages=[...] parameters to setup()
+  wtl
+    + __init__.py # __path__ = __import__('pkgutil').extend_path(__path__, __name__)
+    + mypkg
+        + __init__ # for the mypkg
+        + modules...
+
+wtl.mypkg: (single module)
+  setup.py # Do not use namespace_packages=[...] parameters to setup()
+  wtl
+    + __init__.py # __path__ = __import__('pkgutil').extend_path(__path__, __name__)
+    mypkg.py
+
+
+Version number
+--------------
+
+https://packaging.python.org/guides/single-sourcing-package-version/
+https://stackoverflow.com/questions/458550/standard-way-to-embed-version-into-python-package
+
+It seems ik to import __version__ from a module within the package, as long as that import does not cause the import of dependencies that are listed in install_requires.
+
+This is the case with metrics.py, which uses standard libraries only. WOuld not work with something that uses, let's say, namespace. In which case we could put the version in a standalone _version.py file.
+
+Git/Bitbucket dependencies
+--------------------------
+
+https://stackoverflow.com/questions/38335377/install-python-package-from-private-bitbucket-repo
+
+
+
+Supported formats (from https://pip.pypa.io/en/stable/reference/pip_install/)::
+
+  Here are the supported forms:
+
+  [-e] git://git.example.com/MyProject#egg=MyProject
+  [-e] git+http://git.example.com/MyProject#egg=MyProject
+  [-e] git+https://git.example.com/MyProject#egg=MyProject
+  [-e] git+ssh://git.example.com/MyProject#egg=MyProject
+  [-e] git+git://git.example.com/MyProject#egg=MyProject
+  [-e] git+file:///home/user/projects/MyProject#egg=MyProject
+  -e git+git@git.example.com:MyProject#egg=MyProject
+
+  Passing branch names, a commit hash or a tag name is possible like so:
+
+  [-e] git://git.example.com/MyProject.git@master#egg=MyProject
+  [-e] git://git.example.com/MyProject.git@v1.0#egg=MyProject
+  [-e] git://git.example.com/MyProject.git@da39a3ee5e6b4b0d3255bfef95601890afd80709#egg=MyProject
+
+
+Bitbucket remote repo formats (from https://confluence.atlassian.com/bitbucket/change-the-remote-url-to-your-repository-794212774.html)
+
+  git@bitbucket.org:<account_name>/<repo_name>.git
+
+  or
+
+  ssh://git@bitbucket.org/<account_name>/<repo_name>.git
+
+So we can do:
+
+pip install git+git@bitbucket.org:winterlandcosmology/wtl.metrics.git
+  Invalid requirement: 'git+git@bitbucket.org:winterlandcosmology/wtl.metrics.git'
+  It looks like a path. File 'git+git@bitbucket.org:winterlandcosmology/wtl.metrics.git' does not exist.
+
+  pip install git+git@bitbucket.org/winterlandcosmology/wtl.metrics.git
+
+pip install git+git@bitbucket.org/winterlandcosmology/wtl.metrics.git
+  Invalid requirement: 'git+git@bitbucket.org/winterlandcosmology/wtl.metrics.git'
+  It looks like a path. File 'git+git@bitbucket.org/winterlandcosmology/wtl.metrics.git' does not exist.
+
+pip install git+ssh://git@bitbucket.org/winterlandcosmology/wtl.metrics.git
+  Collecting git+ssh://git@bitbucket.org/winterlandcosmology/wtl.metrics.git
+    Cloning ssh://git@bitbucket.org/winterlandcosmology/wtl.metrics.git to /tmp/pip-req-build-HLKMrZ
+      Complete output from command python setup.py egg_info:
+      Traceback (most recent call last):
+        File "<string>", line 1, in <module>
+      IOError: [Errno 2] No such file or directory: '/tmp/pip-req-build-HLKMrZ/setup.py'
+
+      ----------------------------------------
+  Command "python setup.py egg_info" failed with error code 1 in /tmp/pip-req-build-HLKMrZ/
+
+pip install git+ssh://git@bitbucket.org/winterlandcosmology/wtl.metrics.git@jfc/dev
+
+
+
+A local install:
+  pip install ~/jfcliche/wtl.metrics
+
+
+
+
+Kitekan split
+
+cp ../ch_acq km
+cd km
+
+# check filter
+chime@gamma:~/jfcliche/split_temp3/km$ ls | grep -E "kot.*|versio.*|sla.*|km.*"  # option -E to allow the pipe character without expansion
+km-cli.py
+km_config_reporter.py
+kotekan_master.py
+kotekan-master.service
+kotekan.py
+kotekan.pyc
+slack.py
+version.py
+
+# We add -q for quiet. --ignore-unmatch to prevent an abort if no file is found in some (older) commit.
+# the -- --all is needed to process all branches (not just the current branch)
+
+git filter-branch -f --prune-empty --index-filter 'git rm -q --cached --ignore-unmatch $(git ls-files | grep -vE "kot.*|versio.*|sla.*|km.*")' -- --all
+
+this fails for some files, probably because of spaces. To add quotes:
+
+git ls-files | tr '\n' '\0'| xargs -0 -L1 -I '$' echo \"'$'\"
+
+git filter-branch -f --prune-empty --index-filter 'git rm -q --cached --ignore-unmatch $(git ls-files | grep -vE "kot.*|versio.*|sla.*|km.*") | tr "\n" "\0" | xargs -0 -L1 -I "$" echo \""$"\"' -- --all
+
+Remove unmerged tags
+for tag in `git tag --no-merged`; do git tag -d  $tag ; done
+
+git filter-branch -f --prune-empty --tag-name-filter cat -- --all
+
+Some files were left...
+
+git ls-files
+
+and delete them with more git filter-branch. Here we remove a folder (-r):
+
+  git filter-branch -f --prune-empty --index-filter 'git rm -q --cached --ignore-unmatch -r doc/html' -- --all
+
+Some files change name over the history
+
+then do a gc in smartgit
+
+
+Big files are::
+  git ls-tree -r -t -l --full-name HEAD | sort -n -k 4 | tail -n 10
+
+
+some commits in other branches are missing.
+
+
+
+   # Get a bare repo. has everything on the remote.
+   git clone --mirror git@bitbucket.org:chime/ch_acq.git ca
+   cd ca
+   # Remove stuff
+   git filter-branch -f --prune-empty --index-filter 'git rm -q --cached --ignore-unmatch $(git ls-files | grep -vE "kot.*|versio.*|sla.*|km.*") | tr "\n" "\0" | xargs -0 -L1 -I "$" echo \""$"\"' -- --all
+   # Remove leftovers
+   git filter-branch -f --prune-empty --index-filter 'git rm -q --cached --ignore-unmatch calibration/version.py flaginput/version.py' -- --all
+   git filter-branch -f --prune-empty --index-filter 'git rm -q --cached --ignore-unmatch *.png *.bit *.ods weather/ch_translate_weather' -- --all
+   # Remove extra tags. That may be excessive.
+   for tag in `git tag --no-merged`; do git tag -d  $tag ; done
+   # Compact the repo - collect the garbage
+  git reflog expire --all --expire=now
+  git gc --prune=now --aggressive
+
+  # Create the repo on bitbucket
+  git remote remove origin
+	git remote add origin git@bitbucket.org:chime/kotekan_master.git
+  # clone it so it is no longer a bare repo, then work with it
+
+
+2020-03-08
+
+Extracting xreport from pychfpga
+
+The old way:
+
+git clone --mirror git@bitbucket.org:winterlandcosmology/pychfpga.git xreport
+cd xreport
+
+Figure out the names to filter
+
+git filter-branch -f --prune-empty --index-filter 'git rm -q --cached --ignore-unmatch $(git ls-files | grep -vE "pychfpga/core/icecore/python/tests*") | tr "\n" "\0" | xargs -0 -L1 -I "$" echo \""$"\"' -- --all
+
+git filter-branch --prune-empty --subdirectory-filter pychfpga/core/icecore/python/tests -- --all
+for tag in `git tag --no-merged`; do git tag -d  $tag ; done
+git filter-branch -f --prune-empty --tag-name-filter cat -- --all
+git reflog expire --all --expire=now
+git gc --prune=now --aggressive
+du -sh .  # folder went from 130M to 716k
+
+#check remaining files
+git ls-tree -r -t -l --full-name HEAD | sort -n -k 4
+# we have some outliers. Delete them manually
+git filter-branch -f --prune-empty --index-filter 'git rm -q --cached --ignore-unmatch docs/*' -- --all
+
+# re-check
+git filter-branch -f --prune-empty --index-filter 'git rm -q --cached --ignore-unmatch docs/*' -- --all
+# Recompress
+git filter-branch -f --prune-empty --tag-name-filter cat -- --all
+git reflog expire --all --expire=now
+git gc --prune=now --aggressive
+du -sh .  # folder went from 716k to 420K
+
+
+Trying git-filter-repo, which is recommendd by git itself when invoking filter-branch
+
+Check for
+    git >= 2.22.0 at a minimum; some features require git >= 2.24.0 or later
+    python3 >= 3.5
+
+Create venv, install and activate
+  	python3 -m venv filter-repo-venv
+  	pip install git-filter-repo
+	source ./filter-repo-venv/bin/activate
+	git-filter-repo --version  # confirm it is found in the path
+
+Clone repo
+	git clone --mirror git@bitbucket.org:winterlandcosmology/pychfpga.git xreport2
+	du -sh . # 130M
+
+Extracting
+	git-filter-repo --subdirectory-filter pychfpga/core/icecore/python/tests
+		Parsed 3246 commits
+		New history written in 0.31 seconds; now repacking/cleaning...
+		Repacking your repo and cleaning out old unneeded objects
+		Enumerating objects: 177, done.
+		Counting objects: 100% (177/177), done.
+		Delta compression using up to 4 threads
+		Compressing objects: 100% (75/75), done.
+		Writing objects: 100% (177/177), done.
+		Building bitmaps: 100% (41/41), done.
+		Total 177 (delta 106), reused 125 (delta 98)
+		Completely finished after 0.53 seconds.
+	du -sh . # 864K, not bad
+	# git gc has no effect
+	# git reflog expire --all --expire=now & git gc has no effect
+	# compared the files with previous method: same files, refs to folders without files are gone.
+	# tags are all there, might be the diifference
+	# branches are all there
+	# let's remove tags
+		for tag in `git tag --no-merged`; do git tag -d  $tag ; done
+		gir reflog...
+		git gc ...
+		du ... # no change
+	# That is good enough
+	# Create repo on bitbucket: wtl.xreport
+  	git remote remove origin
+	git remote add origin git@bitbucket.org:winterlandcosmology/wtl.xreport.git
+	git push origin --all
+	# This is still a bare repo. Clone the repo to get the files and checkout a branch
+
+
+2021-08-16
+
+List size of *all* files in repo:
+---------------------------------
+
+option 1:
+
+git rev-list --objects --all |   git cat-file --batch-check='%(objecttype) %(objectname) %(objectsize) %(rest)' |   sed -n 's/^blob //p' |   sort --numeric-sort --key=2 |   cut -c 1-12,41- |   $(command -v gnumfmt || echo numfmt) --field=2 --to=iec-i --suffix=B --padding=7 --round=nearest
+
+
+Option 2:
+
+git-filter-repo --analyze
+
+Check file  .git/filter-repo/analysis/blob-shas-and-paths.txt
+
+
+Find commit associated with blob
+
+git log --all --pretty=format:%H -- <path> | xargs -I% sh -c "git ls-tree % -- <path> | grep -q <blob hash> && echo %"
+
+
+2021-11-16
+----------
+
+.bit.old was pushed as a non-LFS file. Want to remove.
+
+trying git lfs migrate, from https://notiz.dev/blog/migrate-git-repo-to-git-lfs:
+
+Dry run:
+
+chime@gamma:~/jfcliche/pychfpga$ git lfs migrate info --everything --include="*.old"
+migrate: Sorting commits: ..., done.
+migrate: Examining commits: 100% (3386/3386), done.
+*.old   19 MB   1/1 files(s)    100%
+
+
+git lfs migrate import --everything --include="*.old" --verbose
+
+chime@gamma:~/jfcliche/pychfpga$ git lfs migrate import --everything --include="*.old" --verbose
+migrate: Sorting commits: ..., done.
+migrate: commit 8f657b1315672c349902e5067c2a602e69073314: pychfpga/fpga_bitstreams/SIFPGA_MGK7MB.bit.old
+migrate: Rewriting commits: 100% (3386/3386), done.
+  develop       640a1655f0990a0c4f045cb4d2db85b6cda54ea3 -> 2673b893297fe9d95939e2cccaafcfd8bda03812
+  jfc/dev       8f657b1315672c349902e5067c2a602e69073314 -> 71b989291a318d5d979da49a8a9a1d8a91c6a02f
+  jfc/qc        cb8da1b20b3c82085fedabe880118074bd43f803 -> 1a30a1253364c6b018417ea7d8346aea5f27f19b
+  master        8de32f6d0b5ebaa163e32311657390c87fe89f11 -> 98407dcc43b22565481bb329376e53d61b141434
+  2019.03       99906b2c852da46b68fc644e3107d08d68941907 -> b6563d31258705d6237189d4edcb4d0fa41adac1
+  2019.05       f234a05a3b335af0a25ea9201f8cceef31758b8f -> fef0f8d582ddab66a288c7acbb617a37d08f24b4
+  2019.07-rc1   5ed7ccaf5339f3aaaade3f9273fbb003ed74f3db -> db6ff02bac8571c0837c3ec5d4c1fda4b6f79647
+  2019.07-rc2   075ce6e973c7d2db771e6b0f2c8c32662667c18e -> 929eadf67e418f3defa43aecb462bc521aed3afa
+  2019.08-rc1   d46630f5b2e9c25253f7ecfee41fd32d330ad7ed -> 435874664cacb52fde43a89ab660ad30708cbcb6
+  2019.12-rc1   fb76f76c3479ee660ca5d0dcc6257c740c7ef1d4 -> 3838a4b0f8df316c4ce8fe363675fc1b4354401a
+  2020.06-rc1   9d430fcaf654fc987f7d7108d135eafe71c0dda0 -> d070c1e6608c9b7c8c48e95b150cbf7e07a08dd0
+  2021.03       1511dac60f79604dc10901beacbd41aa3a5130a4 -> 4965cba9211792b6126a98d18ad1cc839e5b445c
+migrate: Updating refs: ..., done.
+migrate: checkout: ..., done.
+
+My god, this rewrote all the tags.
+
+
+2nd trial
+
+Trying git-filter-repo as explained here:
+https://netdevops.me/2021/remove-binaries-and-big-files-from-git-repo/
+
+pip install git-filter-repo  # installed in system, no venv needed!.
+
+
+git clone  --mirror git@bitbucket.org:winterlandcosmology/pychfpga.git pychfpga
+cd pychfpga
+
+Check repo size
+du -sh .
+14M     .
+
+
+That seems small, considering there is a bitstream in there.
+Confirmed on bitbucket that it's not LFS
+Maybe it was compressible enough.
+
+
+Check the files:
+
+git-filter-repo --analyze
+cat filter-repo/analysis/blob-shas-and-paths.txt
+
+
+=== Files by sha and associated pathnames in reverse size ===
+Format: sha, unpacked size, packed size, filename(s) object stored as
+  1f1723ead0007429f24be766b3bae4ee67d1907c   18735114    6404780 pychfpga/fpga_bitstreams/SIFPGA_MGK7MB.bit.old
+  bdc97abb022cf95c0455ed10a9c9229696665834     880008     218585 pychfpga/core/icecore/www/js/angular.js
+  92cac12a0c0681ef589a9e81a55e10b108367b5e     630512      81709 pychfpga/correlator_rx/iceboard_receiver.c
+  302e873e7615fc7b3fe07472d31099b4b603d31c     219678      63539 pychfpga/core/chFPGA_controller.py
+  219d2a8179fac3a36c34b90c219f44f35ea000a3     256587      62598 pychfpga/fpga_array.py
+  aac70b82ae0e585e2c4a7e3b7019a94b3cdd9ce3     256253      62508 pychfpga/fpga_array.py
+
+
+ok, it's there.
+
+
+git filter-repo --invert-paths --path '*.bit.old' --use-base-name
+
+  Parsed 3386 commits
+  New history written in 1.38 seconds; now repacking/cleaning...
+  Repacking your repo and cleaning out old unneeded objects
+  Enumerating objects: 18871, done.
+  Counting objects: 100% (18871/18871), done.
+  Delta compression using up to 8 threads
+  Compressing objects: 100% (4877/4877), done.
+  Writing objects: 100% (18871/18871), done.
+  Selecting bitmap commits: 3358, done.
+  Building bitmaps: 100% (138/138), done.
+  Total 18871 (delta 13860), reused 18871 (delta 13860), pack-reused 0
+  Completely finished after 3.56 seconds.
+
+
+Before cleanup:
+
+du -sh .
+  16M  # bigger
+
+Cleanup:
+git reflog expire --expire=now --all && git gc --prune=now --aggressive
+du -sh .
+  14M # back where we were?
+
+
+Check with filter-repo:
+
+git-filter-repo --analyze --force  # override previous report
+less filter-repo/analysis/blob-shas-and-paths.txt
+
+=== Files by sha and associated pathnames in reverse size ===
+Format: sha, unpacked size, packed size, filename(s) object stored as
+  1f1723ead0007429f24be766b3bae4ee67d1907c   18735114    6404780 pychfpga/fpga_bitstreams/SIFPGA_MGK7MB.bit.old
+  bdc97abb022cf95c0455ed10a9c9229696665834     880008     218585 pychfpga/core/icecore/www/js/angular.js
+  92cac12a0c0681ef589a9e81a55e10b108367b5e     630512      81709 pychfpga/correlator_rx/iceboard_receiver.c
+  219d2a8179fac3a36c34b90c219f44f35ea000a3     256587      62598 pychfpga/fpga_array.py
+  722a4be42f365f6dd28ad639e0b428a02e76a1f8      57922      56368 pychfpga/core/qc/iceboard-qc/docs/MGK7MB DFMEA and test coverage.ods
+
+
+ Still there. By the way, the packed size is there: 18M unpacked, 6M packed. We should save about 6M in the repo, i.e. go to about 8M if we get rid of it.
+
+Maybe the wildcard did not work
+Trying with the full pathname
+
+git filter-repo --invert-paths --path 'pychfpga/fpga_bitstreams/SIFPGA_MGK7MB.bit.old'
+git-filter-repo --analyze --force  # override previous report
+less filter-repo/analysis/blob-shas-and-paths.txt
+
+
+  === Files by sha and associated pathnames in reverse size ===
+  Format: sha, unpacked size, packed size, filename(s) object stored as
+    bdc97abb022cf95c0455ed10a9c9229696665834     880008     218585 pychfpga/core/icecore/www/js/angular.js
+    92cac12a0c0681ef589a9e81a55e10b108367b5e     630512      81709 pychfpga/correlator_rx/iceboard_receiver.c
+    219d2a8179fac3a36c34b90c219f44f35ea000a3     256587      62598 pychfpga/fpga_array.py
+
+Ah it's gone now.
+
+du -sh .
+7.9M    .
+
+yeah!
+
+push  # no need for --force
+
+The file disappears after a few minutes on bitbucket (not immediately, even with refreshes)
+
+
+Tried to do a git pull with the git-lfs migrate'd folder, but of course there are merge conflicts now. Starting from a fresh clone.
+
+Make a fresh clone of pychfpga.
+du -sh .
+349M
+
+ok that includes the binaries
+
+Looking at the objects:
+
+chime@gamma:~/jfcliche/pychfpga$ ls -alh .git/objects/pack/
+total 7.1M
+drwxrwxr-x 2 chime chime 4.0K Nov 16 11:55 .
+drwxrwxr-x 4 chime chime 4.0K Nov 16 11:55 ..
+-r--r--r-- 1 chime chime 518K Nov 16 11:55 pack-88583573775f4c8f24b64faa7beedc83399b5bbf.idx
+-r--r--r-- 1 chime chime 6.5M Nov 16 11:55 pack-88583573775f4c8f24b64faa7beedc83399b5bbf.pack
+
+That's good
+
+git-filter-repo --analyze --force
+  Writing reports to .git/filter-repo/analysis...done.
+less .git/filter-repo/analysis/blob-shas-and-paths.txt
+
+Looks good.
+
+
+Curiosity, where are the big files?
+
+using ncdu
+
+--- /home/chime/jfcliche/pychfpga ---------------------------------------------------------------------------------------------------------------------------------------
+  176.6 MiB [##########] /.git   # that's LFS storage
+  153.7 MiB [########  ] /pychfpga   # That;s the arm firmware + 3 bitstreams
+   17.3 MiB [          ] /docs
+    1.0 MiB [          ] /ice-qc
+  580.0 KiB [          ] /sim
+
+That's sounds reasonable
+
+Bitbucket pychfpga -> settings says:
+  Repo Size: 262.09 MB
+  LFS: 511.74 MB
+
+Why is the repo so large?
+
+
+Now the repo is used  elsewhere, need to be careful not to push the big file again
+
+on LBControl
+
+currently on branch jfc/zcu111
+Did a git fetch --all
+SmartGit saw the branch, no .bit.old
+
+
+
+QCmachine
+
+did git fetch
+git-filter-repo --analyze still shows the .old
+
+did
+git reflog expire --expire=now --all && git gc --prune=now --aggressive
+and redid the analysis but the .old is still there.
+May be still referenced by the current head
+

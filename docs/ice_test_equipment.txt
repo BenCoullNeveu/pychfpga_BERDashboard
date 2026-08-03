@@ -1,0 +1,37 @@
+List of equipment needed for ICE board testing
+
+I marked with a star (*) the equipment that I plan to bring with me, but it 
+would still be useful to have that in the lab so I can leave a working setup
+
+1) *Gigabit ethernet switch - it is important to have a *gigabit* switch,
+	otherwise it will not support jumbo frames sent by the iceboard.
+2) Bunch of ethernet cables - at least four: two to connect the iceboard to the
+	switch, one to connect the laptop and one to connect the switch to the
+	network
+3) A power supply - iceboard requires 15-20 V and consumes about 65 W.
+	Usually, I set it at 17-18V.
+4) *SFP connector
+5) Amplifiers (if needed) with SMA interface that work in the iceboard frequency
+	range and power supply for them. Iceboard's ADC work in range approximately 
+	+-500 mV
+6) Some attenuators with SMA interface might be useful.
+7) *A desktop fan to cool the iceboard. I usually just put a basic PC fan on 
+	the side - that should be enough
+8) *SD card
+	
+I suppose that the output from dishes comes via SMA interface. Otherwise, we will
+need adapters. Also, it's not required, but it would be nice to have a signal 
+generation setup to test the iceboard if there will be problems with dish outputs, 
+that includes:
+
+9) Signal generator that generates a signal in a frequency range of the iceboard
+10) Bunch of SMA cables (at least three)
+11) A signal splitter with SMA interfaces
+
+Also, if you have a working GPS clock with a IRIG-B Time Code Standard, we can use
+that instead of a system clock to get a more accurate clock. That setup would 
+include:
+12) GPS clock with IRIG-B standard
+13) A pair of BNC to SMA adapters (assuming the gps clock output cables have BNC  
+	interface)
+14) More attenuators
