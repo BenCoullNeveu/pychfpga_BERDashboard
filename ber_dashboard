@@ -1,30 +1,79 @@
 #!/usr/bin/env bash
+
 set -euo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-install_dir="$HOME/.local/bin"
-launcher="$install_dir/ber_dashboard"
+# The script is intended to be run from the repository root.
+repo_root="$(pwd)"
+
 dashboard_dir="$repo_root/tests/crs_corr_tests/ber_dashboard"
 python_bin="$repo_root/.venv/bin/python"
 
-if [[ ! -x "$python_bin" ]]; then
-	python_bin="$(command -v python)"
+if [[ ! -d "$dashboard_dir" ]]; then
+    echo "Error: could not find BER dashboard at:"
+    echo "  $dashboard_dir"
+    echo
+    echo "Run this script from the pychfpga_BERDashboard repository root."
+    exit 1
 fi
+
+if [[ ! -x "$python_bin" ]]; then
+    python_bin="$(command -v python3 || true)"
+fi
+
+if [[ -z "$python_bin" || ! -x "$python_bin" ]]; then
+    echo "Error: could not find a usable Python interpreter."
+    exit 1
+fi
+
+install_dir="$HOME/.local/bin"
+launcher="$install_dir/ber_dashboard"
 
 mkdir -p "$install_dir"
 
-cat >"$launcher" <<EOF
+cat > "$launcher" <<EOF
 #!/usr/bin/env bash
+
 set -euo pipefail
 
+repo_root="$repo_root"
 dashboard_dir="$dashboard_dir"
 python_bin="$python_bin"
 
-export PYTHONPATH="$dashboard_dir\${PYTHONPATH:+:\$PYTHONPATH}"
+cd "\$repo_root"
+
+export PYTHONPATH="\$dashboard_dir\${PYTHONPATH:+:\$PYTHONPATH}"
+
 exec "\$python_bin" "\$dashboard_dir/main.py" "\$@"
 EOF
 
 chmod 755 "$launcher"
 
-export PYTHONPATH="$dashboard_dir${PYTHONPATH:+:$PYTHONPATH}"
-exec "$python_bin" "$dashboard_dir/main.py" "$@"
+# Add ~/.local/bin to PATH if it isn't already there.
+path_line='export PATH="$HOME/.local/bin:$PATH"'
+
+if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+    case "${SHELL##*/}" in
+        bash)
+            shell_rc="$HOME/.bashrc"
+            ;;
+        zsh)
+            shell_rc="$HOME/.zshrc"
+            ;;
+        *)
+            shell_rc="$HOME/.profile"
+            ;;
+    esac
+
+    if ! grep -Fqx "$path_line" "$shell_rc" 2>/dev/null; then
+        printf '\n%s\n' "$path_line" >> "$shell_rc"
+    fi
+
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
+echo "Installed: $launcher"
+echo "Python:    $python_bin"
+echo "Dashboard: $dashboard_dir"
+echo
+echo "You can now run:"
+echo "  ber_dashboard"
