@@ -51,6 +51,10 @@ class BootPage(QWidget):
             layout.addLayout(row_layout)
             self.hwm_inputs.append(hwm_input)
 
+        clear_btn = QPushButton("Clear HWM Fields")
+        clear_btn.clicked.connect(self.clear_hwm_fields)
+        layout.addWidget(clear_btn)
+
         prev_crate_path = os.path.join(ber_dashboard_dir, 'prev_data', 'prev_crate.txt')
         prev_crate = None
         if os.path.exists(prev_crate_path):
@@ -93,7 +97,7 @@ class BootPage(QWidget):
         self.logLevel.setCurrentText("INFO")
         self.log = QTextEdit()
         btn_row.addWidget(self.btn)
-
+        btn_row.addWidget(self.clear_btn)
         log_row = QHBoxLayout()
         log_row.addWidget(self.logLevel)
         log_row.addWidget(self.clear_btn)
@@ -192,3 +196,8 @@ class BootPage(QWidget):
                     self.crate_dropdown.addItem(f"Crate {crate_num}")
         except Exception as e:
             print(f"Could not load available crates: {str(e)}. Be sure the working directory is set to be `ber_dashboard` and that the `prev_data/crates/` directory exists.")
+
+    def clear_hwm_fields(self):
+        for hwm_input in self.hwm_inputs:
+            hwm_input.clear()
+        self.crate.clear()
